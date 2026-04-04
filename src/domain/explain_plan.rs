@@ -151,7 +151,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn single_node_seq_scan() {
+        fn parse_explain_text_returns_single_node_seq_scan() {
             let text = "Seq Scan on users  (cost=0.00..1000.00 rows=100 width=32)";
             let plan = parse_explain_text(text, false, 42);
 
@@ -163,7 +163,7 @@ mod tests {
         }
 
         #[test]
-        fn nested_plan_extracts_top_level_only() {
+        fn parse_explain_text_returns_top_level_node_only() {
             let text = "\
 Sort  (cost=0.00..1234.56 rows=100 width=32)
   Sort Key: id
@@ -177,7 +177,7 @@ Sort  (cost=0.00..1234.56 rows=100 width=32)
         }
 
         #[test]
-        fn explain_analyze_output() {
+        fn parse_explain_text_returns_analyze_output() {
             let text = "\
 Seq Scan on users  (cost=0.00..1000.00 rows=100 width=32) (actual time=0.010..0.500 rows=95 loops=1)
 Planning Time: 0.050 ms
@@ -190,7 +190,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn arrow_prefixed_node() {
+        fn parse_explain_text_returns_arrow_prefixed_node() {
             let text = "  ->  Index Scan using idx_users_email on users  (cost=0.28..8.30 rows=1 width=64)";
             let plan = parse_explain_text(text, false, 0);
 
@@ -203,7 +203,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn unparseable_text() {
+        fn parse_explain_text_returns_none_for_unparseable_text() {
             let text = "CREATE TABLE -- no cost info here";
             let plan = parse_explain_text(text, false, 0);
 
@@ -213,7 +213,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn empty_input() {
+        fn parse_explain_text_returns_none_for_empty_input() {
             let plan = parse_explain_text("", false, 0);
 
             assert!(plan.top_node_type.is_none());
@@ -222,7 +222,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn whitespace_only_input() {
+        fn parse_explain_text_returns_none_for_whitespace_only_input() {
             let plan = parse_explain_text("   \n  \n  ", false, 0);
 
             assert!(plan.top_node_type.is_none());
@@ -245,7 +245,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn improved_when_cost_drops_below_threshold() {
+        fn compare_plans_returns_improved_when_cost_drops_below_threshold() {
             let baseline = make_plan(Some(1000.0), Some(100), Some("Seq Scan"));
             let current = make_plan(Some(500.0), Some(100), Some("Seq Scan"));
 
@@ -255,7 +255,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn worsened_when_cost_exceeds_threshold() {
+        fn compare_plans_returns_worsened_when_cost_exceeds_threshold() {
             let baseline = make_plan(Some(100.0), Some(10), Some("Index Scan"));
             let current = make_plan(Some(1000.0), Some(10), Some("Seq Scan"));
 
@@ -265,7 +265,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn similar_within_threshold() {
+        fn compare_plans_returns_similar_within_threshold() {
             let baseline = make_plan(Some(100.0), Some(10), Some("Seq Scan"));
             let current = make_plan(Some(105.0), Some(10), Some("Seq Scan"));
 
@@ -275,7 +275,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn boundary_at_exactly_0_9_is_similar() {
+        fn compare_plans_returns_similar_at_exactly_0_9_boundary() {
             let baseline = make_plan(Some(100.0), None, None);
             let current = make_plan(Some(90.0), None, None);
 
@@ -285,7 +285,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn boundary_at_exactly_1_1_is_similar() {
+        fn compare_plans_returns_similar_at_exactly_1_1_boundary() {
             let baseline = make_plan(Some(100.0), None, None);
             let current = make_plan(Some(110.0), None, None);
 
@@ -295,7 +295,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn both_costs_none() {
+        fn compare_plans_returns_unavailable_when_both_costs_are_missing() {
             let baseline = make_plan(None, None, None);
             let current = make_plan(None, None, None);
 
@@ -311,7 +311,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn one_cost_none() {
+        fn compare_plans_returns_unavailable_when_one_cost_is_missing() {
             let baseline = make_plan(Some(100.0), None, None);
             let current = make_plan(None, None, None);
 
@@ -327,7 +327,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn node_type_change_in_reasons() {
+        fn compare_plans_returns_node_type_change_in_reasons() {
             let baseline = make_plan(Some(1000.0), Some(100), Some("Seq Scan"));
             let current = make_plan(Some(10.0), Some(1), Some("Index Scan"));
 
@@ -342,7 +342,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn same_node_type_not_in_reasons() {
+        fn compare_plans_returns_same_node_type_without_node_reason() {
             let baseline = make_plan(Some(100.0), Some(10), Some("Seq Scan"));
             let current = make_plan(Some(105.0), Some(10), Some("Seq Scan"));
 
@@ -357,7 +357,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn row_estimate_change_in_reasons() {
+        fn compare_plans_returns_row_estimate_change_in_reasons() {
             let baseline = make_plan(Some(100.0), Some(1000), Some("Seq Scan"));
             let current = make_plan(Some(105.0), Some(10), Some("Seq Scan"));
 
@@ -372,7 +372,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn same_row_estimate_not_in_reasons() {
+        fn compare_plans_returns_same_row_estimate_without_row_reason() {
             let baseline = make_plan(Some(100.0), Some(10), Some("Seq Scan"));
             let current = make_plan(Some(105.0), Some(10), Some("Seq Scan"));
 
@@ -387,7 +387,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn reasons_capped_at_max() {
+        fn compare_plans_returns_reasons_capped_at_max() {
             let baseline = make_plan(Some(1000.0), Some(100), Some("Seq Scan"));
             let current = make_plan(Some(10.0), Some(1), Some("Index Scan"));
 
@@ -397,7 +397,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn zero_baseline_cost_with_nonzero_current() {
+        fn compare_plans_returns_worsened_with_zero_baseline_cost() {
             let baseline = make_plan(Some(0.0), None, None);
             let current = make_plan(Some(100.0), None, None);
 
@@ -407,7 +407,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn both_zero_cost() {
+        fn compare_plans_returns_similar_with_zero_costs() {
             let baseline = make_plan(Some(0.0), None, None);
             let current = make_plan(Some(0.0), None, None);
 

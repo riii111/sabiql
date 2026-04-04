@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn insert_beyond_capacity_evicts_lru_entry() {
+    fn insert_beyond_capacity_returns_lru_eviction() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
         cache.insert("b", 2);
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn get_updates_lru_order_preventing_eviction() {
+    fn get_returns_updated_lru_order_preventing_eviction() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
         cache.insert("b", 2);
@@ -120,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_removes_all_entries() {
+    fn clear_returns_empty_cache() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
         cache.insert("b", 2);
@@ -142,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn resize_expand_preserves_entries() {
+    fn resize_expand_returns_preserved_entries() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
         cache.insert("b", 2);
@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn pop_removes_and_returns_value() {
+    fn pop_returns_removed_value() {
         let mut cache = BoundedLruCache::new(3);
         cache.insert("a", 1);
         cache.insert("b", 2);
@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn resize_shrink_evicts_lru() {
+    fn resize_shrink_returns_lru_eviction() {
         let mut cache = BoundedLruCache::new(3);
         cache.insert("a", 1);
         cache.insert("b", 2);

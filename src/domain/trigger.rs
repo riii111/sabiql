@@ -53,17 +53,17 @@ mod tests {
         use super::*;
 
         #[test]
-        fn before_displays_uppercase() {
+        fn display_returns_uppercase_for_before() {
             assert_eq!(TriggerTiming::Before.to_string(), "BEFORE");
         }
 
         #[test]
-        fn after_displays_uppercase() {
+        fn display_returns_uppercase_for_after() {
             assert_eq!(TriggerTiming::After.to_string(), "AFTER");
         }
 
         #[test]
-        fn instead_of_displays_with_space() {
+        fn display_returns_spaced_uppercase_for_instead_of() {
             assert_eq!(TriggerTiming::InsteadOf.to_string(), "INSTEAD OF");
         }
     }
@@ -72,22 +72,22 @@ mod tests {
         use super::*;
 
         #[test]
-        fn insert_displays_uppercase() {
+        fn display_returns_uppercase_for_insert() {
             assert_eq!(TriggerEvent::Insert.to_string(), "INSERT");
         }
 
         #[test]
-        fn update_displays_uppercase() {
+        fn display_returns_uppercase_for_update() {
             assert_eq!(TriggerEvent::Update.to_string(), "UPDATE");
         }
 
         #[test]
-        fn delete_displays_uppercase() {
+        fn display_returns_uppercase_for_delete() {
             assert_eq!(TriggerEvent::Delete.to_string(), "DELETE");
         }
 
         #[test]
-        fn truncate_displays_uppercase() {
+        fn display_returns_uppercase_for_truncate() {
             assert_eq!(TriggerEvent::Truncate.to_string(), "TRUNCATE");
         }
     }

@@ -84,7 +84,10 @@ mod tests {
         #[case("a", true)] // 1 char minimum
         #[case("", false)] // empty
         #[case("   ", false)] // whitespace only
-        fn validation(#[case] input: &str, #[case] should_succeed: bool) {
+        fn new_returns_expected_validation_result(
+            #[case] input: &str,
+            #[case] should_succeed: bool,
+        ) {
             assert_eq!(ConnectionName::new(input).is_ok(), should_succeed);
         }
 
@@ -105,7 +108,7 @@ mod tests {
         }
 
         #[test]
-        fn trims_whitespace() {
+        fn new_returns_trimmed_name() {
             let name = ConnectionName::new("  Production  ").unwrap();
             assert_eq!(name.as_str(), "Production");
         }
@@ -115,13 +118,13 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_lowercase() {
+        fn normalized_returns_lowercase() {
             let name = ConnectionName::new("Production").unwrap();
             assert_eq!(name.normalized(), "production");
         }
 
         #[test]
-        fn mixed_case_normalized_to_lowercase() {
+        fn normalized_returns_lowercase_for_mixed_case_input() {
             let name = ConnectionName::new("My Local DB").unwrap();
             assert_eq!(name.normalized(), "my local db");
         }
@@ -131,7 +134,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn formats_as_inner_string() {
+        fn display_returns_inner_string() {
             let name = ConnectionName::new("Production").unwrap();
             assert_eq!(format!("{name}"), "Production");
         }
@@ -141,21 +144,21 @@ mod tests {
         use super::*;
 
         #[test]
-        fn serializes_to_string() {
+        fn serde_round_trip_serializes_to_string() {
             let name = ConnectionName::new("Production").unwrap();
             let json = serde_json::to_string(&name).unwrap();
             assert_eq!(json, "\"Production\"");
         }
 
         #[test]
-        fn deserializes_valid_string() {
+        fn serde_round_trip_deserializes_valid_string() {
             let json = "\"Production\"";
             let name: ConnectionName = serde_json::from_str(json).unwrap();
             assert_eq!(name.as_str(), "Production");
         }
 
         #[test]
-        fn deserialize_empty_returns_error() {
+        fn serde_round_trip_returns_error_for_empty_string() {
             let json = "\"\"";
             let result: Result<ConnectionName, _> = serde_json::from_str(json);
             assert!(result.is_err());

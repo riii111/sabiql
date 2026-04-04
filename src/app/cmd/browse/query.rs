@@ -375,37 +375,37 @@ mod tests {
         use super::*;
 
         #[test]
-        fn epoch_days_to_ymd_unix_epoch() {
+        fn epoch_days_to_ymd_returns_unix_epoch_date() {
             assert_eq!(epoch_days_to_ymd(0), (1970, 1, 1));
         }
 
         #[test]
-        fn epoch_days_to_ymd_known_date() {
+        fn epoch_days_to_ymd_returns_known_date() {
             assert_eq!(epoch_days_to_ymd(19723), (2024, 1, 1));
         }
 
         #[test]
-        fn epoch_days_to_ymd_leap_year_feb_29() {
+        fn epoch_days_to_ymd_returns_leap_year_feb_29() {
             assert_eq!(epoch_days_to_ymd(19782), (2024, 2, 29));
         }
 
         #[test]
-        fn epoch_days_to_ymd_year_end_dec_31() {
+        fn epoch_days_to_ymd_returns_year_end_dec_31() {
             assert_eq!(epoch_days_to_ymd(19722), (2023, 12, 31));
         }
 
         #[test]
-        fn epoch_days_to_ymd_century_leap_year() {
+        fn epoch_days_to_ymd_returns_century_leap_year() {
             assert_eq!(epoch_days_to_ymd(11016), (2000, 2, 29));
         }
 
         #[test]
-        fn epoch_days_to_ymd_non_leap_century() {
+        fn epoch_days_to_ymd_returns_non_leap_century() {
             assert_eq!(epoch_days_to_ymd(-25508), (1900, 3, 1));
         }
 
         #[test]
-        fn resolve_export_path_contains_file_name() {
+        fn resolve_export_path_returns_path_with_file_name() {
             let path = resolve_export_path("users");
             let file_name = path.file_name().unwrap().to_str().unwrap();
             assert!(file_name.starts_with("sabiql_export_users_"));

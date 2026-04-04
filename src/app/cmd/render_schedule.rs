@@ -174,7 +174,7 @@ mod tests {
         }
 
         #[test]
-        fn spinner_takes_priority_over_cursor_blink() {
+        fn spinner_interval_returns_priority_over_cursor_blink() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
@@ -188,7 +188,7 @@ mod tests {
         }
 
         #[test]
-        fn earlier_message_timeout_takes_priority() {
+        fn earlier_message_timeout_returns_priority() {
             let mut state = create_test_state();
             let now = Instant::now();
             state.query.begin_running(now);

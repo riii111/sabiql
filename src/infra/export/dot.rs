@@ -254,7 +254,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn tables_appear_as_nodes() {
+        fn generate_full_dot_returns_tables_as_nodes() {
             let tables = make_test_tables();
 
             let dot = DotExporter::<SystemGraphvizRunner, SystemViewerLauncher>::generate_full_dot(
@@ -266,7 +266,7 @@ mod tests {
         }
 
         #[test]
-        fn foreign_keys_appear_as_edges() {
+        fn generate_full_dot_returns_foreign_keys_as_edges() {
             let tables = make_test_tables();
 
             let dot = DotExporter::<SystemGraphvizRunner, SystemViewerLauncher>::generate_full_dot(
@@ -278,7 +278,7 @@ mod tests {
         }
 
         #[test]
-        fn output_is_sorted_for_stability() {
+        fn generate_full_dot_returns_sorted_output() {
             let tables = vec![
                 ErTableInfo {
                     qualified_name: "z.last".to_string(),
@@ -394,7 +394,7 @@ mod tests {
         }
 
         #[test]
-        fn calls_graphviz_and_viewer() {
+        fn export_returns_graphviz_and_viewer_calls() {
             let graphviz = MockGraphviz::new();
             let viewer = MockViewer::new();
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
@@ -408,7 +408,7 @@ mod tests {
         }
 
         #[test]
-        fn graphviz_not_installed_returns_error() {
+        fn export_returns_error_when_graphviz_is_missing() {
             let graphviz = MockGraphviz::not_installed();
             let viewer = MockViewer::new();
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
@@ -423,7 +423,7 @@ mod tests {
         }
 
         #[test]
-        fn graphviz_command_failed_includes_exit_code() {
+        fn export_returns_graphviz_error_with_exit_code() {
             let graphviz = MockGraphviz::command_failed(1);
             let viewer = MockViewer::new();
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
@@ -439,7 +439,7 @@ mod tests {
         }
 
         #[test]
-        fn viewer_failure_returns_error() {
+        fn export_returns_error_when_viewer_fails() {
             let graphviz = MockGraphviz::new();
             let viewer = MockViewer::failing();
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
@@ -454,7 +454,7 @@ mod tests {
         }
 
         #[test]
-        fn old_er_files_are_removed_on_export() {
+        fn export_returns_cleanup_of_old_er_files() {
             let temp_dir = tempfile::tempdir().unwrap();
             let old_dot = temp_dir.path().join("er_old_tables.dot");
             let old_svg = temp_dir.path().join("er_old_tables.svg");
@@ -472,7 +472,7 @@ mod tests {
         }
 
         #[test]
-        fn non_er_files_survive_cleanup() {
+        fn cleanup_returns_non_er_files_untouched() {
             let temp_dir = tempfile::tempdir().unwrap();
             let log_file = temp_dir.path().join("er_failure.log");
             let other_file = temp_dir.path().join("other.txt");
@@ -489,7 +489,7 @@ mod tests {
         }
 
         #[test]
-        fn graphviz_failure_preserves_old_files() {
+        fn export_returns_preserved_files_when_graphviz_fails() {
             let temp_dir = tempfile::tempdir().unwrap();
             let old_dot = temp_dir.path().join("er_old_tables.dot");
             let old_svg = temp_dir.path().join("er_old_tables.svg");
@@ -506,7 +506,7 @@ mod tests {
         }
 
         #[test]
-        fn viewer_failure_preserves_old_and_new_files() {
+        fn export_returns_preserved_files_when_viewer_fails() {
             let temp_dir = tempfile::tempdir().unwrap();
             let old_dot = temp_dir.path().join("er_old_tables.dot");
             let old_svg = temp_dir.path().join("er_old_tables.svg");

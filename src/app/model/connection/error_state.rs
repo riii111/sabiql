@@ -93,7 +93,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn stores_info_and_resets_ui() {
+        fn set_error_returns_reset_ui_state() {
             let mut state = ConnectionErrorState {
                 details_expanded: true,
                 scroll_offset: 5,
@@ -112,7 +112,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn resets_all_fields() {
+        fn clear_returns_empty_error_state() {
             let mut state = ConnectionErrorState::default();
             state.set_error(sample_error());
             state.details_expanded = true;
@@ -130,7 +130,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn flips_expanded_state() {
+        fn toggle_details_returns_flipped_state() {
             let mut state = ConnectionErrorState::default();
 
             state.toggle_details();
@@ -141,7 +141,7 @@ mod tests {
         }
 
         #[test]
-        fn resets_scroll_on_collapse() {
+        fn toggle_details_returns_reset_scroll_on_collapse() {
             let mut state = ConnectionErrorState {
                 details_expanded: true,
                 scroll_offset: 5,
@@ -158,7 +158,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn up_decrements_offset() {
+        fn scroll_up_returns_decremented_offset() {
             let mut state = ConnectionErrorState {
                 scroll_offset: 5,
                 ..Default::default()
@@ -170,7 +170,7 @@ mod tests {
         }
 
         #[test]
-        fn up_stops_at_zero() {
+        fn scroll_up_returns_zero_at_lower_bound() {
             let mut state = ConnectionErrorState::default();
 
             state.scroll_up();
@@ -179,7 +179,7 @@ mod tests {
         }
 
         #[test]
-        fn down_increments_offset() {
+        fn scroll_down_returns_incremented_offset() {
             let mut state = ConnectionErrorState::default();
 
             state.scroll_down(10);
@@ -188,7 +188,7 @@ mod tests {
         }
 
         #[test]
-        fn down_stops_at_max() {
+        fn scroll_down_returns_max_at_upper_bound() {
             let mut state = ConnectionErrorState {
                 scroll_offset: 10,
                 ..Default::default()
@@ -204,7 +204,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn visible_before_expiry() {
+        fn mark_copied_at_returns_visible_before_expiry() {
             let mut state = ConnectionErrorState::default();
             let t = now();
 
@@ -215,7 +215,7 @@ mod tests {
         }
 
         #[test]
-        fn hidden_after_expiry() {
+        fn mark_copied_at_returns_hidden_after_expiry() {
             let mut state = ConnectionErrorState::default();
             let t = now();
 
@@ -225,7 +225,7 @@ mod tests {
         }
 
         #[test]
-        fn clear_expired_removes_when_expired() {
+        fn clear_expired_feedback_at_returns_cleared_when_expired() {
             let mut state = ConnectionErrorState::default();
             let t = now();
             state.mark_copied_at(t);
@@ -236,7 +236,7 @@ mod tests {
         }
 
         #[test]
-        fn clear_expired_keeps_when_not_expired() {
+        fn clear_expired_feedback_at_returns_kept_when_unexpired() {
             let mut state = ConnectionErrorState::default();
             let t = now();
             state.mark_copied_at(t);
@@ -257,7 +257,7 @@ mod tests {
         }
 
         #[test]
-        fn counts_lines_of_error_details() {
+        fn detail_line_count_returns_line_count() {
             let mut state = ConnectionErrorState::default();
             state.set_error(ConnectionErrorInfo::with_kind(
                 ConnectionErrorKind::Unknown,

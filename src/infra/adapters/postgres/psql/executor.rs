@@ -448,7 +448,7 @@ mod tests {
         use super::super::extract_last_csv_block;
 
         #[test]
-        fn single_result_set_returned_as_is() {
+        fn single_result_set_returns_multi_row_csv_unchanged() {
             let input = "id,name\n1,alice\n2,bob";
             assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
         }
@@ -481,7 +481,7 @@ mod tests {
         }
 
         #[test]
-        fn single_result_set_returns_unchanged() {
+        fn single_result_set_returns_single_row_csv_unchanged() {
             let input = "col\n42";
             assert_eq!(extract_last_csv_block(input, "SELECT 1"), input);
         }
@@ -509,13 +509,13 @@ mod tests {
         }
 
         #[test]
-        fn single_statement_falls_back() {
+        fn single_statement_returns_fallback() {
             let input = "id,name\n1,Alice\n2,Bob";
             assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
         }
 
         #[test]
-        fn three_different_headers_same_field_count() {
+        fn three_different_headers_with_same_field_count_returns_last() {
             let input = "x,y\n1,2\na,b\n3,4\np,q\n5,6";
             assert_eq!(
                 extract_last_csv_block(
@@ -527,7 +527,7 @@ mod tests {
         }
 
         #[test]
-        fn non_select_statements_excluded_from_hint() {
+        fn non_select_statements_returns_no_hint() {
             let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
             assert_eq!(
                 extract_last_csv_block(
@@ -539,13 +539,13 @@ mod tests {
         }
 
         #[test]
-        fn data_row_not_mistaken_when_single_select() {
+        fn single_select_returns_no_data_row_mistake() {
             let input = "x,y\na,b\n1,2";
             assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
         }
 
         #[test]
-        fn leading_line_comment_does_not_break_hint() {
+        fn leading_line_comment_returns_valid_hint() {
             let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
             assert_eq!(
                 extract_last_csv_block(
@@ -557,7 +557,7 @@ mod tests {
         }
 
         #[test]
-        fn leading_block_comment_does_not_break_hint() {
+        fn leading_block_comment_returns_valid_hint() {
             let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
             assert_eq!(
                 extract_last_csv_block(
@@ -586,7 +586,7 @@ mod tests {
 
     mod csv_parsing {
         #[test]
-        fn empty_csv_output_has_no_headers() {
+        fn empty_csv_output_returns_no_headers() {
             let csv_data = "";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(false)
@@ -598,7 +598,7 @@ mod tests {
         }
 
         #[test]
-        fn valid_csv_parses_headers_and_rows() {
+        fn valid_csv_parses_headers_and_rows_returns_expected() {
             let csv_data = "id,name\n1,alice\n2,bob";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -619,7 +619,7 @@ mod tests {
         }
 
         #[test]
-        fn csv_with_multibyte_characters_parses_correctly() {
+        fn csv_with_multibyte_characters_parses_correctly_returns_expected() {
             let csv_data = "名前,年齢\n太郎,25\n花子,30";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -638,7 +638,7 @@ mod tests {
         }
 
         #[test]
-        fn csv_with_quoted_fields_parses_correctly() {
+        fn csv_with_quoted_fields_parses_correctly_returns_expected() {
             let csv_data = "id,description\n1,\"hello, world\"\n2,\"line1\nline2\"";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -651,7 +651,7 @@ mod tests {
         }
 
         #[test]
-        fn csv_with_empty_values_parses_correctly() {
+        fn csv_with_empty_values_parses_correctly_returns_expected() {
             let csv_data = "id,name,email\n1,,alice@example.com\n2,bob,";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -678,7 +678,7 @@ mod tests {
         }
 
         #[test]
-        fn non_csv_output_like_notice_parses_as_header() {
+        fn non_csv_output_like_notice_parses_as_header_returns_expected() {
             let non_csv = "NOTICE: some database notice\nNOTICE: another line";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -690,7 +690,7 @@ mod tests {
         }
 
         #[test]
-        fn mixed_notice_and_csv_parses_first_line_as_header() {
+        fn mixed_notice_and_csv_parses_first_line_as_header_returns_expected() {
             let mixed = "id,name\n1,alice";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -712,13 +712,13 @@ mod tests {
         use super::*;
 
         #[test]
-        fn parse_affected_rows_for_update() {
+        fn update_stdout_returns_affected_row_count() {
             let out = "UPDATE 1\n";
             assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(1));
         }
 
         #[test]
-        fn parse_affected_rows_for_delete() {
+        fn delete_stdout_returns_affected_row_count() {
             let out = "DELETE 3\n";
             assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(3));
         }
@@ -769,29 +769,29 @@ mod tests {
         }
 
         #[test]
-        fn update_stdout_yields_update_tag() {
+        fn update_stdout_yields_update_tag_returns_expected() {
             dml_stdout_returns_command_tag("UPDATE 3\n", CommandTag::Update(3), 3);
         }
 
         #[test]
-        fn delete_stdout_yields_delete_tag() {
+        fn delete_stdout_yields_delete_tag_returns_expected() {
             dml_stdout_returns_command_tag("DELETE 5\n", CommandTag::Delete(5), 5);
         }
 
         #[test]
-        fn insert_stdout_yields_insert_tag() {
+        fn insert_stdout_yields_insert_tag_returns_expected() {
             dml_stdout_returns_command_tag("INSERT 0 7\n", CommandTag::Insert(7), 7);
         }
 
         #[test]
-        fn create_table_stdout_yields_create_tag_zero_rows() {
+        fn create_table_stdout_yields_create_tag_zero_rows_returns_expected() {
             let tag = PostgresAdapter::extract_command_tag("CREATE TABLE\n");
             assert_eq!(tag, Some(CommandTag::Create("TABLE".to_string())));
             assert_eq!(tag.unwrap().affected_rows(), None);
         }
 
         #[test]
-        fn csv_stdout_is_not_mistaken_for_command_tag() {
+        fn csv_stdout_returns_no_command_tag() {
             // CSV data: last line "1,Alice" does not match any DML pattern
             let csv = "id,name\n1,Alice\n2,Bob\n";
             let tag = PostgresAdapter::extract_command_tag(csv);
@@ -803,7 +803,7 @@ mod tests {
         }
 
         #[test]
-        fn select_csv_last_line_is_not_mistaken_for_select_tag() {
+        fn select_csv_last_line_returns_no_select_tag() {
             // psql --csv does NOT append "SELECT N" to output; last line is data
             let csv = "count\n42\n";
             let tag = PostgresAdapter::extract_command_tag(csv);
@@ -812,7 +812,7 @@ mod tests {
 
         // psql returns "SELECT n" for CREATE TABLE AS SELECT
         #[test]
-        fn select_tag_captured_for_ctas() {
+        fn ctas_stdout_returns_select_tag() {
             let tag = PostgresAdapter::parse_command_tag("SELECT 5");
             assert_eq!(tag, Some(CommandTag::Select(5)));
             let passes = tag
@@ -823,7 +823,7 @@ mod tests {
 
         // 0-row SELECT header-only CSV parses as Other, which the filter rejects
         #[test]
-        fn empty_select_header_not_captured_by_filter() {
+        fn empty_select_header_returns_no_filtered_tag() {
             let cases = ["id,name", "id,name,email", "count"];
             for input in cases {
                 let tag = PostgresAdapter::parse_command_tag(input);

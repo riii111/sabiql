@@ -41,7 +41,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn finds_root_with_git_directory() {
+        fn find_dir_upward_returns_root_for_git_directory() {
             let temp_dir = tempfile::tempdir().unwrap();
             fs::create_dir(temp_dir.path().join(".git")).unwrap();
 
@@ -51,7 +51,7 @@ mod tests {
         }
 
         #[test]
-        fn finds_root_with_git_file_worktree() {
+        fn find_dir_upward_returns_root_for_git_file_worktree() {
             let temp_dir = tempfile::tempdir().unwrap();
             fs::write(
                 temp_dir.path().join(".git"),
@@ -65,7 +65,7 @@ mod tests {
         }
 
         #[test]
-        fn finds_root_from_nested_subdirectory() {
+        fn find_dir_upward_returns_root_from_nested_subdirectory() {
             let temp_dir = tempfile::tempdir().unwrap();
             fs::create_dir(temp_dir.path().join(".git")).unwrap();
             let nested = temp_dir.path().join("src").join("deep");
@@ -81,12 +81,12 @@ mod tests {
         use super::*;
 
         #[test]
-        fn extracts_dir_basename() {
+        fn get_project_name_returns_dir_basename() {
             assert_eq!(get_project_name(Path::new("/foo/bar")), "bar");
         }
 
         #[test]
-        fn returns_unknown_for_root() {
+        fn get_project_name_returns_unknown_for_root() {
             assert_eq!(get_project_name(Path::new("/")), "unknown");
         }
     }

@@ -51,7 +51,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn multiple_schemas_groups_correctly() {
+        fn tables_by_schema_returns_grouped_schemas() {
             let mut meta = DatabaseMetadata::new("testdb".to_string());
             meta.table_summaries = vec![
                 TableSummary::new("public".to_string(), "users".to_string(), None, false),

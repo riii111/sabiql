@@ -133,7 +133,7 @@ mod tests {
         }
 
         #[test]
-        fn table_comment_appended_after_create() {
+        fn generate_ddl_returns_table_comment_after_create() {
             let adapter = PostgresAdapter::new();
             let mut table = make_table(vec![make_column("id", "integer", false)], None);
             table.comment = Some("User accounts".to_string());
@@ -144,7 +144,7 @@ mod tests {
         }
 
         #[test]
-        fn column_comment_appended_after_create() {
+        fn generate_ddl_returns_column_comment_after_create() {
             let adapter = PostgresAdapter::new();
             let mut col = make_column("id", "integer", false);
             col.comment = Some("Primary key".to_string());
@@ -160,7 +160,7 @@ mod tests {
         }
 
         #[test]
-        fn single_quote_in_comment_is_escaped() {
+        fn generate_ddl_returns_escaped_single_quote_in_comment() {
             let adapter = PostgresAdapter::new();
             let mut table = make_table(vec![make_column("id", "integer", false)], None);
             table.comment = Some("It's a test".to_string());
@@ -171,7 +171,7 @@ mod tests {
         }
 
         #[test]
-        fn no_comment_on_when_absent() {
+        fn generate_ddl_returns_no_comment_when_absent() {
             let adapter = PostgresAdapter::new();
             let table = make_table(vec![make_column("id", "integer", false)], None);
 
@@ -181,7 +181,7 @@ mod tests {
         }
 
         #[test]
-        fn default_ddl_line_count_matches_generated_ddl() {
+        fn ddl_line_count_returns_generated_ddl_line_count() {
             let adapter = PostgresAdapter::new();
             let table = make_table(vec![make_column("col", "text", true)], None);
 

@@ -193,7 +193,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_object_returns_open_close() {
+        fn parse_json_tree_returns_open_close_for_empty_object() {
             let tree = parse_json_tree("{}").unwrap();
 
             assert_eq!(tree.line_count(), 2);
@@ -202,7 +202,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_array_returns_open_close() {
+        fn parse_json_tree_returns_open_close_for_empty_array() {
             let tree = parse_json_tree("[]").unwrap();
 
             assert_eq!(tree.line_count(), 2);
@@ -211,7 +211,7 @@ mod tests {
         }
 
         #[test]
-        fn scalar_null_returns_single_line() {
+        fn parse_json_tree_returns_single_line_for_null_scalar() {
             let tree = parse_json_tree("null").unwrap();
 
             assert_eq!(tree.line_count(), 1);
@@ -219,7 +219,7 @@ mod tests {
         }
 
         #[test]
-        fn scalar_bool_returns_single_line() {
+        fn parse_json_tree_returns_single_line_for_bool_scalar() {
             let tree = parse_json_tree("true").unwrap();
 
             assert_eq!(tree.line_count(), 1);
@@ -227,7 +227,7 @@ mod tests {
         }
 
         #[test]
-        fn scalar_number_returns_single_line() {
+        fn parse_json_tree_returns_single_line_for_number_scalar() {
             let tree = parse_json_tree("42").unwrap();
 
             assert_eq!(tree.line_count(), 1);
@@ -235,7 +235,7 @@ mod tests {
         }
 
         #[test]
-        fn scalar_string_returns_single_line() {
+        fn parse_json_tree_returns_single_line_for_string_scalar() {
             let tree = parse_json_tree("\"hello\"").unwrap();
 
             assert_eq!(tree.line_count(), 1);
@@ -243,7 +243,7 @@ mod tests {
         }
 
         #[test]
-        fn nested_object_returns_correct_depth() {
+        fn parse_json_tree_returns_correct_depth_for_nested_object() {
             let tree = parse_json_tree(r#"{"a": {"b": 1}}"#).unwrap();
 
             // { (depth 0), "a": { (depth 1), "b": 1 (depth 2), } (depth 1), } (depth 0)
@@ -256,7 +256,7 @@ mod tests {
         }
 
         #[test]
-        fn array_items_returns_array_item_type() {
+        fn parse_json_tree_returns_array_item_type_for_array_items() {
             let tree = parse_json_tree("[1, 2, 3]").unwrap();
 
             // [ (depth 0), 1 (depth 1), 2 (depth 1), 3 (depth 1), ] (depth 0)
@@ -267,7 +267,7 @@ mod tests {
         }
 
         #[test]
-        fn key_value_pairs_returns_keys() {
+        fn parse_json_tree_returns_keys_for_object_entries() {
             let tree = parse_json_tree(r#"{"name": "test", "count": 5}"#).unwrap();
 
             let kv_lines: Vec<_> = tree
@@ -282,7 +282,7 @@ mod tests {
         }
 
         #[test]
-        fn object_open_returns_correct_child_count() {
+        fn parse_json_tree_returns_correct_child_count_for_object_open() {
             let tree = parse_json_tree(r#"{"a": 1, "b": 2, "c": 3}"#).unwrap();
 
             assert!(matches!(
@@ -292,21 +292,21 @@ mod tests {
         }
 
         #[test]
-        fn malformed_json_returns_error() {
+        fn parse_json_tree_returns_error_for_malformed_json() {
             let result = parse_json_tree("{invalid}");
 
             assert!(result.is_err());
         }
 
         #[test]
-        fn empty_string_returns_error() {
+        fn parse_json_tree_returns_error_for_empty_string() {
             let result = parse_json_tree("");
 
             assert!(result.is_err());
         }
 
         #[test]
-        fn deeply_nested_json_returns_correct_depth() {
+        fn parse_json_tree_returns_correct_depth_for_deeply_nested_json() {
             let json = r#"{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":{"i":{"j":{"k":{"l":{"m":{"n":{"o":{"p":{"q":{"r":{"s":{"t":1}}}}}}}}}}}}}}}}}}}}"#;
             let tree = parse_json_tree(json).unwrap();
 
@@ -322,7 +322,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn uncollapsed_tree_returns_all_lines() {
+        fn visible_line_indices_returns_all_lines_for_uncollapsed_tree() {
             let tree = parse_json_tree(r#"{"a": 1, "b": 2}"#).unwrap();
 
             let visible = visible_line_indices(&tree);
@@ -332,7 +332,7 @@ mod tests {
         }
 
         #[test]
-        fn collapsed_object_returns_visible_lines_without_children() {
+        fn visible_line_indices_returns_visible_lines_without_children_for_collapsed_object() {
             let mut tree = parse_json_tree(r#"{"a": {"b": 1}, "c": 2}"#).unwrap();
             // Collapse the inner object {"b": 1} at index 1
             tree.toggle_fold(1);
@@ -347,7 +347,7 @@ mod tests {
         }
 
         #[test]
-        fn collapsed_root_returns_only_root_line() {
+        fn visible_line_indices_returns_only_root_line_for_collapsed_root() {
             let mut tree = parse_json_tree(r#"{"a": 1, "b": 2}"#).unwrap();
             tree.toggle_fold(0);
 
@@ -359,7 +359,7 @@ mod tests {
         }
 
         #[test]
-        fn collapsed_array_returns_only_opener() {
+        fn visible_line_indices_returns_only_opener_for_collapsed_array() {
             let mut tree = parse_json_tree(r"[1, 2, 3]").unwrap();
             tree.toggle_fold(0);
 
@@ -370,7 +370,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_tree_returns_empty_indices() {
+        fn visible_line_indices_returns_empty_indices_for_empty_tree() {
             let tree = JsonTree::default();
 
             let visible = visible_line_indices(&tree);
@@ -383,7 +383,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn key_search_returns_case_insensitive_match() {
+        fn find_matches_returns_case_insensitive_key_match() {
             let tree = parse_json_tree(r#"{"Email": "test@example.com"}"#).unwrap();
             let visible = visible_line_indices(&tree);
 
@@ -393,7 +393,7 @@ mod tests {
         }
 
         #[test]
-        fn string_value_search_returns_match() {
+        fn find_matches_returns_string_value_match() {
             let tree = parse_json_tree(r#"{"name": "Alice", "city": "Berlin"}"#).unwrap();
             let visible = visible_line_indices(&tree);
 
@@ -403,7 +403,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_query_returns_no_matches() {
+        fn find_matches_returns_no_matches_for_empty_query() {
             let tree = parse_json_tree(r#"{"a": 1}"#).unwrap();
             let visible = visible_line_indices(&tree);
 
@@ -413,7 +413,7 @@ mod tests {
         }
 
         #[test]
-        fn collapsed_children_returns_no_matches() {
+        fn find_matches_returns_no_matches_for_collapsed_children() {
             let mut tree = parse_json_tree(r#"{"a": {"hidden": "secret"}, "b": 1}"#).unwrap();
             tree.toggle_fold(1);
             let visible = visible_line_indices(&tree);
@@ -424,7 +424,7 @@ mod tests {
         }
 
         #[test]
-        fn number_value_search_returns_match() {
+        fn find_matches_returns_number_value_match() {
             let tree = parse_json_tree(r#"{"count": 42}"#).unwrap();
             let visible = visible_line_indices(&tree);
 

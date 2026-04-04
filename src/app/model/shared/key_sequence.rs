@@ -24,7 +24,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn idle_by_default() {
+    fn idle_by_default_returns_expected() {
         let state = KeySequenceState::default();
         assert_eq!(state, KeySequenceState::Idle);
     }

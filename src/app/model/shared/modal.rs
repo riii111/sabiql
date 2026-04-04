@@ -52,7 +52,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_mode_is_normal() {
+    fn default_mode_is_normal_returns_expected() {
         let modal = ModalState::default();
 
         assert_eq!(modal.active_mode(), InputMode::Normal);
@@ -60,7 +60,7 @@ mod tests {
     }
 
     #[test]
-    fn set_mode_changes_mode_and_clears_stack() {
+    fn set_mode_changes_mode_and_clears_stack_returns_expected() {
         let mut modal = ModalState::default();
         modal.push_mode(InputMode::CommandLine);
 
@@ -71,7 +71,7 @@ mod tests {
     }
 
     #[test]
-    fn push_pop_preserves_return_mode() {
+    fn push_pop_preserves_return_mode_returns_expected() {
         let mut modal = ModalState::default();
 
         modal.push_mode(InputMode::CommandLine);
@@ -86,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn push_from_non_normal_preserves_origin() {
+    fn push_from_non_normal_preserves_origin_returns_expected() {
         let mut modal = ModalState::default();
         modal.set_mode(InputMode::SqlModal);
 
@@ -100,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_push_pop() {
+    fn nested_push_pop_returns_expected() {
         let mut modal = ModalState::default();
 
         modal.push_mode(InputMode::CommandLine);
@@ -126,7 +126,7 @@ mod tests {
     }
 
     #[test]
-    fn replace_mode_keeps_stack() {
+    fn replace_mode_keeps_stack_returns_expected() {
         let mut modal = ModalState::default();
         modal.set_mode(InputMode::ConnectionSelector);
         modal.push_mode(InputMode::ConnectionSetup);
@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn pop_mode_override_ignores_stack() {
+    fn pop_mode_override_ignores_stack_returns_expected() {
         let mut modal = ModalState::default();
         modal.push_mode(InputMode::ConfirmDialog);
 
@@ -150,7 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn is_modal_active_for_various_modes() {
+    fn is_modal_active_for_various_modes_returns_expected() {
         let mut modal = ModalState::default();
 
         modal.set_mode(InputMode::Normal);
@@ -167,14 +167,14 @@ mod tests {
     }
 
     #[test]
-    fn return_destination_with_empty_stack() {
+    fn return_destination_with_empty_stack_returns_expected() {
         let modal = ModalState::default();
 
         assert_eq!(modal.return_destination(), InputMode::Normal);
     }
 
     #[test]
-    fn return_destination_shows_last_pushed() {
+    fn return_destination_shows_last_pushed_returns_expected() {
         let mut modal = ModalState::default();
         modal.set_mode(InputMode::SqlModal);
         modal.push_mode(InputMode::QueryHistoryPicker);

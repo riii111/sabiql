@@ -134,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn single_section_parsed() {
+    fn parse_returns_single_section() {
         let content = "\
 [mydb]
 host=localhost
@@ -152,7 +152,7 @@ user=admin
     }
 
     #[test]
-    fn multiple_sections_parsed() {
+    fn parse_returns_multiple_sections() {
         let content = "\
 [dev]
 host=dev.example.com
@@ -172,7 +172,7 @@ port=5433
     }
 
     #[test]
-    fn comments_and_blank_lines_ignored() {
+    fn parse_returns_sections_with_comments_and_blank_lines_ignored() {
         let content = "\
 # This is a comment
 ; Another comment
@@ -191,7 +191,7 @@ port=5432
     }
 
     #[test]
-    fn invalid_lines_ignored() {
+    fn parse_returns_sections_with_invalid_lines_ignored() {
         let content = "\
 [mydb]
 host=localhost
@@ -205,7 +205,7 @@ port=5432
     }
 
     #[test]
-    fn invalid_port_stored_as_none() {
+    fn parse_returns_none_for_invalid_port() {
         let content = "\
 [mydb]
 port=not_a_number
@@ -216,7 +216,7 @@ port=not_a_number
     }
 
     #[test]
-    fn duplicate_sections_last_wins() {
+    fn parse_returns_last_section_for_duplicates() {
         let content = "\
 [mydb]
 host=first.example.com
@@ -233,7 +233,7 @@ port=5433
     }
 
     #[test]
-    fn section_with_no_keys() {
+    fn parse_returns_section_with_no_keys() {
         let content = "\
 [empty]
 ";
@@ -247,7 +247,7 @@ port=5433
     }
 
     #[test]
-    fn keys_before_any_section_ignored() {
+    fn parse_returns_sections_ignoring_keys_before_any_section() {
         let content = "\
 host=orphan
 port=1234
@@ -262,7 +262,7 @@ host=localhost
     }
 
     #[test]
-    fn whitespace_around_keys_and_values_trimmed() {
+    fn parse_returns_trimmed_keys_and_values() {
         let content = "\
 [mydb]
   host  =  db.example.com
@@ -274,7 +274,7 @@ host=localhost
     }
 
     #[test]
-    fn hostaddr_maps_to_host() {
+    fn parse_returns_host_for_hostaddr() {
         let content = "\
 [mydb]
 hostaddr=192.168.1.1
@@ -284,7 +284,7 @@ hostaddr=192.168.1.1
     }
 
     #[test]
-    fn unknown_keys_ignored() {
+    fn parse_returns_sections_with_unknown_keys_ignored() {
         let content = "\
 [mydb]
 host=localhost
@@ -299,7 +299,7 @@ application_name=myapp
     }
 
     #[test]
-    fn find_service_file_uses_pgservicefile_env() {
+    fn find_service_file_returns_env_path_when_pgservicefile_set() {
         let _guard = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -326,7 +326,7 @@ application_name=myapp
     }
 
     #[test]
-    fn find_service_file_errors_when_pgservicefile_missing() {
+    fn find_service_file_returns_error_when_pgservicefile_missing() {
         let _guard = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);

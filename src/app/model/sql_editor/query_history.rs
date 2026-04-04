@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_filter_returns_all_entries_in_reverse_order() {
+    fn empty_filter_returns_entries_in_reverse_order() {
         let state = make_state(vec![
             make_entry("SELECT 1"),
             make_entry("SELECT 2"),
@@ -143,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn fuzzy_filter_matches_partial_query() {
+    fn fuzzy_filter_returns_partial_query_matches() {
         let mut state = make_state(vec![
             make_entry("SELECT * FROM users"),
             make_entry("INSERT INTO orders VALUES (1)"),
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn filter_is_case_insensitive() {
+    fn filter_returns_case_insensitive_matches() {
         let mut state = make_state(vec![make_entry("SELECT * FROM Users")]);
         state.filter_input.set_content("users".to_string());
 
@@ -168,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_clears_all_state() {
+    fn reset_returns_cleared_state() {
         let mut state = QueryHistoryPickerState {
             entries: vec![make_entry("SELECT 1")],
             selected: 5,
@@ -186,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn clamped_selected_with_empty_entries() {
+    fn clamped_selected_returns_zero_for_empty_entries() {
         let state = QueryHistoryPickerState {
             selected: 5,
             ..Default::default()
@@ -196,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn clamped_selected_clamps_to_last_index() {
+    fn clamped_selected_returns_last_index_when_out_of_range() {
         let state = QueryHistoryPickerState {
             entries: vec![make_entry("SELECT 1"), make_entry("SELECT 2")],
             selected: 10,
@@ -207,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn clamped_selected_preserves_valid_selection() {
+    fn clamped_selected_returns_valid_selection() {
         let state = QueryHistoryPickerState {
             entries: vec![
                 make_entry("SELECT 1"),
@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn no_matches_returns_empty() {
+    fn no_matches_returns_empty_entries() {
         let mut state = make_state(vec![make_entry("SELECT 1")]);
         state.filter_input.set_content("xyz_no_match".to_string());
 
@@ -235,7 +235,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn three_consecutive_identical_entries_become_one_group() {
+        fn three_consecutive_identical_entries_returns_one_group() {
             let state = make_state(vec![
                 make_entry("SELECT 1"),
                 make_entry("SELECT 1"),
@@ -250,7 +250,7 @@ mod tests {
         }
 
         #[test]
-        fn non_consecutive_same_query_stays_separate() {
+        fn non_consecutive_same_query_returns_separate_groups() {
             let state = make_state(vec![
                 make_entry("SELECT 1"),
                 make_entry("SELECT 2"),
@@ -263,7 +263,7 @@ mod tests {
         }
 
         #[test]
-        fn mixed_consecutive_and_unique() {
+        fn mixed_consecutive_and_unique_returns_expected_grouping() {
             let state = make_state(vec![
                 make_entry("SELECT 1"),
                 make_entry("SELECT 1"),
@@ -286,7 +286,7 @@ mod tests {
         }
 
         #[test]
-        fn filter_removes_separator_merging_groups() {
+        fn filter_removes_separator_returns_merged_groups() {
             let mut state = make_state(vec![
                 make_entry("SELECT * FROM users"),
                 make_entry("INSERT INTO orders VALUES (1)"),
@@ -303,7 +303,7 @@ mod tests {
         }
 
         #[test]
-        fn filter_preserves_non_consecutive_groups() {
+        fn filter_preserves_non_consecutive_groups_returns_separate_groups() {
             let mut state = make_state(vec![
                 make_entry("SELECT * FROM users WHERE id=1"),
                 make_entry("SELECT * FROM users WHERE id=2"),
@@ -319,7 +319,7 @@ mod tests {
         }
 
         #[test]
-        fn grouped_count_reflects_groups() {
+        fn grouped_count_returns_group_count() {
             let state = make_state(vec![
                 make_entry("SELECT 1"),
                 make_entry("SELECT 1"),
@@ -330,7 +330,7 @@ mod tests {
         }
 
         #[test]
-        fn clamped_selected_uses_grouped_count() {
+        fn clamped_selected_returns_grouped_count() {
             let state = QueryHistoryPickerState {
                 entries: vec![
                     make_entry("SELECT 1"),
@@ -345,7 +345,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_gets_representative_entry() {
+        fn confirm_returns_representative_entry() {
             let state = make_state(vec![
                 make_entry("SELECT 1"),
                 make_entry("SELECT 1"),

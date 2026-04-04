@@ -433,7 +433,7 @@ mod tests {
         }
 
         #[test]
-        fn valid_single_signature_parses_all_fields() {
+        fn parse_table_signatures_returns_all_fields_for_single_signature() {
             let json = r#"[{
                 "schema": "public",
                 "name": "users",
@@ -450,7 +450,7 @@ mod tests {
         }
 
         #[test]
-        fn multiple_signatures_parse_in_order() {
+        fn parse_table_signatures_returns_multiple_signatures_in_order() {
             let json = r#"[
                 {"schema": "public", "name": "users", "signature": "aaa"},
                 {"schema": "auth", "name": "sessions", "signature": "bbb"}
@@ -498,7 +498,7 @@ mod tests {
         }
 
         #[test]
-        fn disabled_rls_with_no_policies_returns_expected() {
+        fn parse_rls_returns_disabled_without_policies() {
             let json = r#"{"enabled": false, "force": false, "policies": []}"#;
 
             let result = PostgresAdapter::parse_rls(json).unwrap();
@@ -510,7 +510,7 @@ mod tests {
         }
 
         #[test]
-        fn enabled_and_forced_rls_returns_expected() {
+        fn parse_rls_returns_enabled_and_forced() {
             let json = r#"{"enabled": true, "force": true, "policies": []}"#;
 
             let result = PostgresAdapter::parse_rls(json).unwrap();
@@ -521,7 +521,7 @@ mod tests {
         }
 
         #[test]
-        fn single_policy_parses_all_fields() {
+        fn parse_rls_returns_all_fields_for_single_policy() {
             let json = r#"{
                 "enabled": true,
                 "force": false,
@@ -569,7 +569,7 @@ mod tests {
         }
 
         #[test]
-        fn null_roles_becomes_empty_vec() {
+        fn parse_rls_returns_empty_roles_for_null_roles() {
             let json = r#"{
                 "enabled": true, "force": false,
                 "policies": [{"name": "p", "permissive": true, "roles": null, "cmd": "*", "qual": null, "with_check": null}]
@@ -713,7 +713,7 @@ mod tests {
         }
 
         #[test]
-        fn valid_single_trigger_parses_all_fields() {
+        fn parse_triggers_returns_all_fields_for_single_trigger() {
             let json = r#"[{
                 "name": "audit_trigger",
                 "timing": "AFTER",
@@ -754,7 +754,7 @@ mod tests {
         }
 
         #[test]
-        fn multiple_events_parsed_in_order() {
+        fn parse_triggers_returns_events_in_order() {
             let json = r#"[{
                 "name": "multi_event",
                 "timing": "BEFORE",
@@ -789,7 +789,7 @@ mod tests {
         }
 
         #[test]
-        fn security_definer_false_returns_expected() {
+        fn parse_triggers_returns_false_for_security_definer_false() {
             let json = r#"[{
                 "name": "test",
                 "timing": "AFTER",
@@ -817,7 +817,7 @@ mod tests {
         }
 
         #[test]
-        fn valid_single_schema_parses_correctly() {
+        fn parse_schemas_returns_single_schema() {
             let json = r#"[{"name": "public"}]"#;
             let result = PostgresAdapter::parse_schemas(json).unwrap();
 
@@ -826,7 +826,7 @@ mod tests {
         }
 
         #[test]
-        fn valid_multiple_schemas_parse_in_order() {
+        fn parse_schemas_returns_multiple_schemas_in_order() {
             let json = r#"[{"name": "public"}, {"name": "auth"}, {"name": "custom"}]"#;
             let result = PostgresAdapter::parse_schemas(json).unwrap();
 
@@ -879,7 +879,7 @@ mod tests {
         }
 
         #[test]
-        fn valid_single_fk_parses_all_fields() {
+        fn parse_foreign_keys_returns_all_fields_for_single_fk() {
             let json = r#"[{
                 "name": "orders_user_fk",
                 "from_schema": "public",
@@ -937,7 +937,7 @@ mod tests {
         }
 
         #[test]
-        fn composite_foreign_key_parses_multiple_columns() {
+        fn parse_foreign_keys_returns_multiple_columns_for_composite_fk() {
             let json = r#"[{
                 "name": "order_item_fk",
                 "from_schema": "public",
@@ -960,7 +960,7 @@ mod tests {
         }
 
         #[test]
-        fn multiple_foreign_keys_parse_in_order() {
+        fn parse_foreign_keys_returns_multiple_foreign_keys_in_order() {
             let json = r#"[
                 {
                     "name": "fk_1",
@@ -1069,7 +1069,7 @@ mod tests {
         }
 
         #[test]
-        fn valid_combined_json_parses_all_categories() {
+        fn parse_table_detail_combined_returns_all_categories() {
             let json = build_combined_json(
                 r#"[{"name":"id","data_type":"integer","nullable":false,"default":null,"is_primary_key":true,"is_unique":false,"comment":null,"ordinal_position":1}]"#,
                 "null",
@@ -1094,7 +1094,7 @@ mod tests {
         }
 
         #[test]
-        fn all_null_sub_values_parse_to_empty_defaults() {
+        fn parse_table_detail_combined_returns_empty_defaults_for_null_values() {
             let json = build_combined_json("null", "null", "null", "null", "null", "null");
 
             let (columns, indexes, fks, rls, triggers, table_info) =
@@ -1144,7 +1144,7 @@ mod tests {
         }
 
         #[test]
-        fn valid_light_json_parses_columns_and_fks() {
+        fn parse_table_columns_and_fks_returns_columns_and_fks() {
             let json = build_light_json(
                 r#"[{"name":"id","data_type":"integer","nullable":false,"default":null,"is_primary_key":true,"is_unique":false,"comment":null,"ordinal_position":1}]"#,
                 r#"[{"name":"fk_1","from_schema":"public","from_table":"orders","from_columns":["user_id"],"to_schema":"public","to_table":"users","to_columns":["id"],"on_delete":"c","on_update":"a"}]"#,
@@ -1159,7 +1159,7 @@ mod tests {
         }
 
         #[test]
-        fn null_sub_values_parse_to_empty() {
+        fn parse_table_columns_and_fks_returns_empty_for_null_values() {
             let json = build_light_json("null", "null");
 
             let (columns, fks) = PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();

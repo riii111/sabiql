@@ -224,7 +224,7 @@ mod tests {
         #[case("/bin/sh: psql: command not found")]
         #[case("zsh: command not found: psql")]
         #[case("not found: mysql")]
-        fn classify_stderr_as_cli_not_found(#[case] stderr: &str) {
+        fn classify_stderr_returns_cli_not_found(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::CliNotFound
@@ -234,7 +234,7 @@ mod tests {
         #[rstest]
         #[case(r#"psql: error: could not translate host name "host" to address: nodename nor servname provided"#)]
         #[case(r#"psql: error: could not translate host name "host" to address: Name or service not known"#)]
-        fn classify_stderr_as_host_unreachable(#[case] stderr: &str) {
+        fn classify_stderr_returns_host_unreachable(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::HostUnreachable
@@ -244,7 +244,7 @@ mod tests {
         #[rstest]
         #[case(r#"FATAL: password authentication failed for user "user""#)]
         #[case(r"psql: error: FATAL:  password authentication failed")]
-        fn classify_stderr_as_auth_failed(#[case] stderr: &str) {
+        fn classify_stderr_returns_auth_failed(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::AuthFailed
@@ -252,7 +252,7 @@ mod tests {
         }
 
         #[test]
-        fn classify_stderr_as_database_not_found() {
+        fn classify_stderr_returns_database_not_found() {
             assert_eq!(
                 ConnectionErrorKind::classify(r#"FATAL: database "nonexistent" does not exist"#),
                 ConnectionErrorKind::DatabaseNotFound
@@ -262,7 +262,7 @@ mod tests {
         #[rstest]
         #[case("psql: error: timeout expired")]
         #[case("Connection timed out")]
-        fn classify_stderr_as_timeout(#[case] stderr: &str) {
+        fn classify_stderr_returns_timeout(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::Timeout
@@ -273,7 +273,7 @@ mod tests {
         #[case("Connection refused")]
         #[case("Some random error")]
         #[case("")]
-        fn classify_stderr_as_unknown_fallback(#[case] stderr: &str) {
+        fn classify_stderr_returns_unknown_fallback(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::Unknown
@@ -291,7 +291,7 @@ mod tests {
         #[case(ConnectionErrorKind::DatabaseNotFound)]
         #[case(ConnectionErrorKind::Timeout)]
         #[case(ConnectionErrorKind::Unknown)]
-        fn has_non_empty_summary_and_hint(#[case] kind: ConnectionErrorKind) {
+        fn has_non_empty_summary_and_hint_returns_true(#[case] kind: ConnectionErrorKind) {
             assert!(!kind.summary().is_empty());
             assert!(!kind.hint().is_empty());
         }
@@ -301,19 +301,19 @@ mod tests {
         use super::*;
 
         #[test]
-        fn new_auto_classifies() {
+        fn new_returns_auto_classified_kind() {
             let info = ConnectionErrorInfo::new("psql: command not found");
             assert_eq!(info.kind, ConnectionErrorKind::CliNotFound);
         }
 
         #[test]
-        fn with_kind_uses_provided_kind() {
+        fn with_kind_returns_provided_kind() {
             let info = ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "error");
             assert_eq!(info.kind, ConnectionErrorKind::Timeout);
         }
 
         #[test]
-        fn delegates_summary_and_hint() {
+        fn new_returns_summary_and_hint() {
             let info = ConnectionErrorInfo::new("psql: command not found");
             assert_eq!(info.summary(), "Database CLI not found");
             assert_eq!(
@@ -331,7 +331,10 @@ mod tests {
         #[case("postgresql://user:secret@host", "postgresql://user:****@host")]
         #[case("POSTGRES://user:secret@host", "POSTGRES://user:****@host")]
         #[case("PostgreSQL://user:secret@host", "PostgreSQL://user:****@host")]
-        fn masks_postgres_url_scheme(#[case] input: &str, #[case] expected: &str) {
+        fn mask_password_returns_masked_postgres_url_scheme(
+            #[case] input: &str,
+            #[case] expected: &str,
+        ) {
             assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
         }
 
@@ -339,7 +342,7 @@ mod tests {
         #[case("password=mysecret host=localhost", "password=**** host=localhost")]
         #[case("PASSWORD=mysecret host=localhost", "PASSWORD=**** host=localhost")]
         #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
-        fn masks_key_value_dsn(#[case] input: &str, #[case] expected: &str) {
+        fn mask_password_returns_masked_key_value_dsn(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
         }
 
@@ -347,12 +350,15 @@ mod tests {
         #[case("mysql://user:secret@host", "mysql://user:****@host")]
         #[case("MYSQL_PASSWORD=secret123 mysql", "MYSQL_PASSWORD=**** mysql")]
         #[case("MYSQL_PWD=secret123 mysql", "MYSQL_PWD=**** mysql")]
-        fn masks_mysql_credentials(#[case] input: &str, #[case] expected: &str) {
+        fn mask_password_returns_masked_mysql_credentials(
+            #[case] input: &str,
+            #[case] expected: &str,
+        ) {
             assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
         }
 
         #[test]
-        fn passthrough_when_no_password() {
+        fn mask_password_returns_input_when_no_password() {
             assert_eq!(
                 ConnectionErrorInfo::mask_password("no password here"),
                 "no password here"
@@ -360,7 +366,7 @@ mod tests {
         }
 
         #[test]
-        fn info_stores_both_raw_and_masked() {
+        fn new_returns_raw_and_masked_details() {
             let info = ConnectionErrorInfo::new("postgres://user:secret@host");
             assert!(info.raw_details.contains("secret"));
             assert!(!info.masked_details.contains("secret"));

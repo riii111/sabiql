@@ -62,7 +62,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn includes_all_connection_fields() {
+        fn build_dsn_returns_all_connection_fields() {
             let adapter = PostgresAdapter::new();
             let profile = super::make_test_profile();
             let dsn = adapter.build_dsn(&profile);
@@ -76,7 +76,7 @@ mod tests {
         }
 
         #[test]
-        fn encodes_special_chars_in_credentials() {
+        fn build_dsn_returns_encoded_special_chars_in_credentials() {
             let adapter = PostgresAdapter::new();
             let profile = ConnectionProfile::new(
                 "Test",
@@ -106,12 +106,12 @@ mod tests {
             "postgres://user:pass@host:5432/mydb?sslmode=prefer&connect_timeout=10",
             "mydb"
         )]
-        fn uri_path_returns_dbname(#[case] dsn: &str, #[case] expected: &str) {
+        fn extract_database_name_returns_dbname(#[case] dsn: &str, #[case] expected: &str) {
             assert_eq!(PostgresAdapter::extract_database_name(dsn), expected);
         }
 
         #[test]
-        fn key_value_format() {
+        fn build_dsn_returns_key_value_format() {
             assert_eq!(
                 PostgresAdapter::extract_database_name("host=localhost dbname=mydb user=postgres"),
                 "mydb"
@@ -119,7 +119,7 @@ mod tests {
         }
 
         #[test]
-        fn key_value_at_end() {
+        fn build_dsn_returns_key_value_at_end() {
             assert_eq!(
                 PostgresAdapter::extract_database_name(
                     "host=localhost user=postgres dbname=testdb"
@@ -129,7 +129,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_path() {
+        fn empty_path_returns_expected() {
             assert_eq!(
                 PostgresAdapter::extract_database_name("postgres://localhost/"),
                 "unknown"
@@ -137,7 +137,7 @@ mod tests {
         }
 
         #[test]
-        fn key_value_only() {
+        fn build_dsn_returns_key_value_only() {
             assert_eq!(
                 PostgresAdapter::extract_database_name("host=localhost user=postgres"),
                 "unknown"

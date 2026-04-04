@@ -63,12 +63,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_is_prefer() {
+    fn default_returns_prefer() {
         assert_eq!(SslMode::default(), SslMode::Prefer);
     }
 
     #[test]
-    fn from_str_parses_all_variants() {
+    fn from_str_returns_all_variants() {
         assert_eq!(SslMode::from_str("disable").unwrap(), SslMode::Disable);
         assert_eq!(SslMode::from_str("allow").unwrap(), SslMode::Allow);
         assert_eq!(SslMode::from_str("prefer").unwrap(), SslMode::Prefer);
@@ -81,18 +81,18 @@ mod tests {
     }
 
     #[test]
-    fn from_str_is_case_insensitive() {
+    fn from_str_returns_case_insensitive_matches() {
         assert_eq!(SslMode::from_str("PREFER").unwrap(), SslMode::Prefer);
         assert_eq!(SslMode::from_str("Verify-CA").unwrap(), SslMode::VerifyCa);
     }
 
     #[test]
-    fn from_str_returns_error_for_unknown() {
+    fn from_str_returns_error_for_unknown_value() {
         assert!(SslMode::from_str("unknown").is_err());
     }
 
     #[test]
-    fn display_matches_parse() {
+    fn display_round_trip_matches_parse() {
         for variant in SslMode::all_variants() {
             let s = variant.to_string();
             let parsed = SslMode::from_str(&s).unwrap();

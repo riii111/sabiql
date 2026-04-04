@@ -422,7 +422,7 @@ mod tests {
     use crate::app::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
 
     #[test]
-    fn idx_constants_are_within_bounds() {
+    fn idx_constants_are_within_bounds_returns_expected() {
         // GLOBAL_KEYS
         assert!(idx::global::QUIT < GLOBAL_KEYS.len());
         assert!(idx::global::HELP < GLOBAL_KEYS.len());
@@ -615,7 +615,7 @@ mod tests {
     }
 
     #[test]
-    fn help_content_line_count_matches_section_structure() {
+    fn help_content_line_count_matches_section_structure_returns_expected() {
         let sections: &[usize] = &[
             GLOBAL_KEYS.len(),
             NAVIGATION_KEYS.len(),
@@ -674,7 +674,7 @@ mod tests {
         #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
         #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
         #[case(idx::global::QUERY_HISTORY, Action::OpenQueryHistoryPicker)]
-        fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+        fn global_key_action_returns_expected_action(#[case] i: usize, #[case] expected: Action) {
             assert!(
                 std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),
                 "GLOBAL_KEYS[{i}] has action {:?}, expected {expected:?}",
@@ -683,7 +683,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_yes_action_matches() {
+        fn confirm_yes_returns_expected_action() {
             assert!(matches!(
                 CONFIRM_DIALOG_KEYS[idx::confirm::YES].action,
                 Action::ConfirmDialogConfirm
@@ -691,7 +691,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_scroll_down_action_matches() {
+        fn confirm_scroll_down_returns_expected_action() {
             assert!(matches!(
                 CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_DOWN].action,
                 Action::Scroll {
@@ -703,7 +703,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_scroll_up_action_matches() {
+        fn confirm_scroll_up_returns_expected_action() {
             assert!(matches!(
                 CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_UP].action,
                 Action::Scroll {
@@ -715,7 +715,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_no_action_matches() {
+        fn confirm_no_returns_expected_action() {
             assert!(matches!(
                 CONFIRM_DIALOG_KEYS[idx::confirm::NO].action,
                 Action::ConfirmDialogCancel
@@ -729,7 +729,7 @@ mod tests {
         #[case(idx::sql_modal_plan::TAB, Action::SqlModalNextTab)]
         #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
         #[case(idx::sql_modal_plan::CLOSE, Action::CloseSqlModal)]
-        fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+        fn plan_key_action_returns_expected_action(#[case] i: usize, #[case] expected: Action) {
             assert!(
                 std::mem::discriminant(&SQL_MODAL_PLAN_KEYS[i].action)
                     == std::mem::discriminant(&expected),
@@ -746,7 +746,7 @@ mod tests {
         #[case(idx::sql_modal_compare::TAB, Action::SqlModalNextTab)]
         #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
         #[case(idx::sql_modal_compare::CLOSE, Action::CloseSqlModal)]
-        fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+        fn compare_key_action_returns_expected_action(#[case] i: usize, #[case] expected: Action) {
             assert!(
                 std::mem::discriminant(&SQL_MODAL_COMPARE_KEYS[i].action)
                     == std::mem::discriminant(&expected),
@@ -777,7 +777,7 @@ mod tests {
         }
 
         #[test]
-        fn all_non_none_bindings_have_combos() {
+        fn all_non_none_bindings_have_combos_returns_expected() {
             check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
             check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
@@ -809,7 +809,7 @@ mod tests {
         }
 
         #[test]
-        fn all_mode_row_exec_entries_are_valid() {
+        fn all_mode_row_exec_entries_are_valid_returns_expected() {
             for (name, mb) in ALL_MODE_BINDINGS {
                 check_mode_rows_exec_valid(mb.rows, name);
             }
@@ -854,7 +854,7 @@ mod tests {
 
         // GLOBAL_KEYS excluded: FOCUS/EXIT_FOCUS share a combo for footer label switching.
         #[test]
-        fn no_duplicate_combos_in_simple_modes() {
+        fn no_duplicate_combos_in_simple_modes_returns_expected() {
             check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             check_no_duplicate_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
@@ -982,17 +982,17 @@ mod tests {
         }
 
         #[test]
-        fn table_picker_has_no_plain_char_combos() {
+        fn table_picker_has_no_plain_char_combos_returns_expected() {
             check_no_plain_char_in_filter_mode_rows(TABLE_PICKER_ROWS, "TABLE_PICKER_ROWS", &[]);
         }
 
         #[test]
-        fn er_picker_has_no_plain_char_combos() {
+        fn er_picker_has_no_plain_char_combos_returns_expected() {
             check_no_plain_char_in_filter_mode_rows(ER_PICKER_ROWS, "ER_PICKER_ROWS", &[' ']);
         }
 
         #[test]
-        fn query_history_picker_has_no_plain_char_combos() {
+        fn query_history_picker_has_no_plain_char_combos_returns_expected() {
             check_no_plain_char_in_filter_mode_rows(
                 QUERY_HISTORY_PICKER_ROWS,
                 "QUERY_HISTORY_PICKER_ROWS",
@@ -1001,12 +1001,12 @@ mod tests {
         }
 
         #[test]
-        fn command_line_has_no_problematic_plain_char_combos() {
+        fn command_line_has_no_problematic_plain_char_combos_returns_expected() {
             check_no_plain_char_in_filter_mode(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS", &[]);
         }
 
         #[test]
-        fn cell_edit_plain_char_combos_are_intentional() {
+        fn cell_edit_plain_char_combos_are_intentional_returns_expected() {
             check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
         }
 
@@ -1025,7 +1025,7 @@ mod tests {
         }
 
         #[test]
-        fn none_action_entries_have_no_combos() {
+        fn none_action_entries_have_no_combos_returns_expected() {
             check_none_action_entries_have_no_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
             check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
             check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
@@ -1061,7 +1061,7 @@ mod tests {
 
         // HELP, CONNECTION_ERROR, TABLE_PICKER, ER_PICKER, COMMAND_PALETTE, CONNECTION_SELECTOR
         #[test]
-        fn all_mode_bindings_count() {
+        fn all_mode_bindings_count_returns_expected() {
             assert_eq!(ALL_MODE_BINDINGS.len(), 7);
         }
     }

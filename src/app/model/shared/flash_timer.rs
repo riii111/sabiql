@@ -42,7 +42,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn set_and_is_active() {
+    fn set_returns_active_until_duration() {
         let mut store = FlashTimerStore::default();
         let now = Instant::now();
 
@@ -53,7 +53,7 @@ mod tests {
     }
 
     #[test]
-    fn expires_after_duration() {
+    fn set_returns_inactive_after_duration() {
         let mut store = FlashTimerStore::default();
         let now = Instant::now();
 
@@ -64,7 +64,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_removes_timer() {
+    fn clear_returns_inactive_timer() {
         let mut store = FlashTimerStore::default();
         let now = Instant::now();
 
@@ -75,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_expired_removes_only_expired() {
+    fn clear_expired_returns_only_unexpired_timers() {
         let mut store = FlashTimerStore::default();
         let now = Instant::now();
 

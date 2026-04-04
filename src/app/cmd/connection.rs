@@ -406,7 +406,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn dispatches_action_with_built_dsn() {
+        async fn save_and_connect_returns_action_with_built_dsn() {
             let (tx, mut rx) = mpsc::channel::<Action>(16);
             let runner = make_runner_with_dsn_builder(tx);
 
@@ -452,7 +452,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn out_of_bounds_index_is_noop() {
+        async fn switch_connection_returns_noop_for_out_of_bounds_index() {
             let (tx, mut rx) = mpsc::channel::<Action>(16);
             let runner = make_runner_with_dsn_builder(tx);
 

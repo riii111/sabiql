@@ -44,7 +44,7 @@ mod tests {
         #[rstest]
         #[case("q", Command::Quit)]
         #[case("quit", Command::Quit)]
-        fn quit_aliases(#[case] input: &str, #[case] expected: Command) {
+        fn quit_aliases_returns_quit(#[case] input: &str, #[case] expected: Command) {
             let result = parse_command(input);
 
             assert_eq!(result, expected);
@@ -53,21 +53,21 @@ mod tests {
         #[rstest]
         #[case("?", Command::Help)]
         #[case("help", Command::Help)]
-        fn help_aliases(#[case] input: &str, #[case] expected: Command) {
+        fn help_aliases_returns_help(#[case] input: &str, #[case] expected: Command) {
             let result = parse_command(input);
 
             assert_eq!(result, expected);
         }
 
         #[test]
-        fn sql_returns_sql() {
+        fn sql_returns_sql_command() {
             let result = parse_command("sql");
 
             assert_eq!(result, Command::Sql);
         }
 
         #[test]
-        fn erd_returns_erd() {
+        fn erd_returns_erd_command() {
             let result = parse_command("erd");
 
             assert_eq!(result, Command::Erd);
@@ -76,27 +76,27 @@ mod tests {
         #[rstest]
         #[case("w", Command::Write)]
         #[case("write", Command::Write)]
-        fn write_aliases(#[case] input: &str, #[case] expected: Command) {
+        fn write_aliases_returns_write(#[case] input: &str, #[case] expected: Command) {
             let result = parse_command(input);
             assert_eq!(result, expected);
         }
 
         #[test]
-        fn unknown_command_returns_unknown() {
+        fn unknown_command_returns_unknown_command() {
             let result = parse_command("foo");
 
             assert_eq!(result, Command::Unknown("foo".to_string()));
         }
 
         #[test]
-        fn whitespace_is_trimmed() {
+        fn whitespace_is_trimmed_returns_trimmed_command() {
             let result = parse_command("  sql  ");
 
             assert_eq!(result, Command::Sql);
         }
 
         #[test]
-        fn empty_string_returns_unknown() {
+        fn empty_string_returns_unknown_command() {
             let result = parse_command("");
 
             assert_eq!(result, Command::Unknown(String::new()));

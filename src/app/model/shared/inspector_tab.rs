@@ -72,21 +72,21 @@ mod tests {
     }
 
     #[test]
-    fn next_wraps_from_last_to_first() {
+    fn next_wraps_from_last_to_first_returns_expected() {
         let tab = InspectorTab::Ddl;
         let result = tab.next();
         assert_eq!(result, InspectorTab::Info);
     }
 
     #[test]
-    fn prev_wraps_from_first_to_last() {
+    fn prev_wraps_from_first_to_last_returns_expected() {
         let tab = InspectorTab::Info;
         let result = tab.prev();
         assert_eq!(result, InspectorTab::Ddl);
     }
 
     #[test]
-    fn next_cycles_through_all_tabs() {
+    fn next_cycles_through_all_tabs_returns_expected() {
         let mut tab = InspectorTab::Info;
         tab = tab.next();
         assert_eq!(tab, InspectorTab::Columns);
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn prev_cycles_through_all_tabs_backward() {
+    fn prev_cycles_through_all_tabs_backward_returns_expected() {
         let mut tab = InspectorTab::Info;
         tab = tab.prev();
         assert_eq!(tab, InspectorTab::Ddl);

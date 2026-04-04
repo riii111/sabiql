@@ -94,7 +94,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn creates_with_correct_fields() {
+        fn success_returns_expected_fields() {
             let result = QueryResult::success(
                 "SELECT 1".to_string(),
                 vec!["id".to_string()],
@@ -115,7 +115,7 @@ mod tests {
         }
 
         #[test]
-        fn row_count_matches_rows_len() {
+        fn success_returns_row_count_matching_rows_len() {
             let result = QueryResult::success(
                 "SELECT".to_string(),
                 vec![],
@@ -132,7 +132,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn creates_with_empty_rows_and_error_message() {
+        fn error_returns_empty_rows_and_error_message() {
             let result = QueryResult::error(
                 "BAD SQL".to_string(),
                 "syntax error".to_string(),
@@ -152,7 +152,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn with_command_tag_sets_tag() {
+        fn with_command_tag_returns_tagged_result() {
             let result =
                 QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc)
                     .with_command_tag(CommandTag::Select(1));
@@ -168,7 +168,7 @@ mod tests {
         #[case(0, "0 rows")]
         #[case(1, "1 row")]
         #[case(5, "5 rows")]
-        fn returns_expected(#[case] count: usize, #[case] expected: &str) {
+        fn row_count_display_returns_expected_label(#[case] count: usize, #[case] expected: &str) {
             let mut result =
                 QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc);
             result.row_count = count;

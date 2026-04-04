@@ -270,7 +270,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn default_has_correct_values() {
+        fn default_returns_expected_values() {
             let state = ConnectionSetupState::default();
             assert!(state.name.content().is_empty());
             assert_eq!(state.host.content(), "localhost");
@@ -285,26 +285,26 @@ mod tests {
         }
 
         #[test]
-        fn default_name_without_database() {
+        fn default_name_returns_hostname_without_database() {
             let state = ConnectionSetupState::default();
             assert_eq!(state.default_name(), "localhost");
         }
 
         #[test]
-        fn default_name_with_database() {
+        fn default_name_returns_database_prefixed_hostname() {
             let mut state = ConnectionSetupState::default();
             state.database.set_content("mydb".to_string());
             assert_eq!(state.default_name(), "mydb@localhost");
         }
 
         #[test]
-        fn has_errors_returns_false_when_empty() {
+        fn has_errors_returns_false_for_empty_state() {
             let state = ConnectionSetupState::default();
             assert!(!state.has_errors());
         }
 
         #[test]
-        fn has_errors_returns_true_when_errors_exist() {
+        fn has_errors_returns_true_when_validation_errors_exist() {
             let mut state = ConnectionSetupState::default();
             state
                 .validation_errors
@@ -313,7 +313,7 @@ mod tests {
         }
 
         #[test]
-        fn clear_errors_removes_all_errors() {
+        fn clear_errors_returns_empty_error_map() {
             let mut state = ConnectionSetupState::default();
             state
                 .validation_errors
@@ -326,7 +326,7 @@ mod tests {
         }
 
         #[test]
-        fn from_profile_populates_all_fields() {
+        fn from_profile_returns_populated_fields() {
             let profile = ConnectionProfile::new(
                 "Test DB",
                 "db.example.com",
@@ -352,13 +352,13 @@ mod tests {
         }
 
         #[test]
-        fn is_edit_mode_returns_false_for_new() {
+        fn is_edit_mode_returns_false_for_new_profile() {
             let state = ConnectionSetupState::default();
             assert!(!state.is_edit_mode());
         }
 
         #[test]
-        fn is_edit_mode_returns_true_for_edit() {
+        fn is_edit_mode_returns_true_for_edit_profile() {
             let profile = ConnectionProfile::new(
                 "Test",
                 "localhost",
@@ -374,7 +374,7 @@ mod tests {
         }
 
         #[test]
-        fn focused_input_returns_correct_field() {
+        fn focused_input_returns_correct_field_input() {
             let state = ConnectionSetupState {
                 focused_field: ConnectionField::Host,
                 ..Default::default()
@@ -384,7 +384,7 @@ mod tests {
         }
 
         #[test]
-        fn focused_input_returns_none_for_ssl() {
+        fn focused_input_returns_none_for_ssl_field() {
             let state = ConnectionSetupState {
                 focused_field: ConnectionField::SslMode,
                 ..Default::default()

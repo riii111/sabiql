@@ -96,24 +96,24 @@ mod tests {
     }
 
     #[test]
-    fn display_message_singular_row() {
+    fn display_message_returns_singular_row_label() {
         assert_eq!(CommandTag::Insert(1).display_message(), "1 row inserted");
         assert_eq!(CommandTag::Delete(1).display_message(), "1 row deleted");
     }
 
     #[test]
-    fn display_message_plural_rows() {
+    fn display_message_returns_plural_row_label() {
         assert_eq!(CommandTag::Select(5).display_message(), "5 rows selected");
         assert_eq!(CommandTag::Update(10).display_message(), "10 rows updated");
     }
 
     #[test]
-    fn display_message_zero_rows() {
+    fn display_message_returns_zero_row_label() {
         assert_eq!(CommandTag::Delete(0).display_message(), "0 rows deleted");
     }
 
     #[test]
-    fn display_message_ddl() {
+    fn display_message_returns_ddl_label() {
         assert_eq!(
             CommandTag::Create("TABLE".to_string()).display_message(),
             "table created"
@@ -129,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn display_message_tcl() {
+    fn display_message_returns_tcl_label() {
         assert_eq!(CommandTag::Truncate.display_message(), "table truncated");
         assert_eq!(CommandTag::Begin.display_message(), "transaction started");
         assert_eq!(CommandTag::Commit.display_message(), "committed");
@@ -137,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn display_message_other() {
+    fn display_message_returns_other_label() {
         assert_eq!(
             CommandTag::Other("VACUUM".to_string()).display_message(),
             "vacuum"
@@ -145,14 +145,14 @@ mod tests {
     }
 
     #[test]
-    fn is_schema_modifying_true_for_ddl() {
+    fn is_schema_modifying_returns_true_for_ddl() {
         assert!(CommandTag::Create("TABLE".to_string()).is_schema_modifying());
         assert!(CommandTag::Drop("TABLE".to_string()).is_schema_modifying());
         assert!(CommandTag::Alter("TABLE".to_string()).is_schema_modifying());
     }
 
     #[test]
-    fn is_schema_modifying_false_for_non_ddl() {
+    fn is_schema_modifying_returns_false_for_non_ddl() {
         assert!(!CommandTag::Select(0).is_schema_modifying());
         assert!(!CommandTag::Insert(1).is_schema_modifying());
         assert!(!CommandTag::Update(1).is_schema_modifying());
@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn needs_refresh_true_for_dml_and_ddl() {
+    fn needs_refresh_returns_true_for_dml_and_ddl() {
         assert!(CommandTag::Insert(1).needs_refresh());
         assert!(CommandTag::Update(1).needs_refresh());
         assert!(CommandTag::Delete(1).needs_refresh());
@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn needs_refresh_false_for_read_only_and_tcl() {
+    fn needs_refresh_returns_false_for_read_only_and_tcl() {
         assert!(!CommandTag::Select(5).needs_refresh());
         assert!(!CommandTag::Begin.needs_refresh());
         assert!(!CommandTag::Commit.needs_refresh());

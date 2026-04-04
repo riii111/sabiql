@@ -223,7 +223,7 @@ mod tests {
         #[case::trailing_semicolon("SELECT 1;", vec!["SELECT 1"])]
         #[case::empty("", Vec::<&str>::new())]
         #[case::whitespace_only("   ", Vec::<&str>::new())]
-        fn basic_split(#[case] sql: &str, #[case] expected: Vec<&str>) {
+        fn split_statements_returns_basic_split(#[case] sql: &str, #[case] expected: Vec<&str>) {
             assert_eq!(split_statements(sql), expected);
         }
 
@@ -232,19 +232,25 @@ mod tests {
         #[case::double_quote("SELECT \"a;b\"", vec!["SELECT \"a;b\""])]
         #[case::dollar_quote("SELECT $$a;b$$", vec!["SELECT $$a;b$$"])]
         #[case::tagged_dollar_quote("SELECT $tag$a;b$tag$", vec!["SELECT $tag$a;b$tag$"])]
-        fn semicolon_in_strings(#[case] sql: &str, #[case] expected: Vec<&str>) {
+        fn split_statements_returns_semicolon_in_strings(
+            #[case] sql: &str,
+            #[case] expected: Vec<&str>,
+        ) {
             assert_eq!(split_statements(sql), expected);
         }
 
         #[rstest]
         #[case::line_comment("SELECT 1 -- ;comment\n; SELECT 2", vec!["SELECT 1 -- ;comment", "SELECT 2"])]
         #[case::block_comment("SELECT /* ; */ 1; SELECT 2", vec!["SELECT /* ; */ 1", "SELECT 2"])]
-        fn semicolon_in_comments(#[case] sql: &str, #[case] expected: Vec<&str>) {
+        fn split_statements_returns_semicolon_in_comments(
+            #[case] sql: &str,
+            #[case] expected: Vec<&str>,
+        ) {
             assert_eq!(split_statements(sql), expected);
         }
 
         #[test]
-        fn do_block_split() {
+        fn split_statements_returns_do_block_split() {
             let sql = "DO $$ BEGIN RAISE NOTICE 'hi'; END $$; SELECT 1";
             let result = split_statements(sql);
             assert_eq!(result.len(), 2);
@@ -253,35 +259,35 @@ mod tests {
         }
 
         #[test]
-        fn escaped_quote_no_split() {
+        fn split_statements_returns_escaped_quote_no_split() {
             let sql = "SELECT 'it''s;here'";
             let result = split_statements(sql);
             assert_eq!(result, vec!["SELECT 'it''s;here'"]);
         }
 
         #[test]
-        fn trailing_comment_only() {
+        fn split_statements_returns_trailing_comment_only_fragment() {
             let sql = "SELECT 1; -- comment";
             let result = split_statements(sql);
             assert_eq!(result, vec!["SELECT 1"]);
         }
 
         #[test]
-        fn comment_only_input() {
+        fn split_statements_returns_empty_for_comment_only_input() {
             let sql = "-- just a comment";
             let result = split_statements(sql);
             assert!(result.is_empty());
         }
 
         #[test]
-        fn unclosed_quote() {
+        fn split_statements_returns_unclosed_quote_fragment() {
             let sql = "SELECT 'unclosed";
             let result = split_statements(sql);
             assert_eq!(result, vec!["SELECT 'unclosed"]);
         }
 
         #[test]
-        fn non_ascii_before_semicolon() {
+        fn split_statements_returns_non_ascii_before_semicolon() {
             // Case-folding of İ (U+0130) changes byte length in lowercase.
             // Byte offsets must come from the original sql, not the lowercased copy.
             let sql = "SELECT 'İ'; SELECT 2";
@@ -329,7 +335,10 @@ mod tests {
         #[case::delete_no_where(StatementKind::Delete { has_where: false }, "DELETE FROM users")]
         #[case::drop(StatementKind::Drop, "DROP TABLE users")]
         #[case::truncate(StatementKind::Truncate, "TRUNCATE users")]
-        fn high_table_name_input(#[case] kind: StatementKind, #[case] sql: &str) {
+        fn evaluate_sql_risk_returns_high_table_name_input(
+            #[case] kind: StatementKind,
+            #[case] sql: &str,
+        ) {
             let result = evaluate_sql_risk(&kind, sql);
             assert_eq!(result.risk_level, RiskLevel::High);
             assert!(matches!(
@@ -339,7 +348,7 @@ mod tests {
         }
 
         #[test]
-        fn drop_database_returns_high_table_name_input() {
+        fn evaluate_sql_risk_returns_high_table_name_input_for_drop_database() {
             let result = evaluate_sql_risk(&StatementKind::Drop, "DROP DATABASE production");
             assert_eq!(result.risk_level, RiskLevel::High);
             assert!(matches!(
@@ -349,7 +358,7 @@ mod tests {
         }
 
         #[test]
-        fn drop_table_with_leading_comment_returns_high() {
+        fn evaluate_sql_risk_returns_high_for_drop_table_with_leading_comment() {
             let result =
                 evaluate_sql_risk(&StatementKind::Drop, "-- cleanup\nDROP TABLE production");
             assert_eq!(result.risk_level, RiskLevel::High);
@@ -366,7 +375,7 @@ mod tests {
         #[case::drop_schema("DROP SCHEMA s")]
         #[case::drop_owned_by("DROP OWNED BY role")]
         #[case::drop_tablespace("DROP TABLESPACE fastdisk")]
-        fn non_table_drop_returns_low_immediate(#[case] sql: &str) {
+        fn evaluate_sql_risk_returns_low_immediate_for_non_table_drop(#[case] sql: &str) {
             let result = evaluate_sql_risk(&StatementKind::Drop, sql);
             assert_eq!(result.risk_level, RiskLevel::Low);
             assert!(matches!(result.confirmation, ConfirmationType::Immediate));
@@ -377,7 +386,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn single_select_passthrough() {
+        fn evaluate_multi_statement_returns_single_select_passthrough() {
             let result = evaluate_multi_statement("SELECT 1");
             match result {
                 MultiStatementDecision::Allow { statements, risk } => {
@@ -389,7 +398,7 @@ mod tests {
         }
 
         #[test]
-        fn single_insert_passthrough() {
+        fn evaluate_multi_statement_returns_single_insert_passthrough() {
             let result = evaluate_multi_statement("INSERT INTO users VALUES (1)");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -401,7 +410,7 @@ mod tests {
         }
 
         #[test]
-        fn single_drop_passthrough() {
+        fn evaluate_multi_statement_returns_single_drop_passthrough() {
             let result = evaluate_multi_statement("DROP TABLE users");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -416,7 +425,7 @@ mod tests {
         }
 
         #[test]
-        fn tcl_only_multi_returns_immediate() {
+        fn evaluate_multi_statement_returns_immediate_for_tcl_only_input() {
             let result = evaluate_multi_statement("BEGIN; COMMIT");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -427,7 +436,7 @@ mod tests {
         }
 
         #[test]
-        fn multiple_high_uses_first_target() {
+        fn evaluate_multi_statement_returns_first_high_target() {
             let result = evaluate_multi_statement("DROP TABLE a; DROP TABLE b");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -442,7 +451,7 @@ mod tests {
         }
 
         #[test]
-        fn select_into_returns_low_immediate() {
+        fn evaluate_sql_risk_returns_low_immediate_for_select_into() {
             let result = evaluate_multi_statement("SELECT * INTO backup FROM users");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -454,7 +463,7 @@ mod tests {
         }
 
         #[test]
-        fn risk_aggregation_select_insert() {
+        fn evaluate_multi_statement_returns_aggregated_risk_for_select_insert() {
             let result = evaluate_multi_statement("SELECT 1; INSERT INTO users VALUES (1)");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -466,7 +475,7 @@ mod tests {
         }
 
         #[test]
-        fn risk_aggregation_select_update_where() {
+        fn evaluate_multi_statement_returns_aggregated_risk_for_select_update_where() {
             let result = evaluate_multi_statement("SELECT 1; UPDATE users SET x = 1 WHERE id = 1");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -477,13 +486,13 @@ mod tests {
         }
 
         #[test]
-        fn empty_input_blocked() {
+        fn evaluate_multi_statement_returns_blocked_for_empty_input() {
             let result = evaluate_multi_statement("");
             assert!(matches!(result, MultiStatementDecision::Block { .. }));
         }
 
         #[test]
-        fn do_block_unsupported_low_immediate() {
+        fn evaluate_multi_statement_returns_low_immediate_for_do_block() {
             let result = evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -495,7 +504,7 @@ mod tests {
         }
 
         #[test]
-        fn copy_unsupported_low_immediate() {
+        fn evaluate_multi_statement_returns_low_immediate_for_copy_statement() {
             let result = evaluate_multi_statement("COPY users FROM '/tmp/data.csv'");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -507,7 +516,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_then_select_returns_immediate() {
+        fn evaluate_multi_statement_returns_immediate_for_insert_then_select() {
             let result = evaluate_multi_statement("INSERT INTO users VALUES (1); SELECT 1");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -519,7 +528,7 @@ mod tests {
         }
 
         #[test]
-        fn drop_index_returns_low_immediate() {
+        fn evaluate_sql_risk_returns_low_immediate_for_drop_index() {
             let result = evaluate_multi_statement("DROP INDEX my_index");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -531,7 +540,7 @@ mod tests {
         }
 
         #[test]
-        fn drop_owned_by_returns_low_immediate() {
+        fn evaluate_sql_risk_returns_low_immediate_for_drop_owned_by() {
             let result = evaluate_multi_statement("DROP OWNED BY role");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {

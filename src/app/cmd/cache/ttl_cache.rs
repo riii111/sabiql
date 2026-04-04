@@ -82,7 +82,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_cache_get_set() {
+    async fn get_returns_cached_value_after_set() {
         let cache = TtlCache::new(60);
         cache.set("key1".to_string(), "value1".to_string()).await;
 
@@ -91,7 +91,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_invalidate() {
+    async fn invalidate_returns_none_for_removed_entry() {
         let cache = TtlCache::new(60);
         cache.set("key1".to_string(), "value1".to_string()).await;
         cache.invalidate(&"key1".to_string()).await;
@@ -101,7 +101,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_miss() {
+    async fn get_returns_none_for_cache_miss() {
         let cache: TtlCache<String, String> = TtlCache::new(60);
         let result = cache.get(&"nonexistent".to_string()).await;
         assert_eq!(result, None);

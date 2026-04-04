@@ -64,7 +64,7 @@ mod tests {
     }
 
     #[test]
-    fn set_error_clears_success_message() {
+    fn set_error_returns_only_error_message() {
         let now = fixed_instant();
         let mut state = MessageState::default();
         state.set_success_at("Success!".to_string(), now);
@@ -77,7 +77,7 @@ mod tests {
     }
 
     #[test]
-    fn set_success_clears_error_message() {
+    fn set_success_returns_only_success_message() {
         let now = fixed_instant();
         let mut state = MessageState::default();
         state.set_error_at("Error!".to_string(), now);
@@ -90,7 +90,7 @@ mod tests {
     }
 
     #[test]
-    fn set_error_sets_expiration_time() {
+    fn set_error_returns_expiration_time() {
         let now = fixed_instant();
         let mut state = MessageState::default();
         assert!(state.expires_at.is_none());
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_expired_at_removes_expired_messages() {
+    fn clear_expired_at_returns_cleared_state_for_expired_messages() {
         let now = fixed_instant();
         let mut state = MessageState {
             last_error: Some("Error".to_string()),
@@ -120,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_expired_at_keeps_unexpired_messages() {
+    fn clear_expired_at_returns_unchanged_state_for_unexpired_messages() {
         let now = fixed_instant();
         let mut state = MessageState {
             last_error: Some("Error".to_string()),
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_removes_all_messages() {
+    fn clear_returns_empty_state() {
         let now = fixed_instant();
         let mut state = MessageState::default();
         state.set_error_at("Error".to_string(), now);

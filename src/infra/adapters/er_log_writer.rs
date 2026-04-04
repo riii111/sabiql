@@ -43,7 +43,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn multiple_failures_writes_all_details() {
+        fn multiple_failures_writes_all_details_returns_expected() {
             let temp_dir = tempfile::tempdir().unwrap();
             let failed_tables = vec![
                 ("public.users".to_string(), "connection timeout".to_string()),
@@ -60,7 +60,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_list_writes_zero_count() {
+        fn empty_list_writes_zero_count_returns_expected() {
             let temp_dir = tempfile::tempdir().unwrap();
 
             write_er_failure_log_blocking(vec![], temp_dir.path().to_path_buf()).unwrap();
@@ -70,7 +70,7 @@ mod tests {
         }
 
         #[test]
-        fn output_includes_timestamp() {
+        fn output_includes_timestamp_returns_expected() {
             let temp_dir = tempfile::tempdir().unwrap();
 
             write_er_failure_log_blocking(

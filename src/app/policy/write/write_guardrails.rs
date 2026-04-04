@@ -187,7 +187,7 @@ mod tests {
         #[case(StatementKind::Truncate, RiskLevel::High, "TRUNCATE")]
         #[case(StatementKind::Other, RiskLevel::Low, "SQL")]
         #[case(StatementKind::Unsupported, RiskLevel::Low, "SQL")]
-        fn risk_level_and_label(
+        fn evaluate_sql_risk_returns_risk_level_and_label(
             #[case] kind: StatementKind,
             #[case] expected_risk: RiskLevel,
             #[case] expected_label: &str,

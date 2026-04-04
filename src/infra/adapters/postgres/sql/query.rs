@@ -428,13 +428,13 @@ mod tests {
         use super::*;
 
         #[test]
-        fn contains_md5_hash() {
+        fn tables_query_returns_md5_hash() {
             let sql = PostgresAdapter::table_signatures_query();
             assert!(sql.contains("md5("));
         }
 
         #[test]
-        fn uses_same_filter_as_tables_query() {
+        fn table_signatures_query_returns_same_filter_as_tables_query() {
             let sig_sql = PostgresAdapter::table_signatures_query();
             let tab_sql = PostgresAdapter::tables_query();
 
@@ -461,7 +461,7 @@ mod tests {
         }
 
         #[test]
-        fn includes_fk_separator() {
+        fn table_signatures_query_returns_fk_separator() {
             let sql = PostgresAdapter::table_signatures_query();
             assert!(sql.contains("'##FK##'"));
         }
@@ -477,7 +477,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn schema_name_with_double_quote_is_escaped() {
+        fn schema_name_returns_escaped_double_quote_sql() {
             let sql = PostgresAdapter::build_preview_query("my\"schema", "users", &[], 100, 0);
 
             assert_eq!(
@@ -487,7 +487,7 @@ mod tests {
         }
 
         #[test]
-        fn table_name_with_double_quote_is_escaped() {
+        fn table_name_returns_escaped_double_quote_sql() {
             let sql = PostgresAdapter::build_preview_query("public", "my\"table", &[], 100, 0);
 
             assert_eq!(
@@ -497,7 +497,7 @@ mod tests {
         }
 
         #[test]
-        fn order_by_column_with_double_quote_is_escaped() {
+        fn order_by_column_returns_escaped_double_quote_sql() {
             let sql = PostgresAdapter::build_preview_query(
                 "public",
                 "users",
@@ -517,7 +517,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn wraps_all_six_categories_in_json_build_object() {
+        fn table_detail_query_returns_all_six_categories_in_json_build_object() {
             let sql = PostgresAdapter::table_detail_query("public", "users");
 
             assert!(sql.contains("json_build_object("));
@@ -534,7 +534,7 @@ mod tests {
         }
 
         #[test]
-        fn uses_quoted_schema_and_table() {
+        fn table_detail_query_returns_quoted_schema_and_table() {
             let sql = PostgresAdapter::table_detail_query("my_schema", "my_table");
 
             assert!(sql.contains("'my_schema'"));
@@ -546,7 +546,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn wraps_columns_and_fks_only_in_json_build_object() {
+        fn table_columns_and_fks_query_returns_columns_and_fks_only_in_json_build_object() {
             let sql = PostgresAdapter::table_columns_and_fks_query("public", "users");
 
             assert!(sql.contains("json_build_object("));
@@ -559,7 +559,7 @@ mod tests {
         }
 
         #[test]
-        fn uses_quoted_schema_and_table() {
+        fn table_columns_and_fks_query_returns_quoted_schema_and_table() {
             let sql = PostgresAdapter::table_columns_and_fks_query("my_schema", "my_table");
 
             assert!(sql.contains("'my_schema'"));
@@ -603,7 +603,10 @@ mod tests {
             "table_columns_and_fks_query_table",
             PostgresAdapter::table_columns_and_fks_query("public", HOSTILE)
         )]
-        fn hostile_input_is_escaped(#[case] _label: &str, #[case] sql: String) {
+        fn query_builders_returns_escaped_sql_for_hostile_input(
+            #[case] _label: &str,
+            #[case] sql: String,
+        ) {
             assert!(
                 sql.contains(ESCAPED),
                 "Hostile input must be quote_literal-escaped in: {sql}"

@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_creates_file_and_writes_entry() {
+    async fn append_returns_created_file_with_entry() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_trims_to_1000_when_exceeded() {
+    async fn append_returns_trimmed_history_when_exceeded() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
@@ -206,7 +206,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn load_nonexistent_file_returns_empty_vec() {
+    async fn load_returns_empty_vec_for_nonexistent_file() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("nonexistent");
@@ -217,7 +217,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_lines_are_skipped() {
+    async fn load_returns_entries_skipping_malformed_lines() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn below_limit_entries_are_preserved_without_trim() {
+    async fn append_returns_untrimmed_history_below_limit() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn trim_does_not_trigger_at_exact_limit() {
+    async fn append_returns_untrimmed_history_at_exact_limit() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn multiple_appends_beyond_limit_preserves_latest() {
+    async fn append_returns_latest_entries_after_multiple_appends() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_succeeds_even_when_trim_would_fail() {
+    async fn append_returns_success_even_when_trim_fails() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
@@ -346,7 +346,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn load_entries_with_affected_rows_and_malformed_lines() {
+    async fn load_returns_entries_with_affected_rows_skipping_malformed_lines() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");

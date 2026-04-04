@@ -398,7 +398,7 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn render_calls_draw() {
+        async fn render_calls_draw_returns_expected() {
             let (tx, _rx) = mpsc::channel(8);
             let runner = make_runner(
                 Arc::new(MockMetadataProvider::new()),

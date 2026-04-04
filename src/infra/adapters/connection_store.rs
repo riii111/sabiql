@@ -256,7 +256,7 @@ ssl_mode = "prefer"
         use super::*;
 
         #[test]
-        fn creates_config_directory_if_missing() {
+        fn creates_config_directory_if_missing_returns_expected() {
             let temp_dir = TempDir::new().unwrap();
             let config_dir = temp_dir.path().join("nested").join("config");
             let store = TomlConnectionStore::with_config_dir(config_dir.clone());
@@ -286,7 +286,7 @@ ssl_mode = "prefer"
         }
 
         #[test]
-        fn same_id_updates_without_duplicate_error() {
+        fn same_id_updates_without_duplicate_error_returns_expected() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
 
@@ -301,7 +301,7 @@ ssl_mode = "prefer"
 
         #[cfg(unix)]
         #[test]
-        fn sets_permissions_to_0600() {
+        fn sets_permissions_to_0600_returns_expected() {
             use std::os::unix::fs::PermissionsExt;
 
             let temp_dir = TempDir::new().unwrap();
@@ -321,7 +321,7 @@ ssl_mode = "prefer"
         use super::*;
 
         #[test]
-        fn removes_connection_by_id() {
+        fn removes_connection_by_id_returns_expected() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
 
@@ -376,7 +376,7 @@ ssl_mode = "prefer"
         use super::*;
 
         #[test]
-        fn save_and_load_preserves_data() {
+        fn save_and_load_preserves_data_returns_expected() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
             let profile = make_test_profile("Test Connection");
@@ -453,7 +453,7 @@ ssl_mode = "prefer"
         use super::*;
 
         #[test]
-        fn leaves_no_temp_file() {
+        fn leaves_no_temp_file_returns_expected() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
             let profile = make_test_profile("Test");
@@ -475,7 +475,7 @@ ssl_mode = "prefer"
         }
 
         #[test]
-        fn existing_file_preserved_on_save_roundtrip() {
+        fn existing_file_preserved_on_save_roundtrip_returns_expected() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
 

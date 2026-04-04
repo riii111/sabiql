@@ -136,7 +136,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn null_value_generates_unquoted_null() {
+        fn build_update_sql_returns_unquoted_null_for_null_value() {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
@@ -154,7 +154,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_string_value_generates_empty_literal() {
+        fn build_update_sql_returns_empty_literal_for_empty_string() {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
@@ -172,7 +172,7 @@ mod tests {
         }
 
         #[test]
-        fn column_name_with_double_quote_is_escaped() {
+        fn build_update_sql_returns_escaped_column_name() {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
@@ -190,7 +190,7 @@ mod tests {
         }
 
         #[test]
-        fn backslash_in_value_is_preserved_as_literal() {
+        fn build_update_sql_returns_literal_backslash_in_value() {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
@@ -212,7 +212,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn single_pk_single_row_returns_in_clause() {
+        fn build_bulk_delete_sql_returns_in_clause_for_single_pk_single_row() {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), "1".to_string())]];
 
@@ -225,7 +225,7 @@ mod tests {
         }
 
         #[test]
-        fn single_pk_multiple_rows_returns_in_clause_with_all_values() {
+        fn build_bulk_delete_sql_returns_in_clause_for_single_pk_multiple_rows() {
             let adapter = PostgresAdapter::new();
             let rows = vec![
                 vec![("id".to_string(), "1".to_string())],
@@ -242,7 +242,7 @@ mod tests {
         }
 
         #[test]
-        fn composite_pk_returns_row_constructor_in_clause() {
+        fn build_bulk_delete_sql_returns_row_constructor_in_clause_for_composite_pk() {
             let adapter = PostgresAdapter::new();
             let rows = vec![
                 vec![
@@ -264,7 +264,7 @@ mod tests {
         }
 
         #[test]
-        fn null_pk_value_uses_null_literal() {
+        fn build_bulk_delete_sql_returns_null_literal_for_null_pk_value() {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), "NULL".to_string())]];
 
@@ -274,7 +274,7 @@ mod tests {
         }
 
         #[test]
-        fn pk_value_with_quotes_is_escaped() {
+        fn build_bulk_delete_sql_returns_escaped_pk_value() {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), "O'Reilly".to_string())]];
 
@@ -287,7 +287,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_string_pk_value_returns_empty_literal() {
+        fn build_bulk_delete_sql_returns_empty_literal_for_empty_string_pk_value() {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), String::new())]];
 
@@ -297,7 +297,7 @@ mod tests {
         }
 
         #[test]
-        fn column_name_with_double_quote_is_escaped() {
+        fn build_bulk_delete_sql_returns_escaped_column_name() {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("my\"pk".to_string(), "1".to_string())]];
 
@@ -321,7 +321,7 @@ mod tests {
         #[case("hello", "'hello'")]
         #[case("it's", "'it''s'")]
         #[case("NULL ", "'NULL '")]
-        fn value_expr_returns_expected(#[case] input: &str, #[case] expected: &str) {
+        fn sql_literal_or_null_returns_expected(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(sql_literal_or_null(input), expected);
         }
     }

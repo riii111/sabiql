@@ -30,7 +30,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn both_profiles_and_services_concatenated() {
+    fn build_connection_list_returns_profiles_then_services() {
         let items = build_connection_list(2, 3);
 
         assert_eq!(
@@ -46,7 +46,7 @@ mod tests {
     }
 
     #[test]
-    fn only_profiles_no_separator() {
+    fn build_connection_list_returns_profiles_without_separator() {
         let items = build_connection_list(2, 0);
 
         assert_eq!(
@@ -59,7 +59,7 @@ mod tests {
     }
 
     #[test]
-    fn only_services_no_separator() {
+    fn build_connection_list_returns_services_without_separator() {
         let items = build_connection_list(0, 2);
 
         assert_eq!(

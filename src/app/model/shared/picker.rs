@@ -75,7 +75,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn clears_selected_and_scroll_offset() {
+        fn clears_selected_and_scroll_offset_returns_expected() {
             let mut state = PickerState {
                 selected: 5,
                 scroll_offset: 3,
@@ -97,7 +97,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn sets_selected_index() {
+        fn sets_selected_index_returns_expected() {
             let mut state = PickerState {
                 pane_height: 10,
                 ..Default::default()
@@ -109,7 +109,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_offset_stays_zero_when_within_viewport() {
+        fn scroll_offset_stays_zero_when_within_viewport_returns_expected() {
             let mut state = PickerState {
                 pane_height: 10,
                 ..Default::default()
@@ -121,7 +121,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_offset_advances_when_selection_falls_below_viewport() {
+        fn scroll_offset_advances_when_selection_falls_below_viewport_returns_expected() {
             let mut state = PickerState {
                 pane_height: 5,
                 ..Default::default()
@@ -135,7 +135,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_offset_retreats_when_selection_rises_above_viewport() {
+        fn scroll_offset_retreats_when_selection_rises_above_viewport_returns_expected() {
             let mut state = PickerState {
                 selected: 8,
                 scroll_offset: 5,
@@ -155,7 +155,7 @@ mod tests {
         #[case(10, 0, 10, 1)]
         #[case(4, 3, 5, 3)]
         #[case(2, 3, 5, 2)]
-        fn clamp_scroll_offset_cases(
+        fn clamp_scroll_offset_cases_returns_expected(
             #[case] selected: usize,
             #[case] current_offset: usize,
             #[case] viewport: usize,

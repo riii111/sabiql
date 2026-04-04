@@ -99,7 +99,7 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn on_success_dispatched_when_copy_succeeds() {
+        async fn copy_to_clipboard_returns_success_action_when_copy_succeeds() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard { result: Ok(()) });
             let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
@@ -125,7 +125,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn on_failure_dispatched_when_copy_fails() {
+        async fn copy_to_clipboard_returns_failure_action_when_copy_fails() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
                 result: Err(ClipboardError {
@@ -155,7 +155,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn copy_failed_dispatched_when_no_on_failure() {
+        async fn copy_to_clipboard_returns_copy_failed_when_no_on_failure() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
                 result: Err(ClipboardError {
@@ -192,7 +192,7 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn calls_folder_opener_port() {
+        async fn open_folder_returns_folder_opener_call() {
             let (tx, _rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard { result: Ok(()) });
             let opener = Arc::new(MockFolderOpener::new());
@@ -215,7 +215,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn failure_dispatches_open_folder_failed() {
+        async fn open_folder_returns_failed_action_when_opener_fails() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard { result: Ok(()) });
             let opener = Arc::new(MockFolderOpener::failing("No such file or directory"));

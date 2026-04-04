@@ -75,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_matching_combo() {
+    fn resolve_returns_matching_combo() {
         let bindings = [quit_binding()];
 
         let result = resolve(&KeyCombo::plain(Key::Char('q')), &bindings);
@@ -84,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn returns_none_for_no_match() {
+    fn resolve_returns_none_for_no_match() {
         let bindings = [quit_binding()];
 
         let result = resolve(&KeyCombo::plain(Key::Char('x')), &bindings);
@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn skips_display_only_none_entries() {
+    fn resolve_returns_skip_for_display_only_none_entries() {
         let none_j = none_display_binding();
         let quit = quit_binding();
         let bindings = [none_j, quit];
@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn returns_first_matching_non_none_entry() {
+    fn resolve_returns_first_matching_non_none_entry() {
         let quit = quit_binding();
         let help = help_binding();
         let bindings = [quit, help];
@@ -120,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_combos_entry_never_matches() {
+    fn resolve_returns_none_for_empty_combos_entry() {
         let bindings = [empty_combos_binding()];
 
         let result = resolve(&KeyCombo::plain(Key::Char('q')), &bindings);
@@ -135,21 +135,21 @@ mod tests {
         };
 
         #[test]
-        fn empty_rows_returns_none() {
+        fn resolve_mode_returns_none_for_empty_rows() {
             let result = resolve_mode(&KeyCombo::plain(Key::Char('q')), &[]);
 
             assert!(result.is_none());
         }
 
         #[test]
-        fn matches_binding_in_rows() {
+        fn resolve_mode_returns_matching_binding_in_rows() {
             let result = resolve_mode(&KeyCombo::plain(Key::Esc), HELP_ROWS);
 
             assert!(matches!(result, Some(Action::CloseHelp)));
         }
 
         #[test]
-        fn no_match_returns_none() {
+        fn resolve_mode_returns_none_for_no_match() {
             let result = resolve_mode(&KeyCombo::plain(Key::F(12)), HELP_ROWS);
 
             assert!(result.is_none());
@@ -157,7 +157,7 @@ mod tests {
 
         // CONNECTION_ERROR_ROWS has multiple bindings; Esc at idx 5 resolves to CloseConnectionError
         #[test]
-        fn first_matching_binding_wins() {
+        fn resolve_mode_returns_first_matching_binding() {
             let result = resolve_mode(&KeyCombo::plain(Key::Esc), CONNECTION_ERROR_ROWS);
 
             assert!(matches!(result, Some(Action::CloseConnectionError)));
@@ -165,7 +165,7 @@ mod tests {
 
         // TYPE_FILTER row has no Enter combo — Enter resolves to ConfirmSelection at idx 0
         #[test]
-        fn unrelated_row_does_not_block_later_match() {
+        fn resolve_mode_returns_later_match_after_unrelated_row() {
             let result = resolve_mode(&KeyCombo::plain(Key::Enter), TABLE_PICKER_ROWS);
 
             assert!(matches!(result, Some(Action::ConfirmSelection)));

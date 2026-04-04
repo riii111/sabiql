@@ -1023,7 +1023,7 @@ mod tests {
         }
 
         #[test]
-        fn partial_token_is_extracted() {
+        fn partial_token_returns_extracted_token() {
             let e = engine();
             let (token, ctx) = e.analyze("SELECT * FROM us", 16);
 
@@ -1044,7 +1044,7 @@ mod tests {
         }
 
         #[test]
-        fn schema_dot_with_partial_table() {
+        fn schema_dot_with_partial_table_returns_schema_qualified_candidate() {
             let e = engine();
             let (token, ctx) = e.analyze("SELECT * FROM public.us", 23);
 
@@ -1078,7 +1078,7 @@ mod tests {
         }
 
         #[test]
-        fn case_insensitive_matching() {
+        fn case_insensitive_matching_returns_same_candidates() {
             let e = engine();
             let candidates = e.keyword_candidates("sel");
 
@@ -1091,7 +1091,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn froma_does_not_match_from() {
+        fn froma_returns_no_match_for_from() {
             let e = engine();
             let (token, ctx) = e.analyze("SELECT * FROMA", 14);
 
@@ -1103,7 +1103,7 @@ mod tests {
         }
 
         #[test]
-        fn from_with_space_matches_from() {
+        fn from_with_space_returns_match_for_from() {
             let e = engine();
             let (token, ctx) = e.analyze("SELECT * FROM ", 14);
 
@@ -1112,7 +1112,7 @@ mod tests {
         }
 
         #[test]
-        fn from_at_word_boundary_matches() {
+        fn from_at_word_boundary_returns_match_for_from() {
             let e = engine();
             let (_token, ctx) = e.analyze("SELECT * FROM u", 15);
 
@@ -1121,7 +1121,7 @@ mod tests {
         }
 
         #[test]
-        fn selecta_does_not_match_select() {
+        fn selecta_returns_no_match_for_select() {
             let e = engine();
             let (token, ctx) = e.analyze("SELECTA", 7);
 
@@ -1137,7 +1137,7 @@ mod tests {
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
-        fn schema_qualified_candidates_limited_to_max() {
+        fn schema_qualified_candidates_returns_max_results() {
             let e = engine();
 
             // Create metadata with 35 tables in the same schema (more than COMPLETION_MAX_CANDIDATES)
@@ -1162,7 +1162,7 @@ mod tests {
         }
 
         #[test]
-        fn schema_qualified_candidates_with_empty_prefix() {
+        fn empty_prefix_returns_all_schema_qualified_candidates() {
             let e = engine();
 
             let mut tables = vec![];
@@ -1190,7 +1190,7 @@ mod tests {
         use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
 
         #[test]
-        fn keyword_prefix_match_ranked_first() {
+        fn keyword_prefix_returns_keyword_rank_first() {
             let e = engine();
 
             // Search with "S" - should prioritize SELECT over SET
@@ -1207,7 +1207,7 @@ mod tests {
         }
 
         #[test]
-        fn table_name_prefix_ranked_over_qualified() {
+        fn table_name_prefix_returns_table_name_rank_first() {
             let e = engine();
 
             let mut metadata = DatabaseMetadata::new("test_db".to_string());
@@ -1225,7 +1225,7 @@ mod tests {
         }
 
         #[test]
-        fn column_prefix_match_sorted_alphabetically() {
+        fn column_prefix_returns_alphabetically_sorted_matches() {
             let e = engine();
 
             let table = Table {
@@ -1341,7 +1341,10 @@ mod tests {
         #[case("SELECT * FROM users;   ", true)] // semicolon followed by spaces
         #[case("SELECT * FROM t WHERE name = 'a;b';", true)] // real semicolon after string containing semicolon
         #[case("SELECT * FROM t WHERE name = 'a;b' ", false)] // semicolon inside string literal
-        fn suppression_by_trailing_semicolon(#[case] content: &str, #[case] expect_empty: bool) {
+        fn trailing_semicolon_returns_expected_empty_state(
+            #[case] content: &str,
+            #[case] expect_empty: bool,
+        ) {
             let e = engine();
             let cursor_pos = content.chars().count();
             let candidates = e.get_candidates(content, cursor_pos, None, None, &[]);
@@ -1354,7 +1357,7 @@ mod tests {
         #[case("SELECT 'あいう' FROM ", false)] // multibyte without semicolon
         #[case("SELECT 1; -- 日本語コメント\nSELECT ", false)] // new statement after Japanese comment
         #[case("-- 日本語コメント\nSELECT ", false)] // after Japanese comment line
-        fn multibyte_content_does_not_panic(#[case] content: &str, #[case] expect_empty: bool) {
+        fn multibyte_content_returns_no_panic(#[case] content: &str, #[case] expect_empty: bool) {
             let e = engine();
             let cursor_pos = content.chars().count();
             let candidates = e.get_candidates(content, cursor_pos, None, None, &[]);
@@ -1564,7 +1567,7 @@ mod tests {
         }
 
         #[test]
-        fn cte_candidates_ranked_higher_than_tables() {
+        fn cte_candidates_returns_ranked_higher_than_tables() {
             let e = engine();
             let sql_context = SqlContext {
                 tables: vec![],
@@ -1592,7 +1595,7 @@ mod tests {
         }
 
         #[test]
-        fn cte_prefix_filter_works() {
+        fn cte_prefix_returns_filtered_candidates() {
             let e = engine();
             let sql_context = SqlContext {
                 tables: vec![],
@@ -1709,7 +1712,7 @@ mod tests {
         }
 
         #[test]
-        fn alias_prefix_filters_columns() {
+        fn alias_prefix_returns_filtered_columns() {
             let mut e = engine();
 
             let table = Table {
@@ -1937,7 +1940,7 @@ mod tests {
         }
 
         #[test]
-        fn prefix_match_ranked_higher_than_contains() {
+        fn prefix_match_returns_ranked_higher_than_contains() {
             let e = engine();
             let table = Table {
                 schema: "public".to_string(),
@@ -2053,7 +2056,7 @@ mod tests {
         }
 
         #[test]
-        fn keyword_in_string_does_not_affect_context() {
+        fn keyword_in_string_returns_unchanged_context() {
             let e = engine();
 
             // "FROM" inside string should not trigger Table context
@@ -2066,7 +2069,7 @@ mod tests {
         }
 
         #[test]
-        fn keyword_in_comment_does_not_affect_context() {
+        fn keyword_in_comment_returns_unchanged_context() {
             let e = engine();
 
             // "FROM" inside comment should not trigger Table context
@@ -2137,7 +2140,7 @@ mod tests {
         }
 
         #[test]
-        fn cached_tables_are_excluded() {
+        fn cached_tables_returns_excluded_candidates() {
             let mut e = engine();
             let table = Table {
                 schema: "public".to_string(),
@@ -2180,7 +2183,7 @@ mod tests {
         }
 
         #[test]
-        fn cte_tables_are_excluded() {
+        fn cte_tables_returns_excluded_candidates() {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![TableSummary::new(
@@ -2201,7 +2204,7 @@ mod tests {
         }
 
         #[test]
-        fn duplicate_tables_are_deduplicated() {
+        fn duplicate_tables_returns_deduplicated_candidates() {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![TableSummary::new(
@@ -2222,7 +2225,7 @@ mod tests {
         }
 
         #[test]
-        fn max_limit_is_respected() {
+        fn max_limit_returns_limited_candidates() {
             let e = engine();
 
             // Use schema-qualified tables to avoid metadata lookup issues
@@ -2277,7 +2280,7 @@ mod tests {
         }
 
         #[test]
-        fn evict_tables_removes_specified_entries() {
+        fn evict_tables_returns_removed_entries() {
             let mut e = engine();
             e.cache_table_detail("public.users".to_string(), make_table("public", "users"));
             e.cache_table_detail("public.orders".to_string(), make_table("public", "orders"));
@@ -2291,7 +2294,7 @@ mod tests {
         }
 
         #[test]
-        fn evict_tables_ignores_missing_keys() {
+        fn evict_tables_returns_ignored_missing_keys() {
             let mut e = engine();
             e.cache_table_detail("public.users".to_string(), make_table("public", "users"));
 
@@ -2410,7 +2413,7 @@ mod tests {
         }
 
         #[test]
-        fn select_clause_with_table_detail_shows_column_candidates() {
+        fn select_clause_with_table_detail_returns_column_candidates() {
             let e = engine();
             let table = create_users_table();
 
@@ -2426,7 +2429,7 @@ mod tests {
         }
 
         #[test]
-        fn where_clause_with_table_detail_shows_column_candidates() {
+        fn where_clause_with_table_detail_returns_column_candidates() {
             let e = engine();
             let table = create_users_table();
 
@@ -2443,7 +2446,7 @@ mod tests {
         }
 
         #[test]
-        fn alias_completion_without_cache_falls_back_to_keywords() {
+        fn alias_completion_without_cache_returns_keyword_candidates() {
             let e = engine();
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -2468,7 +2471,7 @@ mod tests {
         }
 
         #[test]
-        fn from_keyword_appears_even_with_column_candidates() {
+        fn from_keyword_returns_candidates_with_column_context() {
             let e = engine();
             let table = create_users_table();
 
@@ -2487,7 +2490,7 @@ mod tests {
         }
 
         #[test]
-        fn column_context_mixes_keywords_and_columns() {
+        fn column_context_returns_mixed_keywords_and_columns() {
             let e = engine();
             let table = create_users_table();
 
@@ -2521,7 +2524,7 @@ mod tests {
         }
 
         #[test]
-        fn order_by_keywords_appear_together() {
+        fn order_by_returns_keywords_together() {
             let e = engine();
             let table = create_users_table();
 
@@ -2536,7 +2539,7 @@ mod tests {
         }
 
         #[test]
-        fn duplicate_text_is_deduplicated() {
+        fn duplicate_text_returns_deduplicated_results() {
             let e = engine();
 
             // Create a table with a column named "and" (same as keyword)
@@ -2575,7 +2578,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_prefix_shows_keywords_first() {
+        fn empty_prefix_returns_keywords_first() {
             let e = engine();
             let table = create_users_table();
 
@@ -2591,7 +2594,7 @@ mod tests {
         }
 
         #[test]
-        fn non_empty_prefix_shows_columns_first() {
+        fn non_empty_prefix_returns_columns_first() {
             let e = engine();
             let table = create_users_table();
 
@@ -2608,7 +2611,7 @@ mod tests {
         }
 
         #[test]
-        fn single_char_prefix_keeps_keywords_first() {
+        fn single_char_prefix_returns_keywords_first() {
             let e = engine();
             let table = create_users_table();
 
@@ -2622,7 +2625,7 @@ mod tests {
         }
 
         #[test]
-        fn two_char_prefix_boosts_columns() {
+        fn two_char_prefix_returns_boosted_columns() {
             let e = engine();
             let table = create_users_table();
 
@@ -2639,7 +2642,7 @@ mod tests {
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
-        fn update_target_columns_get_boost() {
+        fn update_target_columns_returns_boosted_scores() {
             let mut e = engine();
             let users = create_table("public", "users", &["id", "name", "email"]);
             let orders = create_table("public", "orders", &["id", "user_id", "total"]);
@@ -2682,7 +2685,7 @@ mod tests {
         }
 
         #[test]
-        fn select_has_no_target_boost() {
+        fn select_returns_no_target_boost() {
             let mut e = engine();
             let users = create_table("public", "users", &["id", "name"]);
 
@@ -2771,7 +2774,7 @@ mod tests {
         use crate::domain::TableSummary;
 
         #[test]
-        fn evicted_table_appears_in_missing_tables() {
+        fn evicted_table_returns_missing_tables_entry() {
             let mut e = CompletionEngine::new_with_capacity(2);
 
             // Cache 3 tables with capacity 2 - t1 will be evicted
@@ -2802,7 +2805,7 @@ mod tests {
         }
 
         #[test]
-        fn cached_table_not_in_missing_tables() {
+        fn cached_table_returns_absent_from_missing_tables() {
             let mut e = CompletionEngine::new_with_capacity(2);
 
             let t1 = create_table("public", "t1", &["id"]);
@@ -2836,7 +2839,7 @@ mod tests {
         }
 
         #[test]
-        fn clear_removes_all_cached_tables() {
+        fn clear_returns_empty_cache() {
             let mut e = CompletionEngine::new_with_capacity(3);
 
             let t1 = create_table("public", "t1", &["id"]);
@@ -2855,7 +2858,7 @@ mod tests {
         }
 
         #[test]
-        fn lru_eviction_order_is_fifo_without_access() {
+        fn lru_eviction_returns_fifo_order_without_access() {
             let mut e = CompletionEngine::new_with_capacity(2);
 
             // Insert t1, t2, t3 in order - t1 should be evicted first
@@ -2895,7 +2898,7 @@ mod tests {
         }
 
         #[test]
-        fn missing_tables_equivalence() {
+        fn missing_tables_returns_equivalent_candidates() {
             let e = engine();
             let meta = meta_with_tables(&[("public", "users", &["id", "name"])]);
             let cases = [
@@ -2916,7 +2919,7 @@ mod tests {
         }
 
         #[test]
-        fn get_candidates_equivalence() {
+        fn get_candidates_returns_equivalent_results() {
             let mut e = engine();
             e.cache_table_detail(
                 "public.users".to_string(),
@@ -2949,7 +2952,7 @@ mod tests {
         }
 
         #[test]
-        fn current_token_len_equivalence() {
+        fn current_token_len_returns_equivalent_results() {
             let e = engine();
             let cases = [
                 ("SELECT abc", 10),
@@ -2966,7 +2969,7 @@ mod tests {
         }
 
         #[test]
-        fn is_in_string_or_comment_from_tokens_edges() {
+        fn token_edges_returns_string_or_comment_context() {
             let lexer = SqlLexer::new();
 
             let cases = [
@@ -2997,7 +3000,7 @@ mod tests {
         }
 
         #[test]
-        fn target_table_priority_in_prepared() {
+        fn prepared_statement_returns_target_table_priority() {
             let mut e = engine();
             e.cache_table_detail(
                 "public.users".to_string(),

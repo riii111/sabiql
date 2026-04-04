@@ -48,7 +48,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn connection_cache_default_has_empty_fields() {
+    fn default_returns_empty_cache_fields() {
         let cache = ConnectionCache::default();
 
         assert!(cache.metadata.is_none());
@@ -68,7 +68,7 @@ mod tests {
     }
 
     #[test]
-    fn store_get_or_create_creates_default() {
+    fn get_or_create_returns_default_cache() {
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
 
@@ -77,7 +77,7 @@ mod tests {
     }
 
     #[test]
-    fn store_save_and_get_returns_saved_cache() {
+    fn save_and_get_returns_saved_cache() {
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
 
@@ -94,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn store_remove_returns_and_deletes_cache() {
+    fn remove_returns_deleted_cache() {
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
 
@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_metadata_on_save_and_get() {
+    fn save_and_get_returns_metadata() {
         use crate::domain::{DatabaseMetadata, TableSummary};
         use std::time::Instant;
 
@@ -144,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_query_result_on_save_and_get() {
+    fn save_and_get_returns_query_result() {
         use crate::domain::{QueryResult, QuerySource};
         use std::time::Instant;
 

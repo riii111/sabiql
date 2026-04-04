@@ -207,7 +207,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn insert_at_empty() {
+        fn insert_at_empty_returns_appended_content_and_cursor() {
             let mut s = TextInputState::default();
 
             s.insert_char('a');
@@ -217,7 +217,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_at_end() {
+        fn insert_at_end_returns_appended_content_and_cursor() {
             let mut s = state_with("ab", 2);
 
             s.insert_char('c');
@@ -227,7 +227,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_at_beginning() {
+        fn insert_at_beginning_returns_prepended_content_and_cursor() {
             let mut s = state_with("bc", 0);
 
             s.insert_char('a');
@@ -237,7 +237,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_at_middle() {
+        fn insert_at_middle_returns_inserted_content_and_cursor() {
             let mut s = state_with("ac", 1);
 
             s.insert_char('b');
@@ -247,7 +247,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_multibyte() {
+        fn insert_multibyte_returns_multibyte_content_and_cursor() {
             let mut s = state_with("あう", 1);
 
             s.insert_char('い');
@@ -261,7 +261,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn insert_str_at_beginning() {
+        fn insert_str_at_beginning_returns_prepended_content_and_cursor() {
             let mut s = state_with("cd", 0);
 
             s.insert_str("ab");
@@ -271,7 +271,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_str_at_middle() {
+        fn insert_str_at_middle_returns_inserted_content_and_cursor() {
             let mut s = state_with("ad", 1);
 
             s.insert_str("bc");
@@ -281,7 +281,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_str_multibyte() {
+        fn insert_str_multibyte_returns_multibyte_content_and_cursor() {
             let mut s = state_with("あえ", 1);
 
             s.insert_str("いう");
@@ -295,7 +295,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn backspace_at_start_is_noop() {
+        fn backspace_at_start_returns_unchanged_state() {
             let mut s = state_with("abc", 0);
 
             s.backspace();
@@ -305,7 +305,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_at_end() {
+        fn backspace_at_end_returns_trimmed_content_and_cursor() {
             let mut s = state_with("abc", 3);
 
             s.backspace();
@@ -315,7 +315,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_at_middle() {
+        fn backspace_at_middle_returns_trimmed_content_and_cursor() {
             let mut s = state_with("abc", 2);
 
             s.backspace();
@@ -325,7 +325,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_empty_string() {
+        fn backspace_empty_string_returns_unchanged_state() {
             let mut s = TextInputState::default();
 
             s.backspace();
@@ -335,7 +335,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_multibyte() {
+        fn backspace_multibyte_returns_trimmed_multibyte_content() {
             let mut s = state_with("あいう", 2);
 
             s.backspace();
@@ -349,7 +349,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn delete_at_end_is_noop() {
+        fn delete_at_end_returns_unchanged_state() {
             let mut s = state_with("abc", 3);
 
             s.delete();
@@ -359,7 +359,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_at_beginning() {
+        fn delete_at_beginning_returns_removed_first_char() {
             let mut s = state_with("abc", 0);
 
             s.delete();
@@ -369,7 +369,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_at_middle() {
+        fn delete_at_middle_returns_removed_next_char() {
             let mut s = state_with("abc", 1);
 
             s.delete();
@@ -379,7 +379,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_empty_string() {
+        fn delete_empty_string_returns_unchanged_state() {
             let mut s = TextInputState::default();
 
             s.delete();
@@ -389,7 +389,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_multibyte() {
+        fn delete_multibyte_returns_removed_next_multibyte_char() {
             let mut s = state_with("あいう", 1);
 
             s.delete();
@@ -403,7 +403,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn move_left() {
+        fn move_left_returns_decremented_cursor() {
             let mut s = state_with("abc", 2);
 
             s.move_cursor(CursorMove::Left);
@@ -412,7 +412,7 @@ mod tests {
         }
 
         #[test]
-        fn move_left_at_start_stays() {
+        fn move_left_at_start_returns_unchanged_cursor() {
             let mut s = state_with("abc", 0);
 
             s.move_cursor(CursorMove::Left);
@@ -421,7 +421,7 @@ mod tests {
         }
 
         #[test]
-        fn move_right() {
+        fn move_right_returns_incremented_cursor() {
             let mut s = state_with("abc", 1);
 
             s.move_cursor(CursorMove::Right);
@@ -430,7 +430,7 @@ mod tests {
         }
 
         #[test]
-        fn move_right_at_end_stays() {
+        fn move_right_at_end_returns_unchanged_cursor() {
             let mut s = state_with("abc", 3);
 
             s.move_cursor(CursorMove::Right);
@@ -439,7 +439,7 @@ mod tests {
         }
 
         #[test]
-        fn move_home() {
+        fn move_home_returns_cursor_at_start() {
             let mut s = state_with("abc", 2);
 
             s.move_cursor(CursorMove::Home);
@@ -448,7 +448,7 @@ mod tests {
         }
 
         #[test]
-        fn move_end() {
+        fn move_end_returns_cursor_at_end() {
             let mut s = state_with("abc", 0);
 
             s.move_cursor(CursorMove::End);
@@ -457,7 +457,7 @@ mod tests {
         }
 
         #[test]
-        fn move_up_is_noop() {
+        fn move_up_returns_unchanged_cursor() {
             let mut s = state_with("abc", 1);
 
             s.move_cursor(CursorMove::Up);
@@ -466,7 +466,7 @@ mod tests {
         }
 
         #[test]
-        fn move_down_is_noop() {
+        fn move_down_returns_unchanged_cursor() {
             let mut s = state_with("abc", 1);
 
             s.move_cursor(CursorMove::Down);
@@ -479,7 +479,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn cursor_within_viewport_no_change() {
+        fn cursor_within_viewport_returns_unchanged_offset() {
             let mut s = TextInputState::with_viewport("abcdef", 2, 0);
 
             s.update_viewport(5);
@@ -488,7 +488,7 @@ mod tests {
         }
 
         #[test]
-        fn cursor_past_right_edge_scrolls() {
+        fn cursor_past_right_edge_returns_scrolled_offset() {
             let mut s = TextInputState::with_viewport("abcdefgh", 7, 0);
 
             s.update_viewport(5);
@@ -497,7 +497,7 @@ mod tests {
         }
 
         #[test]
-        fn cursor_before_viewport_scrolls_left() {
+        fn cursor_before_viewport_returns_scrolled_left() {
             let mut s = TextInputState::with_viewport("abcdefgh", 1, 4);
 
             s.update_viewport(5);
@@ -506,7 +506,7 @@ mod tests {
         }
 
         #[test]
-        fn cursor_at_end_reserves_space_for_block_cursor() {
+        fn cursor_at_end_returns_reserved_block_cursor_space() {
             let mut s = TextInputState::with_viewport("abcde", 5, 0);
 
             s.update_viewport(5);
@@ -517,7 +517,7 @@ mod tests {
         }
 
         #[test]
-        fn zero_visible_width() {
+        fn zero_visible_width_returns_zero_offset() {
             let mut s = TextInputState::with_viewport("abc", 1, 2);
 
             s.update_viewport(0);
@@ -526,7 +526,7 @@ mod tests {
         }
 
         #[test]
-        fn cursor_on_last_char_no_extra_reserve() {
+        fn cursor_on_last_char_returns_unscrolled_offset() {
             let mut s = TextInputState::with_viewport("abcde", 4, 0);
 
             s.update_viewport(5);
@@ -541,7 +541,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn set_content_sets_cursor_to_end() {
+        fn set_content_returns_cursor_at_end() {
             let mut s = TextInputState::default();
 
             s.set_content("hello".to_string());
@@ -552,7 +552,7 @@ mod tests {
         }
 
         #[test]
-        fn set_content_resets_viewport() {
+        fn set_content_returns_reset_viewport() {
             let mut s = TextInputState::with_viewport("old", 2, 5);
 
             s.set_content("new value".to_string());
@@ -561,7 +561,7 @@ mod tests {
         }
 
         #[test]
-        fn set_content_multibyte() {
+        fn set_content_multibyte_returns_cursor_count() {
             let mut s = TextInputState::default();
 
             s.set_content("日本語".to_string());
@@ -570,7 +570,7 @@ mod tests {
         }
 
         #[test]
-        fn clear_resets_all() {
+        fn clear_returns_empty_state() {
             let mut s = TextInputState::with_viewport("hello", 3, 2);
 
             s.clear();
@@ -585,28 +585,28 @@ mod tests {
         use super::*;
 
         #[test]
-        fn ascii_string() {
+        fn ascii_string_returns_ascii_char_count() {
             let s = state_with("hello", 0);
 
             assert_eq!(s.char_count(), 5);
         }
 
         #[test]
-        fn multibyte_string() {
+        fn multibyte_string_returns_multibyte_char_count() {
             let s = state_with("日本語", 0);
 
             assert_eq!(s.char_count(), 3);
         }
 
         #[test]
-        fn empty_string() {
+        fn empty_string_returns_zero_char_count() {
             let s = TextInputState::default();
 
             assert_eq!(s.char_count(), 0);
         }
 
         #[test]
-        fn mixed_ascii_and_multibyte() {
+        fn mixed_ascii_and_multibyte_returns_total_char_count() {
             let s = state_with("a日b本c", 0);
 
             assert_eq!(s.char_count(), 5);
@@ -617,7 +617,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn new_clamps_cursor_to_char_count() {
+        fn new_returns_clamped_cursor() {
             let s = TextInputState::new("abc", 100);
 
             assert_eq!(s.cursor(), 3);
@@ -625,7 +625,7 @@ mod tests {
         }
 
         #[test]
-        fn new_accepts_valid_cursor() {
+        fn new_returns_valid_cursor() {
             let s = TextInputState::new("abc", 1);
 
             assert_eq!(s.content(), "abc");
@@ -633,7 +633,7 @@ mod tests {
         }
 
         #[test]
-        fn with_viewport_clamps_cursor() {
+        fn with_viewport_returns_clamped_cursor() {
             let s = TextInputState::with_viewport("ab", 10, 5);
 
             assert_eq!(s.cursor(), 2);
@@ -641,7 +641,7 @@ mod tests {
         }
 
         #[test]
-        fn set_cursor_clamps_and_resets_viewport() {
+        fn set_cursor_returns_clamped_cursor_and_reset_viewport() {
             let mut s = TextInputState::with_viewport("abcde", 3, 2);
 
             s.set_cursor(100);
@@ -651,7 +651,7 @@ mod tests {
         }
 
         #[test]
-        fn set_cursor_valid_position() {
+        fn set_cursor_returns_valid_position() {
             let mut s = TextInputState::with_viewport("abcde", 4, 2);
 
             s.set_cursor(1);

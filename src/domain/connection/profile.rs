@@ -86,7 +86,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn generates_unique_id() {
+        fn new_returns_unique_id() {
             let p1 = make_test_profile();
             let p2 = make_test_profile();
             assert_ne!(p1.id, p2.id);
@@ -111,7 +111,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_connection_name() {
+        fn display_name_returns_connection_name() {
             let profile = make_test_profile();
             assert_eq!(profile.display_name(), "Test Connection");
         }

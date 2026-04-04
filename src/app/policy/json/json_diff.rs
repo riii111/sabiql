@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_change_collapses_unchanged() {
+    fn compute_json_diff_returns_collapsed_unchanged_context() {
         let before = r#"{
             "a": 1, "b": 2, "c": 3, "d": 4,
             "nested": {"x": 10, "y": 20, "z": 30}
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_hunks_merge_when_close() {
+    fn compute_json_diff_returns_merged_hunks_when_close() {
         // "a" and "c" change, with only "b" between them.
         // With context=1, the gap (1 line) <= 2*context(2), so no Ellipsis between them.
         let before = r#"{"a": 1, "b": 2, "c": 3}"#;

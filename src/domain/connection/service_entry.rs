@@ -40,12 +40,12 @@ mod tests {
     }
 
     #[test]
-    fn to_dsn_formats_correctly() {
+    fn to_dsn_returns_service_dsn() {
         assert_eq!(sample().to_dsn(), "service=mydb");
     }
 
     #[test]
-    fn connection_id_uses_prefix() {
+    fn connection_id_returns_prefixed_id() {
         let id = sample().connection_id();
         assert_eq!(id, ConnectionId::from_string("service:mydb".to_string()));
     }

@@ -161,7 +161,7 @@ mod tests {
     use crate::app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
     #[test]
-    fn default_creates_empty_context() {
+    fn default_returns_empty_context() {
         let ctx = SqlModalContext::default();
 
         assert!(ctx.editor.content().is_empty());
@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_prefetch_clears_all_prefetch_state() {
+    fn reset_prefetch_returns_cleared_prefetch_state() {
         let mut ctx = SqlModalContext::default();
         ctx.begin_prefetch();
         ctx.prefetch_queue.push_back("public.users".to_string());
@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_content_resets_editor_state() {
+    fn clear_content_returns_reset_editor_state() {
         let mut ctx = SqlModalContext::default();
         ctx.editor.set_content("SELECT * FROM users".to_string());
         ctx.completion.visible = true;
@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    fn confirming_high_with_target_name() {
+    fn confirming_high_returns_target_name() {
         use crate::app::policy::write::write_guardrails::RiskLevel;
 
         let status = SqlModalStatus::ConfirmingHigh {
@@ -236,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn confirming_high_without_target_name() {
+    fn confirming_high_returns_no_target_name() {
         use crate::app::policy::write::write_guardrails::RiskLevel;
 
         let status = SqlModalStatus::ConfirmingHigh {

@@ -399,12 +399,12 @@ mod tests {
         }
 
         #[test]
-        fn single_column_no_separator() {
+        fn single_column_no_separator_returns_expected() {
             assert_eq!(total_width_with_separators(&[10]), 10);
         }
 
         #[test]
-        fn multiple_columns_includes_separators() {
+        fn multiple_columns_includes_separators_returns_expected() {
             // 10 + 20 + 30 + 2 separators = 62
             assert_eq!(total_width_with_separators(&[10, 20, 30]), 62);
         }
@@ -414,7 +414,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn uses_ideal_widths_primarily() {
+        fn uses_ideal_widths_primarily_returns_expected() {
             let ideal = vec![15, 15, 15, 15];
             let min = vec![10, 10, 10, 10];
             // 3 ideal cols + 2 sep = 47 <= 50
@@ -423,7 +423,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_enabled_when_ideal_exceeds_available() {
+        fn scroll_enabled_when_ideal_exceeds_available_returns_expected() {
             let ideal = vec![30, 30, 30, 30, 30];
             let min = vec![10, 10, 10, 10, 10];
             let available = 80;
@@ -437,7 +437,7 @@ mod tests {
         }
 
         #[test]
-        fn falls_back_to_min_when_ideal_too_wide() {
+        fn falls_back_to_min_when_ideal_too_wide_returns_expected() {
             let ideal = vec![100, 100, 100];
             let min = vec![10, 10, 10];
             let available = 50;
@@ -448,7 +448,7 @@ mod tests {
         }
 
         #[test]
-        fn handles_varying_widths() {
+        fn handles_varying_widths_returns_expected() {
             let ideal = vec![6, 6, 25, 6, 6];
             let min = vec![6, 6, 25, 6, 6];
             let available = 40;
@@ -460,7 +460,7 @@ mod tests {
         }
 
         #[test]
-        fn reduces_count_when_long_column_in_middle() {
+        fn reduces_count_when_long_column_in_middle_returns_expected() {
             let ideal = vec![10, 10, 50, 10, 10];
             let min = vec![10, 10, 50, 10, 10];
             let available = 60;
@@ -472,7 +472,7 @@ mod tests {
         }
 
         #[test]
-        fn at_least_one_column() {
+        fn at_least_one_column_returns_expected() {
             let ideal = vec![100, 100];
             let min = vec![100, 100];
             let count = calculate_viewport_column_count(&ideal, &min, 50);
@@ -540,7 +540,7 @@ mod tests {
         }
 
         #[test]
-        fn default_plan_needs_recalculation() {
+        fn default_plan_needs_recalculation_returns_expected() {
             let plan = ViewportPlan::default();
 
             let result = plan.needs_recalculation(5, 80, 50, 150, 30);
@@ -549,7 +549,7 @@ mod tests {
         }
 
         #[test]
-        fn different_max_triggers_recalculation() {
+        fn different_max_triggers_recalculation_returns_expected() {
             // Scenario: Data in a column changed width
             // Original: [10, 20, 30, 40, 50] sum=150, max=50
             // Changed:  [10, 20, 30, 40, 60] sum=160, max=60
@@ -567,7 +567,7 @@ mod tests {
         }
 
         #[test]
-        fn same_sum_and_max_skips_recalculation() {
+        fn same_sum_and_max_skips_recalculation_returns_expected() {
             // Edge case: reordering doesn't change sum or max
             // Original: [10, 20, 30, 40, 50] sum=150, max=50
             // Changed:  [50, 40, 30, 20, 10] sum=150, max=50
@@ -590,7 +590,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn basic_fit() {
+        fn basic_fit_returns_expected() {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -600,7 +600,7 @@ mod tests {
         }
 
         #[test]
-        fn with_offset() {
+        fn with_offset_returns_expected() {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -609,7 +609,7 @@ mod tests {
         }
 
         #[test]
-        fn shrinks_rightmost() {
+        fn shrinks_rightmost_returns_expected() {
             let ideal = vec![10, 10, 50];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -619,7 +619,7 @@ mod tests {
         }
 
         #[test]
-        fn at_least_one() {
+        fn at_least_one_returns_expected() {
             let ideal = vec![100];
             let min = vec![4];
             let cfg = config(&ideal, &min);
@@ -633,7 +633,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn exact_count() {
+        fn exact_count_returns_expected() {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -645,7 +645,7 @@ mod tests {
         }
 
         #[test]
-        fn with_offset() {
+        fn with_offset_returns_expected() {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -657,7 +657,7 @@ mod tests {
         }
 
         #[test]
-        fn shrinks_to_fit_from_right() {
+        fn shrinks_to_fit_from_right_returns_expected() {
             let ideal = vec![20, 20, 20];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -667,7 +667,7 @@ mod tests {
         }
 
         #[test]
-        fn shrinks_from_left_at_right_edge() {
+        fn shrinks_from_left_at_right_edge_returns_expected() {
             let ideal = vec![20, 20, 20];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -678,7 +678,7 @@ mod tests {
         }
 
         #[test]
-        fn shrinks_multiple_columns() {
+        fn shrinks_multiple_columns_returns_expected() {
             let ideal = vec![20, 20, 20];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -688,7 +688,7 @@ mod tests {
         }
 
         #[test]
-        fn respects_boundary() {
+        fn respects_boundary_returns_expected() {
             let ideal = vec![10, 10];
             let min = vec![4, 4];
             let cfg = config(&ideal, &min);
@@ -697,7 +697,7 @@ mod tests {
         }
 
         #[test]
-        fn one_column_scroll_changes_one_column() {
+        fn one_column_scroll_changes_one_column_returns_expected() {
             let ideal = vec![10, 10, 50, 10, 10];
             let min = vec![4, 4, 4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -718,17 +718,17 @@ mod tests {
         use super::*;
 
         #[test]
-        fn basic() {
+        fn basic_returns_expected() {
             assert_eq!(calculate_max_offset(5, 3), 2);
         }
 
         #[test]
-        fn all_fit() {
+        fn all_fit_returns_expected() {
             assert_eq!(calculate_max_offset(3, 3), 0);
         }
 
         #[test]
-        fn more_viewport_than_columns() {
+        fn more_viewport_than_columns_returns_expected() {
             assert_eq!(calculate_max_offset(2, 5), 0);
         }
     }
@@ -737,22 +737,22 @@ mod tests {
         use super::*;
 
         #[test]
-        fn next_increments() {
+        fn next_increments_returns_expected() {
             assert_eq!(calculate_next_column_offset(5, 1, 3), 2);
         }
 
         #[test]
-        fn next_clamps_to_max() {
+        fn next_clamps_to_max_returns_expected() {
             assert_eq!(calculate_next_column_offset(5, 2, 3), 2);
         }
 
         #[test]
-        fn prev_decrements() {
+        fn prev_decrements_returns_expected() {
             assert_eq!(calculate_prev_column_offset(2), 1);
         }
 
         #[test]
-        fn prev_clamps_to_zero() {
+        fn prev_clamps_to_zero_returns_expected() {
             assert_eq!(calculate_prev_column_offset(0), 0);
         }
     }
@@ -761,7 +761,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn one_scroll_changes_first_column_by_one() {
+        fn one_scroll_changes_first_column_by_one_returns_expected() {
             // With bonus columns, the total column count may vary,
             // but the FIRST column should always shift by 1 per scroll
             let ideal = vec![15, 20, 30, 10, 25];
@@ -785,7 +785,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_preserves_minimum_column_count() {
+        fn scroll_preserves_minimum_column_count_returns_expected() {
             // With bonus columns, count may increase but never decrease below fixed
             let ideal = vec![10, 15, 20, 12, 18];
             let min = vec![6, 6, 6, 6, 6];
@@ -811,7 +811,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn columns_never_shrink_below_header_min_width() {
+        fn columns_never_shrink_below_header_min_width_returns_expected() {
             let ideal = vec![20, 20, 20];
             let min = vec![10, 10, 10];
             let cfg = config(&ideal, &min);
@@ -824,7 +824,7 @@ mod tests {
         }
 
         #[test]
-        fn large_min_widths_respected_under_pressure() {
+        fn large_min_widths_respected_under_pressure_returns_expected() {
             let ideal = vec![30, 30, 30];
             let min = vec![15, 15, 15];
             let cfg = config(&ideal, &min);
@@ -837,7 +837,7 @@ mod tests {
         }
 
         #[test]
-        fn headers_never_truncated_at_any_offset() {
+        fn headers_never_truncated_at_any_offset_returns_expected() {
             let ideal = vec![20, 20, 40, 20, 20];
             let min = vec![8, 8, 20, 8, 8];
             let available = 50;
@@ -862,7 +862,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn rightmost_column_not_truncated_at_right_edge() {
+        fn rightmost_column_not_truncated_at_right_edge_returns_expected() {
             let ideal = vec![20, 20, 20];
             let min = vec![10, 10, 10];
             let cfg = config(&ideal, &min);
@@ -879,7 +879,7 @@ mod tests {
         }
 
         #[test]
-        fn left_columns_shrink_first_at_right_edge() {
+        fn left_columns_shrink_first_at_right_edge_returns_expected() {
             let ideal = vec![20, 20, 20];
             let min = vec![10, 10, 10];
             let cfg = config(&ideal, &min);
@@ -897,7 +897,7 @@ mod tests {
         }
 
         #[test]
-        fn drops_leftmost_when_shrinking_not_enough() {
+        fn drops_leftmost_when_shrinking_not_enough_returns_expected() {
             let ideal = vec![30, 30, 30];
             let min = vec![20, 20, 20];
             let cfg = config(&ideal, &min);
@@ -935,7 +935,7 @@ mod tests {
         }
 
         #[test]
-        fn absorbs_slack_when_max_offset_zero() {
+        fn absorbs_slack_when_max_offset_zero_returns_expected() {
             let ideal = vec![10, 10, 10];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -953,7 +953,7 @@ mod tests {
         }
 
         #[test]
-        fn no_absorption_when_policy_none() {
+        fn no_absorption_when_policy_none_returns_expected() {
             let ideal = vec![10, 10, 10];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -967,7 +967,7 @@ mod tests {
         }
 
         #[test]
-        fn absorbs_all_slack_without_limit() {
+        fn absorbs_all_slack_without_limit_returns_expected() {
             let ideal = vec![40, 40];
             let min = vec![10, 10];
             let cfg = config(&ideal, &min);
@@ -983,7 +983,7 @@ mod tests {
         }
 
         #[test]
-        fn viewport_plan_sets_policy_based_on_max_offset() {
+        fn viewport_plan_sets_policy_based_on_max_offset_returns_expected() {
             let ideal = vec![10, 10, 10];
             let min = vec![4, 4, 4];
 
@@ -999,7 +999,7 @@ mod tests {
         }
 
         #[test]
-        fn one_scroll_still_changes_one_column_with_slack_none() {
+        fn one_scroll_still_changes_one_column_with_slack_none_returns_expected() {
             let ideal = vec![15, 15, 15, 15, 15];
             let min = vec![8, 8, 8, 8, 8];
             let cfg = config(&ideal, &min);
@@ -1052,7 +1052,7 @@ mod tests {
         }
 
         #[test]
-        fn right_edge_preserves_rightmost_column_width() {
+        fn right_edge_preserves_rightmost_column_width_returns_expected() {
             let ideal = vec![20, 25, 30, 15, 40];
             let min = vec![10, 10, 10, 10, 10];
             let available = 70;
@@ -1077,7 +1077,7 @@ mod tests {
         }
 
         #[test]
-        fn headers_never_truncated_throughout_scroll() {
+        fn headers_never_truncated_throughout_scroll_returns_expected() {
             let ideal = vec![15, 20, 35, 18, 22];
             let min = vec![8, 10, 15, 8, 10];
             let available = 60;
@@ -1102,7 +1102,7 @@ mod tests {
         }
 
         #[test]
-        fn column_count_at_least_fixed_during_scroll() {
+        fn column_count_at_least_fixed_during_scroll_returns_expected() {
             // With bonus columns, count may vary but never below fixed
             let ideal = vec![25, 30, 20, 35, 25];
             let min = vec![10, 10, 10, 10, 10];
@@ -1124,7 +1124,7 @@ mod tests {
         }
 
         #[test]
-        fn slack_absorbed_when_no_scroll_needed() {
+        fn slack_absorbed_when_no_scroll_needed_returns_expected() {
             let ideal = vec![15, 15, 15];
             let min = vec![8, 8, 8];
             let available = 80;
@@ -1142,7 +1142,7 @@ mod tests {
         }
 
         #[test]
-        fn realistic_result_pane_scenario() {
+        fn realistic_result_pane_scenario_returns_expected() {
             // Simulate a table with columns: id, name, email, created_at, status
             let ideal = vec![6, 20, 35, 22, 10]; // Realistic column widths
             let min = vec![4, 6, 8, 12, 8]; // Header widths
@@ -1198,7 +1198,7 @@ mod tests {
         }
 
         #[test]
-        fn adds_bonus_when_slack_sufficient() {
+        fn adds_bonus_when_slack_sufficient_returns_expected() {
             // 3 fixed columns + bonus potential
             let ideal = vec![10, 10, 10, 10, 10];
             let min = vec![4, 4, 4, 4, 4];
@@ -1219,7 +1219,7 @@ mod tests {
         }
 
         #[test]
-        fn no_bonus_when_slack_insufficient() {
+        fn no_bonus_when_slack_insufficient_returns_expected() {
             let ideal = vec![10, 10, 10, 20, 10];
             let min = vec![4, 4, 4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -1237,7 +1237,7 @@ mod tests {
         }
 
         #[test]
-        fn no_bonus_at_last_column() {
+        fn no_bonus_at_last_column_returns_expected() {
             let ideal = vec![10, 10, 10];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -1252,7 +1252,7 @@ mod tests {
         }
 
         #[test]
-        fn no_bonus_when_max_offset_zero() {
+        fn no_bonus_when_max_offset_zero_returns_expected() {
             // When all columns fit (max_offset = 0), bonus logic is skipped
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
@@ -1269,7 +1269,7 @@ mod tests {
         }
 
         #[test]
-        fn one_scroll_still_changes_one_column_with_bonus() {
+        fn one_scroll_still_changes_one_column_with_bonus_returns_expected() {
             let ideal = vec![15, 15, 15, 15, 15, 15];
             let min = vec![8, 8, 8, 8, 8, 8];
             let cfg = config(&ideal, &min);
@@ -1292,7 +1292,7 @@ mod tests {
         }
 
         #[test]
-        fn bonus_column_total_width_within_available() {
+        fn bonus_column_total_width_within_available_returns_expected() {
             let ideal = vec![20, 20, 20, 15];
             let min = vec![10, 10, 10, 10];
             let cfg = config(&ideal, &min);

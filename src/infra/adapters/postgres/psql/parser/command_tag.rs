@@ -324,7 +324,7 @@ mod tests {
         #[case("BEGIN", CommandTag::Begin)]
         #[case("COMMIT", CommandTag::Commit)]
         #[case("ROLLBACK", CommandTag::Rollback)]
-        fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
+        fn parse_command_tag_returns_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
             assert_eq!(PostgresAdapter::parse_command_tag(input), Some(expected));
         }
 
@@ -346,7 +346,7 @@ mod tests {
         }
 
         #[test]
-        fn unknown_command_returns_other() {
+        fn parse_command_tag_returns_other_for_unknown_command() {
             assert_eq!(
                 PostgresAdapter::parse_command_tag("VACUUM"),
                 Some(CommandTag::Other("VACUUM".to_string()))
@@ -354,7 +354,7 @@ mod tests {
         }
 
         #[test]
-        fn extract_from_multiline_with_notice() {
+        fn extract_command_tag_returns_last_non_empty_line_with_notice() {
             let stdout = "NOTICE:  table \"foo\" does not exist, skipping\nDROP TABLE\n";
             assert_eq!(
                 PostgresAdapter::extract_command_tag(stdout),
@@ -363,7 +363,7 @@ mod tests {
         }
 
         #[test]
-        fn extract_skips_trailing_empty_lines() {
+        fn extract_command_tag_returns_last_non_empty_line_after_trailing_blanks() {
             let stdout = "INSERT 0 7\n\n  \n";
             assert_eq!(
                 PostgresAdapter::extract_command_tag(stdout),
@@ -378,7 +378,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_affected_rows_regression() {
+        fn parse_affected_rows_returns_expected_values() {
             assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE 3\n"), Some(3));
             assert_eq!(PostgresAdapter::parse_affected_rows("DELETE 5\n"), Some(5));
             assert_eq!(
@@ -393,25 +393,25 @@ mod tests {
         use super::*;
 
         #[test]
-        fn recognizes_begin_commit_rollback() {
+        fn is_known_tcl_tag_returns_true_for_begin_commit_rollback() {
             assert!(PostgresAdapter::is_known_tcl_tag("BEGIN"));
             assert!(PostgresAdapter::is_known_tcl_tag("COMMIT"));
             assert!(PostgresAdapter::is_known_tcl_tag("ROLLBACK"));
         }
 
         #[test]
-        fn recognizes_savepoint_and_release() {
+        fn is_known_tcl_tag_returns_true_for_savepoint_and_release() {
             assert!(PostgresAdapter::is_known_tcl_tag("SAVEPOINT"));
             assert!(PostgresAdapter::is_known_tcl_tag("RELEASE"));
         }
 
         #[test]
-        fn recognizes_start_transaction() {
+        fn is_known_tcl_tag_returns_true_for_start_transaction() {
             assert!(PostgresAdapter::is_known_tcl_tag("START TRANSACTION"));
         }
 
         #[test]
-        fn rejects_non_tcl() {
+        fn is_known_tcl_tag_returns_false_for_non_tcl() {
             assert!(!PostgresAdapter::is_known_tcl_tag("UPDATE 1"));
             assert!(!PostgresAdapter::is_known_tcl_tag("id,name"));
             assert!(!PostgresAdapter::is_known_tcl_tag("VACUUM"));
@@ -422,7 +422,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn single_dml() {
+        fn parse_all_tags_returns_single_dml() {
             assert_eq!(
                 PostgresAdapter::parse_all_tags("DELETE 3"),
                 Some(vec![CommandTag::Delete(3)])
@@ -430,7 +430,7 @@ mod tests {
         }
 
         #[test]
-        fn single_ddl() {
+        fn parse_all_tags_returns_single_ddl() {
             assert_eq!(
                 PostgresAdapter::parse_all_tags("CREATE TABLE"),
                 Some(vec![CommandTag::Create("TABLE".to_string())])
@@ -438,7 +438,7 @@ mod tests {
         }
 
         #[test]
-        fn multi_line_tags() {
+        fn parse_all_tags_returns_multiple_lines() {
             assert_eq!(
                 PostgresAdapter::parse_all_tags("BEGIN\nUPDATE 1\nCOMMIT"),
                 Some(vec![
@@ -460,7 +460,7 @@ mod tests {
         }
 
         #[test]
-        fn skips_empty_lines() {
+        fn parse_all_tags_returns_without_empty_lines() {
             assert_eq!(
                 PostgresAdapter::parse_all_tags("BEGIN\n\nUPDATE 1\n"),
                 Some(vec![CommandTag::Begin, CommandTag::Update(1)])
@@ -468,7 +468,7 @@ mod tests {
         }
 
         #[test]
-        fn savepoint_line_is_accepted() {
+        fn parse_all_tags_returns_savepoint_line() {
             let result = PostgresAdapter::parse_all_tags("SAVEPOINT");
             assert!(result.is_some());
             assert_eq!(
@@ -489,7 +489,7 @@ mod tests {
         }
 
         #[test]
-        fn committed_txn() {
+        fn discard_rolled_back_returns_committed_txn() {
             let tags = vec![CommandTag::Begin, CommandTag::Update(1), CommandTag::Commit];
             assert_eq!(
                 PostgresAdapter::discard_rolled_back(&tags),
@@ -498,7 +498,7 @@ mod tests {
         }
 
         #[test]
-        fn full_rollback() {
+        fn discard_rolled_back_returns_empty_for_full_rollback() {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
@@ -509,7 +509,7 @@ mod tests {
         }
 
         #[test]
-        fn no_txn() {
+        fn discard_rolled_back_returns_no_txn_unchanged() {
             let tags = vec![CommandTag::Update(1)];
             assert_eq!(
                 PostgresAdapter::discard_rolled_back(&tags),
@@ -518,7 +518,7 @@ mod tests {
         }
 
         #[test]
-        fn savepoint_release() {
+        fn discard_rolled_back_returns_savepoint_release() {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
@@ -534,7 +534,7 @@ mod tests {
         }
 
         #[test]
-        fn partial_rollback() {
+        fn discard_rolled_back_returns_partial_rollback() {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
@@ -550,7 +550,7 @@ mod tests {
         }
 
         #[test]
-        fn full_rollback_with_savepoint() {
+        fn discard_rolled_back_returns_empty_for_full_rollback_with_savepoint() {
             let tags = vec![
                 CommandTag::Begin,
                 sp(),
@@ -563,7 +563,7 @@ mod tests {
         }
 
         #[test]
-        fn unclosed_txn() {
+        fn discard_rolled_back_returns_unclosed_txn() {
             let tags = vec![CommandTag::Begin, CommandTag::Update(1)];
             assert_eq!(
                 PostgresAdapter::discard_rolled_back(&tags),
@@ -572,14 +572,14 @@ mod tests {
         }
 
         #[test]
-        fn tcl_only() {
+        fn discard_rolled_back_returns_empty_for_tcl_only() {
             let tags = vec![CommandTag::Begin, CommandTag::Commit];
             let effective = PostgresAdapter::discard_rolled_back(&tags);
             assert!(effective.is_empty());
         }
 
         #[test]
-        fn rollback_then_dml() {
+        fn discard_rolled_back_returns_outer_dml_after_rollback() {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
@@ -596,7 +596,7 @@ mod tests {
         }
 
         #[test]
-        fn rollback_then_release_same_sp() {
+        fn discard_rolled_back_returns_empty_after_release_following_rollback() {
             let tags = vec![
                 CommandTag::Begin,
                 sp(),
@@ -610,7 +610,7 @@ mod tests {
         }
 
         #[test]
-        fn release_after_rollback_does_not_leak_outer_frame() {
+        fn discard_rolled_back_returns_empty_when_release_follows_rollback() {
             // C2 regression: RELEASE after ROLLBACK must not pop the
             // transaction frame and leak its contents into effective.
             let tags = vec![
@@ -627,7 +627,7 @@ mod tests {
         }
 
         #[test]
-        fn multiple_txns() {
+        fn discard_rolled_back_returns_multiple_txns() {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
@@ -643,7 +643,7 @@ mod tests {
         }
 
         #[test]
-        fn full_rollback_then_bare_dml() {
+        fn discard_rolled_back_returns_bare_dml_after_rollback() {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
@@ -666,7 +666,7 @@ mod tests {
         }
 
         #[test]
-        fn schema_modifying_takes_priority() {
+        fn aggregate_returns_schema_modifying_priority() {
             let tags = vec![CommandTag::Drop("TABLE".to_string()), CommandTag::Delete(1)];
             assert_eq!(
                 resolved(tags.clone(), tags).aggregate(),
@@ -675,7 +675,7 @@ mod tests {
         }
 
         #[test]
-        fn last_needs_refresh() {
+        fn aggregate_returns_last_refresh_tag() {
             let tags = vec![CommandTag::Insert(1), CommandTag::Update(2)];
             assert_eq!(
                 resolved(tags.clone(), tags).aggregate(),
@@ -703,7 +703,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_and_dml_mixed_schema_wins() {
+        fn aggregate_returns_schema_modifying_tag_over_dml() {
             let tags = vec![
                 CommandTag::Create("TABLE".to_string()),
                 CommandTag::Insert(1),
@@ -719,7 +719,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn committed_txn_with_update() {
+        fn parse_aggregate_command_tag_returns_update_after_commit() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nUPDATE 1\nCOMMIT",
@@ -730,7 +730,7 @@ mod tests {
         }
 
         #[test]
-        fn rolled_back_txn() {
+        fn parse_aggregate_command_tag_returns_rollback_after_rollback() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nUPDATE 1\nROLLBACK",
@@ -741,7 +741,7 @@ mod tests {
         }
 
         #[test]
-        fn partial_rollback_keeps_outer_dml() {
+        fn parse_aggregate_command_tag_returns_outer_dml_after_partial_rollback() {
             let stdout = "BEGIN\nUPDATE 1\nSAVEPOINT\nINSERT 0 1\nROLLBACK\nCOMMIT";
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
@@ -753,7 +753,7 @@ mod tests {
         }
 
         #[test]
-        fn single_dml() {
+        fn parse_aggregate_command_tag_returns_single_dml() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag("DELETE 3", "DELETE FROM t"),
                 Some(CommandTag::Delete(3))
@@ -769,7 +769,7 @@ mod tests {
         }
 
         #[test]
-        fn single_line_select_passes_through() {
+        fn parse_aggregate_command_tag_returns_select_through() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag("SELECT 5", "SELECT 1+4"),
                 Some(CommandTag::Select(5))
@@ -777,7 +777,7 @@ mod tests {
         }
 
         #[test]
-        fn ctas_committed() {
+        fn parse_aggregate_command_tag_returns_ctas_commit() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nSELECT 1\nCOMMIT",
@@ -788,7 +788,7 @@ mod tests {
         }
 
         #[test]
-        fn ctas_savepoint_rollback_with_outer_dml() {
+        fn parse_aggregate_command_tag_returns_outer_dml_after_ctas_savepoint_rollback() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nSAVEPOINT\nSELECT 1\nROLLBACK\nUPDATE 1\nCOMMIT",
@@ -799,7 +799,7 @@ mod tests {
         }
 
         #[test]
-        fn ctas_savepoint_rollback_no_other_dml() {
+        fn parse_aggregate_command_tag_returns_rollback_when_ctas_rolled_back_without_other_dml() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nSAVEPOINT\nSELECT 1\nROLLBACK\nCOMMIT",
@@ -810,7 +810,7 @@ mod tests {
         }
 
         #[test]
-        fn select_into_savepoint_rollback() {
+        fn parse_aggregate_command_tag_returns_rollback_for_select_into_savepoint() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nSAVEPOINT\nSELECT 5\nROLLBACK\nCOMMIT",
@@ -821,7 +821,7 @@ mod tests {
         }
 
         #[test]
-        fn single_ctas_no_txn() {
+        fn parse_aggregate_command_tag_returns_ctas_without_txn() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "SELECT 1",
@@ -832,7 +832,7 @@ mod tests {
         }
 
         #[test]
-        fn ctas_outside_savepoint_survives() {
+        fn parse_aggregate_command_tag_returns_ctas_outside_savepoint() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nSELECT 1\nCOMMIT",
@@ -843,7 +843,7 @@ mod tests {
         }
 
         #[test]
-        fn ctas_full_rollback() {
+        fn parse_aggregate_command_tag_returns_rollback_for_ctas_full_rollback() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nSELECT 1\nROLLBACK",
@@ -854,7 +854,7 @@ mod tests {
         }
 
         #[test]
-        fn create_temp_table_as() {
+        fn parse_aggregate_command_tag_returns_create_for_temp_table_as() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "SELECT 1",
@@ -865,7 +865,7 @@ mod tests {
         }
 
         #[test]
-        fn create_materialized_view() {
+        fn parse_aggregate_command_tag_returns_create_for_materialized_view() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "SELECT 1",
@@ -876,7 +876,7 @@ mod tests {
         }
 
         #[test]
-        fn with_select_into() {
+        fn parse_aggregate_command_tag_returns_create_for_with_select_into() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "SELECT 1",
@@ -887,7 +887,7 @@ mod tests {
         }
 
         #[test]
-        fn ctas_then_delete_no_txn() {
+        fn parse_aggregate_command_tag_returns_ctas_before_delete_without_txn() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "SELECT 1\nDELETE 1",
@@ -898,7 +898,7 @@ mod tests {
         }
 
         #[test]
-        fn select_into_then_delete_no_txn() {
+        fn parse_aggregate_command_tag_returns_select_into_before_delete_without_txn() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "SELECT 5\nDELETE 1",
@@ -909,7 +909,7 @@ mod tests {
         }
 
         #[test]
-        fn count_mismatch_fallback() {
+        fn parse_aggregate_command_tag_returns_last_tag_on_count_mismatch() {
             // 1 statement but 2 tags → skip correction, use last tag
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag("SELECT 1\nSELECT 2", "SELECT 1"),

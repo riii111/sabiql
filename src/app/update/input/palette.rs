@@ -41,7 +41,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn palette_commands_contains_no_none_actions() {
+    fn palette_commands_returns_no_none_actions() {
         let none_entries: Vec<_> = palette_commands()
             .filter(|kb| matches!(kb.action, Action::None))
             .collect();

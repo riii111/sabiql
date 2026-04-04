@@ -710,7 +710,7 @@ mod tests {
         )]
         #[case::show("SHOW search_path", StatementKind::Select)]
         #[case::show_all("SHOW ALL", StatementKind::Select)]
-        fn select_variants(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn classify_returns_select_variants(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
 
@@ -739,7 +739,10 @@ mod tests {
             "EXPLAIN (ANALYZE, VERBOSE) DELETE FROM users",
             StatementKind::Delete { has_where: false }
         )]
-        fn explain_analyze_dml(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn classify_returns_explain_analyze_dml(
+            #[case] sql: &str,
+            #[case] expected: StatementKind,
+        ) {
             assert_eq!(classify(sql), expected);
         }
 
@@ -756,7 +759,7 @@ mod tests {
             "WITH cte AS (SELECT 1) DELETE FROM users WHERE id = 1",
             StatementKind::Delete { has_where: true }
         )]
-        fn cte_dml(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn classify_returns_cte_dml(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
 
@@ -766,7 +769,7 @@ mod tests {
         #[case::update_with_where("UPDATE users SET name = 'x' WHERE id = 1", StatementKind::Update { has_where: true })]
         #[case::delete_no_where("DELETE FROM users", StatementKind::Delete { has_where: false })]
         #[case::delete_with_where("DELETE FROM users WHERE id = 1", StatementKind::Delete { has_where: true })]
-        fn dml(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn classify_returns_dml(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
 
@@ -775,7 +778,7 @@ mod tests {
         #[case::alter_table("ALTER TABLE users ADD COLUMN foo INT", StatementKind::Alter)]
         #[case::drop_table("DROP TABLE users", StatementKind::Drop)]
         #[case::truncate("TRUNCATE users", StatementKind::Truncate)]
-        fn ddl(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn classify_returns_ddl(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
 
@@ -787,7 +790,7 @@ mod tests {
         #[case::start_transaction("START TRANSACTION", StatementKind::Transaction)]
         #[case::rollback_to_savepoint("ROLLBACK TO SAVEPOINT sp1", StatementKind::Transaction)]
         #[case::release_savepoint("RELEASE SAVEPOINT sp1", StatementKind::Transaction)]
-        fn transaction(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn classify_returns_transaction(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
 
@@ -801,7 +804,7 @@ mod tests {
             "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET x = 1",
             StatementKind::Unsupported
         )]
-        fn unsupported(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn classify_returns_unsupported(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
 
@@ -810,7 +813,7 @@ mod tests {
         #[case::whitespace_only("   ", StatementKind::Other)]
         #[case::comment_only("-- just a comment", StatementKind::Other)]
         #[case::block_comment_only("/* nothing */", StatementKind::Other)]
-        fn other(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn classify_returns_other(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
 
@@ -870,7 +873,7 @@ mod tests {
         #[case::select_then_select("SELECT 1; SELECT 2", StatementKind::Other)]
         #[case::select_into("SELECT * INTO backup FROM users", StatementKind::Other)]
         #[case::select_into_columns("SELECT id, name INTO backup FROM users", StatementKind::Other)]
-        fn edge_cases(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn classify_returns_edge_cases(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
     }
@@ -892,7 +895,7 @@ mod tests {
             StatementKind::Drop,
             Some("public.Users")
         )]
-        fn drop_table(
+        fn extract_target_name_returns_drop_table(
             #[case] sql: &str,
             #[case] kind: StatementKind,
             #[case] expected: Option<&str>,
@@ -907,7 +910,7 @@ mod tests {
         #[case::simple("TRUNCATE users", StatementKind::Truncate, Some("users"))]
         #[case::with_table_keyword("TRUNCATE TABLE users", StatementKind::Truncate, Some("users"))]
         #[case::multiple("TRUNCATE a, b", StatementKind::Truncate, None)]
-        fn truncate(
+        fn extract_target_name_returns_truncate(
             #[case] sql: &str,
             #[case] kind: StatementKind,
             #[case] expected: Option<&str>,
@@ -934,7 +937,11 @@ mod tests {
             StatementKind::Delete { has_where: false },
             Some("public.users")
         )]
-        fn delete(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
+        fn extract_target_name_returns_delete(
+            #[case] sql: &str,
+            #[case] kind: StatementKind,
+            #[case] expected: Option<&str>,
+        ) {
             assert_eq!(
                 extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
@@ -957,7 +964,11 @@ mod tests {
             StatementKind::Update { has_where: false },
             Some("public.users")
         )]
-        fn update(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
+        fn extract_target_name_returns_update(
+            #[case] sql: &str,
+            #[case] kind: StatementKind,
+            #[case] expected: Option<&str>,
+        ) {
             assert_eq!(
                 extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
@@ -971,7 +982,10 @@ mod tests {
         #[case::alter("ALTER TABLE users ADD COLUMN x INT", StatementKind::Alter)]
         #[case::transaction("BEGIN", StatementKind::Transaction)]
         #[case::other("GRANT SELECT ON users TO role1", StatementKind::Other)]
-        fn not_applicable(#[case] sql: &str, #[case] kind: StatementKind) {
+        fn extract_target_name_returns_none_for_not_applicable(
+            #[case] sql: &str,
+            #[case] kind: StatementKind,
+        ) {
             assert_eq!(extract_target_name(sql, &kind), None);
         }
 
@@ -1087,7 +1101,7 @@ mod tests {
         #[case::drop_multiple("DROP TABLE a, b", StatementKind::Drop, None)]
         #[case::drop_multiple_index("DROP INDEX a, b", StatementKind::Drop, None)]
         #[case::truncate_multiple("TRUNCATE a, b, c", StatementKind::Truncate, None)]
-        fn additional_extraction(
+        fn extract_target_name_returns_additional_extraction_cases(
             #[case] sql: &str,
             #[case] kind: StatementKind,
             #[case] expected: Option<&str>,

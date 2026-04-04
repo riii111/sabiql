@@ -34,7 +34,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recent_columns_vec_returns_clone() {
+    fn recent_columns_vec_returns_cloned_vec() {
         let mut state = CompletionState::default();
         state.recent_columns.push_back("col1".to_string());
         state.recent_columns.push_back("col2".to_string());

@@ -60,7 +60,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn serde_round_trip() {
+    fn query_history_round_trip_preserves_entry() {
         let entry = QueryHistoryEntry::new(
             "SELECT * FROM users".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
@@ -76,7 +76,7 @@ mod tests {
     }
 
     #[test]
-    fn serde_round_trip_with_affected_rows() {
+    fn query_history_round_trip_preserves_affected_rows() {
         let entry = QueryHistoryEntry::new(
             "UPDATE users SET name = 'x'".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
@@ -94,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn serde_json_format() {
+    fn query_history_round_trip_serializes_expected_json() {
         let entry = QueryHistoryEntry::new(
             "SELECT 1".to_string(),
             "2026-03-13T12:00:00Z".to_string(),

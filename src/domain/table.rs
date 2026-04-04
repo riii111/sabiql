@@ -122,7 +122,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_schema_dot_name() {
+        fn qualified_name_returns_schema_dot_name() {
             let table = make_table("public", "users");
 
             assert_eq!(table.qualified_name(), "public.users");
@@ -151,14 +151,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn display_name_omits_public() {
+        fn display_name_returns_name_only_for_public_schema() {
             let summary = make_summary("public", "orders");
 
             assert_eq!(summary.display_name(true), "orders");
         }
 
         #[test]
-        fn display_name_keeps_non_public_schema() {
+        fn display_name_returns_qualified_name_for_non_public_schema() {
             let summary = make_summary("audit", "logs");
 
             assert_eq!(summary.display_name(true), "audit.logs");

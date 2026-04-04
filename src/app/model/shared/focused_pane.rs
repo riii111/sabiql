@@ -23,7 +23,7 @@ mod tests {
     use rstest::rstest;
 
     #[test]
-    fn default_is_explorer() {
+    fn default_returns_explorer() {
         assert_eq!(FocusedPane::default(), FocusedPane::Explorer);
     }
 
