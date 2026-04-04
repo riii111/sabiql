@@ -770,7 +770,7 @@ mod tests {
         }
 
         #[test]
-        fn table_still_exists_preserves_pagination_and_emits_refresh_effects() {
+        fn table_still_exists_preserves_pagination() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
@@ -813,7 +813,7 @@ mod tests {
         }
 
         #[test]
-        fn after_connection_switch_pagination_reset_suppresses_auto_preview() {
+        fn connection_switch_resets_pagination_without_auto_preview() {
             let mut state = state_with_dsn("postgres://localhost/test");
             // Simulate fresh connection: pagination is reset (as reset_connection_state does)
             state.query.pagination.reset();

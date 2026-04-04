@@ -303,7 +303,7 @@ mod tests {
         }
 
         #[test]
-        fn filter_preserves_non_consecutive_groups_returns_separate_groups() {
+        fn filter_preserves_non_consecutive_groups() {
             let mut state = make_state(vec![
                 make_entry("SELECT * FROM users WHERE id=1"),
                 make_entry("SELECT * FROM users WHERE id=2"),

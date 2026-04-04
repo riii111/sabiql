@@ -389,7 +389,7 @@ mod tests {
         }
 
         #[test]
-        fn stays_in_selector_when_services_remain_after_last_profile_deleted() {
+        fn last_profile_deleted_with_services_stays_in_selector() {
             use crate::domain::connection::ServiceEntry;
 
             let mut state = AppState::new("test".to_string());

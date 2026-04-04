@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_expired_at_returns_cleared_state_for_expired_messages() {
+    fn clear_expired_at_clears_expired_messages() {
         let now = fixed_instant();
         let mut state = MessageState {
             last_error: Some("Error".to_string()),
@@ -120,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_expired_at_returns_unchanged_state_for_unexpired_messages() {
+    fn clear_expired_at_keeps_unexpired_messages() {
         let now = fixed_instant();
         let mut state = MessageState {
             last_error: Some("Error".to_string()),

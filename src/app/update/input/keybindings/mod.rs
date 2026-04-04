@@ -992,7 +992,7 @@ mod tests {
         }
 
         #[test]
-        fn query_history_picker_has_no_plain_char_combos_returns_expected() {
+        fn query_history_picker_has_no_plain_char_combos() {
             check_no_plain_char_in_filter_mode_rows(
                 QUERY_HISTORY_PICKER_ROWS,
                 "QUERY_HISTORY_PICKER_ROWS",
@@ -1006,7 +1006,7 @@ mod tests {
         }
 
         #[test]
-        fn cell_edit_plain_char_combos_are_intentional_returns_expected() {
+        fn cell_edit_plain_char_combos_are_intentional() {
             check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
         }
 

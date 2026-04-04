@@ -348,7 +348,7 @@ mod tests {
         }
 
         #[test]
-        fn evaluate_sql_risk_returns_high_table_name_for_drop_database() {
+        fn evaluate_sql_risk_returns_high_for_drop_database() {
             let result = evaluate_sql_risk(&StatementKind::Drop, "DROP DATABASE production");
             assert_eq!(result.risk_level, RiskLevel::High);
             assert!(matches!(
@@ -463,7 +463,7 @@ mod tests {
         }
 
         #[test]
-        fn evaluate_multi_statement_returns_aggregated_risk_for_select_insert() {
+        fn evaluate_multi_statement_returns_aggregated_risk_for_select_stmt() {
             let result = evaluate_multi_statement("SELECT 1; INSERT INTO users VALUES (1)");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -516,7 +516,7 @@ mod tests {
         }
 
         #[test]
-        fn evaluate_multi_statement_returns_immediate_for_insert_then_select() {
+        fn evaluate_multi_statement_returns_immediate_for_insert_select() {
             let result = evaluate_multi_statement("INSERT INTO users VALUES (1); SELECT 1");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {

@@ -546,7 +546,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn table_columns_and_fks_query_returns_columns_and_fks_in_json_build_object() {
+        fn table_columns_and_fks_query_returns_columns_and_fks_in_json_object() {
             let sql = PostgresAdapter::table_columns_and_fks_query("public", "users");
 
             assert!(sql.contains("json_build_object("));

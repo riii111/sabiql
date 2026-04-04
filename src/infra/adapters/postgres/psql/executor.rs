@@ -690,7 +690,7 @@ mod tests {
         }
 
         #[test]
-        fn mixed_notice_and_csv_parses_first_line_returns_expected() {
+        fn mixed_notice_and_csv_parses_header_returns_expected() {
             let mixed = "id,name\n1,alice";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)

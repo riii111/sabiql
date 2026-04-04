@@ -354,7 +354,7 @@ mod tests {
         }
 
         #[test]
-        fn extract_command_tag_returns_last_non_empty_line_with_notice() {
+        fn extract_command_tag_returns_last_non_empty_line_for_notice() {
             let stdout = "NOTICE:  table \"foo\" does not exist, skipping\nDROP TABLE\n";
             assert_eq!(
                 PostgresAdapter::extract_command_tag(stdout),
@@ -730,7 +730,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_aggregate_command_tag_returns_rollback_after_rollback() {
+        fn parse_aggregate_command_tag_returns_after_rollback() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nUPDATE 1\nROLLBACK",
@@ -854,7 +854,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_aggregate_command_tag_returns_create_for_temp_table_as() {
+        fn parse_aggregate_command_tag_returns_create_for_temp_table() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "SELECT 1",
@@ -865,7 +865,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_aggregate_command_tag_returns_create_for_materialized_view() {
+        fn parse_aggregate_command_tag_returns_create_for_mat_view() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "SELECT 1",

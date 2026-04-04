@@ -1273,7 +1273,7 @@ mod tests {
         }
 
         #[test]
-        fn validate_all_checks_all_required_fields_returns_expected() {
+        fn validate_all_checks_all_required_fields() {
             let mut state = setup_state();
             state.host = TextInputState::default();
             state.port.set_content("invalid".to_string());
@@ -1390,7 +1390,7 @@ mod tests {
         }
 
         #[test]
-        fn cancel_after_save_restores_normal_mode_and_dispatches_try_connect() {
+        fn cancel_after_save_restores_normal_mode() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.is_first_run = false;
@@ -1434,7 +1434,7 @@ mod tests {
         }
 
         #[test]
-        fn cancel_quit_no_connection_restores_connection_setup_synchronously() {
+        fn cancel_quit_no_connection_restores_connection_setup() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConfirmDialog);
             state

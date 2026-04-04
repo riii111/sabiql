@@ -275,7 +275,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn compare_plans_returns_similar_at_exactly_0_9_boundary() {
+        fn compare_plans_returns_similar_at_0_9_boundary() {
             let baseline = make_plan(Some(100.0), None, None);
             let current = make_plan(Some(90.0), None, None);
 
@@ -285,7 +285,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn compare_plans_returns_similar_at_exactly_1_1_boundary() {
+        fn compare_plans_returns_similar_at_1_1_boundary() {
             let baseline = make_plan(Some(100.0), None, None);
             let current = make_plan(Some(110.0), None, None);
 
@@ -327,7 +327,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn compare_plans_returns_node_type_change_in_reasons() {
+        fn compare_plans_returns_node_type_change() {
             let baseline = make_plan(Some(1000.0), Some(100), Some("Seq Scan"));
             let current = make_plan(Some(10.0), Some(1), Some("Index Scan"));
 
@@ -357,7 +357,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn compare_plans_returns_row_estimate_change_in_reasons() {
+        fn compare_plans_returns_row_estimate_change() {
             let baseline = make_plan(Some(100.0), Some(1000), Some("Seq Scan"));
             let current = make_plan(Some(105.0), Some(10), Some("Seq Scan"));
 
@@ -387,7 +387,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn compare_plans_returns_reasons_capped_at_max() {
+        fn compare_plans_returns_reasons_capped() {
             let baseline = make_plan(Some(1000.0), Some(100), Some("Seq Scan"));
             let current = make_plan(Some(10.0), Some(1), Some("Index Scan"));
 

@@ -1290,7 +1290,7 @@ mod tests {
         }
 
         #[test]
-        fn extract_table_references_returns_alias_for_from_with_alias() {
+        fn extract_table_references_returns_alias_for_alias_from() {
             let l = lexer();
             let tokens = l.tokenize("SELECT * FROM users u", 21);
 
@@ -1302,7 +1302,7 @@ mod tests {
         }
 
         #[test]
-        fn extract_table_references_returns_alias_for_from_with_as_keyword() {
+        fn extract_table_references_returns_alias_for_as_keyword() {
             let l = lexer();
             let tokens = l.tokenize("SELECT * FROM users AS u", 24);
 
@@ -1355,7 +1355,7 @@ mod tests {
         }
 
         #[test]
-        fn extract_table_references_returns_all_references_for_multiple_joins() {
+        fn extract_table_references_returns_all_references_for_joins() {
             let l = lexer();
             let sql = "SELECT * FROM users u JOIN posts p ON u.id = p.user_id JOIN comments c ON p.id = c.post_id";
             let tokens = l.tokenize(sql, sql.len());
@@ -1397,7 +1397,7 @@ mod tests {
         }
 
         #[test]
-        fn extract_cte_definitions_returns_all_definitions_for_multiple_ctes() {
+        fn extract_cte_definitions_returns_all_definitions_for_ctes() {
             let l = lexer();
             let sql = "WITH cte1 AS (SELECT 1), cte2 AS (SELECT 2) SELECT * FROM cte1, cte2";
             let tokens = l.tokenize(sql, sql.len());
@@ -1555,7 +1555,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_table_references_returns_both_tables_for_no_key_update_chain() {
+            fn extract_table_references_returns_both_tables_for_no_key_update() {
                 let l = lexer();
                 let sql =
                     "SELECT * FROM users FOR NO KEY UPDATE; UPDATE orders SET status = 'done'";
@@ -1686,7 +1686,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn extract_target_table_returns_first_update_for_first_statement() {
+            fn extract_target_table_returns_first_update_for_first_stmt() {
                 let l = lexer();
                 let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
                 // Cursor at position 10 (in "users")
@@ -1700,7 +1700,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_target_table_returns_second_update_for_second_statement() {
+            fn extract_target_table_returns_second_update_for_second_stmt() {
                 let l = lexer();
                 let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
                 // Cursor at position 35 (in "orders")
@@ -1756,7 +1756,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_target_table_returns_posts_for_middle_statement() {
+            fn extract_target_table_returns_posts_for_middle_stmt() {
                 let l = lexer();
                 let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
                 // Cursor at position 40 (in DELETE statement)
@@ -1770,7 +1770,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_target_table_returns_orders_for_last_statement() {
+            fn extract_target_table_returns_orders_for_last_stmt() {
                 let l = lexer();
                 let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
                 // Cursor at position 80 (in INSERT statement)

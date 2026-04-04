@@ -225,7 +225,7 @@ mod tests {
         }
 
         #[test]
-        fn build_bulk_delete_sql_returns_in_clause_for_multi_pk_rows() {
+        fn build_bulk_delete_sql_returns_in_clause_for_multi_pk() {
             let adapter = PostgresAdapter::new();
             let rows = vec![
                 vec![("id".to_string(), "1".to_string())],
@@ -287,7 +287,7 @@ mod tests {
         }
 
         #[test]
-        fn build_bulk_delete_sql_returns_empty_literal_for_empty_pk_value() {
+        fn build_bulk_delete_sql_returns_empty_literal_for_empty_pk() {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), String::new())]];
 

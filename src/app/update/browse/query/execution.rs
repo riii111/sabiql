@@ -870,7 +870,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_does_not_emit_execute_preview_so_modal_status_stays_success() {
+        fn ddl_skips_execute_preview_and_keeps_modal_success() {
             let mut state = state_with_table("public", "users");
 
             let effects = reduce_query(
@@ -897,7 +897,7 @@ mod tests {
         }
 
         #[test]
-        fn success_snapshot_not_overwritten_by_subsequent_preview_result() {
+        fn success_snapshot_not_overwritten_by_preview_result() {
             let mut state = state_with_table("public", "users");
 
             reduce_query(

@@ -732,7 +732,7 @@ mod tests {
         }
 
         #[test]
-        fn open_write_preview_confirm_for_delete_sets_normal_return_mode() {
+        fn open_delete_preview_sets_normal_return_mode() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::Normal);
             let preview = delete_preview();
@@ -755,7 +755,7 @@ mod tests {
         }
 
         #[test]
-        fn open_write_preview_confirm_for_delete_sets_refresh_target_count() {
+        fn open_delete_preview_sets_refresh_target_count() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::Normal);
             state.query.set_delete_refresh_target(0, Some(2), 3);
