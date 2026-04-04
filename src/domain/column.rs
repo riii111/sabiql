@@ -51,7 +51,7 @@ mod tests {
         #[case(false, None, "integer NOT NULL")]
         #[case(true, Some("0"), "integer DEFAULT 0")]
         #[case(false, Some("now()"), "integer NOT NULL DEFAULT now()")]
-        fn returns_expected_format(
+        fn formats_sql_type(
             #[case] nullable: bool,
             #[case] default: Option<&str>,
             #[case] expected: &str,

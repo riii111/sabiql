@@ -306,7 +306,7 @@ mod tests {
         }
 
         #[test]
-        fn history_entry_when_history_index_set() {
+        fn history_entry_kind_when_history_index_set() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.history_index = Some(0);
@@ -332,7 +332,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_current_result_when_no_history_index() {
+        fn current_result_when_no_history_index() {
             let qe = QueryExecution {
                 current_result: Some(make_result(QuerySource::Preview)),
                 ..Default::default()
@@ -343,7 +343,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_history_entry_when_history_index_set() {
+        fn history_entry_when_history_index_set() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.current_result = Some(make_result(QuerySource::Preview));
@@ -354,7 +354,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_none_when_history_index_out_of_range() {
+        fn history_index_out_of_range_returns_none() {
             let qe = QueryExecution {
                 history_index: Some(99),
                 ..Default::default()
@@ -364,14 +364,14 @@ mod tests {
         }
 
         #[test]
-        fn returns_none_when_empty() {
+        fn empty_query_execution_returns_none() {
             let qe = QueryExecution::default();
 
             assert!(qe.visible_result().is_none());
         }
 
         #[test]
-        fn returns_none_when_no_live_result_but_history_exists() {
+        fn history_without_live_result_returns_none() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
 
@@ -437,14 +437,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_none_when_not_in_history() {
+        fn absent_when_not_in_history() {
             let qe = QueryExecution::default();
 
             assert!(qe.history_bar().is_none());
         }
 
         #[test]
-        fn returns_index_and_total_when_in_history() {
+        fn shows_index_and_total_when_in_history() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.result_history.push(make_result(QuerySource::Adhoc));

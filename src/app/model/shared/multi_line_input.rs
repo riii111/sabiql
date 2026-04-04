@@ -218,7 +218,7 @@ mod tests {
         #[case("こんにちは\n世界", 5, (0, 5))]
         #[case("こんにちは\n世界", 6, (1, 0))]
         #[case("こんにちは\n世界", 7, (1, 1))]
-        fn multibyte_returns_correct_position(
+        fn multibyte_returns_correct_row_and_col(
             #[case] content: &str,
             #[case] cursor: usize,
             #[case] expected: (usize, usize),
@@ -564,7 +564,7 @@ mod tests {
         }
 
         #[test]
-        fn multibyte_returns_correct_position() {
+        fn multibyte_returns_correct_byte_indices() {
             let s = ml("あいう", 0);
             // each hiragana is 3 bytes
             assert_eq!(s.char_to_byte_index(1), 3);

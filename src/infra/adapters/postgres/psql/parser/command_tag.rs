@@ -422,7 +422,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn single_dml() {
+        fn single_dml_tags() {
             assert_eq!(
                 PostgresAdapter::parse_all_tags("DELETE 3"),
                 Some(vec![CommandTag::Delete(3)])
@@ -450,7 +450,7 @@ mod tests {
         }
 
         #[test]
-        fn csv_returns_none() {
+        fn csv_input_returns_none() {
             assert_eq!(PostgresAdapter::parse_all_tags("id,name\n1,Alice"), None);
         }
 
@@ -753,7 +753,7 @@ mod tests {
         }
 
         #[test]
-        fn single_dml() {
+        fn single_dml_stdout() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag("DELETE 3", "DELETE FROM t"),
                 Some(CommandTag::Delete(3))
@@ -761,7 +761,7 @@ mod tests {
         }
 
         #[test]
-        fn csv_returns_none() {
+        fn csv_stdout_returns_none() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag("id,name", "SELECT * FROM t"),
                 None

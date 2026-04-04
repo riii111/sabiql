@@ -45,7 +45,7 @@ mod tests {
     #[case(ConnectionState::Connecting, false, true, false, false)]
     #[case(ConnectionState::Connected, false, false, true, false)]
     #[case(ConnectionState::Failed, false, false, false, true)]
-    fn predicate_returns_expected(
+    fn predicates_match_expected_flags(
         #[case] state: ConnectionState,
         #[case] is_not_connected: bool,
         #[case] is_connecting: bool,

@@ -666,7 +666,7 @@ mod tests {
         use crate::app::cmd::effect::Effect;
 
         #[test]
-        fn yank_all_produces_clipboard_effect() {
+        fn copies_all_text_to_clipboard() {
             let mut state = state_with_jsonb_cell();
             reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
 
@@ -708,7 +708,7 @@ mod tests {
         }
 
         #[test]
-        fn search_submit_deactivates_and_preserves_matches() {
+        fn submit_deactivates_and_preserves_matches() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
@@ -760,7 +760,7 @@ mod tests {
         }
 
         #[test]
-        fn search_next_cycles_through_matches() {
+        fn next_cycles_through_matches() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
@@ -789,7 +789,7 @@ mod tests {
         }
 
         #[test]
-        fn search_prev_wraps_to_last_match() {
+        fn prev_wraps_to_last_match() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());

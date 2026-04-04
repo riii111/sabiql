@@ -214,7 +214,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn emits_effect_with_correct_offset() {
+        fn emits_correct_offset_for_next_page() {
             let mut state = create_test_state();
             state
                 .query
@@ -306,7 +306,7 @@ mod tests {
         }
 
         #[test]
-        fn noop_preserves_view_state() {
+        fn preserves_view_state_when_next_page_noops() {
             let mut state = create_test_state();
             state.query.set_current_result(preview_result(100));
             state.query.pagination.reached_end = true;
@@ -356,7 +356,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn emits_effect_with_correct_offset() {
+        fn emits_correct_offset_for_prev_page() {
             let mut state = create_test_state();
             state
                 .query
@@ -413,7 +413,7 @@ mod tests {
         }
 
         #[test]
-        fn noop_preserves_view_state() {
+        fn preserves_view_state_when_prev_page_noops() {
             let mut state = create_test_state();
             state
                 .query

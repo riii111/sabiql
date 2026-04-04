@@ -60,7 +60,7 @@ mod tests {
         #[case("12345", 5, 1)]
         #[case("あいう", 6, 1)]
         #[case("あいう", 4, 2)]
-        fn returns_expected_count(#[case] text: &str, #[case] width: u16, #[case] expected: u16) {
+        fn counts_wrapped_lines(#[case] text: &str, #[case] width: u16, #[case] expected: u16) {
             assert_eq!(wrapped_line_count(text, width), expected);
         }
     }

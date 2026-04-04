@@ -498,7 +498,7 @@ mod tests {
         }
 
         #[test]
-        fn disabled_rls_with_no_policies_returns_expected() {
+        fn disabled_rls_without_policies_is_empty() {
             let json = r#"{"enabled": false, "force": false, "policies": []}"#;
 
             let result = PostgresAdapter::parse_rls(json).unwrap();
@@ -510,7 +510,7 @@ mod tests {
         }
 
         #[test]
-        fn enabled_and_forced_rls_returns_expected() {
+        fn enabled_and_forced_rls_preserves_flags() {
             let json = r#"{"enabled": true, "force": true, "policies": []}"#;
 
             let result = PostgresAdapter::parse_rls(json).unwrap();
@@ -554,7 +554,7 @@ mod tests {
         #[case("w", RlsCommand::Update)]
         #[case("d", RlsCommand::Delete)]
         #[case("x", RlsCommand::All)] // unknown defaults to All
-        fn cmd_mapping_returns_expected(#[case] cmd: &str, #[case] expected: RlsCommand) {
+        fn cmd_code_maps_to_rls_command(#[case] cmd: &str, #[case] expected: RlsCommand) {
             let json = format!(
                 r#"{{"enabled": true, "force": false, "policies": [{{
                     "name": "test", "permissive": true, "roles": null,
@@ -707,7 +707,7 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+        fn empty_or_null_input_returns_empty_trigger_vec(#[case] input: &str) {
             let result = PostgresAdapter::parse_triggers(input).unwrap();
             assert!(result.is_empty());
         }
@@ -741,7 +741,10 @@ mod tests {
         #[case("AFTER", TriggerTiming::After)]
         #[case("INSTEAD OF", TriggerTiming::InsteadOf)]
         #[case("UNKNOWN", TriggerTiming::After)] // unknown defaults to After
-        fn timing_mapping_returns_expected(#[case] timing: &str, #[case] expected: TriggerTiming) {
+        fn timing_code_maps_to_trigger_timing(
+            #[case] timing: &str,
+            #[case] expected: TriggerTiming,
+        ) {
             let json = format!(
                 r#"[{{
                     "name": "test", "timing": "{timing}", "events": ["INSERT"],
@@ -782,14 +785,14 @@ mod tests {
         }
 
         #[test]
-        fn empty_array_returns_empty_vec() {
+        fn empty_array_returns_empty_trigger_vec() {
             let json = r"[]";
             let result = PostgresAdapter::parse_triggers(json).unwrap();
             assert!(result.is_empty());
         }
 
         #[test]
-        fn security_definer_false_returns_expected() {
+        fn security_definer_false_stays_false() {
             let json = r#"[{
                 "name": "test",
                 "timing": "AFTER",
@@ -811,7 +814,7 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+        fn empty_or_null_input_returns_empty_schema_vec(#[case] input: &str) {
             let result = PostgresAdapter::parse_schemas(input).unwrap();
             assert!(result.is_empty());
         }
@@ -857,7 +860,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_array_returns_empty_vec() {
+        fn empty_array_returns_empty_schema_vec() {
             let json = r"[]";
             let result = PostgresAdapter::parse_schemas(json).unwrap();
             assert!(result.is_empty());
@@ -873,7 +876,7 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+        fn empty_or_null_input_returns_empty_fk_vec(#[case] input: &str) {
             let result = PostgresAdapter::parse_foreign_keys(input).unwrap();
             assert!(result.is_empty());
         }
@@ -914,10 +917,7 @@ mod tests {
         #[case("n", FkAction::SetNull)]
         #[case("d", FkAction::SetDefault)]
         #[case("x", FkAction::NoAction)]
-        fn fk_action_mapping_returns_expected(
-            #[case] action_code: &str,
-            #[case] expected: FkAction,
-        ) {
+        fn fk_code_maps_to_fk_action(#[case] action_code: &str, #[case] expected: FkAction) {
             let json = format!(
                 r#"[{{
                     "name": "test_fk",
@@ -1038,7 +1038,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_array_returns_empty_vec() {
+        fn empty_array_returns_empty_fk_vec() {
             let json = r"[]";
             let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
             assert!(result.is_empty());
@@ -1124,13 +1124,13 @@ mod tests {
         }
 
         #[test]
-        fn empty_input_returns_error() {
+        fn empty_input_returns_error_for_combined_detail() {
             let result = PostgresAdapter::parse_table_detail_combined("");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
-        fn null_input_returns_error() {
+        fn null_input_returns_error_for_combined_detail() {
             let result = PostgresAdapter::parse_table_detail_combined("null");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -1183,13 +1183,13 @@ mod tests {
         }
 
         #[test]
-        fn empty_input_returns_error() {
+        fn empty_input_returns_error_for_columns_and_fks() {
             let result = PostgresAdapter::parse_table_columns_and_fks("");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
-        fn null_input_returns_error() {
+        fn null_input_returns_error_for_columns_and_fks() {
             let result = PostgresAdapter::parse_table_columns_and_fks("null");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }

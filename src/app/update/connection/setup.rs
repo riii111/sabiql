@@ -271,7 +271,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_into_host_inserts_text() {
+        fn host_inserts_text() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
             reduce(
@@ -284,7 +284,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_into_port_filters_non_digits() {
+        fn port_filters_non_digits() {
             let mut state = setup_state_with_field(ConnectionField::Port);
 
             reduce(
@@ -297,7 +297,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_into_port_respects_limit() {
+        fn port_respects_limit() {
             let mut state = setup_state_with_field(ConnectionField::Port);
             state.connection_setup.port.set_content("54".to_string());
 
@@ -311,7 +311,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_into_full_port_does_nothing() {
+        fn full_port_does_nothing() {
             let mut state = setup_state_with_field(ConnectionField::Port);
             state.connection_setup.port.set_content("12345".to_string());
 
@@ -321,7 +321,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_strips_newlines() {
+        fn strips_newlines() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
             reduce(
@@ -334,7 +334,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_into_ssl_mode_ignored() {
+        fn ssl_mode_ignored() {
             let mut state = setup_state_with_field(ConnectionField::SslMode);
             let ssl_mode_before = state.connection_setup.ssl_mode;
 
@@ -348,7 +348,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_updates_cursor() {
+        fn updates_cursor() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
             reduce(

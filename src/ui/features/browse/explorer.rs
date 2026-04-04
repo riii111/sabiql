@@ -161,7 +161,7 @@ mod tests {
         #[case("abcdefgh", 2, 4, "cdef")]
         #[case("abc", 3, 5, "")]
         #[case("abc", 10, 5, "")]
-        fn ascii_input_returns_expected_substring(
+        fn ascii_input_truncates_substring(
             #[case] input: &str,
             #[case] offset: usize,
             #[case] max_width: usize,
@@ -177,7 +177,7 @@ mod tests {
         #[case("日本語テスト", 2, 3, "語テス")]
         #[case("public.日本語_table", 0, 10, "public.日本語")]
         #[case("🎉table🎊", 0, 6, "🎉table")]
-        fn unicode_input_returns_expected_substring(
+        fn unicode_input_truncates_substring(
             #[case] input: &str,
             #[case] offset: usize,
             #[case] max_width: usize,

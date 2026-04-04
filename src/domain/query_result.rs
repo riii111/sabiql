@@ -168,7 +168,7 @@ mod tests {
         #[case(0, "0 rows")]
         #[case(1, "1 row")]
         #[case(5, "5 rows")]
-        fn returns_expected(#[case] count: usize, #[case] expected: &str) {
+        fn formats_row_count_display(#[case] count: usize, #[case] expected: &str) {
             let mut result =
                 QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc);
             result.row_count = count;

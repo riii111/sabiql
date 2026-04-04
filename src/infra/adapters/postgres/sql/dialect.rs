@@ -172,7 +172,7 @@ mod tests {
         }
 
         #[test]
-        fn column_name_with_double_quote_is_escaped() {
+        fn build_update_sql_escapes_column_name() {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
@@ -297,7 +297,7 @@ mod tests {
         }
 
         #[test]
-        fn column_name_with_double_quote_is_escaped() {
+        fn build_bulk_delete_sql_escapes_column_name() {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("my\"pk".to_string(), "1".to_string())]];
 
@@ -321,7 +321,7 @@ mod tests {
         #[case("hello", "'hello'")]
         #[case("it's", "'it''s'")]
         #[case("NULL ", "'NULL '")]
-        fn value_expr_returns_expected(#[case] input: &str, #[case] expected: &str) {
+        fn formats_sql_literal_or_null(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(sql_literal_or_null(input), expected);
         }
     }

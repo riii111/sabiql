@@ -111,7 +111,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_connection_name() {
+        fn formats_connection_name() {
             let profile = make_test_profile();
             assert_eq!(profile.display_name(), "Test Connection");
         }

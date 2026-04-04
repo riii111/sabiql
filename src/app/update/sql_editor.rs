@@ -472,7 +472,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_inserts_at_cursor() {
+        fn inserts_at_cursor() {
             let mut state = editing_state();
             state
                 .sql_modal
@@ -485,7 +485,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_preserves_newlines() {
+        fn preserves_newlines() {
             let mut state = editing_state();
 
             reduce_sql_modal(
@@ -498,7 +498,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_normalizes_crlf() {
+        fn normalizes_crlf() {
             let mut state = editing_state();
 
             reduce_sql_modal(
@@ -511,7 +511,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_advances_cursor() {
+        fn advances_cursor() {
             let mut state = editing_state();
             state
                 .sql_modal
@@ -528,7 +528,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_dismisses_completion() {
+        fn dismisses_completion() {
             let mut state = editing_state();
             state.sql_modal.completion.visible = true;
 
@@ -538,7 +538,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_with_multibyte() {
+        fn advances_cursor_with_multibyte() {
             let mut state = editing_state();
             state
                 .sql_modal
@@ -556,7 +556,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_confirming_high_is_ignored() {
+        fn confirming_high_is_ignored() {
             let mut state = editing_state();
             state
                 .sql_modal
@@ -1141,7 +1141,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_ignored_in_normal_mode() {
+        fn ignored_in_normal_mode() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("original".to_string());
 

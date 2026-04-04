@@ -191,11 +191,11 @@ mod tests {
         .unwrap()
     }
 
-    mod load_all {
+    mod loading {
         use super::*;
 
         #[test]
-        fn returns_empty_vec_when_no_file_exists() {
+        fn no_file_returns_empty_vec() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
 
@@ -205,7 +205,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_version_mismatch_for_v1_format() {
+        fn reports_version_mismatch_for_v1_format() {
             let temp_dir = TempDir::new().unwrap();
             let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
 
@@ -236,7 +236,7 @@ ssl_mode = "prefer"
         }
 
         #[test]
-        fn returns_error_for_invalid_toml() {
+        fn reports_error_for_invalid_toml() {
             let temp_dir = TempDir::new().unwrap();
             let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
 
@@ -344,11 +344,11 @@ ssl_mode = "prefer"
         }
     }
 
-    mod find_by_id {
+    mod lookup {
         use super::*;
 
         #[test]
-        fn returns_some_when_found() {
+        fn existing_id_finds_connection() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
 
@@ -362,7 +362,7 @@ ssl_mode = "prefer"
         }
 
         #[test]
-        fn returns_none_when_not_found() {
+        fn missing_id_returns_none() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
 
@@ -400,7 +400,7 @@ ssl_mode = "prefer"
         use super::*;
 
         #[test]
-        fn returns_correct_path() {
+        fn matches_config_file_path() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
 

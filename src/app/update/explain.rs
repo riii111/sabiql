@@ -821,7 +821,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn scroll_up_saturates_at_zero() {
+        fn plan_scroll_up_saturates_at_zero() {
             let mut state = sql_modal_state();
             state.explain.scroll_offset = 0;
 
@@ -839,7 +839,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_down_increments() {
+        fn plan_scroll_down_increments() {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
@@ -862,7 +862,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_down_clamps_at_max() {
+        fn plan_scroll_down_clamps_at_max() {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
@@ -891,7 +891,7 @@ mod tests {
         }
 
         #[test]
-        fn compare_scroll_up_saturates_at_zero() {
+        fn compare_plan_scroll_up_saturates_at_zero() {
             let mut state = sql_modal_state();
             state.explain.compare_scroll_offset = 0;
 
@@ -909,7 +909,7 @@ mod tests {
         }
 
         #[test]
-        fn compare_scroll_down_increments() {
+        fn compare_plan_scroll_down_increments() {
             let mut state = sql_modal_state();
             let long_plan = (0..20)
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
@@ -973,7 +973,7 @@ mod tests {
         }
 
         #[test]
-        fn right_only_scroll_down_increments() {
+        fn right_only_plan_scroll_down_increments() {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)

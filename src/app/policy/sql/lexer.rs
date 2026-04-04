@@ -1448,7 +1448,7 @@ mod tests {
             #[case("DELETE FROM orders WHERE id = 1", Some("orders"))]
             #[case("INSERT INTO posts (title) VALUES ('test')", Some("posts"))]
             #[case("SELECT * FROM users", None)]
-            fn extract_target_returns_expected(#[case] sql: &str, #[case] expected: Option<&str>) {
+            fn extracts_target_table(#[case] sql: &str, #[case] expected: Option<&str>) {
                 let l = lexer();
                 let tokens = l.tokenize(sql, sql.len());
 

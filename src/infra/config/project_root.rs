@@ -86,7 +86,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_unknown_for_root() {
+        fn reports_unknown_for_root() {
             assert_eq!(get_project_name(Path::new("/")), "unknown");
         }
     }

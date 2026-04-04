@@ -20,6 +20,10 @@ run = "cargo fmt"
 description = "Run lints"
 run = "cargo clippy -q --all-targets --features test-support -- -D warnings"
 
+[tasks."lint:test-names"]
+description = "Lint test naming rules"
+run = "./scripts/lint_test_names.sh"
+
 [tasks."clippy:fix"]
 description = "Auto-fix clippy warnings"
 run = "cargo clippy --all-targets --features test-support --fix --allow-dirty --allow-staged"

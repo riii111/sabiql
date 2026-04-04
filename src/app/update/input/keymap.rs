@@ -84,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn returns_none_for_no_match() {
+    fn resolves_no_match_to_none() {
         let bindings = [quit_binding()];
 
         let result = resolve(&KeyCombo::plain(Key::Char('x')), &bindings);
@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn returns_first_matching_non_none_entry() {
+    fn first_matching_non_none_entry_is_resolved() {
         let quit = quit_binding();
         let help = help_binding();
         let bindings = [quit, help];
@@ -149,7 +149,7 @@ mod tests {
         }
 
         #[test]
-        fn no_match_returns_none() {
+        fn mode_returns_none_for_no_match() {
             let result = resolve_mode(&KeyCombo::plain(Key::F(12)), HELP_ROWS);
 
             assert!(result.is_none());

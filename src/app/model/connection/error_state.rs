@@ -251,7 +251,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_zero_when_no_error() {
+        fn zero_when_no_error() {
             let state = ConnectionErrorState::default();
             assert_eq!(state.detail_line_count(), 0);
         }
@@ -271,13 +271,13 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_none_when_no_error() {
+        fn absent_when_no_error() {
             let state = ConnectionErrorState::default();
             assert!(state.masked_details().is_none());
         }
 
         #[test]
-        fn returns_masked_string_when_error_exists() {
+        fn masks_error_string_when_error_exists() {
             let mut state = ConnectionErrorState::default();
             state.set_error(sample_error());
 
