@@ -196,7 +196,9 @@ mod tests {
 
         #[rstest]
         #[case("日本語テスト", 0, 3, "日")]
+        #[case("日本語テスト", 1, 3, "本")]
         #[case("日本語テスト", 2, 3, "本")]
+        #[case("日本語テスト", 0, 1, "")]
         #[case("public.日本語_table", 0, 10, "public.日")]
         #[case("🎉table🎊", 0, 6, "🎉tabl")]
         fn unicode_input_truncates_visible_columns(

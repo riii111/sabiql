@@ -17,6 +17,9 @@ pub const RESULT_INNER_OVERHEAD: u16 = 3;
 
 // border (2) + inner overhead, used by scroll limit calculation
 pub const RESULT_PANE_OVERHEAD: u16 = 2 + RESULT_INNER_OVERHEAD;
+pub const EXPLORER_PANEL_BORDER_WIDTH: u16 = 2;
+pub const EXPLORER_HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
+pub const EXPLORER_SCROLLBAR_RESERVED_WIDTH: u16 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResultNavMode {
@@ -259,16 +262,12 @@ pub fn text_display_width(text: &str) -> usize {
 }
 
 pub fn explorer_content_width_from_inner_width(inner_width: u16) -> usize {
-    const HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
-    const SCROLLBAR_RESERVED_WIDTH: u16 = 1;
-
-    inner_width.saturating_sub(HIGHLIGHT_SYMBOL_WIDTH + SCROLLBAR_RESERVED_WIDTH) as usize
+    inner_width.saturating_sub(EXPLORER_HIGHLIGHT_SYMBOL_WIDTH + EXPLORER_SCROLLBAR_RESERVED_WIDTH)
+        as usize
 }
 
 pub fn explorer_content_width_from_pane_width(pane_width: u16) -> usize {
-    const PANEL_BORDER_WIDTH: u16 = 2;
-
-    explorer_content_width_from_inner_width(pane_width.saturating_sub(PANEL_BORDER_WIDTH))
+    explorer_content_width_from_inner_width(pane_width.saturating_sub(EXPLORER_PANEL_BORDER_WIDTH))
 }
 
 #[cfg(test)]
