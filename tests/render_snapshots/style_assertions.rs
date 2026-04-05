@@ -321,3 +321,91 @@ fn sql_modal_unterminated_block_comment_keeps_comment_highlight() {
         "Expected unterminated block comment input to keep SQL comment highlight"
     );
 }
+
+#[test]
+fn confirm_dialog_sql_preview_uses_shared_syntax_colors() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    let sql =
+        "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com' -- keep\nWHERE \"id\" = 2;"
+            .to_string();
+    state.result_interaction.set_write_preview(WritePreview {
+        operation: WriteOperation::Update,
+        sql: sql.clone(),
+        target_summary: TargetSummary {
+            schema: "public".to_string(),
+            table: "users".to_string(),
+            key_values: vec![("id".to_string(), "2".to_string())],
+        },
+        diff: vec![ColumnDiff {
+            column: "email".to_string(),
+            before: "old@example.com".to_string(),
+            after: "new@example.com".to_string(),
+            json_diff: None,
+        }],
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
+    });
+    state.modal.set_mode(InputMode::ConfirmDialog);
+    state.confirm_dialog.open(
+        "Confirm UPDATE: users",
+        "email changed",
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+            sql,
+            blocked: false,
+        },
+    );
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+    let has_keyword = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "U" && cell.fg == Theme::SQL_KEYWORD)
+        });
+    let has_string = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "'" && cell.fg == Theme::SQL_STRING)
+        });
+    let has_number = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "2" && cell.fg == Theme::SQL_NUMBER)
+        });
+    let has_comment = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                (cell.symbol() == "-" || cell.symbol() == "k") && cell.fg == Theme::SQL_COMMENT
+            })
+        });
+
+    assert!(
+        has_keyword,
+        "Expected confirm dialog SQL preview keyword color"
+    );
+    assert!(
+        has_string,
+        "Expected confirm dialog SQL preview string color"
+    );
+    assert!(
+        has_number,
+        "Expected confirm dialog SQL preview number color"
+    );
+    assert!(
+        has_comment,
+        "Expected confirm dialog SQL preview comment color"
+    );
+}
