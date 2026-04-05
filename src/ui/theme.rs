@@ -100,7 +100,7 @@ impl Theme {
     pub const JSON_BRACKET: Color = Color::Rgb(0xb0, 0xb4, 0xbe);
 
     // Striped table rows
-    pub const STRIPED_ROW_BG: Color = Color::Rgb(0x22, 0x22, 0x28);
+    pub const STRIPED_ROW_BG: Color = Color::Rgb(0x1e, 0x1e, 0x23);
 
     // Text selection / cursor background in editors
     pub const SELECTION_BG: Color = Color::Black;
