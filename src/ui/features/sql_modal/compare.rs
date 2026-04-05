@@ -61,7 +61,12 @@ pub fn render(
         theme,
     );
 
-    frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), area);
+    frame.render_widget(
+        Paragraph::new(visible)
+            .style(Style::default().fg(theme.text_primary))
+            .wrap(Wrap { trim: false }),
+        area,
+    );
     area.height
 }
 
