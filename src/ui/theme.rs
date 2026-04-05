@@ -131,10 +131,10 @@ impl ThemePalette {
 }
 
 pub const DEFAULT_THEME: ThemePalette = ThemePalette {
-    modal_border: Color::Rgb(0x45, 0x47, 0x55),
+    modal_border: Color::Rgb(0x70, 0x68, 0x60),
     modal_border_highlight: Color::Rgb(0xc0, 0xb8, 0xb8),
     modal_title: Color::Rgb(0xe9, 0xdb, 0xdb),
-    modal_hint: Color::Rgb(0x5b, 0x5f, 0x6e),
+    modal_hint: Color::Rgb(0xc0, 0xb8, 0xb0),
     key_chip_bg: Color::Rgb(0x3a, 0x3a, 0x4a),
     key_chip_fg: Color::Rgb(0xd4, 0xa4, 0x85),
     editor_current_line_bg: Color::Rgb(0x22, 0x26, 0x33),
