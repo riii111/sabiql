@@ -60,7 +60,7 @@ impl ErTablePicker {
             Constraint::Percentage(70),
             " ER Diagram ",
             &format!(
-                " {selected_count}/{total_count} selected │ ^N/^P/↑↓ Navigate │ Space Select │ ^A All │ Enter Generate │ Esc Cancel "
+                " {selected_count}/{total_count} selected │ Space Select │ ^A All │ Enter Generate │ Esc Cancel "
             ),
             theme,
         );

@@ -11,7 +11,7 @@ use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
-    CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
+    CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HISTORY_KEYS,
     INSPECTOR_DDL_KEYS, JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS, JSONB_SEARCH_KEYS, OVERLAY_KEYS,
     QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
     SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
@@ -218,10 +218,7 @@ impl Footer {
                     COMMAND_PALETTE_ROWS[idx::cmd_palette::ESC_CLOSE].as_hint(),
                 ]
             }
-            InputMode::Help => vec![
-                HELP_ROWS[idx::help::SCROLL].as_hint(),
-                HELP_ROWS[idx::help::CLOSE].as_hint(),
-            ],
+            InputMode::Help => vec![],
             InputMode::SqlModal => {
                 if matches!(
                     state.sql_modal.status(),
@@ -273,7 +270,6 @@ impl Footer {
                 ER_PICKER_ROWS[idx::er_picker::SELECT].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::SELECT_ALL].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::TYPE_FILTER].as_hint(),
-                ER_PICKER_ROWS[idx::er_picker::NAVIGATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::QueryHistoryPicker => vec![

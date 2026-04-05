@@ -23,5 +23,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │           │  Ctrl+O              Open Query History             ││           │
 │           │                                                     ││           │
 │           │▸ Navigation                                         ▼│           │
-└───────────╰ j/k / Ctrl+N / Ctrl+P / ↑↓ to scroll, ? or Esc to clo╯───────────┘
-j/k/^N/^P / ↑↓:Scroll  ?/Esc:Close
+└───────────╰ ^N/^P/j/k/↑↓ to scroll, ? or Esc to close ───────────╯───────────┘
