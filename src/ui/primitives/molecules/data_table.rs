@@ -67,6 +67,7 @@ pub fn render_striped_table<'a>(
             position: clamped_scroll_offset,
             viewport_size: visible_rows,
             total_items: config.total_items,
+            has_horizontal_scrollbar: false,
         },
         theme,
     );

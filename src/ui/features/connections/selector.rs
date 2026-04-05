@@ -193,6 +193,7 @@ pub fn render_connection_list(
                     position: scroll_offset,
                     viewport_size,
                     total_items,
+                    has_horizontal_scrollbar: false,
                 },
                 theme,
             );

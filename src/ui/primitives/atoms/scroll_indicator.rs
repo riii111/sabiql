@@ -104,6 +104,7 @@ pub struct VerticalScrollParams {
     pub position: usize,
     pub viewport_size: usize,
     pub total_items: usize,
+    pub has_horizontal_scrollbar: bool,
 }
 
 pub fn render_vertical_scroll_indicator_bar(
@@ -123,12 +124,14 @@ pub fn render_vertical_scroll_indicator_bar(
         return;
     }
 
-    // Need at least 3 rows for scrollbar (arrow + thumb + arrow)
-    if area.height < 3 {
-        return;
-    }
+    // Reserve 1 row at bottom when horizontal scrollbar is also present
+    let height = if params.has_horizontal_scrollbar {
+        area.height.saturating_sub(1)
+    } else {
+        area.height
+    };
 
-    if area.height < 3 {
+    if height < 3 {
         return;
     }
 
@@ -136,7 +139,7 @@ pub fn render_vertical_scroll_indicator_bar(
         x: area.x + area.width.saturating_sub(1),
         y: area.y,
         width: 1,
-        height: area.height,
+        height,
     };
 
     let arrow_active = Style::default().fg(theme.scrollbar_active);

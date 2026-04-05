@@ -368,23 +368,15 @@ impl ResultPane {
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
             render_vertical_scroll_indicator_bar,
         };
-        // Avoid vertical/horizontal scrollbar overlap at bottom-right corner
         let has_h_scroll = total_cols > plan.column_count;
-        let v_scroll_area = if has_h_scroll {
-            Rect {
-                height: inner.height.saturating_sub(1),
-                ..inner
-            }
-        } else {
-            inner
-        };
         render_vertical_scroll_indicator_bar(
             frame,
-            v_scroll_area,
+            inner,
             VerticalScrollParams {
                 position: scroll_offset,
                 viewport_size: scroll_viewport_size,
                 total_items: total_rows,
+                has_horizontal_scrollbar: has_h_scroll,
             },
             theme,
         );
