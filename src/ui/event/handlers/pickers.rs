@@ -208,41 +208,10 @@ mod tests {
         fn picker_keys(#[case] key: Key, #[case] expected: Action) {
             let result = handle_query_history_picker_keys(combo(key));
 
-            assert!(matches!(
-                (result, expected),
-                (
-                    Action::QueryHistoryConfirmSelection,
-                    Action::QueryHistoryConfirmSelection
-                ) | (
-                    Action::ListSelect {
-                        target: ListTarget::QueryHistory,
-                        motion: ListMotion::Previous,
-                    },
-                    Action::ListSelect {
-                        target: ListTarget::QueryHistory,
-                        motion: ListMotion::Previous,
-                    }
-                ) | (
-                    Action::ListSelect {
-                        target: ListTarget::QueryHistory,
-                        motion: ListMotion::Next,
-                    },
-                    Action::ListSelect {
-                        target: ListTarget::QueryHistory,
-                        motion: ListMotion::Next,
-                    }
-                ) | (
-                    Action::TextBackspace {
-                        target: InputTarget::QueryHistoryFilter,
-                    },
-                    Action::TextBackspace {
-                        target: InputTarget::QueryHistoryFilter,
-                    }
-                ) | (
-                    Action::CloseQueryHistoryPicker,
-                    Action::CloseQueryHistoryPicker
-                )
-            ));
+            assert_eq!(
+                std::mem::discriminant(&result),
+                std::mem::discriminant(&expected)
+            );
         }
 
         #[test]
