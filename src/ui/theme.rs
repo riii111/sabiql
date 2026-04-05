@@ -91,6 +91,10 @@ impl Theme {
 
     // SQL syntax highlighting
     pub const SQL_KEYWORD: Color = Color::Blue;
+    pub const SQL_STRING: Color = Color::Green;
+    pub const SQL_NUMBER: Color = Color::Yellow;
+    pub const SQL_COMMENT: Color = Color::DarkGray;
+    pub const SQL_OPERATOR: Color = Color::Cyan;
     pub const SQL_TEXT: Color = Color::White;
 
     // Striped table rows — ANSI 256 (#303030) for terminal-agnostic rendering
