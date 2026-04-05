@@ -16,7 +16,7 @@ impl Theme {
     pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Gray;
 
     // Modal title (emphasized)
-    pub const MODAL_TITLE: Color = Color::Rgb(0xcd, 0xd6, 0xf4);
+    pub const MODAL_TITLE: Color = Color::Rgb(0xc9, 0xce, 0xd8);
 
     // Modal hint text (de-emphasized)
     pub const MODAL_HINT: Color = Color::DarkGray;
@@ -47,7 +47,7 @@ impl Theme {
     // ============ Text Colors ============
 
     // Semantic text colors
-    pub const TEXT_PRIMARY: Color = Color::Rgb(0xcd, 0xd6, 0xf4);
+    pub const TEXT_PRIMARY: Color = Color::Rgb(0xc9, 0xce, 0xd8);
     pub const TEXT_SECONDARY: Color = Color::Gray;
     pub const TEXT_MUTED: Color = Color::DarkGray;
     pub const TEXT_DIM: Color = Color::Rgb(0x77, 0x77, 0x88);
@@ -95,7 +95,7 @@ impl Theme {
     pub const SQL_NUMBER: Color = Color::Rgb(0xfa, 0xb3, 0x87);
     pub const SQL_COMMENT: Color = Color::Rgb(0x6c, 0x70, 0x86);
     pub const SQL_OPERATOR: Color = Color::Rgb(0x94, 0xe2, 0xd5);
-    pub const SQL_TEXT: Color = Color::Rgb(0xcd, 0xd6, 0xf4);
+    pub const SQL_TEXT: Color = Color::Rgb(0xc9, 0xce, 0xd8);
 
     // Striped table rows — ANSI 256 (#303030) for terminal-agnostic rendering
     pub const STRIPED_ROW_BG: Color = Color::Indexed(235);
