@@ -55,7 +55,7 @@ pub fn text_cursor_spans(
 pub fn insert_cursor_span(spans: Vec<Span<'static>>, cursor_col: usize) -> Vec<Span<'static>> {
     let mut output = Vec::new();
     let mut remaining = cursor_col;
-    let mut iter = spans.into_iter();
+    let mut iter = spans.into_iter().peekable();
 
     while let Some(span) = iter.next() {
         let content = span.content.to_string();
@@ -69,7 +69,7 @@ pub fn insert_cursor_span(spans: Vec<Span<'static>>, cursor_col: usize) -> Vec<S
 
         if remaining == len {
             output.push(span);
-            if iter.len() == 0 {
+            if iter.peek().is_none() {
                 output.push(Span::styled(" ", cursor_style()));
                 return output;
             }
