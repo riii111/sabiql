@@ -19,6 +19,14 @@ fn help_modal_origin() -> (u16, u16) {
     (x, y)
 }
 
+fn sql_modal_origin() -> (u16, u16, u16, u16) {
+    let modal_w = TEST_WIDTH * 80 / 100;
+    let modal_h = TEST_HEIGHT * 60 / 100;
+    let x = (TEST_WIDTH - modal_w) / 2;
+    let y = (TEST_HEIGHT - modal_h) / 2;
+    (x, y, modal_w, modal_h)
+}
+
 #[test]
 fn pending_draft_cell_uses_orange_fg() {
     let (mut state, now) = table_detail_loaded_state();
@@ -339,6 +347,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         focus_border: Color::Rgb(0x11, 0x88, 0xdd),
         modal_border: Color::Rgb(0xdd, 0x44, 0x11),
         completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
+        modal_hint: Color::Rgb(0xaa, 0xee, 0x22),
         ..DEFAULT_THEME
     };
 
@@ -361,6 +370,17 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     let (mx, my) = help_modal_origin();
     let modal_corner = help_buffer.cell((mx, my)).unwrap();
     assert_eq!(modal_corner.fg, theme.modal_border);
+    let help_modal_height = TEST_HEIGHT * 80 / 100;
+    let help_hint_row = my + help_modal_height.saturating_sub(1);
+    let has_custom_help_hint = (mx..TEST_WIDTH).any(|x| {
+        help_buffer
+            .cell((x, help_hint_row))
+            .is_some_and(|cell| cell.fg == theme.modal_hint)
+    });
+    assert!(
+        has_custom_help_hint,
+        "Expected shared modal hint to use injected hint color"
+    );
 
     state.modal.set_mode(InputMode::CommandPalette);
     let picker_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
@@ -374,5 +394,20 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     assert!(
         has_custom_picker_selection,
         "Expected picker selection to use injected selected background"
+    );
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.set_status(SqlModalStatus::Normal);
+    let sql_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
+    let (sql_x, sql_y, sql_w, sql_h) = sql_modal_origin();
+    let sql_hint_row = sql_y + sql_h.saturating_sub(1);
+    let has_custom_sql_hint = (sql_x..sql_x + sql_w).any(|x| {
+        sql_buffer
+            .cell((x, sql_hint_row))
+            .is_some_and(|cell| cell.fg == theme.modal_hint)
+    });
+    assert!(
+        has_custom_sql_hint,
+        "Expected SQL modal hint to use injected hint color"
     );
 }

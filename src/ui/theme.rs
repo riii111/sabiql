@@ -83,9 +83,7 @@ impl ThemePalette {
     }
 
     pub fn modal_hint_style(&self) -> Style {
-        Style::default()
-            .fg(self.modal_title)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(self.modal_hint)
     }
 
     pub fn panel_border_style(&self, focused: bool, highlight: bool) -> Style {
@@ -230,6 +228,14 @@ mod tests {
         let style = DEFAULT_THEME.status_style(StatusTone::Warning);
 
         assert_eq!(style.fg, Some(DEFAULT_THEME.status_warning));
+    }
+
+    #[test]
+    fn modal_hint_style_uses_hint_token_without_bold() {
+        let style = DEFAULT_THEME.modal_hint_style();
+
+        assert_eq!(style.fg, Some(DEFAULT_THEME.modal_hint));
+        assert!(!style.add_modifier.contains(Modifier::BOLD));
     }
 
     #[test]

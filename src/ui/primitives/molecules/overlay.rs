@@ -2,6 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::symbols::border;
+use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders};
 
 use crate::ui::theme::ThemePalette;
@@ -38,7 +39,7 @@ pub fn modal_block_with_hint_color(
     Block::default()
         .title(title)
         .title_style(theme.modal_title_style())
-        .title_bottom(hint)
+        .title_bottom(Line::styled(hint, theme.modal_hint_style()))
         .borders(Borders::ALL)
         .border_set(border::ROUNDED)
         .border_style(Style::default().fg(border_color))
