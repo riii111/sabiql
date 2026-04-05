@@ -10,6 +10,7 @@ use ratatui::buffer::Buffer;
 use sabiql::app::model::app_state::AppState;
 use sabiql::app::services::AppServices;
 use sabiql::ui::shell::layout::MainLayout;
+use sabiql::ui::theme::{ThemePalette, palette_for};
 
 pub const TEST_WIDTH: u16 = 80;
 pub const TEST_HEIGHT: u16 = 24;
@@ -46,10 +47,25 @@ pub fn render_and_get_buffer_at(
     state: &mut AppState,
     now: Instant,
 ) -> Buffer {
+    render_and_get_buffer_at_with_theme(terminal, state, now, palette_for(state.ui.theme_id()))
+}
+
+pub fn render_and_get_buffer_at_with_theme(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+    now: Instant,
+    theme: &ThemePalette,
+) -> Buffer {
     terminal
         .draw(|frame| {
-            let output =
-                MainLayout::render(frame, state, Some(FIXED_TIME_MS), &AppServices::stub(), now);
+            let output = MainLayout::render_with_theme(
+                frame,
+                state,
+                Some(FIXED_TIME_MS),
+                &AppServices::stub(),
+                now,
+                theme,
+            );
             state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
             state.ui.result_viewport_plan = output.result_viewport_plan;
             state.ui.result_widths_cache = output.result_widths_cache;

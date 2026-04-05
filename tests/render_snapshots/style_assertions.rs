@@ -2,12 +2,13 @@ use std::time::Duration;
 
 use super::*;
 use harness::{
-    TEST_HEIGHT, TEST_WIDTH, connected_state, table_detail_loaded_state, with_current_result,
+    TEST_HEIGHT, TEST_WIDTH, connected_state, render_and_get_buffer_at_with_theme,
+    table_detail_loaded_state, with_current_result,
 };
 use ratatui::style::{Color, Modifier};
 use sabiql::app::model::shared::input_mode::InputMode;
 use sabiql::app::model::sql_editor::modal::SqlModalStatus;
-use sabiql::ui::theme::Theme;
+use sabiql::ui::theme::{DEFAULT_THEME, ThemePalette};
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
 fn help_modal_origin() -> (u16, u16) {
@@ -38,10 +39,13 @@ fn pending_draft_cell_uses_orange_fg() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let orange = Color::Rgb(0xff, 0x99, 0x00);
     let draft_cell = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.fg == orange));
+        .find(|&(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|c| c.fg == DEFAULT_THEME.cell_draft_pending_fg)
+        });
     assert!(
         draft_cell.is_some(),
         "Expected at least one cell with CELL_DRAFT_PENDING_FG (orange) in the buffer"
@@ -73,7 +77,7 @@ fn active_cell_edit_uses_yellow_fg() {
         .find(|&(x, y)| {
             buffer
                 .cell((x, y))
-                .is_some_and(|c| c.fg == Theme::CELL_EDIT_FG)
+                .is_some_and(|c| c.fg == DEFAULT_THEME.cell_edit_fg)
         });
     assert!(
         edit_cell.is_some(),
@@ -93,10 +97,13 @@ fn staged_delete_row_uses_dark_red_bg() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let dark_red = Color::Rgb(0x3d, 0x22, 0x22);
     let staged_cell = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.bg == dark_red));
+        .find(|&(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|c| c.bg == DEFAULT_THEME.staged_delete_bg)
+        });
     assert!(
         staged_cell.is_some(),
         "Expected at least one cell with STAGED_DELETE_BG (dark red) in the buffer"
@@ -140,7 +147,7 @@ fn result_highlight_respects_injected_now() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             let cell = buf_before.cell((x, y)).unwrap();
-            cell.fg == Theme::HIGHLIGHT_BORDER && cell.symbol() == "─"
+            cell.fg == DEFAULT_THEME.highlight_border && cell.symbol() == "─"
         });
     assert!(
         has_green_border,
@@ -155,7 +162,7 @@ fn result_highlight_respects_injected_now() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             let cell = buf_after.cell((x, y)).unwrap();
-            cell.fg == Theme::HIGHLIGHT_BORDER && cell.symbol() == "─"
+            cell.fg == DEFAULT_THEME.highlight_border && cell.symbol() == "─"
         });
     assert!(
         !has_green_border_after,
@@ -183,12 +190,9 @@ fn modal_border_uses_theme_color() {
         cell.symbol()
     );
     assert_eq!(
-        cell.fg,
-        Theme::MODAL_BORDER,
+        cell.fg, DEFAULT_THEME.modal_border,
         "Expected MODAL_BORDER fg on modal border at ({}, {}), got {:?}",
-        mx,
-        my,
-        cell.fg
+        mx, my, cell.fg
     );
 }
 
@@ -207,14 +211,14 @@ fn sql_modal_keyword_and_number_use_syntax_colors() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .find_map(|(x, y)| {
             buffer.cell((x, y)).and_then(|cell| {
-                (cell.symbol() == "S" && cell.fg == Theme::SQL_KEYWORD).then_some(cell)
+                (cell.symbol() == "S" && cell.fg == DEFAULT_THEME.sql_keyword).then_some(cell)
             })
         });
     let number_cell = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .find_map(|(x, y)| {
             buffer.cell((x, y)).and_then(|cell| {
-                (cell.symbol() == "4" && cell.fg == Theme::SQL_NUMBER).then_some(cell)
+                (cell.symbol() == "4" && cell.fg == DEFAULT_THEME.sql_number).then_some(cell)
             })
         });
 
@@ -247,21 +251,21 @@ fn sql_modal_string_comment_and_operator_use_syntax_colors() {
         .any(|(x, y)| {
             buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == "'" && cell.fg == Theme::SQL_STRING)
+                .is_some_and(|cell| cell.symbol() == "'" && cell.fg == DEFAULT_THEME.sql_string)
         });
     let has_operator = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == ":" && cell.fg == Theme::SQL_OPERATOR)
+                .is_some_and(|cell| cell.symbol() == ":" && cell.fg == DEFAULT_THEME.sql_operator)
         });
     let has_comment = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == "-" && cell.fg == Theme::SQL_COMMENT)
+                .is_some_and(|cell| cell.symbol() == "-" && cell.fg == DEFAULT_THEME.sql_comment)
         });
 
     assert!(has_string, "Expected a green SQL string cell");
@@ -287,7 +291,8 @@ fn sql_modal_unterminated_string_keeps_string_highlight() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             buffer.cell((x, y)).is_some_and(|cell| {
-                (cell.symbol() == "'" || cell.symbol() == "u") && cell.fg == Theme::SQL_STRING
+                (cell.symbol() == "'" || cell.symbol() == "u")
+                    && cell.fg == DEFAULT_THEME.sql_string
             })
         });
 
@@ -315,12 +320,59 @@ fn sql_modal_unterminated_block_comment_keeps_comment_highlight() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             buffer.cell((x, y)).is_some_and(|cell| {
-                (cell.symbol() == "/" || cell.symbol() == "*") && cell.fg == Theme::SQL_COMMENT
+                (cell.symbol() == "/" || cell.symbol() == "*")
+                    && cell.fg == DEFAULT_THEME.sql_comment
             })
         });
 
     assert!(
         has_comment,
         "Expected unterminated block comment input to keep SQL comment highlight"
+    );
+}
+
+#[test]
+fn injected_palette_changes_shell_modal_and_picker_styles() {
+    let (mut state, now) = connected_state();
+    let mut terminal = create_test_terminal();
+    let theme = ThemePalette {
+        focus_border: Color::Rgb(0x11, 0x88, 0xdd),
+        modal_border: Color::Rgb(0xdd, 0x44, 0x11),
+        completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
+        ..DEFAULT_THEME
+    };
+
+    state.ui.focused_pane = FocusedPane::Explorer;
+    let shell_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
+    let has_custom_focus_border = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            shell_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "─" && cell.fg == theme.focus_border)
+        });
+    assert!(
+        has_custom_focus_border,
+        "Expected shell border to use injected focus border color"
+    );
+
+    state.modal.set_mode(InputMode::Help);
+    let help_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
+    let (mx, my) = help_modal_origin();
+    let modal_corner = help_buffer.cell((mx, my)).unwrap();
+    assert_eq!(modal_corner.fg, theme.modal_border);
+
+    state.modal.set_mode(InputMode::CommandPalette);
+    let picker_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
+    let has_custom_picker_selection = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            picker_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.bg == theme.completion_selected_bg)
+        });
+    assert!(
+        has_custom_picker_selection,
+        "Expected picker selection to use injected selected background"
     );
 }
