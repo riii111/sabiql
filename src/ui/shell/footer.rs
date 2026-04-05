@@ -269,8 +269,8 @@ impl Footer {
                 ER_PICKER_ROWS[idx::er_picker::ENTER_GENERATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::SELECT].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::SELECT_ALL].as_hint(),
-                ER_PICKER_ROWS[idx::er_picker::NAVIGATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::TYPE_FILTER].as_hint(),
+                ER_PICKER_ROWS[idx::er_picker::NAVIGATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::QueryHistoryPicker => vec![

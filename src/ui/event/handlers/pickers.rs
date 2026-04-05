@@ -123,29 +123,18 @@ mod tests {
             }
         }
 
-        #[test]
-        fn ctrl_p_returns_select_previous() {
-            let result = handle_table_picker_keys(combo_ctrl(Key::Char('p')));
+        #[rstest]
+        #[case(Key::Char('p'), ListMotion::Previous)]
+        #[case(Key::Char('n'), ListMotion::Next)]
+        fn ctrl_alias_returns_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
+            let result = handle_table_picker_keys(combo_ctrl(key));
 
             assert!(matches!(
                 result,
                 Action::ListSelect {
                     target: ListTarget::TablePicker,
-                    motion: ListMotion::Previous,
-                }
-            ));
-        }
-
-        #[test]
-        fn ctrl_n_returns_select_next() {
-            let result = handle_table_picker_keys(combo_ctrl(Key::Char('n')));
-
-            assert!(matches!(
-                result,
-                Action::ListSelect {
-                    target: ListTarget::TablePicker,
-                    motion: ListMotion::Next,
-                }
+                    motion: actual_motion,
+                } if actual_motion == motion
             ));
         }
     }
@@ -266,29 +255,18 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn ctrl_p_returns_select_previous() {
-            let result = handle_query_history_picker_keys(combo_ctrl(Key::Char('p')));
+        #[rstest]
+        #[case(Key::Char('p'), ListMotion::Previous)]
+        #[case(Key::Char('n'), ListMotion::Next)]
+        fn ctrl_alias_returns_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
+            let result = handle_query_history_picker_keys(combo_ctrl(key));
 
             assert!(matches!(
                 result,
                 Action::ListSelect {
                     target: ListTarget::QueryHistory,
-                    motion: ListMotion::Previous,
-                }
-            ));
-        }
-
-        #[test]
-        fn ctrl_n_returns_select_next() {
-            let result = handle_query_history_picker_keys(combo_ctrl(Key::Char('n')));
-
-            assert!(matches!(
-                result,
-                Action::ListSelect {
-                    target: ListTarget::QueryHistory,
-                    motion: ListMotion::Next,
-                }
+                    motion: actual_motion,
+                } if actual_motion == motion
             ));
         }
     }
@@ -361,29 +339,18 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn ctrl_p_returns_select_previous() {
-            let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('p')));
+        #[rstest]
+        #[case(Key::Char('p'), ListMotion::Previous)]
+        #[case(Key::Char('n'), ListMotion::Next)]
+        fn ctrl_alias_returns_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
+            let result = handle_er_table_picker_keys(combo_ctrl(key));
 
             assert!(matches!(
                 result,
                 Action::ListSelect {
                     target: ListTarget::ErTablePicker,
-                    motion: ListMotion::Previous,
-                }
-            ));
-        }
-
-        #[test]
-        fn ctrl_n_returns_select_next() {
-            let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('n')));
-
-            assert!(matches!(
-                result,
-                Action::ListSelect {
-                    target: ListTarget::ErTablePicker,
-                    motion: ListMotion::Next,
-                }
+                    motion: actual_motion,
+                } if actual_motion == motion
             ));
         }
     }

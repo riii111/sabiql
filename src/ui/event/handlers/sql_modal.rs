@@ -712,6 +712,21 @@ mod tests {
         assert_action(result, Expected::None);
     }
 
+    #[rstest]
+    #[case(SqlModalTab::Plan, Key::Char('n'))]
+    #[case(SqlModalTab::Plan, Key::Char('p'))]
+    #[case(SqlModalTab::Compare, Key::Char('n'))]
+    #[case(SqlModalTab::Compare, Key::Char('p'))]
+    fn ctrl_shift_aliases_do_not_scroll_in_read_only_tabs(
+        #[case] tab: SqlModalTab,
+        #[case] code: Key,
+    ) {
+        let result =
+            handle_sql_modal_keys(combo_ctrl_shift(code), false, &SqlModalStatus::Normal, tab);
+
+        assert_action(result, Expected::None);
+    }
+
     #[test]
     fn normal_mode_y_yanks_query() {
         let result = handle_sql_modal_keys(

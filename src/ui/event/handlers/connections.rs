@@ -9,13 +9,15 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
     let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
     let ctrl = combo.modifiers.ctrl;
     let alt = combo.modifiers.alt;
+    let shift = combo.modifiers.shift;
+    let ctrl_only = ctrl && !alt && !shift;
 
     if dropdown_open {
         return match combo.key {
             Key::Up => Action::ConnectionSetupDropdownPrev,
             Key::Down => Action::ConnectionSetupDropdownNext,
-            Key::Char('p') if ctrl => Action::ConnectionSetupDropdownPrev,
-            Key::Char('n') if ctrl => Action::ConnectionSetupDropdownNext,
+            Key::Char('p') if ctrl_only => Action::ConnectionSetupDropdownPrev,
+            Key::Char('n') if ctrl_only => Action::ConnectionSetupDropdownNext,
             Key::Enter => Action::ConnectionSetupDropdownConfirm,
             Key::Esc => Action::ConnectionSetupDropdownCancel,
             _ => Action::None,
@@ -100,6 +102,28 @@ mod tests {
 
     fn combo_alt(k: Key) -> KeyCombo {
         KeyCombo::alt(k)
+    }
+
+    fn combo_ctrl_alt(k: Key) -> KeyCombo {
+        KeyCombo {
+            key: k,
+            modifiers: crate::app::update::input::keybindings::Modifiers {
+                ctrl: true,
+                alt: true,
+                shift: false,
+            },
+        }
+    }
+
+    fn combo_ctrl_shift(k: Key) -> KeyCombo {
+        KeyCombo {
+            key: k,
+            modifiers: crate::app::update::input::keybindings::Modifiers {
+                ctrl: true,
+                alt: false,
+                shift: true,
+            },
+        }
     }
 
     mod connection_setup_keys {
@@ -272,6 +296,19 @@ mod tests {
                     std::mem::discriminant(&result),
                     std::mem::discriminant(&expected)
                 );
+            }
+
+            #[rstest]
+            #[case(Key::Char('p'))]
+            #[case(Key::Char('n'))]
+            fn ctrl_aliases_ignore_extra_modifiers(#[case] code: Key) {
+                let state = dropdown_state();
+
+                let result = handle_connection_setup_keys(combo_ctrl_alt(code), &state);
+                assert!(matches!(result, Action::None));
+
+                let result = handle_connection_setup_keys(combo_ctrl_shift(code), &state);
+                assert!(matches!(result, Action::None));
             }
         }
     }
