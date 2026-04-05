@@ -97,10 +97,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
         }
         Action::ResultCancelCellEdit => {
-            if !state.result_interaction.cell_edit().has_pending_draft() {
-                state.result_interaction.discard_cell_edit();
-            } else {
+            if state.result_interaction.cell_edit().has_pending_draft() {
                 state.result_interaction.clear_write_preview();
+            } else {
+                state.result_interaction.discard_cell_edit();
             }
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
