@@ -68,10 +68,13 @@ fn active_cell_edit_uses_yellow_fg() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let yellow = Color::Yellow;
     let edit_cell = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.fg == yellow));
+        .find(|&(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|c| c.fg == Theme::CELL_EDIT_FG)
+        });
     assert!(
         edit_cell.is_some(),
         "Expected at least one cell with CELL_EDIT_FG (yellow) in the buffer"

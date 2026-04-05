@@ -34,9 +34,9 @@ impl Theme {
     // ============ Panel/Border Colors ============
 
     // Panel border states
-    pub const FOCUS_BORDER: Color = Color::Rgb(0x7f, 0xb4, 0xca);
+    pub const FOCUS_BORDER: Color = Color::Rgb(0x97, 0xc9, 0xc3);
     pub const UNFOCUS_BORDER: Color = Color::Rgb(0x45, 0x47, 0x55);
-    pub const HIGHLIGHT_BORDER: Color = Color::Rgb(0x9d, 0xd0, 0xe6);
+    pub const HIGHLIGHT_BORDER: Color = Color::Rgb(0xb0, 0xdd, 0xd8);
 
     // ============ Text Colors ============
 
@@ -45,14 +45,14 @@ impl Theme {
     pub const TEXT_SECONDARY: Color = Color::Rgb(0xb0, 0xb4, 0xbe);
     pub const TEXT_MUTED: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
     pub const TEXT_DIM: Color = Color::Rgb(0x77, 0x77, 0x88);
-    pub const TEXT_ACCENT: Color = Color::Yellow;
+    pub const TEXT_ACCENT: Color = Color::Rgb(0xc4, 0xb2, 0x8a);
 
     // ============ Status Colors ============
 
     // Status indicators
     pub const STATUS_SUCCESS: Color = Color::Rgb(0x97, 0xc9, 0xc3);
     pub const STATUS_ERROR: Color = Color::Red;
-    pub const STATUS_WARNING: Color = Color::Yellow;
+    pub const STATUS_WARNING: Color = Color::Rgb(0xc4, 0xb2, 0x8a);
     pub const STATUS_MEDIUM_RISK: Color = Color::Rgb(0xff, 0x99, 0x00);
 
     // ============ Component Colors ============
@@ -61,10 +61,10 @@ impl Theme {
     pub const CURSOR_FG: Color = Color::White;
 
     // Section headers
-    pub const SECTION_HEADER: Color = Color::Rgb(0x7f, 0xb4, 0xca);
+    pub const SECTION_HEADER: Color = Color::Rgb(0x97, 0xc9, 0xc3);
 
     // Scrollbar
-    pub const SCROLLBAR_ACTIVE: Color = Color::Rgb(0x5a, 0x84, 0x96);
+    pub const SCROLLBAR_ACTIVE: Color = Color::Rgb(0x6a, 0x9e, 0x98);
     pub const SCROLLBAR_INACTIVE: Color = Color::Rgb(0x45, 0x47, 0x55);
 
     // Result pane selection
@@ -72,7 +72,7 @@ impl Theme {
     pub const RESULT_CELL_ACTIVE_BG: Color = Color::Rgb(0x3a, 0x3a, 0x5a);
 
     // Cell edit mode
-    pub const CELL_EDIT_FG: Color = Color::Yellow;
+    pub const CELL_EDIT_FG: Color = Color::Rgb(0xc4, 0xb2, 0x8a);
     pub const CELL_DRAFT_PENDING_FG: Color = Color::Rgb(0xff, 0x99, 0x00);
 
     // Staged-for-delete rows
@@ -92,7 +92,7 @@ impl Theme {
     pub const SQL_TEXT: Color = Color::Rgb(0xc9, 0xce, 0xd8);
 
     // JSON tree highlighting (muted to match overall theme)
-    pub const JSON_KEY: Color = Color::Rgb(0x7f, 0xb4, 0xca);
+    pub const JSON_KEY: Color = Color::Rgb(0x97, 0xc9, 0xc3);
     pub const JSON_STRING: Color = Color::Rgb(0x8a, 0xb8, 0x8a);
     pub const JSON_NUMBER: Color = Color::Rgb(0xc8, 0x9b, 0x7a);
     pub const JSON_BOOL: Color = Color::Rgb(0xc8, 0x9b, 0x7a);
@@ -106,7 +106,7 @@ impl Theme {
     pub const SELECTION_BG: Color = Color::Black;
 
     // Inspector tab states
-    pub const TAB_ACTIVE: Color = Color::Rgb(0x7f, 0xb4, 0xca);
+    pub const TAB_ACTIVE: Color = Color::Rgb(0x97, 0xc9, 0xc3);
     pub const TAB_INACTIVE: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
 
     // Active/inactive toggle indicators
