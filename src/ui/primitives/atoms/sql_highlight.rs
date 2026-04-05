@@ -139,8 +139,8 @@ mod tests {
 
         assert_eq!(spans[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
         assert_eq!(spans[2].style.fg, Some(DEFAULT_THEME.sql_string));
-        assert_eq!(spans[3].style.bg, Some(DEFAULT_THEME.cursor_fg));
-        assert_eq!(spans[3].style.fg, Some(DEFAULT_THEME.selection_bg));
+        assert_eq!(spans[3].style.bg, Some(DEFAULT_THEME.cursor_bg));
+        assert_eq!(spans[3].style.fg, Some(DEFAULT_THEME.cursor_text_fg));
         assert_eq!(spans[4].style.fg, Some(DEFAULT_THEME.sql_string));
     }
 
@@ -150,7 +150,7 @@ mod tests {
 
         assert_eq!(lines.len(), 3);
         assert_eq!(line_text(&lines[1]), " ");
-        assert_eq!(lines[1].spans[0].style.bg, Some(DEFAULT_THEME.cursor_fg));
+        assert_eq!(lines[1].spans[0].style.bg, Some(DEFAULT_THEME.cursor_bg));
     }
 
     #[test]
@@ -161,7 +161,7 @@ mod tests {
         assert_eq!(line_text(&lines[0]), "SELECT ");
         assert_eq!(
             spans.last().unwrap().style.bg,
-            Some(DEFAULT_THEME.cursor_fg)
+            Some(DEFAULT_THEME.cursor_bg)
         );
         assert_eq!(spans[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
     }
@@ -173,7 +173,7 @@ mod tests {
 
         assert_eq!(line_text(&lines[0]), r#"SET "email" = 0"#);
         assert_eq!(spans[2].content.as_ref(), "\"");
-        assert_eq!(spans[2].style.bg, Some(DEFAULT_THEME.cursor_fg));
+        assert_eq!(spans[2].style.bg, Some(DEFAULT_THEME.cursor_bg));
         assert_eq!(spans[3].content.as_ref(), "email\"");
     }
 
@@ -187,14 +187,14 @@ mod tests {
             .iter()
             .find(|span| span.content.as_ref() == "0")
             .expect("number token should be present");
-        assert_eq!(number_span.style.bg, Some(DEFAULT_THEME.cursor_fg));
+        assert_eq!(number_span.style.bg, Some(DEFAULT_THEME.cursor_bg));
     }
 
     #[test]
     fn highlight_sql_honors_injected_theme_colors() {
         let custom_theme = ThemePalette {
             sql_keyword: ratatui::style::Color::Rgb(0x12, 0x34, 0x56),
-            cursor_fg: ratatui::style::Color::Rgb(0xab, 0xcd, 0xef),
+            cursor_bg: ratatui::style::Color::Rgb(0xab, 0xcd, 0xef),
             ..DEFAULT_THEME
         };
 
@@ -207,7 +207,7 @@ mod tests {
         );
         assert_eq!(
             highlighted_with_cursor[0].spans[0].style.bg,
-            Some(custom_theme.cursor_fg)
+            Some(custom_theme.cursor_bg)
         );
     }
 }

@@ -291,8 +291,8 @@ mod tests {
         let inserted = insert_cursor_span(spans, 0, &DEFAULT_THEME);
 
         assert_eq!(inserted[0].content.as_ref(), "a");
-        assert_eq!(inserted[0].style.bg, Some(DEFAULT_THEME.cursor_fg));
-        assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.selection_bg));
+        assert_eq!(inserted[0].style.bg, Some(DEFAULT_THEME.cursor_bg));
+        assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.cursor_text_fg));
         assert!(inserted[0].style.add_modifier.contains(Modifier::BOLD));
     }
 

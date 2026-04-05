@@ -35,6 +35,8 @@ pub struct ThemePalette {
     pub status_warning: Color,
     pub status_medium_risk: Color,
     pub cursor_fg: Color,
+    pub cursor_bg: Color,
+    pub cursor_text_fg: Color,
     pub section_header: Color,
     pub scrollbar_active: Color,
     pub scrollbar_inactive: Color,
@@ -59,7 +61,6 @@ pub struct ThemePalette {
     pub json_null: Color,
     pub json_bracket: Color,
     pub striped_row_bg: Color,
-    pub selection_bg: Color,
     pub tab_active: Color,
     pub tab_inactive: Color,
     pub active_indicator: Color,
@@ -125,7 +126,7 @@ impl ThemePalette {
     }
 
     pub fn cursor_style(&self) -> Style {
-        Style::default().bg(self.cursor_fg).fg(self.selection_bg)
+        Style::default().bg(self.cursor_bg).fg(self.cursor_text_fg)
     }
 }
 
@@ -153,6 +154,8 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     status_warning: Color::Rgb(0xc4, 0xb2, 0x8a),
     status_medium_risk: Color::Rgb(0xff, 0x99, 0x00),
     cursor_fg: Color::White,
+    cursor_bg: Color::White,
+    cursor_text_fg: Color::Black,
     section_header: Color::Rgb(0x97, 0xc9, 0xc3),
     scrollbar_active: Color::Rgb(0x6a, 0x9e, 0x98),
     scrollbar_inactive: Color::Rgb(0x45, 0x47, 0x55),
@@ -177,7 +180,6 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     json_null: Color::Rgb(0x5b, 0x5f, 0x6e),
     json_bracket: Color::Rgb(0xb0, 0xb4, 0xbe),
     striped_row_bg: Color::Rgb(0x1e, 0x1e, 0x23),
-    selection_bg: Color::Black,
     tab_active: Color::Rgb(0x97, 0xc9, 0xc3),
     tab_inactive: Color::Rgb(0x5b, 0x5f, 0x6e),
     active_indicator: Color::Rgb(0x97, 0xc9, 0xc3),
@@ -210,6 +212,8 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
     status_warning: Color::Rgb(0xff, 0xc8, 0x57),
     status_medium_risk: Color::Rgb(0xff, 0x9f, 0x1c),
     cursor_fg: Color::Rgb(0xff, 0xf4, 0xe0),
+    cursor_bg: Color::Rgb(0xff, 0xf4, 0xe0),
+    cursor_text_fg: Color::Rgb(0x0d, 0x11, 0x18),
     section_header: Color::Rgb(0x2f, 0xc4, 0xb2),
     scrollbar_active: Color::Rgb(0x2f, 0xc4, 0xb2),
     scrollbar_inactive: Color::Rgb(0x5d, 0x62, 0x74),
@@ -234,7 +238,6 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
     json_null: Color::Rgb(0x92, 0xb3, 0xc2),
     json_bracket: Color::Rgb(0xc9, 0xd6, 0xdf),
     striped_row_bg: Color::Rgb(0x1d, 0x21, 0x2b),
-    selection_bg: Color::Rgb(0x0d, 0x11, 0x18),
     tab_active: Color::Rgb(0x2f, 0xc4, 0xb2),
     tab_inactive: Color::Rgb(0x92, 0xb3, 0xc2),
     active_indicator: Color::Rgb(0x2f, 0xc4, 0xb2),
@@ -306,7 +309,7 @@ mod tests {
     fn cursor_style_inverts_cursor_and_selection_colors() {
         let style = DEFAULT_THEME.cursor_style();
 
-        assert_eq!(style.bg, Some(DEFAULT_THEME.cursor_fg));
-        assert_eq!(style.fg, Some(DEFAULT_THEME.selection_bg));
+        assert_eq!(style.bg, Some(DEFAULT_THEME.cursor_bg));
+        assert_eq!(style.fg, Some(DEFAULT_THEME.cursor_text_fg));
     }
 }
