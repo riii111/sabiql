@@ -265,3 +265,59 @@ fn sql_modal_string_comment_and_operator_use_syntax_colors() {
     assert!(has_operator, "Expected a cyan SQL operator cell");
     assert!(has_comment, "Expected a dark gray SQL comment cell");
 }
+
+#[test]
+fn sql_modal_unterminated_string_keeps_string_highlight() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content("SELECT 'unterminated".to_string());
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+    let has_string = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "'" || (cell.symbol() == "u" && cell.fg == Theme::SQL_STRING)
+            })
+        });
+
+    assert!(
+        has_string,
+        "Expected unterminated string input to keep SQL string highlight"
+    );
+}
+
+#[test]
+fn sql_modal_unterminated_block_comment_keeps_comment_highlight() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content("SELECT /* pending".to_string());
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+    let has_comment = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                (cell.symbol() == "/" || cell.symbol() == "*") && cell.fg == Theme::SQL_COMMENT
+            })
+        });
+
+    assert!(
+        has_comment,
+        "Expected unterminated block comment input to keep SQL comment highlight"
+    );
+}

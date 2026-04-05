@@ -9,7 +9,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
-use crate::ui::primitives::atoms::{highlight_sql, highlight_sql_with_cursor};
+use crate::ui::primitives::atoms::{cursor_style, highlight_sql, highlight_sql_with_cursor};
 use crate::ui::theme::Theme;
 
 pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
@@ -94,15 +94,7 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState, now
     };
 
     if !is_normal && content.ends_with('\n') && cursor_row == content.lines().count() {
-        lines.push(
-            Line::from(vec![Span::styled(
-                " ",
-                Style::default()
-                    .bg(Theme::CURSOR_FG)
-                    .fg(Theme::SELECTION_BG),
-            )])
-            .style(current_line_style),
-        );
+        lines.push(Line::from(vec![Span::styled(" ", cursor_style())]).style(current_line_style));
     }
 
     let flash_active = state.flash_timers.is_active(
