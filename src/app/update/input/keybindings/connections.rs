@@ -113,7 +113,7 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "j/k/^N/^P",
+        key_short: "^N/^P/j/k/↑↓",
         key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll error",

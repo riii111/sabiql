@@ -18,7 +18,7 @@ impl CommandPalette {
             Constraint::Percentage(50),
             Constraint::Percentage(50),
             " Command Palette ",
-            " j/k / Ctrl+N / Ctrl+P / ↑↓ Navigate │ Enter Select │ Esc Close ",
+            " ^N/^P/j/k/↑↓ Navigate │ Enter Select │ Esc Close ",
             theme,
         );
 

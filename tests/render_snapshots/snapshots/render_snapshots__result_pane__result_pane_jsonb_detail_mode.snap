@@ -24,4 +24,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │       ╰ y:Copy  i:Edit  /:Search  ^N/^P/j/k/↑↓:Nav  h/l:Fold  Esc:Clo╯       │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-y:Copy  i:Edit  /:Search  j/k/^N/^P/↑↓:Nav  h/l:Fold  Esc:Close
+y:Copy  i:Edit  /:Search  ^N/^P/j/k/↑↓:Nav  h/l:Fold  Esc:Close

@@ -43,7 +43,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         combos: &[],
     },
     KeyBinding {
-        key_short: "j/k/^N/^P / ↑↓",
+        key_short: "^N/^P/j/k/↑↓",
         key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Navigate",
         description: "Navigate items",
@@ -74,7 +74,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
 
 pub const HELP_ROWS: &[ModeRow] = &[
     ModeRow {
-        key_short: "j/k/^N/^P / ↑↓",
+        key_short: "^N/^P/j/k/↑↓",
         key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
@@ -426,7 +426,7 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "j/k/^N/^P / ↑↓",
+        key_short: "^N/^P/j/k/↑↓",
         key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Navigate",
         description: "Navigate",
@@ -554,7 +554,7 @@ pub const JSONB_DETAIL_KEYS: &[KeyBinding] = &[
     },
     // Navigation
     KeyBinding {
-        key_short: "j/k/^N/^P/↑↓",
+        key_short: "^N/^P/j/k/↑↓",
         key: "Ctrl+N / j / ↓",
         desc_short: "Nav",
         description: "Move cursor down",

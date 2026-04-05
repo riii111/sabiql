@@ -151,7 +151,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
 
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     KeyBinding {
-        key_short: "^N/j",
+        key_short: "^N/j/↓",
         key: "Ctrl+N / j / ↓",
         desc_short: "Down",
         description: "Move down / scroll",
@@ -159,7 +159,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         combos: &[],
     },
     KeyBinding {
-        key_short: "^P/k",
+        key_short: "^P/k/↑",
         key: "Ctrl+P / k / ↑",
         desc_short: "Up",
         description: "Move up / scroll",
@@ -258,7 +258,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
 
 pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
     KeyBinding {
-        key_short: "^N/j / ↓",
+        key_short: "^N/j/↓",
         key: "Ctrl+N / j / ↓",
         desc_short: "Scroll",
         description: "Move down/up",
@@ -266,7 +266,7 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         combos: &[],
     },
     KeyBinding {
-        key_short: "^P/k / ↑",
+        key_short: "^P/k/↑",
         key: "Ctrl+P / k / ↑",
         desc_short: "Scroll",
         description: "Move down/up",
