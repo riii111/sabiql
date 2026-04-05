@@ -208,13 +208,11 @@ impl Footer {
             InputMode::TablePicker => vec![
                 TABLE_PICKER_ROWS[idx::table_picker::ENTER_SELECT].as_hint(),
                 TABLE_PICKER_ROWS[idx::table_picker::TYPE_FILTER].as_hint(),
-                TABLE_PICKER_ROWS[idx::table_picker::NAVIGATE].as_hint(),
                 TABLE_PICKER_ROWS[idx::table_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::CommandPalette => {
                 vec![
                     COMMAND_PALETTE_ROWS[idx::cmd_palette::ENTER_EXECUTE].as_hint(),
-                    COMMAND_PALETTE_ROWS[idx::cmd_palette::NAVIGATE_JK].as_hint(),
                     COMMAND_PALETTE_ROWS[idx::cmd_palette::ESC_CLOSE].as_hint(),
                 ]
             }
@@ -270,13 +268,11 @@ impl Footer {
                 ER_PICKER_ROWS[idx::er_picker::SELECT].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::SELECT_ALL].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::TYPE_FILTER].as_hint(),
-                ER_PICKER_ROWS[idx::er_picker::NAVIGATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::QueryHistoryPicker => vec![
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ENTER_SELECT].as_hint(),
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::TYPE_FILTER].as_hint(),
-                QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::NAVIGATE].as_hint(),
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::JsonbDetail => {

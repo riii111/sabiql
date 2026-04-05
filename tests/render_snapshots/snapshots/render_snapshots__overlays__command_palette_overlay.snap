@@ -19,9 +19,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                  ││  c                  Open Connection S│                   │
 │                  ││  Ctrl+E             Export result to │                   │
 │                  ││  Ctrl+R             Enable Read-Only │                   │
-│                  │╰ ^N/^P/j/k/↑↓ Navigate │ Enter Select ╯                   │
+│                  │╰ Enter Select │ Esc Close ────────────╯                   │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Execute  ^N/^P/j/k/↑↓:Navigate  Esc:Close
+Enter:Execute  Esc:Close

@@ -24,4 +24,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │           │   SET "metadata" = '{...}', "email" =                │           │
 │           │ 'new@example.com'                                    │           │
 └───────────│                                                      │───────────┘
-            ╰ Enter: Confirm │ j/k/↑↓: Scroll │ Esc: Cancel ───────╯
+            ╰ Enter: Confirm │ Esc: Cancel ────────────────────────╯

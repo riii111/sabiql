@@ -24,4 +24,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │           │   +     "language": "ja",                            │           │
 │           │   +     "notifications": false,                      │           │
 └───────────│                                                      │───────────┘
-            ╰ Enter: Confirm │ j/k/↑↓: Scroll │ Esc: Cancel ───────╯
+            ╰ Enter: Confirm │ Esc: Cancel ────────────────────────╯
