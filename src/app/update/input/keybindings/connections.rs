@@ -58,8 +58,8 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Enter)],
     },
     KeyBinding {
-        key_short: "↑↓",
-        key: "↑↓",
+        key_short: "^N/^P/↑↓",
+        key: "Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Select",
         description: "Dropdown navigation",
         action: Action::None,
@@ -113,8 +113,8 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "j/k",
-        key: "j/k",
+        key_short: "j/k/^N/^P",
+        key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll error",
         bindings: &[
@@ -124,7 +124,11 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+                combos: &[
+                    KeyCombo::plain(Key::Char('j')),
+                    KeyCombo::plain(Key::Down),
+                    KeyCombo::ctrl(Key::Char('n')),
+                ],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -132,7 +136,11 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+                combos: &[
+                    KeyCombo::plain(Key::Char('k')),
+                    KeyCombo::plain(Key::Up),
+                    KeyCombo::ctrl(Key::Char('p')),
+                ],
             },
         ],
     },
@@ -174,8 +182,8 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "↑/↓",
-        key: "↑ / ↓ / j / k",
+        key_short: "^N/^P/↑↓",
+        key: "Ctrl+N / Ctrl+P / ↑ / ↓ / j / k",
         desc_short: "Select",
         description: "Select connection",
         bindings: &[
@@ -184,14 +192,22 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
                     target: ListTarget::ConnectionList,
                     motion: ListMotion::Next,
                 },
-                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+                combos: &[
+                    KeyCombo::plain(Key::Char('j')),
+                    KeyCombo::plain(Key::Down),
+                    KeyCombo::ctrl(Key::Char('n')),
+                ],
             },
             ExecBinding {
                 action: Action::ListSelect {
                     target: ListTarget::ConnectionList,
                     motion: ListMotion::Previous,
                 },
-                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+                combos: &[
+                    KeyCombo::plain(Key::Char('k')),
+                    KeyCombo::plain(Key::Up),
+                    KeyCombo::ctrl(Key::Char('p')),
+                ],
             },
         ],
     },

@@ -43,8 +43,8 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         combos: &[],
     },
     KeyBinding {
-        key_short: "j/k / ↑↓",
-        key: "j / k / ↑ / ↓",
+        key_short: "j/k/^N/^P / ↑↓",
+        key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Navigate",
         description: "Navigate items",
         action: Action::None,
@@ -74,8 +74,8 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
 
 pub const HELP_ROWS: &[ModeRow] = &[
     ModeRow {
-        key_short: "j/k / ↑↓",
-        key: "j / k / ↑ / ↓",
+        key_short: "j/k/^N/^P / ↑↓",
+        key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
         bindings: &[
@@ -85,7 +85,11 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+                combos: &[
+                    KeyCombo::plain(Key::Char('j')),
+                    KeyCombo::plain(Key::Down),
+                    KeyCombo::ctrl(Key::Char('n')),
+                ],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -93,7 +97,11 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+                combos: &[
+                    KeyCombo::plain(Key::Char('k')),
+                    KeyCombo::plain(Key::Up),
+                    KeyCombo::ctrl(Key::Char('p')),
+                ],
             },
         ],
     },
@@ -418,8 +426,8 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "j/k / ↑↓",
-        key: "j/k / ↑↓",
+        key_short: "j/k/^N/^P / ↑↓",
+        key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Navigate",
         description: "Navigate",
         bindings: &[
@@ -428,14 +436,22 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
                     target: ListTarget::CommandPalette,
                     motion: ListMotion::Next,
                 },
-                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+                combos: &[
+                    KeyCombo::plain(Key::Char('j')),
+                    KeyCombo::plain(Key::Down),
+                    KeyCombo::ctrl(Key::Char('n')),
+                ],
             },
             ExecBinding {
                 action: Action::ListSelect {
                     target: ListTarget::CommandPalette,
                     motion: ListMotion::Previous,
                 },
-                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+                combos: &[
+                    KeyCombo::plain(Key::Char('k')),
+                    KeyCombo::plain(Key::Up),
+                    KeyCombo::ctrl(Key::Char('p')),
+                ],
             },
         ],
     },
@@ -465,8 +481,8 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Enter)],
     },
     KeyBinding {
-        key_short: "j/↓",
-        key: "j / ↓",
+        key_short: "^N/j/↓",
+        key: "Ctrl+N / j / ↓",
         desc_short: "Down",
         description: "Scroll down",
         action: Action::Scroll {
@@ -474,11 +490,15 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         },
-        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Down),
+            KeyCombo::ctrl(Key::Char('n')),
+        ],
     },
     KeyBinding {
-        key_short: "k/↑",
-        key: "k / ↑",
+        key_short: "^P/k/↑",
+        key: "Ctrl+P / k / ↑",
         desc_short: "Up",
         description: "Scroll up",
         action: Action::Scroll {
@@ -486,7 +506,11 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
             direction: ScrollDirection::Up,
             amount: ScrollAmount::Line,
         },
-        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+        combos: &[
+            KeyCombo::plain(Key::Char('k')),
+            KeyCombo::plain(Key::Up),
+            KeyCombo::ctrl(Key::Char('p')),
+        ],
     },
     KeyBinding {
         key_short: "Esc",

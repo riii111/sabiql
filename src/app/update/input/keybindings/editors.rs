@@ -103,8 +103,8 @@ pub const SQL_MODAL_PLAN_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Char('y'))],
     },
     KeyBinding {
-        key_short: "\u{2191}\u{2193}",
-        key: "↑↓/jk",
+        key_short: "^N/^P/↑↓",
+        key: "Ctrl+N / Ctrl+P / ↑↓ / j / k",
         desc_short: "Scroll",
         description: "Scroll plan text",
         action: Action::None,
@@ -174,8 +174,8 @@ pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Char('y'))],
     },
     KeyBinding {
-        key_short: "\u{2191}\u{2193}",
-        key: "↑↓/jk",
+        key_short: "^N/^P/↑↓",
+        key: "Ctrl+N / Ctrl+P / ↑↓ / j / k",
         desc_short: "Scroll",
         description: "Scroll comparison text",
         action: Action::None,

@@ -48,7 +48,17 @@ pub fn handle_sql_modal_keys(
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::Line,
                 },
+                Key::Char('n') if ctrl => Action::Scroll {
+                    target: ScrollTarget::ExplainPlan,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
                 Key::Char('k') | Key::Up if plain => Action::Scroll {
+                    target: ScrollTarget::ExplainPlan,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                Key::Char('p') if ctrl => Action::Scroll {
                     target: ScrollTarget::ExplainPlan,
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
@@ -69,7 +79,17 @@ pub fn handle_sql_modal_keys(
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::Line,
                 },
+                Key::Char('n') if ctrl => Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
                 Key::Char('k') | Key::Up if plain => Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                Key::Char('p') if ctrl => Action::Scroll {
                     target: ScrollTarget::ExplainCompare,
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
@@ -225,6 +245,8 @@ pub fn handle_sql_modal_keys(
 
     match (combo.key, completion_visible) {
         // Completion navigation (when popup is visible)
+        (Key::Char('p'), true) if ctrl => Action::CompletionPrev,
+        (Key::Char('n'), true) if ctrl => Action::CompletionNext,
         (Key::Up, true) => Action::CompletionPrev,
         (Key::Down, true) => Action::CompletionNext,
         (Key::Tab | Key::Enter, true) => Action::CompletionAccept,
@@ -456,6 +478,20 @@ mod tests {
         assert_action(result, expected);
     }
 
+    #[rstest]
+    #[case(Key::Char('p'), Expected::CompletionPrev)]
+    #[case(Key::Char('n'), Expected::CompletionNext)]
+    fn completion_visible_ctrl_aliases(#[case] code: Key, #[case] expected: Expected) {
+        let result = handle_sql_modal_keys(
+            combo_ctrl(code),
+            true,
+            &SqlModalStatus::Editing,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, expected);
+    }
+
     // Keys unaffected by completion visibility
     #[rstest]
     #[case(Key::Backspace, Expected::SqlModalBackspace)]
@@ -575,6 +611,34 @@ mod tests {
             false,
             &SqlModalStatus::Normal,
             SqlModalTab::Sql,
+        );
+
+        assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(Key::Char('n'), Expected::ExplainPlanScrollDown)]
+    #[case(Key::Char('p'), Expected::ExplainPlanScrollUp)]
+    fn plan_tab_ctrl_aliases_scroll(#[case] code: Key, #[case] expected: Expected) {
+        let result = handle_sql_modal_keys(
+            combo_ctrl(code),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Plan,
+        );
+
+        assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(Key::Char('n'), Expected::ExplainCompareScrollDown)]
+    #[case(Key::Char('p'), Expected::ExplainCompareScrollUp)]
+    fn compare_tab_ctrl_aliases_scroll(#[case] code: Key, #[case] expected: Expected) {
+        let result = handle_sql_modal_keys(
+            combo_ctrl(code),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
         );
 
         assert_action(result, expected);

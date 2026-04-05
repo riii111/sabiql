@@ -49,7 +49,7 @@ impl JsonbDetail {
         let hint = if is_searching {
             " Enter:Confirm  Esc:Cancel "
         } else {
-            " y:Copy  i:Edit  /:Search  ^N/^P/j/k:Nav  h/l:Fold  Esc:Close "
+            " y:Copy  i:Edit  /:Search  ^N/^P/j/k/↑↓:Nav  h/l:Fold  Esc:Close "
         };
 
         let (_area, inner) = render_modal(

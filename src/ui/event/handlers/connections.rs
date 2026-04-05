@@ -14,6 +14,8 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
         return match combo.key {
             Key::Up => Action::ConnectionSetupDropdownPrev,
             Key::Down => Action::ConnectionSetupDropdownNext,
+            Key::Char('p') if ctrl => Action::ConnectionSetupDropdownPrev,
+            Key::Char('n') if ctrl => Action::ConnectionSetupDropdownNext,
             Key::Enter => Action::ConnectionSetupDropdownConfirm,
             Key::Esc => Action::ConnectionSetupDropdownCancel,
             _ => Action::None,
@@ -257,6 +259,20 @@ mod tests {
                     std::mem::discriminant(&expected)
                 );
             }
+
+            #[rstest]
+            #[case(Key::Char('p'), Action::ConnectionSetupDropdownPrev)]
+            #[case(Key::Char('n'), Action::ConnectionSetupDropdownNext)]
+            fn ctrl_aliases(#[case] code: Key, #[case] expected: Action) {
+                let state = dropdown_state();
+
+                let result = handle_connection_setup_keys(combo_ctrl(code), &state);
+
+                assert_eq!(
+                    std::mem::discriminant(&result),
+                    std::mem::discriminant(&expected)
+                );
+            }
         }
     }
 
@@ -299,10 +315,15 @@ mod tests {
         #[rstest]
         #[case(Key::Up, Expected::ScrollUp)]
         #[case(Key::Char('k'), Expected::ScrollUp)]
+        #[case(Key::Char('p'), Expected::ScrollUp)]
         #[case(Key::Down, Expected::ScrollDown)]
         #[case(Key::Char('j'), Expected::ScrollDown)]
+        #[case(Key::Char('n'), Expected::ScrollDown)]
         fn scroll_keys(#[case] code: Key, #[case] expected: Expected) {
-            let result = handle_connection_error_keys(combo(code));
+            let result = match code {
+                Key::Char('p') | Key::Char('n') => handle_connection_error_keys(combo_ctrl(code)),
+                _ => handle_connection_error_keys(combo(code)),
+            };
 
             match expected {
                 Expected::ScrollUp => assert!(matches!(
@@ -348,10 +369,17 @@ mod tests {
         #[rstest]
         #[case(Key::Char('j'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Next })]
         #[case(Key::Down, Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Next })]
+        #[case(Key::Char('n'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Next })]
         #[case(Key::Char('k'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
         #[case(Key::Up, Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
+        #[case(Key::Char('p'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
         fn selector_navigation_keys(#[case] code: Key, #[case] expected: Action) {
-            let result = handle_connection_selector_keys(combo(code));
+            let result = match code {
+                Key::Char('p') | Key::Char('n') => {
+                    handle_connection_selector_keys(combo_ctrl(code))
+                }
+                _ => handle_connection_selector_keys(combo(code)),
+            };
 
             assert_eq!(format!("{result:?}"), format!("{expected:?}"));
         }
