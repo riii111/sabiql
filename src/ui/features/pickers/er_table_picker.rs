@@ -38,7 +38,7 @@ impl ErTablePicker {
             )
         } else if selected_count == 1 {
             let name = state.ui.er_selected_tables.iter().next().unwrap().clone();
-            ("Partial ER".to_string(), name, theme.active_indicator)
+            ("Partial ER".to_string(), name, theme.section_header)
         } else {
             (
                 "Partial ER".to_string(),
@@ -118,7 +118,7 @@ impl ErTablePicker {
                 let is_selected = state.ui.er_selected_tables.contains(&qn);
                 let mark = if is_selected { "✔ " } else { "  " };
                 let style = if is_selected {
-                    Style::default().fg(theme.active_indicator)
+                    Style::default().fg(theme.focus_border)
                 } else {
                     Style::default().fg(theme.text_secondary)
                 };
