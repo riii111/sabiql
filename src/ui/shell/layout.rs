@@ -38,7 +38,7 @@ impl MainLayout {
         services: &AppServices,
         now: Instant,
     ) -> RenderOutput {
-        Self::render_with_theme(
+        Self::render_impl(
             frame,
             state,
             time_ms,
@@ -48,10 +48,22 @@ impl MainLayout {
         )
     }
 
-    // `render_with_theme` is public only so the test harness can inject a palette.
-    // `#[doc(hidden)]` keeps it out of public docs; it is not part of the stable API.
+    #[cfg(any(test, feature = "test-support"))]
+    // `render_with_theme` exists only as a test seam for injected palettes.
+    // It is hidden from docs and omitted from production builds.
     #[doc(hidden)]
     pub fn render_with_theme(
+        frame: &mut Frame,
+        state: &AppState,
+        time_ms: Option<u128>,
+        services: &AppServices,
+        now: Instant,
+        theme: &ThemePalette,
+    ) -> RenderOutput {
+        Self::render_impl(frame, state, time_ms, services, now, theme)
+    }
+
+    fn render_impl(
         frame: &mut Frame,
         state: &AppState,
         time_ms: Option<u128>,
