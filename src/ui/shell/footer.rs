@@ -306,11 +306,7 @@ impl Footer {
                     state.connection_list_items(),
                     state.ui.connection_list_selected,
                 );
-                let mut list = vec![
-                    r[cs::CONFIRM].as_hint(),
-                    r[cs::SELECT].as_hint(),
-                    r[cs::NEW].as_hint(),
-                ];
+                let mut list = vec![r[cs::CONFIRM].as_hint(), r[cs::NEW].as_hint()];
                 if !is_service_selected {
                     list.push(r[cs::EDIT].as_hint());
                     list.push(r[cs::DELETE].as_hint());
