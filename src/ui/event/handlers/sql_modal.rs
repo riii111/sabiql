@@ -296,7 +296,7 @@ pub fn handle_sql_modal_keys(
 mod tests {
     use super::*;
     use crate::app::update::action::CursorMove;
-    use crate::app::update::input::keybindings::{Key, KeyCombo, Modifiers};
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -309,28 +309,6 @@ mod tests {
 
     fn combo_alt(k: Key) -> KeyCombo {
         KeyCombo::alt(k)
-    }
-
-    fn combo_ctrl_alt(k: Key) -> KeyCombo {
-        KeyCombo {
-            key: k,
-            modifiers: Modifiers {
-                ctrl: true,
-                alt: true,
-                shift: false,
-            },
-        }
-    }
-
-    fn combo_ctrl_shift(k: Key) -> KeyCombo {
-        KeyCombo {
-            key: k,
-            modifiers: Modifiers {
-                ctrl: true,
-                alt: false,
-                shift: true,
-            },
-        }
     }
 
     #[derive(Debug, PartialEq)]
@@ -515,9 +493,9 @@ mod tests {
     #[rstest]
     #[case(Key::Char('p'))]
     #[case(Key::Char('n'))]
-    fn completion_visible_aliases_ignore_extra_modifiers(#[case] code: Key) {
+    fn ctrl_alt_aliases_fall_through_to_text_input(#[case] code: Key) {
         let result = handle_sql_modal_keys(
-            combo_ctrl_alt(code),
+            KeyCombo::ctrl_alt(code),
             true,
             &SqlModalStatus::Editing,
             SqlModalTab::Sql,
@@ -529,9 +507,14 @@ mod tests {
                 _ => unreachable!(),
             }),
         );
+    }
 
+    #[rstest]
+    #[case(Key::Char('p'))]
+    #[case(Key::Char('n'))]
+    fn ctrl_shift_aliases_fall_through_to_text_input(#[case] code: Key) {
         let result = handle_sql_modal_keys(
-            combo_ctrl_shift(code),
+            KeyCombo::ctrl_shift(code),
             true,
             &SqlModalStatus::Editing,
             SqlModalTab::Sql,
@@ -706,8 +689,12 @@ mod tests {
         #[case] tab: SqlModalTab,
         #[case] code: Key,
     ) {
-        let result =
-            handle_sql_modal_keys(combo_ctrl_alt(code), false, &SqlModalStatus::Normal, tab);
+        let result = handle_sql_modal_keys(
+            KeyCombo::ctrl_alt(code),
+            false,
+            &SqlModalStatus::Normal,
+            tab,
+        );
 
         assert_action(result, Expected::None);
     }
@@ -721,8 +708,12 @@ mod tests {
         #[case] tab: SqlModalTab,
         #[case] code: Key,
     ) {
-        let result =
-            handle_sql_modal_keys(combo_ctrl_shift(code), false, &SqlModalStatus::Normal, tab);
+        let result = handle_sql_modal_keys(
+            KeyCombo::ctrl_shift(code),
+            false,
+            &SqlModalStatus::Normal,
+            tab,
+        );
 
         assert_action(result, Expected::None);
     }

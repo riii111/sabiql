@@ -126,7 +126,7 @@ mod tests {
         #[rstest]
         #[case(Key::Char('p'), ListMotion::Previous)]
         #[case(Key::Char('n'), ListMotion::Next)]
-        fn ctrl_alias_returns_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
+        fn ctrl_alias_selects_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
             let result = handle_table_picker_keys(combo_ctrl(key));
 
             assert!(matches!(
@@ -258,7 +258,7 @@ mod tests {
         #[rstest]
         #[case(Key::Char('p'), ListMotion::Previous)]
         #[case(Key::Char('n'), ListMotion::Next)]
-        fn ctrl_alias_returns_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
+        fn ctrl_alias_selects_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
             let result = handle_query_history_picker_keys(combo_ctrl(key));
 
             assert!(matches!(
@@ -342,7 +342,7 @@ mod tests {
         #[rstest]
         #[case(Key::Char('p'), ListMotion::Previous)]
         #[case(Key::Char('n'), ListMotion::Next)]
-        fn ctrl_alias_returns_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
+        fn ctrl_alias_selects_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
             let result = handle_er_table_picker_keys(combo_ctrl(key));
 
             assert!(matches!(

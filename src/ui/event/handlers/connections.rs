@@ -104,28 +104,6 @@ mod tests {
         KeyCombo::alt(k)
     }
 
-    fn combo_ctrl_alt(k: Key) -> KeyCombo {
-        KeyCombo {
-            key: k,
-            modifiers: Modifiers {
-                ctrl: true,
-                alt: true,
-                shift: false,
-            },
-        }
-    }
-
-    fn combo_ctrl_shift(k: Key) -> KeyCombo {
-        KeyCombo {
-            key: k,
-            modifiers: Modifiers {
-                ctrl: true,
-                alt: false,
-                shift: true,
-            },
-        }
-    }
-
     mod connection_setup_keys {
         use super::*;
         use crate::app::model::connection::setup::ConnectionField;
@@ -303,10 +281,10 @@ mod tests {
             fn ctrl_aliases_ignore_extra_modifiers(#[case] code: Key) {
                 let state = dropdown_state();
 
-                let result = handle_connection_setup_keys(combo_ctrl_alt(code), &state);
+                let result = handle_connection_setup_keys(KeyCombo::ctrl_alt(code), &state);
                 assert!(matches!(result, Action::None));
 
-                let result = handle_connection_setup_keys(combo_ctrl_shift(code), &state);
+                let result = handle_connection_setup_keys(KeyCombo::ctrl_shift(code), &state);
                 assert!(matches!(result, Action::None));
             }
         }
@@ -355,7 +333,7 @@ mod tests {
         #[case(Key::Down, Expected::ScrollDown)]
         #[case(Key::Char('j'), Expected::ScrollDown)]
         #[case(Key::Char('n'), Expected::ScrollDown)]
-        fn scroll_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn scroll_keys_and_ctrl_aliases(#[case] code: Key, #[case] expected: Expected) {
             let result = match code {
                 Key::Char('p' | 'n') => handle_connection_error_keys(combo_ctrl(code)),
                 _ => handle_connection_error_keys(combo(code)),
