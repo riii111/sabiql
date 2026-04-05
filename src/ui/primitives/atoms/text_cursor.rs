@@ -69,9 +69,13 @@ pub fn insert_cursor_span(spans: Vec<Span<'static>>, cursor_col: usize) -> Vec<S
 
         if remaining == len {
             output.push(span);
-            output.push(Span::styled(" ", cursor_style()));
-            output.extend(iter);
-            return output;
+            if iter.len() == 0 {
+                output.push(Span::styled(" ", cursor_style()));
+                return output;
+            }
+
+            remaining = 0;
+            continue;
         }
 
         let (before, current, after) = split_at_cursor(&content, remaining);
@@ -222,7 +226,25 @@ mod tests {
     }
 
     #[test]
-    fn insert_cursor_span_preserves_existing_styles() {
+    fn insert_cursor_span_preserves_existing_styles_across_boundary() {
+        let spans = vec![
+            Span::styled("ab".to_string(), Style::default().fg(Theme::SQL_KEYWORD)),
+            Span::styled("cd".to_string(), Style::default().fg(Theme::SQL_STRING)),
+            Span::styled("ef".to_string(), Style::default().fg(Theme::SQL_COMMENT)),
+        ];
+
+        let inserted = insert_cursor_span(spans, 2);
+
+        let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
+        assert_eq!(texts, vec!["ab", "c", "d", "ef"]);
+        assert_eq!(inserted[0].style.fg, Some(Theme::SQL_KEYWORD));
+        assert_eq!(inserted[1].style, cursor_style());
+        assert_eq!(inserted[2].style.fg, Some(Theme::SQL_STRING));
+        assert_eq!(inserted[3].style.fg, Some(Theme::SQL_COMMENT));
+    }
+
+    #[test]
+    fn insert_cursor_span_uses_next_span_at_boundary() {
         let spans = vec![
             Span::styled("ab".to_string(), Style::default().fg(Theme::SQL_KEYWORD)),
             Span::styled("cd".to_string(), Style::default().fg(Theme::SQL_STRING)),
@@ -231,9 +253,23 @@ mod tests {
         let inserted = insert_cursor_span(spans, 2);
 
         let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
-        assert_eq!(texts, vec!["ab", " ", "cd"]);
+        assert_eq!(texts, vec!["ab", "c", "d"]);
         assert_eq!(inserted[0].style.fg, Some(Theme::SQL_KEYWORD));
         assert_eq!(inserted[1].style, cursor_style());
         assert_eq!(inserted[2].style.fg, Some(Theme::SQL_STRING));
+    }
+
+    #[test]
+    fn insert_cursor_span_at_true_end_appends_cursor_cell() {
+        let spans = vec![
+            Span::styled("ab".to_string(), Style::default().fg(Theme::SQL_KEYWORD)),
+            Span::styled("cd".to_string(), Style::default().fg(Theme::SQL_STRING)),
+        ];
+
+        let inserted = insert_cursor_span(spans, 4);
+
+        let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
+        assert_eq!(texts, vec!["ab", "cd", " "]);
+        assert_eq!(inserted[2].style, cursor_style());
     }
 }

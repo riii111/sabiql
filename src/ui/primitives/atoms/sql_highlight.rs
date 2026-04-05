@@ -158,4 +158,28 @@ mod tests {
         assert_eq!(spans.last().unwrap().style.bg, Some(Theme::CURSOR_FG));
         assert_eq!(spans[0].style.fg, Some(Theme::SQL_KEYWORD));
     }
+
+    #[test]
+    fn highlight_sql_with_cursor_marks_double_quote_at_token_start() {
+        let lines = highlight_sql_with_cursor(r#"SET "email" = 0"#, 0, 4);
+        let spans = &lines[0].spans;
+
+        assert_eq!(line_text(&lines[0]), r#"SET "email" = 0"#);
+        assert_eq!(spans[2].content.as_ref(), "\"");
+        assert_eq!(spans[2].style.bg, Some(Theme::CURSOR_FG));
+        assert_eq!(spans[3].content.as_ref(), "email\"");
+    }
+
+    #[test]
+    fn highlight_sql_with_cursor_marks_number_at_token_start() {
+        let lines = highlight_sql_with_cursor(r#"SET "email" = 0"#, 0, 14);
+        let spans = &lines[0].spans;
+
+        assert_eq!(line_text(&lines[0]), r#"SET "email" = 0"#);
+        let number_span = spans
+            .iter()
+            .find(|span| span.content.as_ref() == "0")
+            .expect("number token should be present");
+        assert_eq!(number_span.style.bg, Some(Theme::CURSOR_FG));
+    }
 }
