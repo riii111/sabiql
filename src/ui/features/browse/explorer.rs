@@ -10,23 +10,23 @@ use crate::app::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
 use crate::domain::MetadataState;
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 use crate::ui::primitives::atoms::panel_block;
 
 pub struct Explorer;
 
 impl Explorer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
-        let block = panel_block(" [1] Explorer ", is_focused);
+        let block = panel_block(" [1] Explorer ", is_focused, theme);
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         let is_error = matches!(state.session.metadata_state(), MetadataState::Error(_));
         let has_cached_data =
             !is_error && state.session.metadata().is_some() && !state.tables().is_empty();
-        Self::render_tables_section(frame, inner, state, has_cached_data);
+        Self::render_tables_section(frame, inner, state, has_cached_data, theme);
     }
 
     fn render_tables_section(
@@ -34,6 +34,7 @@ impl Explorer {
         area: Rect,
         state: &AppState,
         has_cached_data: bool,
+        theme: &ThemePalette,
     ) {
         let content_width = explorer_content_width_from_inner_width(area.width);
 
@@ -79,10 +80,10 @@ impl Explorer {
         };
 
         let list = List::new(items)
-            .style(Style::default().fg(Theme::TEXT_PRIMARY))
+            .style(Style::default().fg(theme.text_primary))
             .highlight_style(
                 Style::default()
-                    .fg(Theme::TEXT_ACCENT)
+                    .fg(theme.text_accent)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
@@ -116,6 +117,7 @@ impl Explorer {
                         viewport_size,
                         total_items,
                     },
+                    theme,
                 );
             }
 
@@ -132,6 +134,7 @@ impl Explorer {
                         viewport_size: content_width,
                         total_items: max_name_width,
                     },
+                    theme,
                 );
             }
         }

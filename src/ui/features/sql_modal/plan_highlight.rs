@@ -1,7 +1,7 @@
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 const NODE_TYPES: &[&str] = &[
     "Aggregate",
@@ -46,7 +46,7 @@ const NODE_TYPES: &[&str] = &[
     "WindowAgg",
 ];
 
-pub fn highlight_plan_line(raw: &str) -> Line<'static> {
+pub fn highlight_plan_line(raw: &str, theme: &ThemePalette) -> Line<'static> {
     let trimmed = raw.trim_start();
     // ASCII-only: PostgreSQL EXPLAIN output uses space indentation, never multibyte
     let leading_spaces = raw.len() - trimmed.len();
@@ -63,9 +63,9 @@ pub fn highlight_plan_line(raw: &str) -> Line<'static> {
         let cost_part = &content[cost_paren..];
 
         let node_style = Style::default()
-            .fg(Theme::SECTION_HEADER)
+            .fg(theme.section_header)
             .add_modifier(Modifier::BOLD);
-        let cost_style = Style::default().fg(Theme::TEXT_DIM);
+        let cost_style = Style::default().fg(theme.text_dim);
 
         if let Some(node_name) = find_node_type(before_cost) {
             let after_node = &before_cost[node_name.len()..];
@@ -78,7 +78,7 @@ pub fn highlight_plan_line(raw: &str) -> Line<'static> {
         spans.push(Span::styled(cost_part.to_string(), cost_style));
     } else if let Some(node_name) = find_node_type(content) {
         let node_style = Style::default()
-            .fg(Theme::SECTION_HEADER)
+            .fg(theme.section_header)
             .add_modifier(Modifier::BOLD);
         let after_node = &content[node_name.len()..];
         spans.push(Span::styled(node_name.to_string(), node_style));
@@ -90,15 +90,19 @@ pub fn highlight_plan_line(raw: &str) -> Line<'static> {
     Line::from(spans)
 }
 
-pub(super) fn highlight_truncated(raw: &str, width: usize) -> Vec<Span<'static>> {
+pub(super) fn highlight_truncated(
+    raw: &str,
+    width: usize,
+    theme: &ThemePalette,
+) -> Vec<Span<'static>> {
     let truncated = super::compare::pad_or_truncate(raw, width);
     let trimmed = truncated.trim_start();
     let content = trimmed.trim_start_matches("->").trim_start();
 
     let node_style = Style::default()
-        .fg(Theme::SECTION_HEADER)
+        .fg(theme.section_header)
         .add_modifier(Modifier::BOLD);
-    let cost_style = Style::default().fg(Theme::TEXT_DIM);
+    let cost_style = Style::default().fg(theme.text_dim);
 
     let prefix_len = truncated.len() - content.len();
     let prefix = &truncated[..prefix_len];
@@ -141,6 +145,7 @@ fn find_node_type(text: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::theme::DEFAULT_THEME;
 
     fn spans_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
@@ -148,7 +153,10 @@ mod tests {
 
     #[test]
     fn seq_scan_line_returns_highlighted_node_and_cost() {
-        let line = highlight_plan_line("Seq Scan on users  (cost=0.00..10.20 rows=10 width=3273)");
+        let line = highlight_plan_line(
+            "Seq Scan on users  (cost=0.00..10.20 rows=10 width=3273)",
+            &DEFAULT_THEME,
+        );
         let text = spans_text(&line);
         assert!(text.contains("Seq Scan"));
         assert!(text.contains("(cost="));
@@ -158,6 +166,7 @@ mod tests {
     fn nested_node_returns_indented_text_without_guide() {
         let line = highlight_plan_line(
             "    ->  Index Scan using idx on users  (cost=0.28..8.30 rows=1 width=64)",
+            &DEFAULT_THEME,
         );
 
         let text = spans_text(&line);
@@ -168,21 +177,23 @@ mod tests {
 
     #[test]
     fn filter_line_returns_raw_text() {
-        let line = highlight_plan_line("        Filter: (id > 10)");
+        let line = highlight_plan_line("        Filter: (id > 10)", &DEFAULT_THEME);
         let text = spans_text(&line);
         assert!(text.contains("Filter:"));
     }
 
     #[test]
     fn empty_input_returns_non_empty_spans() {
-        let line = highlight_plan_line("");
+        let line = highlight_plan_line("", &DEFAULT_THEME);
         assert!(!line.spans.is_empty());
     }
 
     #[test]
     fn deeply_nested_line_returns_space_indentation_without_guides() {
-        let line =
-            highlight_plan_line("            ->  Hash  (cost=100.00..100.00 rows=1000 width=32)");
+        let line = highlight_plan_line(
+            "            ->  Hash  (cost=100.00..100.00 rows=1000 width=32)",
+            &DEFAULT_THEME,
+        );
 
         let text = spans_text(&line);
 

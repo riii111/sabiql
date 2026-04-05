@@ -5,13 +5,14 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::completion::CompletionKind;
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 pub(super) fn render_completion_popup(
     frame: &mut Frame,
     modal_area: Rect,
     editor_area: Rect,
     state: &AppState,
+    theme: &ThemePalette,
 ) {
     let (cursor_row, cursor_col) = state.sql_modal.editor.cursor_to_position();
     let scroll_row = state.sql_modal.editor.scroll_row();
@@ -92,11 +93,9 @@ pub(super) fn render_completion_popup(
             );
 
             let style = if is_selected {
-                Style::default()
-                    .bg(Theme::COMPLETION_SELECTED_BG)
-                    .fg(Theme::TEXT_PRIMARY)
+                theme.picker_selected_style()
             } else {
-                Style::default().fg(Theme::TEXT_SECONDARY)
+                Style::default().fg(theme.text_secondary)
             };
 
             ListItem::new(text).style(style)
@@ -106,7 +105,7 @@ pub(super) fn render_completion_popup(
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Theme::MODAL_BORDER))
+            .border_style(Style::default().fg(theme.modal_border))
             .style(Style::default()),
     );
 

@@ -9,9 +9,15 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::ui::primitives::atoms::text_cursor_spans;
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> u16 {
+pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AppState,
+    now: Instant,
+    theme: &ThemePalette,
+) -> u16 {
     // Inline EXPLAIN ANALYZE confirmation for destructive DML
     if let SqlModalStatus::ConfirmingAnalyzeHigh {
         query,
@@ -19,7 +25,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> 
         target_name,
     } = state.sql_modal.status()
     {
-        let lines = build_analyze_confirm_lines(area, query, input, target_name.as_deref());
+        let lines = build_analyze_confirm_lines(area, query, input, target_name.as_deref(), theme);
         render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
         return area.height;
     }
@@ -30,7 +36,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> 
             .map(|line| {
                 Line::from(Span::styled(
                     line.to_string(),
-                    Style::default().fg(Theme::STATUS_ERROR),
+                    Style::default().fg(theme.status_error),
                 ))
             })
             .collect();
@@ -41,14 +47,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> 
             (
                 "EXPLAIN ANALYZE",
                 Style::default()
-                    .fg(Theme::TEXT_ACCENT)
+                    .fg(theme.text_accent)
                     .add_modifier(Modifier::BOLD),
             )
         } else {
             (
                 "EXPLAIN",
                 Style::default()
-                    .fg(Theme::TEXT_ACCENT)
+                    .fg(theme.text_accent)
                     .add_modifier(Modifier::BOLD),
             )
         };
@@ -57,7 +63,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> 
             Span::styled(format!("{label} "), label_style),
             Span::styled(
                 format!("({time_secs:.2}s)"),
-                Style::default().fg(Theme::TEXT_MUTED),
+                Style::default().fg(theme.text_muted),
             ),
         ]);
 
@@ -66,7 +72,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> 
             Span::styled("  ", Style::default()),
             Span::styled(
                 query_snippet.to_string(),
-                Style::default().fg(Theme::TEXT_MUTED),
+                Style::default().fg(theme.text_muted),
             ),
         ]);
 
@@ -76,7 +82,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> 
             plan_text
                 .lines()
                 .skip(scroll)
-                .map(super::plan_highlight::highlight_plan_line),
+                .map(|line| super::plan_highlight::highlight_plan_line(line, theme)),
         );
 
         let flash_active = state.flash_timers.is_active(
@@ -84,14 +90,18 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> 
             now,
         );
         let content_start = 3; // skip header, query snippet, empty line
-        crate::ui::primitives::atoms::apply_yank_flash(&mut lines[content_start..], flash_active);
+        crate::ui::primitives::atoms::apply_yank_flash(
+            &mut lines[content_start..],
+            flash_active,
+            theme,
+        );
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         area.height
     } else {
         let placeholder = Line::from(Span::styled(
             " Press Ctrl+E to run EXPLAIN",
-            Style::default().fg(Theme::PLACEHOLDER_TEXT),
+            Style::default().fg(theme.placeholder_text),
         ));
         frame.render_widget(Paragraph::new(vec![placeholder]), area);
         area.height
@@ -110,11 +120,12 @@ fn build_analyze_confirm_lines<'a>(
     query: &'a str,
     input: &'a crate::app::model::shared::text_input::TextInputState,
     target_name: Option<&'a str>,
+    theme: &ThemePalette,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
 
     let header_style = Style::default()
-        .fg(Theme::STATUS_ERROR)
+        .fg(theme.status_error)
         .add_modifier(Modifier::BOLD);
 
     lines.push(Line::raw(""));
@@ -127,7 +138,7 @@ fn build_analyze_confirm_lines<'a>(
     let sep = "\u{2500}".repeat(area.width.saturating_sub(2) as usize);
     lines.push(Line::styled(
         format!(" {sep}"),
-        Style::default().fg(Theme::MODAL_BORDER),
+        Style::default().fg(theme.modal_border),
     ));
     lines.push(Line::raw(""));
 
@@ -145,7 +156,7 @@ fn build_analyze_confirm_lines<'a>(
     for line in full_query.lines() {
         lines.push(Line::from(Span::styled(
             format!("  {line}"),
-            Style::default().fg(Theme::TEXT_DIM),
+            Style::default().fg(theme.text_dim),
         )));
     }
     lines.push(Line::raw(""));
@@ -156,18 +167,19 @@ fn build_analyze_confirm_lines<'a>(
             let prompt = format!(" Type \"{name}\" to confirm: > ");
             let mut prompt_spans = vec![Span::styled(
                 prompt,
-                Style::default().fg(Theme::TEXT_SECONDARY),
+                Style::default().fg(theme.text_secondary),
             )];
             prompt_spans.extend(text_cursor_spans(
                 input.content(),
                 input.cursor(),
                 input.viewport_offset(),
                 HIGH_RISK_INPUT_VISIBLE_WIDTH,
+                theme,
             ));
             if is_match {
                 prompt_spans.push(Span::styled(
                     " \u{2713}",
-                    Style::default().fg(Theme::STATUS_SUCCESS),
+                    Style::default().fg(theme.status_success),
                 ));
             }
             lines.push(Line::from(prompt_spans));
@@ -175,7 +187,7 @@ fn build_analyze_confirm_lines<'a>(
         None => {
             lines.push(Line::from(Span::styled(
                 " Cannot identify target object name.  Esc: Back",
-                Style::default().fg(Theme::TEXT_MUTED),
+                Style::default().fg(theme.text_muted),
             )));
         }
     }

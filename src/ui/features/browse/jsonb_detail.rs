@@ -9,28 +9,38 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::ui::primitives::molecules::render_modal;
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 pub struct JsonbDetail;
 
 impl JsonbDetail {
-    pub fn render(frame: &mut Frame, state: &AppState, now: std::time::Instant) -> Option<usize> {
+    pub fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        now: std::time::Instant,
+        theme: &ThemePalette,
+    ) -> Option<usize> {
         if !state.jsonb_detail.is_active() {
             return None;
         }
 
         match state.jsonb_detail.mode() {
             JsonbDetailMode::Viewing | JsonbDetailMode::Searching => {
-                Some(Self::render_viewing(frame, state, now))
+                Some(Self::render_viewing(frame, state, now, theme))
             }
             JsonbDetailMode::Editing => {
-                Self::render_editing(frame, state);
+                Self::render_editing(frame, state, theme);
                 None
             }
         }
     }
 
-    fn render_viewing(frame: &mut Frame, state: &AppState, now: std::time::Instant) -> usize {
+    fn render_viewing(
+        frame: &mut Frame,
+        state: &AppState,
+        now: std::time::Instant,
+        theme: &ThemePalette,
+    ) -> usize {
         let title = format!(
             " JSONB Detail \u{2500}\u{2500} {}",
             state.jsonb_detail.column_name()
@@ -48,6 +58,7 @@ impl JsonbDetail {
             Constraint::Percentage(70),
             &title,
             hint,
+            theme,
         );
 
         let has_changes = state.jsonb_detail.has_pending_changes();
@@ -75,7 +86,7 @@ impl JsonbDetail {
             .enumerate()
             .map(|(view_idx, &real_idx)| {
                 let is_selected = (scroll + view_idx) == selected;
-                json_tree_line_spans(&tree.lines()[real_idx], is_selected)
+                json_tree_line_spans(&tree.lines()[real_idx], is_selected, theme)
             })
             .collect();
 
@@ -83,9 +94,9 @@ impl JsonbDetail {
             crate::app::model::shared::flash_timer::FlashId::JsonbDetail,
             now,
         );
-        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
+        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
 
-        let paragraph = Paragraph::new(lines).style(Style::default().fg(Theme::TEXT_PRIMARY));
+        let paragraph = Paragraph::new(lines).style(Style::default().fg(theme.text_primary));
         frame.render_widget(paragraph, tree_area);
 
         if let Some(bottom) = bottom_area {
@@ -94,7 +105,7 @@ impl JsonbDetail {
             if has_changes {
                 bottom_lines.push(Line::from(Span::styled(
                     "\u{25cf} Modified",
-                    Style::default().fg(Theme::CELL_DRAFT_PENDING_FG),
+                    Style::default().fg(theme.cell_draft_pending_fg),
                 )));
             }
 
@@ -105,20 +116,21 @@ impl JsonbDetail {
                     if query.is_empty() {
                         Span::raw("")
                     } else {
-                        Span::styled(" [no matches]", Style::default().fg(Theme::TEXT_DIM))
+                        Span::styled(" [no matches]", Style::default().fg(theme.text_dim))
                     }
                 } else {
                     Span::styled(
                         format!(" [{}/{}]", search.current_match + 1, search.matches.len()),
-                        Style::default().fg(Theme::TEXT_DIM),
+                        Style::default().fg(theme.text_dim),
                     )
                 };
-                let prefix = Span::styled("/", Style::default().fg(Theme::TEXT_ACCENT));
+                let prefix = Span::styled("/", Style::default().fg(theme.text_accent));
                 let cursor_spans = crate::ui::primitives::atoms::text_cursor_spans(
                     query,
                     cursor_pos,
                     search.input.viewport_offset(),
                     bottom.width.saturating_sub(1) as usize,
+                    theme,
                 );
                 let mut spans = vec![prefix];
                 spans.extend(cursor_spans);
@@ -132,7 +144,7 @@ impl JsonbDetail {
         scroll
     }
 
-    fn render_editing(frame: &mut Frame, state: &AppState) {
+    fn render_editing(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let title = format!(
             " JSONB Edit \u{2500}\u{2500} {} (jsonb) ",
             state.jsonb_detail.column_name()
@@ -145,22 +157,28 @@ impl JsonbDetail {
             Constraint::Percentage(70),
             &title,
             hint,
+            theme,
         );
 
         let [editor_area, status_area] =
             Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
 
-        Self::render_editor_content(frame, editor_area, state);
-        Self::render_validation_status(frame, status_area, state);
+        Self::render_editor_content(frame, editor_area, state, theme);
+        Self::render_validation_status(frame, status_area, state, theme);
     }
 
-    fn render_editor_content(frame: &mut Frame, area: Rect, state: &AppState) {
+    fn render_editor_content(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) {
         let editor = state.jsonb_detail.editor();
         let content = editor.content();
         let scroll_row = editor.scroll_row();
         let viewport_height = area.height as usize;
         let (cursor_row, cursor_col) = editor.cursor_to_position();
-        let current_line_style = Style::default().bg(Theme::EDITOR_CURRENT_LINE_BG);
+        let current_line_style = Style::default().bg(theme.editor_current_line_bg);
 
         let mut lines: Vec<Line<'_>> = content
             .lines()
@@ -174,6 +192,7 @@ impl JsonbDetail {
                         cursor_col,
                         0,
                         usize::MAX,
+                        theme,
                     ))
                     .style(current_line_style)
                 } else {
@@ -187,26 +206,31 @@ impl JsonbDetail {
             lines.push(
                 Line::from(vec![Span::styled(
                     "\u{258F}",
-                    Style::default().fg(Theme::CURSOR_FG),
+                    Style::default().fg(theme.cursor_fg),
                 )])
                 .style(current_line_style),
             );
         }
 
-        let paragraph = Paragraph::new(lines).style(Style::default().fg(Theme::TEXT_PRIMARY));
+        let paragraph = Paragraph::new(lines).style(Style::default().fg(theme.text_primary));
         frame.render_widget(paragraph, area);
     }
 
-    fn render_validation_status(frame: &mut Frame, area: Rect, state: &AppState) {
+    fn render_validation_status(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) {
         let line = if let Some(err) = state.jsonb_detail.validation_error() {
             Line::from(Span::styled(
                 format!("\u{2717} {err}"),
-                Style::default().fg(Theme::STATUS_ERROR),
+                Style::default().fg(theme.status_error),
             ))
         } else {
             Line::from(Span::styled(
                 "\u{2713} Valid JSON",
-                Style::default().fg(Theme::STATUS_SUCCESS),
+                Style::default().fg(theme.status_success),
             ))
         };
 

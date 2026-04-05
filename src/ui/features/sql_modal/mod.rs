@@ -19,7 +19,7 @@ use crate::app::update::input::keybindings::{
 };
 use crate::ui::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::ui::primitives::molecules::render_modal_with_border_color;
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 mod completion;
 mod editor;
@@ -28,7 +28,12 @@ mod status;
 pub struct SqlModal;
 
 impl SqlModal {
-    pub fn render(frame: &mut Frame, state: &AppState, now: Instant) -> Option<u16> {
+    pub fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        now: Instant,
+        theme: &ThemePalette,
+    ) -> Option<u16> {
         let is_confirming = matches!(
             state.sql_modal.status(),
             SqlModalStatus::ConfirmingHigh { .. }
@@ -59,7 +64,8 @@ impl SqlModal {
                         Constraint::Percentage(60),
                         &title,
                         footer,
-                        Theme::STATUS_ERROR,
+                        theme.status_error,
+                        theme,
                     )
                 }
                 _ => unreachable!(),
@@ -86,7 +92,7 @@ impl SqlModal {
                     Self::border_hint(state.sql_modal.active_tab, compare_can_yank)
                 }
             };
-            Self::render_modal_with_tabs(frame, state.sql_modal.active_tab, hint)
+            Self::render_modal_with_tabs(frame, state.sql_modal.active_tab, hint, theme)
         };
 
         // Add 1-char horizontal padding for breathing room inside the modal
@@ -117,28 +123,28 @@ impl SqlModal {
         frame.render_widget(
             Paragraph::new(Line::styled(
                 sep_line,
-                Style::default().fg(Theme::MODAL_BORDER),
+                Style::default().fg(theme.modal_border),
             )),
             separator_area,
         );
 
         if is_confirming || state.sql_modal.active_tab == SqlModalTab::Sql {
-            editor::render_editor(frame, main_area, state, now);
-            status::render_status(frame, status_area, state);
+            editor::render_editor(frame, main_area, state, now, theme);
+            status::render_status(frame, status_area, state, theme);
 
             if matches!(state.sql_modal.status(), SqlModalStatus::Editing)
                 && state.sql_modal.completion.visible
                 && !state.sql_modal.completion.candidates.is_empty()
             {
-                completion::render_completion_popup(frame, area, main_area, state);
+                completion::render_completion_popup(frame, area, main_area, state, theme);
             }
         } else if state.sql_modal.active_tab == SqlModalTab::Plan {
-            let compare_viewport_height = explain::render(frame, main_area, state, now);
-            status::render_status(frame, status_area, state);
+            let compare_viewport_height = explain::render(frame, main_area, state, now, theme);
+            status::render_status(frame, status_area, state, theme);
             return Some(compare_viewport_height);
         } else {
-            let compare_viewport_height = compare::render(frame, main_area, state, now);
-            status::render_status(frame, status_area, state);
+            let compare_viewport_height = compare::render(frame, main_area, state, now, theme);
+            status::render_status(frame, status_area, state, theme);
             return Some(compare_viewport_height);
         }
 
@@ -149,42 +155,36 @@ impl SqlModal {
         frame: &mut Frame,
         active_tab: SqlModalTab,
         hint: &str,
+        theme: &ThemePalette,
     ) -> (Rect, Rect) {
         let area = centered_rect(
             frame.area(),
             Constraint::Percentage(80),
             Constraint::Percentage(60),
         );
-        render_scrim(frame);
+        render_scrim(frame, theme);
         frame.render_widget(Clear, area);
 
-        let title = Self::build_title_with_tabs(active_tab);
+        let title = Self::build_title_with_tabs(active_tab, theme);
         let block = Block::default()
             .title(title)
-            .title_bottom(Line::styled(
-                hint.to_string(),
-                Style::default()
-                    .fg(Theme::MODAL_TITLE)
-                    .add_modifier(Modifier::BOLD),
-            ))
+            .title_bottom(Line::styled(hint.to_string(), theme.modal_hint_style()))
             .borders(Borders::ALL)
             .border_set(border::ROUNDED)
-            .border_style(Style::default().fg(Theme::MODAL_BORDER))
-            .style(Style::default().fg(Theme::TEXT_PRIMARY));
+            .border_style(Style::default().fg(theme.modal_border))
+            .style(Style::default().fg(theme.text_primary));
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         (area, inner)
     }
 
-    fn build_title_with_tabs(active_tab: SqlModalTab) -> Line<'static> {
-        let title_style = Style::default()
-            .fg(Theme::MODAL_TITLE)
-            .add_modifier(Modifier::BOLD);
+    fn build_title_with_tabs(active_tab: SqlModalTab, theme: &ThemePalette) -> Line<'static> {
+        let title_style = theme.modal_title_style();
         let active_style = Style::default()
-            .fg(Theme::TAB_ACTIVE)
+            .fg(theme.tab_active)
             .add_modifier(Modifier::BOLD);
-        let inactive_style = Style::default().fg(Theme::TAB_INACTIVE);
+        let inactive_style = Style::default().fg(theme.tab_inactive);
 
         let style_for = |tab: SqlModalTab| {
             if tab == active_tab {
@@ -196,10 +196,7 @@ impl SqlModal {
 
         Line::from(vec![
             Span::styled(" SQL Editor ", title_style),
-            Span::styled(
-                "\u{2500}\u{2500} ",
-                Style::default().fg(Theme::MODAL_BORDER),
-            ),
+            Span::styled("\u{2500}\u{2500} ", Style::default().fg(theme.modal_border)),
             Span::styled("[SQL]", style_for(SqlModalTab::Sql)),
             Span::raw(" "),
             Span::styled("[Plan]", style_for(SqlModalTab::Plan)),

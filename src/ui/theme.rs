@@ -1,126 +1,242 @@
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier, Style};
 
+use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::policy::write::write_guardrails::RiskLevel;
 
-pub struct Theme;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusTone {
+    Success,
+    Error,
+    Warning,
+}
 
-impl Theme {
-    // Modal border
-    pub const MODAL_BORDER: Color = Color::Rgb(0x45, 0x47, 0x55);
-    pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Rgb(0xb0, 0xb4, 0xbe);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThemePalette {
+    pub modal_border: Color,
+    pub modal_border_highlight: Color,
+    pub modal_title: Color,
+    pub modal_hint: Color,
+    pub key_chip_bg: Color,
+    pub key_chip_fg: Color,
+    pub editor_current_line_bg: Color,
+    pub completion_selected_bg: Color,
+    pub input_value: Color,
+    pub note_text: Color,
+    pub focus_border: Color,
+    pub unfocus_border: Color,
+    pub highlight_border: Color,
+    pub text_primary: Color,
+    pub text_secondary: Color,
+    pub text_muted: Color,
+    pub text_dim: Color,
+    pub text_accent: Color,
+    pub status_success: Color,
+    pub status_error: Color,
+    pub status_warning: Color,
+    pub status_medium_risk: Color,
+    pub cursor_fg: Color,
+    pub section_header: Color,
+    pub scrollbar_active: Color,
+    pub scrollbar_inactive: Color,
+    pub result_row_active_bg: Color,
+    pub result_cell_active_bg: Color,
+    pub cell_edit_fg: Color,
+    pub cell_draft_pending_fg: Color,
+    pub staged_delete_bg: Color,
+    pub staged_delete_fg: Color,
+    pub yank_flash_bg: Color,
+    pub yank_flash_fg: Color,
+    pub sql_keyword: Color,
+    pub sql_string: Color,
+    pub sql_number: Color,
+    pub sql_comment: Color,
+    pub sql_operator: Color,
+    pub sql_text: Color,
+    pub json_key: Color,
+    pub json_string: Color,
+    pub json_number: Color,
+    pub json_bool: Color,
+    pub json_null: Color,
+    pub json_bracket: Color,
+    pub striped_row_bg: Color,
+    pub selection_bg: Color,
+    pub tab_active: Color,
+    pub tab_inactive: Color,
+    pub active_indicator: Color,
+    pub inactive_indicator: Color,
+    pub placeholder_text: Color,
+}
 
-    // Modal title (emphasized)
-    pub const MODAL_TITLE: Color = Color::Rgb(0xc9, 0xce, 0xd8);
-
-    // Modal hint text (de-emphasized)
-    pub const MODAL_HINT: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
-
-    // Key chip (for important keys in Help)
-    pub const KEY_CHIP_BG: Color = Color::Rgb(0x3a, 0x3a, 0x4a);
-    pub const KEY_CHIP_FG: Color = Color::Rgb(0xee, 0xcc, 0x66);
-
-    // SQL Editor current line highlight
-    pub const EDITOR_CURRENT_LINE_BG: Color = Color::Rgb(0x22, 0x26, 0x33);
-
-    // Completion popup
-    pub const COMPLETION_SELECTED_BG: Color = Color::Rgb(0x45, 0x47, 0x5a);
-
-    // Form input values (non-focused, readable against dark bg)
-    pub const INPUT_VALUE: Color = Color::Rgb(0xaa, 0xaa, 0xaa);
-
-    // Note/disclaimer text (subtle but readable)
-    pub const NOTE_TEXT: Color = Color::Rgb(0x66, 0x66, 0x77);
-
-    // ============ Panel/Border Colors ============
-
-    // Panel border states
-    pub const FOCUS_BORDER: Color = Color::Rgb(0x97, 0xc9, 0xc3);
-    pub const UNFOCUS_BORDER: Color = Color::Rgb(0x45, 0x47, 0x55);
-    pub const HIGHLIGHT_BORDER: Color = Color::Rgb(0xb0, 0xdd, 0xd8);
-
-    // ============ Text Colors ============
-
-    // Semantic text colors
-    pub const TEXT_PRIMARY: Color = Color::Rgb(0xc9, 0xce, 0xd8);
-    pub const TEXT_SECONDARY: Color = Color::Rgb(0xb0, 0xb4, 0xbe);
-    pub const TEXT_MUTED: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
-    pub const TEXT_DIM: Color = Color::Rgb(0x77, 0x77, 0x88);
-    pub const TEXT_ACCENT: Color = Color::Rgb(0xc4, 0xb2, 0x8a);
-
-    // ============ Status Colors ============
-
-    // Status indicators
-    pub const STATUS_SUCCESS: Color = Color::Rgb(0x97, 0xc9, 0xc3);
-    pub const STATUS_ERROR: Color = Color::Rgb(0xc4, 0x74, 0x6e);
-    pub const STATUS_WARNING: Color = Color::Rgb(0xc4, 0xb2, 0x8a);
-    pub const STATUS_MEDIUM_RISK: Color = Color::Rgb(0xff, 0x99, 0x00);
-
-    // ============ Component Colors ============
-
-    // Cursor
-    pub const CURSOR_FG: Color = Color::White;
-
-    // Section headers
-    pub const SECTION_HEADER: Color = Color::Rgb(0x97, 0xc9, 0xc3);
-
-    // Scrollbar
-    pub const SCROLLBAR_ACTIVE: Color = Color::Rgb(0x6a, 0x9e, 0x98);
-    pub const SCROLLBAR_INACTIVE: Color = Color::Rgb(0x45, 0x47, 0x55);
-
-    // Result pane selection
-    pub const RESULT_ROW_ACTIVE_BG: Color = Color::Rgb(0x2e, 0x2e, 0x44);
-    pub const RESULT_CELL_ACTIVE_BG: Color = Color::Rgb(0x3a, 0x3a, 0x5a);
-
-    // Cell edit mode
-    pub const CELL_EDIT_FG: Color = Color::Rgb(0xc4, 0xb2, 0x8a);
-    pub const CELL_DRAFT_PENDING_FG: Color = Color::Rgb(0xff, 0x99, 0x00);
-
-    // Staged-for-delete rows
-    pub const STAGED_DELETE_BG: Color = Color::Rgb(0x3d, 0x22, 0x22);
-    pub const STAGED_DELETE_FG: Color = Color::Rgb(0xee, 0x77, 0x77);
-
-    // Yank flash
-    pub const YANK_FLASH_BG: Color = Color::Rgb(0xF4, 0x9E, 0x4C);
-    pub const YANK_FLASH_FG: Color = Color::Rgb(0x11, 0x14, 0x19);
-
-    // SQL syntax highlighting
-    pub const SQL_KEYWORD: Color = Color::Rgb(0x89, 0xb4, 0xfa);
-    pub const SQL_STRING: Color = Color::Rgb(0xa6, 0xe3, 0xa1);
-    pub const SQL_NUMBER: Color = Color::Rgb(0xfa, 0xb3, 0x87);
-    pub const SQL_COMMENT: Color = Color::Rgb(0x6c, 0x70, 0x86);
-    pub const SQL_OPERATOR: Color = Color::Rgb(0x94, 0xe2, 0xd5);
-    pub const SQL_TEXT: Color = Color::Rgb(0xc9, 0xce, 0xd8);
-
-    // JSON tree highlighting (muted to match overall theme)
-    pub const JSON_KEY: Color = Color::Rgb(0x97, 0xc9, 0xc3);
-    pub const JSON_STRING: Color = Color::Rgb(0x8a, 0xb8, 0x8a);
-    pub const JSON_NUMBER: Color = Color::Rgb(0xc8, 0x9b, 0x7a);
-    pub const JSON_BOOL: Color = Color::Rgb(0xc8, 0x9b, 0x7a);
-    pub const JSON_NULL: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
-    pub const JSON_BRACKET: Color = Color::Rgb(0xb0, 0xb4, 0xbe);
-
-    // Striped table rows
-    pub const STRIPED_ROW_BG: Color = Color::Rgb(0x1e, 0x1e, 0x23);
-
-    // Text selection / cursor background in editors
-    pub const SELECTION_BG: Color = Color::Black;
-
-    // Inspector tab states
-    pub const TAB_ACTIVE: Color = Color::Rgb(0x97, 0xc9, 0xc3);
-    pub const TAB_INACTIVE: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
-
-    // Active/inactive toggle indicators
-    pub const ACTIVE_INDICATOR: Color = Color::Rgb(0x97, 0xc9, 0xc3);
-    pub const INACTIVE_INDICATOR: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
-
-    // Placeholder / empty-value text
-    pub const PLACEHOLDER_TEXT: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
-
-    pub fn risk_color(level: RiskLevel) -> Color {
+impl ThemePalette {
+    pub fn risk_color(&self, level: RiskLevel) -> Color {
         match level {
-            RiskLevel::Low => Self::STATUS_WARNING,
-            RiskLevel::Medium => Self::STATUS_MEDIUM_RISK,
-            RiskLevel::High => Self::STATUS_ERROR,
+            RiskLevel::Low => self.status_warning,
+            RiskLevel::Medium => self.status_medium_risk,
+            RiskLevel::High => self.status_error,
         }
+    }
+
+    pub fn modal_title_style(&self) -> Style {
+        Style::default()
+            .fg(self.modal_title)
+            .add_modifier(Modifier::BOLD)
+    }
+
+    pub fn modal_hint_style(&self) -> Style {
+        Style::default()
+            .fg(self.modal_title)
+            .add_modifier(Modifier::BOLD)
+    }
+
+    pub fn panel_border_style(&self, focused: bool, highlight: bool) -> Style {
+        let color = if focused {
+            self.focus_border
+        } else if highlight {
+            self.highlight_border
+        } else {
+            self.unfocus_border
+        };
+        Style::default().fg(color)
+    }
+
+    pub fn picker_selected_style(&self) -> Style {
+        Style::default()
+            .bg(self.completion_selected_bg)
+            .fg(self.text_primary)
+            .add_modifier(Modifier::BOLD)
+    }
+
+    pub fn input_border_style(&self, focused: bool, has_error: bool) -> Style {
+        let color = if has_error {
+            self.status_error
+        } else if focused {
+            self.modal_border_highlight
+        } else {
+            self.modal_border
+        };
+        Style::default().fg(color)
+    }
+
+    pub fn status_style(&self, tone: StatusTone) -> Style {
+        let color = match tone {
+            StatusTone::Success => self.status_success,
+            StatusTone::Error => self.status_error,
+            StatusTone::Warning => self.status_warning,
+        };
+        Style::default().fg(color)
+    }
+
+    pub fn cursor_style(&self) -> Style {
+        Style::default().bg(self.cursor_fg).fg(self.selection_bg)
+    }
+}
+
+pub const DEFAULT_THEME: ThemePalette = ThemePalette {
+    modal_border: Color::Rgb(0x45, 0x47, 0x55),
+    modal_border_highlight: Color::Rgb(0xb0, 0xb4, 0xbe),
+    modal_title: Color::Rgb(0xc9, 0xce, 0xd8),
+    modal_hint: Color::Rgb(0x5b, 0x5f, 0x6e),
+    key_chip_bg: Color::Rgb(0x3a, 0x3a, 0x4a),
+    key_chip_fg: Color::Rgb(0xee, 0xcc, 0x66),
+    editor_current_line_bg: Color::Rgb(0x22, 0x26, 0x33),
+    completion_selected_bg: Color::Rgb(0x45, 0x47, 0x5a),
+    input_value: Color::Rgb(0xaa, 0xaa, 0xaa),
+    note_text: Color::Rgb(0x66, 0x66, 0x77),
+    focus_border: Color::Rgb(0x97, 0xc9, 0xc3),
+    unfocus_border: Color::Rgb(0x45, 0x47, 0x55),
+    highlight_border: Color::Rgb(0xb0, 0xdd, 0xd8),
+    text_primary: Color::Rgb(0xc9, 0xce, 0xd8),
+    text_secondary: Color::Rgb(0xb0, 0xb4, 0xbe),
+    text_muted: Color::Rgb(0x5b, 0x5f, 0x6e),
+    text_dim: Color::Rgb(0x77, 0x77, 0x88),
+    text_accent: Color::Rgb(0xc4, 0xb2, 0x8a),
+    status_success: Color::Rgb(0x97, 0xc9, 0xc3),
+    status_error: Color::Rgb(0xc4, 0x74, 0x6e),
+    status_warning: Color::Rgb(0xc4, 0xb2, 0x8a),
+    status_medium_risk: Color::Rgb(0xff, 0x99, 0x00),
+    cursor_fg: Color::White,
+    section_header: Color::Rgb(0x97, 0xc9, 0xc3),
+    scrollbar_active: Color::Rgb(0x6a, 0x9e, 0x98),
+    scrollbar_inactive: Color::Rgb(0x45, 0x47, 0x55),
+    result_row_active_bg: Color::Rgb(0x2e, 0x2e, 0x44),
+    result_cell_active_bg: Color::Rgb(0x3a, 0x3a, 0x5a),
+    cell_edit_fg: Color::Rgb(0xc4, 0xb2, 0x8a),
+    cell_draft_pending_fg: Color::Rgb(0xff, 0x99, 0x00),
+    staged_delete_bg: Color::Rgb(0x3d, 0x22, 0x22),
+    staged_delete_fg: Color::Rgb(0xee, 0x77, 0x77),
+    yank_flash_bg: Color::Rgb(0xF4, 0x9E, 0x4C),
+    yank_flash_fg: Color::Rgb(0x11, 0x14, 0x19),
+    sql_keyword: Color::Rgb(0x89, 0xb4, 0xfa),
+    sql_string: Color::Rgb(0xa6, 0xe3, 0xa1),
+    sql_number: Color::Rgb(0xfa, 0xb3, 0x87),
+    sql_comment: Color::Rgb(0x6c, 0x70, 0x86),
+    sql_operator: Color::Rgb(0x94, 0xe2, 0xd5),
+    sql_text: Color::Rgb(0xc9, 0xce, 0xd8),
+    json_key: Color::Rgb(0x97, 0xc9, 0xc3),
+    json_string: Color::Rgb(0x8a, 0xb8, 0x8a),
+    json_number: Color::Rgb(0xc8, 0x9b, 0x7a),
+    json_bool: Color::Rgb(0xc8, 0x9b, 0x7a),
+    json_null: Color::Rgb(0x5b, 0x5f, 0x6e),
+    json_bracket: Color::Rgb(0xb0, 0xb4, 0xbe),
+    striped_row_bg: Color::Rgb(0x1e, 0x1e, 0x23),
+    selection_bg: Color::Black,
+    tab_active: Color::Rgb(0x97, 0xc9, 0xc3),
+    tab_inactive: Color::Rgb(0x5b, 0x5f, 0x6e),
+    active_indicator: Color::Rgb(0x97, 0xc9, 0xc3),
+    inactive_indicator: Color::Rgb(0x5b, 0x5f, 0x6e),
+    placeholder_text: Color::Rgb(0x5b, 0x5f, 0x6e),
+};
+
+pub fn palette_for(theme_id: ThemeId) -> &'static ThemePalette {
+    match theme_id {
+        ThemeId::Default => &DEFAULT_THEME,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn palette_for_default_returns_default_theme() {
+        assert_eq!(palette_for(ThemeId::Default), &DEFAULT_THEME);
+    }
+
+    #[test]
+    fn panel_border_style_prefers_focus_over_highlight() {
+        let style = DEFAULT_THEME.panel_border_style(true, true);
+
+        assert_eq!(style.fg, Some(DEFAULT_THEME.focus_border));
+    }
+
+    #[test]
+    fn picker_selected_style_uses_selected_colors() {
+        let style = DEFAULT_THEME.picker_selected_style();
+
+        assert_eq!(style.bg, Some(DEFAULT_THEME.completion_selected_bg));
+        assert_eq!(style.fg, Some(DEFAULT_THEME.text_primary));
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn input_border_style_prefers_error_over_focus() {
+        let style = DEFAULT_THEME.input_border_style(true, true);
+
+        assert_eq!(style.fg, Some(DEFAULT_THEME.status_error));
+    }
+
+    #[test]
+    fn status_style_uses_requested_tone() {
+        let style = DEFAULT_THEME.status_style(StatusTone::Warning);
+
+        assert_eq!(style.fg, Some(DEFAULT_THEME.status_warning));
+    }
+
+    #[test]
+    fn cursor_style_inverts_cursor_and_selection_colors() {
+        let style = DEFAULT_THEME.cursor_style();
+
+        assert_eq!(style.bg, Some(DEFAULT_THEME.cursor_fg));
+        assert_eq!(style.fg, Some(DEFAULT_THEME.selection_bg));
     }
 }

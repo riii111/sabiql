@@ -3,12 +3,10 @@ use std::cmp::Ordering;
 use ratatui::style::Style;
 use ratatui::text::Span;
 
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
-pub fn cursor_style() -> Style {
-    Style::default()
-        .bg(Theme::CURSOR_FG)
-        .fg(Theme::SELECTION_BG)
+pub fn cursor_style(theme: &ThemePalette) -> Style {
+    theme.cursor_style()
 }
 
 pub fn text_cursor_spans(
@@ -16,6 +14,7 @@ pub fn text_cursor_spans(
     cursor: usize,
     viewport_offset: usize,
     visible_width: usize,
+    theme: &ThemePalette,
 ) -> Vec<Span<'static>> {
     if visible_width == 0 {
         return vec![];
@@ -33,7 +32,7 @@ pub fn text_cursor_spans(
     let cursor_in_view = cursor.checked_sub(vp);
 
     // Block cursor: thin bar (▏) occupies a full cell and shifts text right, so we use bg/fg inversion instead.
-    let cursor_style = cursor_style();
+    let cursor_style = cursor_style(theme);
 
     if cursor >= total {
         let text: String = visible.iter().collect();
@@ -54,7 +53,11 @@ pub fn text_cursor_spans(
     }
 }
 
-pub fn insert_cursor_span(spans: Vec<Span<'static>>, cursor_col: usize) -> Vec<Span<'static>> {
+pub fn insert_cursor_span(
+    spans: Vec<Span<'static>>,
+    cursor_col: usize,
+    theme: &ThemePalette,
+) -> Vec<Span<'static>> {
     let mut output = Vec::new();
     let mut remaining = cursor_col;
     let mut iter = spans.into_iter().peekable();
@@ -72,7 +75,7 @@ pub fn insert_cursor_span(spans: Vec<Span<'static>>, cursor_col: usize) -> Vec<S
         if remaining == len {
             output.push(span);
             if iter.peek().is_none() {
-                output.push(Span::styled(" ", cursor_style()));
+                output.push(Span::styled(" ", cursor_style(theme)));
                 return output;
             }
 
@@ -84,7 +87,7 @@ pub fn insert_cursor_span(spans: Vec<Span<'static>>, cursor_col: usize) -> Vec<S
         if !before.is_empty() {
             output.push(Span::styled(before, span.style));
         }
-        output.push(Span::styled(current, span.style.patch(cursor_style())));
+        output.push(Span::styled(current, span.style.patch(cursor_style(theme))));
         if !after.is_empty() {
             output.push(Span::styled(after, span.style));
         }
@@ -92,7 +95,7 @@ pub fn insert_cursor_span(spans: Vec<Span<'static>>, cursor_col: usize) -> Vec<S
         return output;
     }
 
-    output.push(Span::styled(" ", cursor_style()));
+    output.push(Span::styled(" ", cursor_style(theme)));
     output
 }
 
@@ -115,6 +118,7 @@ fn split_at_cursor(text: &str, cursor_col: usize) -> (String, String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::theme::DEFAULT_THEME;
     use ratatui::style::Modifier;
 
     fn spans_to_strings(spans: &[Span<'_>]) -> Vec<String> {
@@ -123,7 +127,7 @@ mod tests {
 
     #[test]
     fn cursor_at_beginning() {
-        let spans = text_cursor_spans("abc", 0, 0, usize::MAX);
+        let spans = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["", "a", "bc"]);
@@ -131,7 +135,7 @@ mod tests {
 
     #[test]
     fn cursor_at_middle() {
-        let spans = text_cursor_spans("abc", 1, 0, usize::MAX);
+        let spans = text_cursor_spans("abc", 1, 0, usize::MAX, &DEFAULT_THEME);
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["a", "b", "c"]);
@@ -139,7 +143,7 @@ mod tests {
 
     #[test]
     fn cursor_at_end() {
-        let spans = text_cursor_spans("abc", 3, 0, usize::MAX);
+        let spans = text_cursor_spans("abc", 3, 0, usize::MAX, &DEFAULT_THEME);
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["abc", " "]);
@@ -147,7 +151,7 @@ mod tests {
 
     #[test]
     fn empty_string() {
-        let spans = text_cursor_spans("", 0, 0, usize::MAX);
+        let spans = text_cursor_spans("", 0, 0, usize::MAX, &DEFAULT_THEME);
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["", " "]);
@@ -155,7 +159,7 @@ mod tests {
 
     #[test]
     fn multibyte_characters() {
-        let spans = text_cursor_spans("あいう", 1, 0, usize::MAX);
+        let spans = text_cursor_spans("あいう", 1, 0, usize::MAX, &DEFAULT_THEME);
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["あ", "い", "う"]);
@@ -163,7 +167,7 @@ mod tests {
 
     #[test]
     fn viewport_offset_positive() {
-        let spans = text_cursor_spans("abcdef", 3, 2, 3);
+        let spans = text_cursor_spans("abcdef", 3, 2, 3, &DEFAULT_THEME);
 
         // visible: "cde" (offset=2, width=3), cursor_in_view = 3-2 = 1
         let texts = spans_to_strings(&spans);
@@ -172,7 +176,7 @@ mod tests {
 
     #[test]
     fn viewport_offset_beyond_text_length() {
-        let spans = text_cursor_spans("abc", 3, 10, 5);
+        let spans = text_cursor_spans("abc", 3, 10, 5, &DEFAULT_THEME);
 
         // vp clamped to 3 (total), visible is empty, cursor at end
         let texts = spans_to_strings(&spans);
@@ -181,7 +185,7 @@ mod tests {
 
     #[test]
     fn visible_width_one() {
-        let spans = text_cursor_spans("abc", 1, 1, 1);
+        let spans = text_cursor_spans("abc", 1, 1, 1, &DEFAULT_THEME);
 
         // visible: "b", cursor_in_view = 0
         let texts = spans_to_strings(&spans);
@@ -190,14 +194,14 @@ mod tests {
 
     #[test]
     fn visible_width_zero() {
-        let spans = text_cursor_spans("abc", 1, 0, 0);
+        let spans = text_cursor_spans("abc", 1, 0, 0, &DEFAULT_THEME);
 
         assert!(spans.is_empty());
     }
 
     #[test]
     fn visible_width_usize_max_sentinel() {
-        let spans = text_cursor_spans("hello", 2, 0, usize::MAX);
+        let spans = text_cursor_spans("hello", 2, 0, usize::MAX, &DEFAULT_THEME);
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["he", "l", "lo"]);
@@ -206,7 +210,7 @@ mod tests {
     #[test]
     fn cursor_left_of_viewport_returns_text_only() {
         // cursor=0, viewport starts at 2 -> cursor is off-screen to the left
-        let spans = text_cursor_spans("abcdef", 0, 2, 3);
+        let spans = text_cursor_spans("abcdef", 0, 2, 3, &DEFAULT_THEME);
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["cde"]);
@@ -214,9 +218,9 @@ mod tests {
 
     #[test]
     fn all_positions_return_consistent_cursor_style() {
-        let at_start = text_cursor_spans("abc", 0, 0, usize::MAX);
-        let at_middle = text_cursor_spans("abc", 1, 0, usize::MAX);
-        let at_end = text_cursor_spans("abc", 3, 0, usize::MAX);
+        let at_start = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
+        let at_middle = text_cursor_spans("abc", 1, 0, usize::MAX, &DEFAULT_THEME);
+        let at_end = text_cursor_spans("abc", 3, 0, usize::MAX, &DEFAULT_THEME);
 
         let cursor_start = &at_start[1];
         let cursor_middle = &at_middle[1];
@@ -229,35 +233,50 @@ mod tests {
     #[test]
     fn insert_cursor_span_preserves_existing_styles_across_boundary() {
         let spans = vec![
-            Span::styled("ab".to_string(), Style::default().fg(Theme::SQL_KEYWORD)),
-            Span::styled("cd".to_string(), Style::default().fg(Theme::SQL_STRING)),
-            Span::styled("ef".to_string(), Style::default().fg(Theme::SQL_COMMENT)),
+            Span::styled(
+                "ab".to_string(),
+                Style::default().fg(DEFAULT_THEME.sql_keyword),
+            ),
+            Span::styled(
+                "cd".to_string(),
+                Style::default().fg(DEFAULT_THEME.sql_string),
+            ),
+            Span::styled(
+                "ef".to_string(),
+                Style::default().fg(DEFAULT_THEME.sql_comment),
+            ),
         ];
 
-        let inserted = insert_cursor_span(spans, 2);
+        let inserted = insert_cursor_span(spans, 2, &DEFAULT_THEME);
 
         let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
         assert_eq!(texts, vec!["ab", "c", "d", "ef"]);
-        assert_eq!(inserted[0].style.fg, Some(Theme::SQL_KEYWORD));
-        assert_eq!(inserted[1].style, cursor_style());
-        assert_eq!(inserted[2].style.fg, Some(Theme::SQL_STRING));
-        assert_eq!(inserted[3].style.fg, Some(Theme::SQL_COMMENT));
+        assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
+        assert_eq!(inserted[1].style, cursor_style(&DEFAULT_THEME));
+        assert_eq!(inserted[2].style.fg, Some(DEFAULT_THEME.sql_string));
+        assert_eq!(inserted[3].style.fg, Some(DEFAULT_THEME.sql_comment));
     }
 
     #[test]
     fn insert_cursor_span_uses_next_span_at_boundary() {
         let spans = vec![
-            Span::styled("ab".to_string(), Style::default().fg(Theme::SQL_KEYWORD)),
-            Span::styled("cd".to_string(), Style::default().fg(Theme::SQL_STRING)),
+            Span::styled(
+                "ab".to_string(),
+                Style::default().fg(DEFAULT_THEME.sql_keyword),
+            ),
+            Span::styled(
+                "cd".to_string(),
+                Style::default().fg(DEFAULT_THEME.sql_string),
+            ),
         ];
 
-        let inserted = insert_cursor_span(spans, 2);
+        let inserted = insert_cursor_span(spans, 2, &DEFAULT_THEME);
 
         let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
         assert_eq!(texts, vec!["ab", "c", "d"]);
-        assert_eq!(inserted[0].style.fg, Some(Theme::SQL_KEYWORD));
-        assert_eq!(inserted[1].style, cursor_style());
-        assert_eq!(inserted[2].style.fg, Some(Theme::SQL_STRING));
+        assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
+        assert_eq!(inserted[1].style, cursor_style(&DEFAULT_THEME));
+        assert_eq!(inserted[2].style.fg, Some(DEFAULT_THEME.sql_string));
     }
 
     #[test]
@@ -265,29 +284,35 @@ mod tests {
         let spans = vec![Span::styled(
             "ab".to_string(),
             Style::default()
-                .fg(Theme::SQL_KEYWORD)
+                .fg(DEFAULT_THEME.sql_keyword)
                 .add_modifier(Modifier::BOLD),
         )];
 
-        let inserted = insert_cursor_span(spans, 0);
+        let inserted = insert_cursor_span(spans, 0, &DEFAULT_THEME);
 
         assert_eq!(inserted[0].content.as_ref(), "a");
-        assert_eq!(inserted[0].style.bg, Some(Theme::CURSOR_FG));
-        assert_eq!(inserted[0].style.fg, Some(Theme::SELECTION_BG));
+        assert_eq!(inserted[0].style.bg, Some(DEFAULT_THEME.cursor_fg));
+        assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.selection_bg));
         assert!(inserted[0].style.add_modifier.contains(Modifier::BOLD));
     }
 
     #[test]
     fn insert_cursor_span_at_true_end_appends_cursor_cell() {
         let spans = vec![
-            Span::styled("ab".to_string(), Style::default().fg(Theme::SQL_KEYWORD)),
-            Span::styled("cd".to_string(), Style::default().fg(Theme::SQL_STRING)),
+            Span::styled(
+                "ab".to_string(),
+                Style::default().fg(DEFAULT_THEME.sql_keyword),
+            ),
+            Span::styled(
+                "cd".to_string(),
+                Style::default().fg(DEFAULT_THEME.sql_string),
+            ),
         ];
 
-        let inserted = insert_cursor_span(spans, 4);
+        let inserted = insert_cursor_span(spans, 4, &DEFAULT_THEME);
 
         let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
         assert_eq!(texts, vec!["ab", "cd", " "]);
-        assert_eq!(inserted[2].style, cursor_style());
+        assert_eq!(inserted[2].style, cursor_style(&DEFAULT_THEME));
     }
 }

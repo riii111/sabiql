@@ -9,7 +9,7 @@ use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
 use crate::ui::primitives::molecules::{render_modal, render_modal_with_border_color};
 use crate::ui::primitives::utils::text_utils::wrapped_line_count;
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 pub struct ConfirmDialog;
 
@@ -20,23 +20,31 @@ pub struct ConfirmPreviewMetrics {
 }
 
 impl ConfirmDialog {
-    pub fn render(frame: &mut Frame, state: &AppState) -> ConfirmPreviewMetrics {
+    pub fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> ConfirmPreviewMetrics {
         if state.result_interaction.pending_write_preview().is_some() {
-            Self::render_write_preview(frame, state)
+            Self::render_write_preview(frame, state, theme)
         } else {
-            Self::render_plain(frame, state)
+            Self::render_plain(frame, state, theme)
         }
     }
 
-    fn intent_border_color(intent: Option<&ConfirmIntent>) -> Option<Color> {
+    fn intent_border_color(intent: Option<&ConfirmIntent>, theme: &ThemePalette) -> Option<Color> {
         match intent {
-            Some(ConfirmIntent::DisableReadOnly) => Some(Theme::STATUS_WARNING),
-            Some(ConfirmIntent::DeleteConnection(_)) => Some(Theme::STATUS_ERROR),
+            Some(ConfirmIntent::DisableReadOnly) => Some(theme.status_warning),
+            Some(ConfirmIntent::DeleteConnection(_)) => Some(theme.status_error),
             _ => None,
         }
     }
 
-    fn render_plain(frame: &mut Frame, state: &AppState) -> ConfirmPreviewMetrics {
+    fn render_plain(
+        frame: &mut Frame,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> ConfirmPreviewMetrics {
         let dialog = &state.confirm_dialog;
         let hint = " Enter: Confirm │ Esc: Cancel ";
 
@@ -60,28 +68,31 @@ impl ConfirmDialog {
         let modal_height = (message_height + 2).clamp(6, max_modal_height);
 
         let title = format!(" {} ", dialog.title());
-        let (_, modal_inner) = if let Some(color) = Self::intent_border_color(dialog.intent()) {
-            render_modal_with_border_color(
-                frame,
-                Constraint::Length(modal_width),
-                Constraint::Length(modal_height),
-                &title,
-                hint,
-                color,
-            )
-        } else {
-            render_modal(
-                frame,
-                Constraint::Length(modal_width),
-                Constraint::Length(modal_height),
-                &title,
-                hint,
-            )
-        };
+        let (_, modal_inner) =
+            if let Some(color) = Self::intent_border_color(dialog.intent(), theme) {
+                render_modal_with_border_color(
+                    frame,
+                    Constraint::Length(modal_width),
+                    Constraint::Length(modal_height),
+                    &title,
+                    hint,
+                    color,
+                    theme,
+                )
+            } else {
+                render_modal(
+                    frame,
+                    Constraint::Length(modal_width),
+                    Constraint::Length(modal_height),
+                    &title,
+                    hint,
+                    theme,
+                )
+            };
 
         let inner = modal_inner.inner(Margin::new(1, 0));
         let message_para = Paragraph::new(dialog.message().to_owned())
-            .style(Style::default().fg(Theme::TEXT_PRIMARY))
+            .style(Style::default().fg(theme.text_primary))
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false });
         frame.render_widget(message_para, inner);
@@ -92,13 +103,17 @@ impl ConfirmDialog {
         }
     }
 
-    fn render_write_preview(frame: &mut Frame, state: &AppState) -> ConfirmPreviewMetrics {
+    fn render_write_preview(
+        frame: &mut Frame,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> ConfirmPreviewMetrics {
         let preview = state
             .result_interaction
             .pending_write_preview()
             .expect("write preview must be set");
 
-        let border_color = Theme::risk_color(preview.guardrail.risk_level);
+        let border_color = theme.risk_color(preview.guardrail.risk_level);
         let blocked = preview.guardrail.blocked;
         let title = format!(" {} ", state.confirm_dialog.title());
 
@@ -126,25 +141,25 @@ impl ConfirmDialog {
             WriteOperation::Update => {
                 content_lines.push(Line::from(vec![Span::styled(
                     "Diff",
-                    Style::default().fg(Theme::TEXT_SECONDARY),
+                    Style::default().fg(theme.text_secondary),
                 )]));
                 for (i, diff) in preview.diff.iter().enumerate() {
                     content_lines.push(Line::from(Span::styled(
                         format!("  {}:", diff.column),
-                        Style::default().fg(Theme::TEXT_SECONDARY),
+                        Style::default().fg(theme.text_secondary),
                     )));
                     if let Some(json_lines) = &diff.json_diff {
-                        Self::render_json_diff_lines(json_lines, &mut content_lines);
+                        Self::render_json_diff_lines(json_lines, &mut content_lines, theme);
                     } else {
                         let before = format!("\"{}\"", escape_preview_value(&diff.before));
                         let after = format!("\"{}\"", escape_preview_value(&diff.after));
                         content_lines.push(Line::from(Span::styled(
                             format!("    - {before}"),
-                            Style::default().fg(Theme::STATUS_ERROR),
+                            Style::default().fg(theme.status_error),
                         )));
                         content_lines.push(Line::from(Span::styled(
                             format!("    + {after}"),
-                            Style::default().fg(Theme::STATUS_SUCCESS),
+                            Style::default().fg(theme.status_success),
                         )));
                     }
                     if i + 1 < preview.diff.len() {
@@ -155,17 +170,17 @@ impl ConfirmDialog {
             WriteOperation::Delete => {
                 content_lines.push(Line::from(vec![Span::styled(
                     "Target",
-                    Style::default().fg(Theme::TEXT_SECONDARY),
+                    Style::default().fg(theme.text_secondary),
                 )]));
                 for (key, value) in &preview.target_summary.key_values {
                     content_lines.push(Line::from(vec![
                         Span::styled(
                             format!("  {key}: "),
-                            Style::default().fg(Theme::TEXT_SECONDARY),
+                            Style::default().fg(theme.text_secondary),
                         ),
                         Span::styled(
                             format!("\"{}\"", escape_preview_value(value)),
-                            Style::default().fg(Theme::TEXT_PRIMARY),
+                            Style::default().fg(theme.text_primary),
                         ),
                     ]));
                 }
@@ -176,11 +191,11 @@ impl ConfirmDialog {
 
         content_lines.push(Line::from(vec![Span::styled(
             "SQL Preview",
-            Style::default().fg(Theme::TEXT_SECONDARY),
+            Style::default().fg(theme.text_secondary),
         )]));
         for sql_line in preview.sql.lines() {
             let indented = format!("  {sql_line}");
-            content_lines.push(Self::highlight_sql_line(&indented));
+            content_lines.push(Self::highlight_sql_line(&indented, theme));
         }
 
         content_lines.push(Line::from(""));
@@ -240,6 +255,7 @@ impl ConfirmDialog {
             &title,
             hint,
             border_color,
+            theme,
         );
 
         let inner = modal_inner.inner(Margin::new(1, 1));
@@ -261,38 +277,42 @@ impl ConfirmDialog {
         }
     }
 
-    fn render_json_diff_lines(lines: &[JsonDiffLine], output: &mut Vec<Line<'static>>) {
+    fn render_json_diff_lines(
+        lines: &[JsonDiffLine],
+        output: &mut Vec<Line<'static>>,
+        theme: &ThemePalette,
+    ) {
         for line in lines {
             match line {
                 JsonDiffLine::Context(s) => {
                     output.push(Line::from(Span::styled(
                         format!("    {s}"),
-                        Style::default().fg(Theme::TEXT_DIM),
+                        Style::default().fg(theme.text_dim),
                     )));
                 }
                 JsonDiffLine::Added(s) => {
                     output.push(Line::from(Span::styled(
                         format!("  + {s}"),
-                        Style::default().fg(Theme::STATUS_SUCCESS),
+                        Style::default().fg(theme.status_success),
                     )));
                 }
                 JsonDiffLine::Removed(s) => {
                     output.push(Line::from(Span::styled(
                         format!("  - {s}"),
-                        Style::default().fg(Theme::STATUS_ERROR),
+                        Style::default().fg(theme.status_error),
                     )));
                 }
                 JsonDiffLine::Ellipsis => {
                     output.push(Line::from(Span::styled(
                         "    ...".to_string(),
-                        Style::default().fg(Theme::TEXT_DIM),
+                        Style::default().fg(theme.text_dim),
                     )));
                 }
             }
         }
     }
 
-    fn highlight_sql_line(line: &str) -> Line<'static> {
+    fn highlight_sql_line(line: &str, theme: &ThemePalette) -> Line<'static> {
         const SQL_KEYWORDS: &[&str] = &[
             "UPDATE", "DELETE", "FROM", "SET", "WHERE", "AND", "OR", "NULL",
         ];
@@ -314,17 +334,17 @@ impl ConfirmDialog {
             spans.push(Span::styled(
                 kw.to_string(),
                 Style::default()
-                    .fg(Theme::SQL_KEYWORD)
+                    .fg(theme.sql_keyword)
                     .add_modifier(Modifier::BOLD),
             ));
             spans.push(Span::styled(
                 trimmed[kw.len()..].to_string(),
-                Style::default().fg(Theme::SQL_TEXT),
+                Style::default().fg(theme.sql_text),
             ));
         } else {
             spans.push(Span::styled(
                 trimmed.to_string(),
-                Style::default().fg(Theme::SQL_TEXT),
+                Style::default().fg(theme.sql_text),
             ));
         }
 

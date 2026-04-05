@@ -9,7 +9,7 @@ use crate::app::model::connection::setup::{
 use crate::domain::connection::SslMode;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::primitives::molecules::render_modal;
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 const LABEL_WIDTH: u16 = 12;
 const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;
@@ -17,12 +17,12 @@ const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
 const DROPDOWN_ITEM_COUNT: usize = 6;
 
-fn bracketed_input(content: &str, border_style: Style) -> Line<'static> {
+fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> Line<'static> {
     Line::from(vec![
         Span::styled("[", border_style),
         Span::styled(
             format!(" {content} "),
-            Style::default().fg(Theme::TEXT_PRIMARY),
+            Style::default().fg(theme.text_primary),
         ),
         Span::styled("]", border_style),
     ])
@@ -31,7 +31,7 @@ fn bracketed_input(content: &str, border_style: Style) -> Line<'static> {
 pub struct ConnectionSetup;
 
 impl ConnectionSetup {
-    pub fn render(frame: &mut Frame, state: &AppState) {
+    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let form_state = &state.connection_setup;
 
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
@@ -54,6 +54,7 @@ impl ConnectionSetup {
             Constraint::Length(modal_height),
             title,
             hint,
+            theme,
         );
 
         let inner = modal_inner.inner(Margin::new(2, 1));
@@ -70,37 +71,73 @@ impl ConnectionSetup {
         ])
         .split(inner);
 
-        Self::render_text_field(frame, chunks[0], form_state, ConnectionField::Name, false);
-        Self::render_text_field(frame, chunks[1], form_state, ConnectionField::Host, false);
-        Self::render_text_field(frame, chunks[2], form_state, ConnectionField::Port, false);
+        Self::render_text_field(
+            frame,
+            chunks[0],
+            form_state,
+            ConnectionField::Name,
+            false,
+            theme,
+        );
+        Self::render_text_field(
+            frame,
+            chunks[1],
+            form_state,
+            ConnectionField::Host,
+            false,
+            theme,
+        );
+        Self::render_text_field(
+            frame,
+            chunks[2],
+            form_state,
+            ConnectionField::Port,
+            false,
+            theme,
+        );
         Self::render_text_field(
             frame,
             chunks[3],
             form_state,
             ConnectionField::Database,
             false,
+            theme,
         );
-        Self::render_text_field(frame, chunks[4], form_state, ConnectionField::User, false);
+        Self::render_text_field(
+            frame,
+            chunks[4],
+            form_state,
+            ConnectionField::User,
+            false,
+            theme,
+        );
         Self::render_text_field(
             frame,
             chunks[5],
             form_state,
             ConnectionField::Password,
             true,
+            theme,
         );
         Self::render_ssl_field(
             frame,
             chunks[6],
             form_state.ssl_mode,
             form_state.focused_field == ConnectionField::SslMode,
+            theme,
         );
 
         let notice = "Note: Connection info is stored locally in plain text";
-        let notice_para = Paragraph::new(notice).style(Style::default().fg(Theme::NOTE_TEXT));
+        let notice_para = Paragraph::new(notice).style(Style::default().fg(theme.note_text));
         frame.render_widget(notice_para, chunks[8]);
 
         if form_state.ssl_dropdown.is_open {
-            Self::render_dropdown(frame, chunks[6], form_state.ssl_dropdown.selected_index);
+            Self::render_dropdown(
+                frame,
+                chunks[6],
+                form_state.ssl_dropdown.selected_index,
+                theme,
+            );
         }
     }
 
@@ -110,6 +147,7 @@ impl ConnectionSetup {
         state: &ConnectionSetupState,
         field: ConnectionField,
         mask: bool,
+        theme: &ThemePalette,
     ) {
         let is_focused = field == state.focused_field;
         let value = state.field_value(field);
@@ -123,9 +161,9 @@ impl ConnectionSetup {
         .split(area);
 
         let label_style = if is_focused {
-            Style::default().fg(Theme::TEXT_SECONDARY).bold()
+            Style::default().fg(theme.text_secondary).bold()
         } else {
-            Style::default().fg(Theme::TEXT_SECONDARY)
+            Style::default().fg(theme.text_secondary)
         };
         let label_para = Paragraph::new(field.label()).style(label_style);
         frame.render_widget(label_para, chunks[0]);
@@ -138,13 +176,7 @@ impl ConnectionSetup {
 
         let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
 
-        let border_style = if error.is_some() {
-            Style::default().fg(Theme::STATUS_ERROR)
-        } else if is_focused {
-            Style::default().fg(Theme::MODAL_BORDER_HIGHLIGHT)
-        } else {
-            Style::default().fg(Theme::MODAL_BORDER)
-        };
+        let border_style = theme.input_border_style(is_focused, error.is_some());
 
         let input_line = if is_focused {
             let input = state.focused_input().unwrap();
@@ -159,7 +191,8 @@ impl ConnectionSetup {
                 content_width
             };
 
-            let cursor_spans = text_cursor_spans(&display_value, cursor, viewport, effective_width);
+            let cursor_spans =
+                text_cursor_spans(&display_value, cursor, viewport, effective_width, theme);
 
             // Calculate total display width of cursor spans (including block cursor)
             let used_width: usize = cursor_spans.iter().map(|s| s.content.chars().count()).sum();
@@ -167,13 +200,13 @@ impl ConnectionSetup {
 
             let mut spans = vec![
                 Span::styled("[", border_style),
-                Span::styled(" ", Style::default().fg(Theme::TEXT_PRIMARY)),
+                Span::styled(" ", Style::default().fg(theme.text_primary)),
             ];
             spans.extend(cursor_spans);
             if padding > 0 {
                 spans.push(Span::raw(" ".repeat(padding)));
             }
-            spans.push(Span::styled(" ", Style::default().fg(Theme::TEXT_PRIMARY)));
+            spans.push(Span::styled(" ", Style::default().fg(theme.text_primary)));
             spans.push(Span::styled("]", border_style));
             Line::from(spans)
         } else {
@@ -182,6 +215,7 @@ impl ConnectionSetup {
             bracketed_input(
                 &format!("{}{}", truncated, " ".repeat(padding)),
                 border_style,
+                theme,
             )
         };
 
@@ -190,12 +224,18 @@ impl ConnectionSetup {
 
         if let Some(err) = error {
             let err_para =
-                Paragraph::new(format!(" {err}")).style(Style::default().fg(Theme::STATUS_ERROR));
+                Paragraph::new(format!(" {err}")).style(Style::default().fg(theme.status_error));
             frame.render_widget(err_para, chunks[2]);
         }
     }
 
-    fn render_ssl_field(frame: &mut Frame, area: Rect, ssl_mode: SslMode, is_focused: bool) {
+    fn render_ssl_field(
+        frame: &mut Frame,
+        area: Rect,
+        ssl_mode: SslMode,
+        is_focused: bool,
+        theme: &ThemePalette,
+    ) {
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),
             Constraint::Length(INPUT_WIDTH),
@@ -205,9 +245,9 @@ impl ConnectionSetup {
 
         // Label: gray (like Explorer content), bold when focused
         let label_style = if is_focused {
-            Style::default().fg(Theme::TEXT_SECONDARY).bold()
+            Style::default().fg(theme.text_secondary).bold()
         } else {
-            Style::default().fg(Theme::TEXT_SECONDARY)
+            Style::default().fg(theme.text_secondary)
         };
         let label_para = Paragraph::new("SSL Mode:").style(label_style);
         frame.render_widget(label_para, chunks[0]);
@@ -217,17 +257,18 @@ impl ConnectionSetup {
         let ssl_mode_str = ssl_mode.to_string();
         let display_content = format!("{:<1$} ▼", ssl_mode_str, content_width - 2);
 
-        let border_style = if is_focused {
-            Style::default().fg(Theme::MODAL_BORDER_HIGHLIGHT)
-        } else {
-            Style::default().fg(Theme::MODAL_BORDER)
-        };
+        let border_style = theme.input_border_style(is_focused, false);
 
-        let input_para = Paragraph::new(bracketed_input(&display_content, border_style));
+        let input_para = Paragraph::new(bracketed_input(&display_content, border_style, theme));
         frame.render_widget(input_para, chunks[1]);
     }
 
-    fn render_dropdown(frame: &mut Frame, ssl_field_area: Rect, selected_index: usize) {
+    fn render_dropdown(
+        frame: &mut Frame,
+        ssl_field_area: Rect,
+        selected_index: usize,
+        theme: &ThemePalette,
+    ) {
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),
             Constraint::Length(INPUT_WIDTH),
@@ -246,7 +287,7 @@ impl ConnectionSetup {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Theme::MODAL_BORDER))
+            .border_style(Style::default().fg(theme.modal_border))
             .style(Style::default());
         frame.render_widget(block, dropdown_area);
 
@@ -266,11 +307,9 @@ impl ConnectionSetup {
 
             let is_selected = i == selected_index;
             let item_style = if is_selected {
-                Style::default()
-                    .bg(Theme::COMPLETION_SELECTED_BG)
-                    .fg(Theme::TEXT_PRIMARY)
+                theme.picker_selected_style()
             } else {
-                Style::default().fg(Theme::TEXT_SECONDARY)
+                Style::default().fg(theme.text_secondary)
             };
 
             let item_para = Paragraph::new(variant.to_string()).style(item_style);

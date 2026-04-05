@@ -20,7 +20,7 @@ use crate::domain::{QueryResult, QuerySource};
 use crate::ui::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths,
 };
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 pub struct ResultPane;
 
@@ -30,6 +30,7 @@ impl ResultPane {
         area: Rect,
         state: &AppState,
         now: Instant,
+        theme: &ThemePalette,
     ) -> (ViewportPlan, ColumnWidthsCache) {
         let is_focused = state.ui.focused_pane == FocusedPane::Result;
         let should_highlight = state
@@ -40,16 +41,16 @@ impl ResultPane {
         let result = state.query.visible_result();
         let title = Self::build_title(result, state);
 
-        let block = panel_block_highlight(&title, is_focused, should_highlight);
+        let block = panel_block_highlight(&title, is_focused, should_highlight, theme);
 
         let default_result = || (ViewportPlan::default(), ColumnWidthsCache::default());
 
         if let Some(result) = result {
             if result.is_error() {
-                Self::render_error(frame, area, result, block);
+                Self::render_error(frame, area, result, block, theme);
                 default_result()
             } else if result.rows.is_empty() {
-                Self::render_empty(frame, area, block);
+                Self::render_empty(frame, area, block, theme);
                 default_result()
             } else {
                 let history_bar = state.query.history_bar();
@@ -81,10 +82,11 @@ impl ResultPane {
                     history_bar,
                     state.result_interaction.yank_flash,
                     now,
+                    theme,
                 )
             }
         } else {
-            Self::render_placeholder(frame, area, block);
+            Self::render_placeholder(frame, area, block, theme);
             default_result()
         }
     }
@@ -119,29 +121,35 @@ impl ResultPane {
         }
     }
 
-    fn render_placeholder(frame: &mut Frame, area: Rect, block: Block) {
+    fn render_placeholder(frame: &mut Frame, area: Rect, block: Block, theme: &ThemePalette) {
         let content = Paragraph::new("(select a table to preview)")
             .block(block)
-            .style(Style::default().fg(Theme::PLACEHOLDER_TEXT));
+            .style(Style::default().fg(theme.placeholder_text));
         frame.render_widget(content, area);
     }
 
-    fn render_empty(frame: &mut Frame, area: Rect, block: Block) {
+    fn render_empty(frame: &mut Frame, area: Rect, block: Block, theme: &ThemePalette) {
         let content = Paragraph::new("No rows returned")
             .block(block)
-            .style(Style::default().fg(Theme::PLACEHOLDER_TEXT));
+            .style(Style::default().fg(theme.placeholder_text));
         frame.render_widget(content, area);
     }
 
-    fn render_error(frame: &mut Frame, area: Rect, result: &QueryResult, block: Block) {
+    fn render_error(
+        frame: &mut Frame,
+        area: Rect,
+        result: &QueryResult,
+        block: Block,
+        theme: &ThemePalette,
+    ) {
         let error_msg = result.error.as_deref().unwrap_or("Unknown error");
 
-        let block = block.style(Style::default().fg(Theme::STATUS_ERROR));
+        let block = block.style(Style::default().fg(theme.status_error));
 
         let content = Paragraph::new(error_msg)
             .block(block)
             .wrap(Wrap { trim: false })
-            .style(Style::default().fg(Theme::STATUS_ERROR));
+            .style(Style::default().fg(theme.status_error));
 
         frame.render_widget(content, area);
     }
@@ -167,6 +175,7 @@ impl ResultPane {
         history_bar: Option<(usize, usize)>,
         yank_flash: Option<YankFlash>,
         now: Instant,
+        theme: &ThemePalette,
     ) -> (ViewportPlan, ColumnWidthsCache) {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -248,7 +257,7 @@ impl ResultPane {
             Style::default()
                 .add_modifier(Modifier::UNDERLINED)
                 .add_modifier(Modifier::BOLD)
-                .fg(Theme::TEXT_PRIMARY),
+                .fg(theme.text_primary),
         )
         .height(1);
 
@@ -274,13 +283,13 @@ impl ResultPane {
                     .map(|f| f.col);
                 let is_row_flash = flash_scope == Some(None);
                 let row_bg = if is_row_flash {
-                    Some(Theme::YANK_FLASH_BG)
+                    Some(theme.yank_flash_bg)
                 } else if is_staged_for_delete {
-                    Some(Theme::STAGED_DELETE_BG)
+                    Some(theme.staged_delete_bg)
                 } else if is_active_row {
-                    Some(Theme::RESULT_ROW_ACTIVE_BG)
+                    Some(theme.result_row_active_bg)
                 } else if (abs_row_idx - scroll_offset) % 2 == 1 {
-                    Some(Theme::STRIPED_ROW_BG)
+                    Some(theme.striped_row_bg)
                 } else {
                     None
                 };
@@ -301,18 +310,19 @@ impl ResultPane {
                                     draft,
                                     cursor_pos,
                                     col_width as usize,
+                                    theme,
                                 );
                                 cell = Cell::from(line).style(
                                     Style::default()
-                                        .bg(Theme::RESULT_CELL_ACTIVE_BG)
-                                        .fg(Theme::CELL_EDIT_FG),
+                                        .bg(theme.result_cell_active_bg)
+                                        .fg(theme.cell_edit_fg),
                                 );
                             } else {
                                 let display = truncate_cell(draft, col_width as usize);
                                 cell = Cell::from(display).style(
                                     Style::default()
-                                        .bg(Theme::RESULT_CELL_ACTIVE_BG)
-                                        .fg(Theme::CELL_DRAFT_PENDING_FG),
+                                        .bg(theme.result_cell_active_bg)
+                                        .fg(theme.cell_draft_pending_fg),
                                 );
                             }
                         } else {
@@ -323,14 +333,13 @@ impl ResultPane {
                             if is_row_flash || flash_scope == Some(Some(orig_idx)) {
                                 cell = cell.style(
                                     Style::default()
-                                        .fg(Theme::YANK_FLASH_FG)
-                                        .bg(Theme::YANK_FLASH_BG),
+                                        .fg(theme.yank_flash_fg)
+                                        .bg(theme.yank_flash_bg),
                                 );
                             } else if is_staged_for_delete {
-                                cell = cell.style(Style::default().fg(Theme::STAGED_DELETE_FG));
+                                cell = cell.style(Style::default().fg(theme.staged_delete_fg));
                             } else if is_active_row && active_cell == Some(orig_idx) {
-                                cell =
-                                    cell.style(Style::default().bg(Theme::RESULT_CELL_ACTIVE_BG));
+                                cell = cell.style(Style::default().bg(theme.result_cell_active_bg));
                             }
                         }
                         cell
@@ -347,7 +356,7 @@ impl ResultPane {
 
         let table = Table::new(rows, widths)
             .header(header)
-            .style(Style::default().fg(Theme::TEXT_PRIMARY));
+            .style(Style::default().fg(theme.text_primary));
 
         frame.render_widget(table, inner);
 
@@ -367,6 +376,7 @@ impl ResultPane {
                 viewport_size: scroll_viewport_size,
                 total_items: total_rows,
             },
+            theme,
         );
         // Split bottom row: history bar on left, h-scroll indicator on right
         let history_bar_width = if let Some((idx, total)) = history_bar {
@@ -376,7 +386,7 @@ impl ResultPane {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![ratatui::text::Span::styled(
                     text,
-                    Style::default().fg(Theme::TEXT_SECONDARY),
+                    Style::default().fg(theme.text_secondary),
                 )])),
                 Rect::new(inner.x, bottom_row, render_width, 1),
             );
@@ -400,6 +410,7 @@ impl ResultPane {
                 viewport_size: plan.column_count,
                 total_items: total_cols,
             },
+            theme,
         );
 
         (plan, widths_cache)
@@ -429,7 +440,12 @@ pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -
         .collect()
 }
 
-fn cell_edit_line_with_cursor(text: &str, cursor: usize, max_chars: usize) -> Line<'static> {
+fn cell_edit_line_with_cursor(
+    text: &str,
+    cursor: usize,
+    max_chars: usize,
+    theme: &ThemePalette,
+) -> Line<'static> {
     let total = text.chars().count();
 
     // For narrow columns, try to keep cursor visible
@@ -448,7 +464,9 @@ fn cell_edit_line_with_cursor(text: &str, cursor: usize, max_chars: usize) -> Li
         cursor.saturating_sub(max_chars / 2)
     };
 
-    Line::from(text_cursor_spans(text, cursor, view_start, max_chars))
+    Line::from(text_cursor_spans(
+        text, cursor, view_start, max_chars, theme,
+    ))
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {

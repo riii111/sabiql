@@ -1,15 +1,15 @@
 use ratatui::style::Style;
 use ratatui::text::Line;
 
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
-pub fn apply_yank_flash(lines: &mut [Line], active: bool) {
+pub fn apply_yank_flash(lines: &mut [Line], active: bool, theme: &ThemePalette) {
     if !active {
         return;
     }
     let flash_style = Style::default()
-        .fg(Theme::YANK_FLASH_FG)
-        .bg(Theme::YANK_FLASH_BG);
+        .fg(theme.yank_flash_fg)
+        .bg(theme.yank_flash_bg);
     for line in lines {
         *line = std::mem::take(line).style(flash_style);
     }

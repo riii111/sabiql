@@ -6,7 +6,7 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table};
 use crate::ui::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
 };
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 pub struct StripedTableConfig<'b> {
     pub headers: &'b [&'b str],
@@ -20,6 +20,7 @@ pub fn render_striped_table<'a>(
     area: Rect,
     config: &StripedTableConfig<'_>,
     scroll_offset: usize,
+    theme: &ThemePalette,
     row_fn: impl Fn(usize) -> Vec<Cell<'a>>,
 ) {
     if config.total_items == 0 {
@@ -32,7 +33,7 @@ pub fn render_striped_table<'a>(
             Style::default()
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(Modifier::UNDERLINED)
-                .fg(Theme::TEXT_PRIMARY),
+                .fg(theme.text_primary),
         )
         .height(1);
 
@@ -46,7 +47,7 @@ pub fn render_striped_table<'a>(
         .enumerate()
         .map(|(visual_idx, item_idx)| {
             let style = if visual_idx % 2 == 1 {
-                Style::default().bg(Theme::STRIPED_ROW_BG)
+                Style::default().bg(theme.striped_row_bg)
             } else {
                 Style::default()
             };
@@ -56,7 +57,7 @@ pub fn render_striped_table<'a>(
 
     let table_widget = Table::new(rows, config.widths)
         .header(header)
-        .style(Style::default().fg(Theme::TEXT_PRIMARY));
+        .style(Style::default().fg(theme.text_primary));
     frame.render_widget(table_widget, area);
 
     render_vertical_scroll_indicator_bar(
@@ -67,5 +68,6 @@ pub fn render_striped_table<'a>(
             viewport_size: visible_rows,
             total_items: config.total_items,
         },
+        theme,
     );
 }

@@ -5,7 +5,7 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
 use crate::ui::primitives::atoms::key_chip;
@@ -15,11 +15,11 @@ use crate::ui::primitives::utils::text_utils::wrapped_line_count;
 pub struct ConnectionError;
 
 impl ConnectionError {
-    pub fn render(frame: &mut Frame, state: &AppState, now: Instant) {
-        Self::render_at(frame, state, now);
+    pub fn render(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
+        Self::render_at(frame, state, now, theme);
     }
 
-    pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant) {
+    pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
         let error_state = &state.connection_error;
         let Some(ref error_info) = error_state.error_info else {
             return;
@@ -62,6 +62,7 @@ impl ConnectionError {
             height,
             " Connection Error ",
             hint_text,
+            theme,
         );
 
         let chunks = Layout::vertical([
@@ -75,41 +76,41 @@ impl ConnectionError {
         ])
         .split(inner);
 
-        Self::render_summary(frame, chunks[0], error_info.kind.summary());
-        Self::render_hint(frame, chunks[2], state);
-        Self::render_details_section(frame, chunks[4], error_state, details_expanded);
-        Self::render_actions(frame, chunks[6], state, now);
+        Self::render_summary(frame, chunks[0], error_info.kind.summary(), theme);
+        Self::render_hint(frame, chunks[2], state, theme);
+        Self::render_details_section(frame, chunks[4], error_state, details_expanded, theme);
+        Self::render_actions(frame, chunks[6], state, now, theme);
     }
 
-    fn render_summary(frame: &mut Frame, area: Rect, summary: &str) {
+    fn render_summary(frame: &mut Frame, area: Rect, summary: &str, theme: &ThemePalette) {
         let line = Line::from(vec![
-            Span::styled("✗ ", Style::default().fg(Theme::STATUS_ERROR)),
+            Span::styled("✗ ", Style::default().fg(theme.status_error)),
             Span::styled(
                 summary,
                 Style::default()
-                    .fg(Theme::STATUS_ERROR)
+                    .fg(theme.status_error)
                     .add_modifier(Modifier::BOLD),
             ),
         ]);
         frame.render_widget(Paragraph::new(line), area);
     }
 
-    fn render_hint(frame: &mut Frame, area: Rect, state: &AppState) {
+    fn render_hint(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let hint = state
             .connection_error
             .error_info
             .as_ref()
             .map_or("", |e| e.kind.hint());
         let mut spans = vec![
-            Span::styled("Hint: ", Style::default().fg(Theme::TEXT_ACCENT)),
-            Span::styled(hint.to_string(), Style::default().fg(Theme::TEXT_SECONDARY)),
+            Span::styled("Hint: ", Style::default().fg(theme.text_accent)),
+            Span::styled(hint.to_string(), Style::default().fg(theme.text_secondary)),
         ];
         if state.session.is_service_connection()
             && let Some(ref path) = state.runtime.service_file_path
         {
             spans.push(Span::styled(
                 format!("  (edit {})", path.display()),
-                Style::default().fg(Theme::TEXT_MUTED),
+                Style::default().fg(theme.text_muted),
             ));
         }
         let line = Line::from(spans);
@@ -121,6 +122,7 @@ impl ConnectionError {
         area: Rect,
         error_state: &crate::app::model::connection::error_state::ConnectionErrorState,
         expanded: bool,
+        theme: &ThemePalette,
     ) {
         if expanded {
             let chunks = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(area);
@@ -128,7 +130,7 @@ impl ConnectionError {
             let toggle_line = Line::from(vec![Span::styled(
                 "▼ Details",
                 Style::default()
-                    .fg(Theme::SECTION_HEADER)
+                    .fg(theme.section_header)
                     .add_modifier(Modifier::BOLD),
             )]);
             frame.render_widget(Paragraph::new(toggle_line), chunks[0]);
@@ -142,43 +144,46 @@ impl ConnectionError {
                 let para = Paragraph::new(lines)
                     .scroll((scroll as u16, 0))
                     .wrap(Wrap { trim: false })
-                    .style(Style::default().fg(Theme::TEXT_MUTED));
+                    .style(Style::default().fg(theme.text_muted));
                 frame.render_widget(para, chunks[1]);
             }
         } else {
             let toggle_line = Line::from(vec![
-                Span::styled("▶ ", Style::default().fg(Theme::SECTION_HEADER)),
-                Span::styled("Details ", Style::default().fg(Theme::SECTION_HEADER)),
-                Span::styled(
-                    "(press d to expand)",
-                    Style::default().fg(Theme::TEXT_MUTED),
-                ),
+                Span::styled("▶ ", Style::default().fg(theme.section_header)),
+                Span::styled("Details ", Style::default().fg(theme.section_header)),
+                Span::styled("(press d to expand)", Style::default().fg(theme.text_muted)),
             ]);
             frame.render_widget(Paragraph::new(toggle_line), area);
         }
     }
 
-    fn render_actions(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
+    fn render_actions(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        now: Instant,
+        theme: &ThemePalette,
+    ) {
         let error_state = &state.connection_error;
         let mut spans = vec![Span::styled(
             "Actions: ",
-            Style::default().fg(Theme::TEXT_MUTED),
+            Style::default().fg(theme.text_muted),
         )];
 
         if state.session.is_service_connection() {
-            spans.push(key_chip("r"));
+            spans.push(key_chip("r", theme));
             spans.push(Span::raw(" Retry  "));
         } else {
-            spans.push(key_chip("e"));
+            spans.push(key_chip("e", theme));
             spans.push(Span::raw(" Re-enter  "));
         }
 
         spans.extend([
-            key_chip("s"),
+            key_chip("s", theme),
             Span::raw(" Switch  "),
-            key_chip("d"),
+            key_chip("d", theme),
             Span::raw(" Details  "),
-            key_chip("y"),
+            key_chip("y", theme),
             Span::raw(" Copy"),
         ]);
 
@@ -187,7 +192,7 @@ impl ConnectionError {
             spans.push(Span::styled(
                 "Copied!",
                 Style::default()
-                    .fg(Theme::STATUS_SUCCESS)
+                    .fg(theme.status_success)
                     .add_modifier(Modifier::BOLD),
             ));
         }

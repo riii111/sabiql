@@ -19,7 +19,7 @@ use crate::ui::primitives::atoms::panel_block;
 use crate::ui::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths,
 };
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 pub struct Inspector;
 
@@ -30,16 +30,17 @@ impl Inspector {
         state: &AppState,
         services: &AppServices,
         now: Instant,
+        theme: &ThemePalette,
     ) -> ViewportPlan {
         let is_focused = state.ui.focused_pane == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
-        Self::render_tab_bar(frame, tab_area, state);
-        Self::render_content(frame, content_area, state, is_focused, services, now)
+        Self::render_tab_bar(frame, tab_area, state, theme);
+        Self::render_content(frame, content_area, state, is_focused, services, now, theme)
     }
 
-    fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
+    fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let tabs: Vec<Span> = InspectorTab::all()
             .iter()
             .enumerate()
@@ -47,10 +48,10 @@ impl Inspector {
                 let is_selected = *tab == state.ui.inspector_tab;
                 let style = if is_selected {
                     Style::default()
-                        .fg(Theme::TAB_ACTIVE)
+                        .fg(theme.tab_active)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Theme::TAB_INACTIVE)
+                    Style::default().fg(theme.tab_inactive)
                 };
 
                 let mut spans = vec![];
@@ -74,8 +75,9 @@ impl Inspector {
         is_focused: bool,
         services: &AppServices,
         now: Instant,
+        theme: &ThemePalette,
     ) -> ViewportPlan {
-        let block = panel_block(" [2] Inspector ", is_focused);
+        let block = panel_block(" [2] Inspector ", is_focused, theme);
 
         if let Some(table) = &state.session.table_detail() {
             let inner = block.inner(area);
@@ -83,7 +85,7 @@ impl Inspector {
 
             match state.ui.inspector_tab {
                 InspectorTab::Info => {
-                    Self::render_info(frame, inner, table, state.ui.inspector_scroll_offset);
+                    Self::render_info(frame, inner, table, state.ui.inspector_scroll_offset, theme);
                     ViewportPlan::default()
                 }
                 InspectorTab::Columns => Self::render_columns(
@@ -93,9 +95,16 @@ impl Inspector {
                     state.ui.inspector_scroll_offset,
                     state.ui.inspector_horizontal_offset,
                     &state.ui.inspector_viewport_plan,
+                    theme,
                 ),
                 InspectorTab::Indexes => {
-                    Self::render_indexes(frame, inner, table, state.ui.inspector_scroll_offset);
+                    Self::render_indexes(
+                        frame,
+                        inner,
+                        table,
+                        state.ui.inspector_scroll_offset,
+                        theme,
+                    );
                     ViewportPlan::default()
                 }
                 InspectorTab::ForeignKeys => {
@@ -104,15 +113,22 @@ impl Inspector {
                         inner,
                         table,
                         state.ui.inspector_scroll_offset,
+                        theme,
                     );
                     ViewportPlan::default()
                 }
                 InspectorTab::Rls => {
-                    Self::render_rls(frame, inner, table, state.ui.inspector_scroll_offset);
+                    Self::render_rls(frame, inner, table, state.ui.inspector_scroll_offset, theme);
                     ViewportPlan::default()
                 }
                 InspectorTab::Triggers => {
-                    Self::render_triggers(frame, inner, table, state.ui.inspector_scroll_offset);
+                    Self::render_triggers(
+                        frame,
+                        inner,
+                        table,
+                        state.ui.inspector_scroll_offset,
+                        theme,
+                    );
                     ViewportPlan::default()
                 }
                 InspectorTab::Ddl => {
@@ -124,6 +140,7 @@ impl Inspector {
                         &*services.ddl_generator,
                         &state.flash_timers,
                         now,
+                        theme,
                     );
                     ViewportPlan::default()
                 }
@@ -131,15 +148,21 @@ impl Inspector {
         } else {
             let content = Paragraph::new("(select a table)")
                 .block(block)
-                .style(Style::default().fg(Theme::PLACEHOLDER_TEXT));
+                .style(Style::default().fg(theme.placeholder_text));
             frame.render_widget(content, area);
             ViewportPlan::default()
         }
     }
 
-    fn render_info(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
+    fn render_info(
+        frame: &mut Frame,
+        area: Rect,
+        table: &Table,
+        scroll_offset: usize,
+        theme: &ThemePalette,
+    ) {
         let label_style = Style::default().add_modifier(Modifier::BOLD);
-        let none_style = Style::default().fg(Theme::PLACEHOLDER_TEXT);
+        let none_style = Style::default().fg(theme.placeholder_text);
 
         let owner_value = table.owner.as_deref().unwrap_or("(none)");
         let comment_value = table.comment.as_deref().unwrap_or("(none)");
@@ -193,7 +216,7 @@ impl Inspector {
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
         let paragraph = Paragraph::new(lines)
-            .style(Style::default().fg(Theme::TEXT_PRIMARY))
+            .style(Style::default().fg(theme.text_primary))
             .wrap(Wrap { trim: false })
             .scroll((clamped_scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
@@ -206,6 +229,7 @@ impl Inspector {
         scroll_offset: usize,
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
+        theme: &ThemePalette,
     ) -> ViewportPlan {
         let available_width = area.width.saturating_sub(2);
         if table.columns.is_empty() {
@@ -295,7 +319,7 @@ impl Inspector {
             Style::default()
                 .add_modifier(Modifier::UNDERLINED)
                 .add_modifier(Modifier::BOLD)
-                .fg(Theme::TEXT_PRIMARY),
+                .fg(theme.text_primary),
         )
         .height(1);
 
@@ -315,7 +339,7 @@ impl Inspector {
             .take(data_rows_visible)
             .map(|(row_idx, row)| {
                 let base_style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Theme::STRIPED_ROW_BG)
+                    Style::default().bg(theme.striped_row_bg)
                 } else {
                     Style::default()
                 };
@@ -327,9 +351,9 @@ impl Inspector {
 
                         // Special styling for PK and Comment columns
                         let cell_style = if col_idx == 3 && !text.is_empty() {
-                            Style::default().fg(Theme::TEXT_ACCENT)
+                            Style::default().fg(theme.text_accent)
                         } else if col_idx == 5 {
-                            Style::default().fg(Theme::TEXT_MUTED)
+                            Style::default().fg(theme.text_muted)
                         } else {
                             Style::default()
                         };
@@ -342,7 +366,7 @@ impl Inspector {
 
         let table_widget = RatatuiTable::new(rows, widths)
             .header(header)
-            .style(Style::default().fg(Theme::TEXT_PRIMARY));
+            .style(Style::default().fg(theme.text_primary));
         frame.render_widget(table_widget, area);
 
         use crate::ui::primitives::atoms::scroll_indicator::{
@@ -357,6 +381,7 @@ impl Inspector {
                 viewport_size: scroll_viewport_size,
                 total_items: total_rows,
             },
+            theme,
         );
         render_horizontal_scroll_indicator(
             frame,
@@ -366,12 +391,19 @@ impl Inspector {
                 viewport_size: plan.column_count, // Use fixed count, not actual displayed (may include bonus)
                 total_items: headers.len(),
             },
+            theme,
         );
 
         plan
     }
 
-    fn render_indexes(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
+    fn render_indexes(
+        frame: &mut Frame,
+        area: Rect,
+        table: &Table,
+        scroll_offset: usize,
+        theme: &ThemePalette,
+    ) {
         let headers = ["Name", "Columns", "Type", "Unique"];
         // Width sampling only — row_fn rebuilds cell text for actual rendering
         let data_rows: Vec<Vec<String>> = table
@@ -405,6 +437,7 @@ impl Inspector {
                 empty_message: "No indexes",
             },
             scroll_offset,
+            theme,
             |idx| {
                 let index = &table.indexes[idx];
                 vec![
@@ -417,7 +450,13 @@ impl Inspector {
         );
     }
 
-    fn render_foreign_keys(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
+    fn render_foreign_keys(
+        frame: &mut Frame,
+        area: Rect,
+        table: &Table,
+        scroll_offset: usize,
+        theme: &ThemePalette,
+    ) {
         let headers = ["Name", "Columns", "References"];
         // Width sampling only — row_fn rebuilds cell text for actual rendering
         let data_rows: Vec<Vec<String>> = table
@@ -451,6 +490,7 @@ impl Inspector {
                 empty_message: "No foreign keys",
             },
             scroll_offset,
+            theme,
             |idx| {
                 let fk = &table.foreign_keys[idx];
                 vec![
@@ -467,11 +507,17 @@ impl Inspector {
         );
     }
 
-    fn render_rls(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
+    fn render_rls(
+        frame: &mut Frame,
+        area: Rect,
+        table: &Table,
+        scroll_offset: usize,
+        theme: &ThemePalette,
+    ) {
         match &table.rls {
             None => {
                 let msg = Paragraph::new("RLS not enabled")
-                    .style(Style::default().fg(Theme::PLACEHOLDER_TEXT));
+                    .style(Style::default().fg(theme.placeholder_text));
                 frame.render_widget(msg, area);
             }
             Some(rls) => {
@@ -490,9 +536,9 @@ impl Inspector {
                     Span::styled(
                         status,
                         Style::default().fg(if rls.enabled {
-                            Theme::STATUS_SUCCESS
+                            theme.status_success
                         } else {
-                            Theme::STATUS_ERROR
+                            theme.status_error
                         }),
                     ),
                 ])];
@@ -535,7 +581,7 @@ impl Inspector {
                     clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
                 let paragraph = Paragraph::new(lines)
-                    .style(Style::default().fg(Theme::TEXT_PRIMARY))
+                    .style(Style::default().fg(theme.text_primary))
                     .wrap(Wrap { trim: false })
                     .scroll((clamped_scroll_offset as u16, 0));
                 frame.render_widget(paragraph, area);
@@ -548,12 +594,19 @@ impl Inspector {
                         viewport_size: visible_lines,
                         total_items: total_lines,
                     },
+                    theme,
                 );
             }
         }
     }
 
-    fn render_triggers(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
+    fn render_triggers(
+        frame: &mut Frame,
+        area: Rect,
+        table: &Table,
+        scroll_offset: usize,
+        theme: &ThemePalette,
+    ) {
         let headers = ["Name", "Timing", "Event", "Function", "SecDef"];
         let widths = [
             Constraint::Percentage(25),
@@ -574,6 +627,7 @@ impl Inspector {
                 empty_message: "No triggers",
             },
             scroll_offset,
+            theme,
             |idx| {
                 let trigger = &table.triggers[idx];
                 let events_str = trigger
@@ -605,6 +659,7 @@ impl Inspector {
         ddl_gen: &dyn DdlGenerator,
         flash_timers: &crate::app::model::shared::flash_timer::FlashTimerStore,
         now: Instant,
+        theme: &ThemePalette,
     ) {
         let ddl = ddl_gen.generate_ddl(table);
 
@@ -621,10 +676,10 @@ impl Inspector {
 
         let mut lines: Vec<Line> = ddl
             .lines()
-            .map(|l| Line::from(l.to_string()).style(Style::default().fg(Theme::TEXT_PRIMARY)))
+            .map(|l| Line::from(l.to_string()).style(Style::default().fg(theme.text_primary)))
             .collect();
 
-        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
+        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
@@ -639,6 +694,7 @@ impl Inspector {
                 viewport_size: visible_lines,
                 total_items: total_lines,
             },
+            theme,
         );
     }
 }

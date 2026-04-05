@@ -18,29 +18,42 @@ use crate::app::update::input::keybindings::{
 };
 use crate::ui::primitives::atoms::spinner_char;
 use crate::ui::primitives::atoms::status_message::{MessageType, StatusMessage};
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 pub struct Footer;
 
 impl Footer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, time_ms: Option<u128>) {
-        let base_style = Style::default().fg(Theme::TEXT_PRIMARY);
+    pub fn render(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        time_ms: Option<u128>,
+        theme: &ThemePalette,
+    ) {
+        let base_style = Style::default().fg(theme.text_primary);
         if state.er_preparation.status == ErStatus::Waiting {
-            let line = Self::build_er_waiting_line(state, time_ms);
+            let line = Self::build_er_waiting_line(state, time_ms, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else if let Some(error) = &state.messages.last_error {
-            let line = StatusMessage::render_line(error, MessageType::Error);
+            let line = StatusMessage::render_line(error, MessageType::Error, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
             let hints = Self::get_context_hints(state);
-            let line =
-                Self::build_hint_line_with_success(&hints, state.messages.last_success.as_deref());
+            let line = Self::build_hint_line_with_success(
+                &hints,
+                state.messages.last_success.as_deref(),
+                theme,
+            );
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         }
     }
 
-    fn build_er_waiting_line(state: &AppState, time_ms: Option<u128>) -> Line<'static> {
+    fn build_er_waiting_line(
+        state: &AppState,
+        time_ms: Option<u128>,
+        theme: &ThemePalette,
+    ) -> Line<'static> {
         let now_ms = time_ms.unwrap_or_else(|| {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -56,7 +69,7 @@ impl Footer {
         let cached = total.saturating_sub(remaining + failed_count);
 
         let text = format!("{spinner} Preparing ER... ({cached}/{total})");
-        Line::from(Span::styled(text, Style::default().fg(Theme::TEXT_ACCENT)))
+        Line::from(Span::styled(text, Style::default().fg(theme.text_accent)))
     }
 
     // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
@@ -314,13 +327,14 @@ impl Footer {
     fn build_hint_line_with_success(
         hints: &[(&str, &str)],
         success_msg: Option<&str>,
+        theme: &ThemePalette,
     ) -> Line<'static> {
         let mut spans = Vec::new();
 
         if let Some(msg) = success_msg {
             spans.push(Span::styled(
                 format!("✓ {msg}  "),
-                Style::default().fg(Theme::STATUS_SUCCESS),
+                Style::default().fg(theme.status_success),
             ));
         }
 
@@ -330,7 +344,7 @@ impl Footer {
             }
             spans.push(Span::styled(
                 (*key).to_string(),
-                Style::default().fg(Theme::TEXT_ACCENT),
+                Style::default().fg(theme.text_accent),
             ));
             spans.push(Span::raw(format!(":{desc}")));
         }

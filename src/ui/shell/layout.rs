@@ -26,6 +26,7 @@ use crate::ui::features::sql_modal::SqlModal;
 use crate::ui::shell::command_line::CommandLine;
 use crate::ui::shell::footer::Footer;
 use crate::ui::shell::header::Header;
+use crate::ui::theme::{ThemePalette, palette_for};
 
 pub struct MainLayout;
 
@@ -37,6 +38,25 @@ impl MainLayout {
         services: &AppServices,
         now: Instant,
     ) -> RenderOutput {
+        Self::render_with_theme(
+            frame,
+            state,
+            time_ms,
+            services,
+            now,
+            palette_for(state.ui.theme_id()),
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn render_with_theme(
+        frame: &mut Frame,
+        state: &AppState,
+        time_ms: Option<u128>,
+        services: &AppServices,
+        now: Instant,
+        theme: &ThemePalette,
+    ) -> RenderOutput {
         let area = frame.area();
 
         let [header_area, main_area, footer_area, cmdline_area] = Layout::vertical([
@@ -47,13 +67,13 @@ impl MainLayout {
         ])
         .areas(area);
 
-        Header::render(frame, header_area, state);
-        let output = Self::render_browse_mode(frame, main_area, state, services, now);
+        Header::render(frame, header_area, state, theme);
+        let output = Self::render_browse_mode(frame, main_area, state, services, now, theme);
 
-        Footer::render(frame, footer_area, state, time_ms);
-        let command_line_visible_width = CommandLine::render(frame, cmdline_area, state);
+        Footer::render(frame, footer_area, state, time_ms, theme);
+        let command_line_visible_width = CommandLine::render(frame, cmdline_area, state, theme);
         let connection_list_pane_height = match state.input_mode() {
-            InputMode::ConnectionSelector => Some(ConnectionSelector::render(frame, state)),
+            InputMode::ConnectionSelector => Some(ConnectionSelector::render(frame, state, theme)),
             _ => None,
         };
 
@@ -63,7 +83,7 @@ impl MainLayout {
                 let TablePickerRenderMetrics {
                     pane_height,
                     filter_visible_width,
-                } = TablePicker::render(frame, state);
+                } = TablePicker::render(frame, state, theme);
                 (Some(pane_height), Some(filter_visible_width))
             }
             _ => (None, None),
@@ -74,14 +94,14 @@ impl MainLayout {
                 let ErTablePickerRenderMetrics {
                     pane_height,
                     filter_visible_width,
-                } = ErTablePicker::render(frame, state);
+                } = ErTablePicker::render(frame, state, theme);
                 (Some(pane_height), Some(filter_visible_width))
             }
             _ => (None, None),
         };
 
         let query_history_picker_pane_height = match state.input_mode() {
-            InputMode::QueryHistoryPicker => Some(QueryHistoryPicker::render(frame, state)),
+            InputMode::QueryHistoryPicker => Some(QueryHistoryPicker::render(frame, state, theme)),
             _ => None,
         };
 
@@ -95,28 +115,30 @@ impl MainLayout {
                     viewport_height,
                     content_height,
                     scroll,
-                } = ConfirmDialog::render(frame, state);
+                } = ConfirmDialog::render(frame, state, theme);
                 (viewport_height, content_height, scroll)
             }
             _ => (None, None, 0),
         };
 
         let explain_compare_viewport_height = if matches!(state.input_mode(), InputMode::SqlModal) {
-            SqlModal::render(frame, state, now)
+            SqlModal::render(frame, state, now, theme)
         } else {
             None
         };
 
         let jsonb_detail_scroll_offset = match state.input_mode() {
-            InputMode::JsonbDetail | InputMode::JsonbEdit => JsonbDetail::render(frame, state, now),
+            InputMode::JsonbDetail | InputMode::JsonbEdit => {
+                JsonbDetail::render(frame, state, now, theme)
+            }
             _ => None,
         };
 
         match state.input_mode() {
-            InputMode::CommandPalette => CommandPalette::render(frame, state),
-            InputMode::Help => HelpOverlay::render(frame, state),
-            InputMode::ConnectionSetup => ConnectionSetup::render(frame, state),
-            InputMode::ConnectionError => ConnectionError::render(frame, state, now),
+            InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
+            InputMode::Help => HelpOverlay::render(frame, state, theme),
+            InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, theme),
+            InputMode::ConnectionError => ConnectionError::render(frame, state, now, theme),
             _ => {}
         }
 
@@ -143,10 +165,11 @@ impl MainLayout {
         state: &AppState,
         services: &AppServices,
         now: Instant,
+        theme: &ThemePalette,
     ) -> RenderOutput {
         if state.ui.is_focus_mode() {
             let (result_plan, result_widths_cache) =
-                ResultPane::render(frame, main_area, state, now);
+                ResultPane::render(frame, main_area, state, now, theme);
             RenderOutput {
                 inspector_viewport_plan: ViewportPlan::default(),
                 result_viewport_plan: result_plan,
@@ -162,15 +185,16 @@ impl MainLayout {
                 Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
                     .areas(main_area);
 
-            Explorer::render(frame, left_area, state);
+            Explorer::render(frame, left_area, state, theme);
 
             let [inspector_area, result_area] =
                 Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
                     .areas(right_area);
 
-            let inspector_plan = Inspector::render(frame, inspector_area, state, services, now);
+            let inspector_plan =
+                Inspector::render(frame, inspector_area, state, services, now, theme);
             let (result_plan, result_widths_cache) =
-                ResultPane::render(frame, result_area, state, now);
+                ResultPane::render(frame, result_area, state, now, theme);
 
             RenderOutput {
                 inspector_viewport_plan: inspector_plan,

@@ -1,13 +1,13 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::primitives::molecules::render_modal;
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 pub struct TablePicker;
 
@@ -17,7 +17,11 @@ pub struct TablePickerRenderMetrics {
 }
 
 impl TablePicker {
-    pub fn render(frame: &mut Frame, state: &AppState) -> TablePickerRenderMetrics {
+    pub fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> TablePickerRenderMetrics {
         let filtered_count = state.filtered_tables().len();
         let (_, inner) = render_modal(
             frame,
@@ -25,6 +29,7 @@ impl TablePicker {
             Constraint::Percentage(70),
             " Table Picker ",
             &format!(" {filtered_count} tables │ ↑↓ Navigate │ Enter Select "),
+            theme,
         );
 
         let [filter_area, list_area] =
@@ -43,11 +48,9 @@ impl TablePicker {
             input.cursor(),
             input.viewport_offset(),
             visible_width,
+            theme,
         );
-        let mut spans = vec![Span::styled(
-            "  > ",
-            Style::default().fg(Theme::MODAL_TITLE),
-        )];
+        let mut spans = vec![Span::styled("  > ", Style::default().fg(theme.modal_title))];
         spans.extend(cursor_spans);
         let filter_line = Line::from(spans);
 
@@ -58,17 +61,12 @@ impl TablePicker {
             .iter()
             .map(|t| {
                 let content = format!("  {}", t.qualified_name());
-                ListItem::new(content).style(Style::default().fg(Theme::TEXT_SECONDARY))
+                ListItem::new(content).style(Style::default().fg(theme.text_secondary))
             })
             .collect();
 
         let list = List::new(items)
-            .highlight_style(
-                Style::default()
-                    .bg(Theme::COMPLETION_SELECTED_BG)
-                    .fg(Theme::TEXT_PRIMARY)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(theme.picker_selected_style())
             .highlight_symbol("▸ ");
 
         let selected = if filtered_count > 0 {

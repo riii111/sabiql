@@ -12,7 +12,7 @@ use crate::ui::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,
 };
 use crate::ui::primitives::molecules::render_modal;
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
 const PREFIX_DISPLAY_WIDTH: usize = 2;
 
@@ -21,7 +21,7 @@ const SERVICE_LABEL_COL_PERCENT: usize = 40;
 pub struct ConnectionSelector;
 
 impl ConnectionSelector {
-    pub fn render(frame: &mut Frame, state: &AppState) -> u16 {
+    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> u16 {
         let is_service_selected = crate::app::model::connection::list::is_service_selected(
             state.connection_list_items(),
             state.ui.connection_list_selected,
@@ -33,9 +33,10 @@ impl ConnectionSelector {
             Constraint::Percentage(60),
             " Select Connection ",
             &hint,
+            theme,
         );
 
-        render_connection_list(frame, inner, state)
+        render_connection_list(frame, inner, state, theme)
     }
 
     fn build_hint_string(is_service_selected: bool) -> String {
@@ -69,14 +70,15 @@ fn render_profile_item(
     id: &ConnectionId,
     display_name: &str,
     active_id: Option<&ConnectionId>,
+    theme: &ThemePalette,
 ) -> ListItem<'static> {
     let is_active = active_id == Some(id);
     let prefix = active_prefix(is_active);
     let text = format!("{prefix}{display_name}");
     let style = if is_active {
-        Style::default().fg(Theme::ACTIVE_INDICATOR)
+        Style::default().fg(theme.active_indicator)
     } else {
-        Style::default().fg(Theme::TEXT_SECONDARY)
+        Style::default().fg(theme.text_secondary)
     };
     ListItem::new(text).style(style)
 }
@@ -87,6 +89,7 @@ fn render_service_item(
     active_id: Option<&ConnectionId>,
     content_width: usize,
     source_label: &str,
+    theme: &ThemePalette,
 ) -> ListItem<'static> {
     let is_active = active_id == Some(&service_id);
     let prefix = active_prefix(is_active);
@@ -110,22 +113,27 @@ fn render_service_item(
     let name_part = format!("{prefix}{name}");
 
     let name_style = if is_active {
-        Style::default().fg(Theme::ACTIVE_INDICATOR)
+        Style::default().fg(theme.active_indicator)
     } else {
-        Style::default().fg(Theme::TEXT_SECONDARY)
+        Style::default().fg(theme.text_secondary)
     };
     let line = Line::from(vec![
         Span::styled(name_part, name_style),
         Span::raw(" ".repeat(gap)),
         Span::styled(
             source_label.to_owned(),
-            Style::default().fg(Theme::TEXT_MUTED),
+            Style::default().fg(theme.text_muted),
         ),
     ]);
     ListItem::new(line)
 }
 
-pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &AppState) -> u16 {
+pub fn render_connection_list(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AppState,
+    theme: &ThemePalette,
+) -> u16 {
     let active_id = state.session.active_connection_id.as_ref();
 
     // highlight_symbol "> " takes 2 columns
@@ -141,7 +149,7 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &AppState) -
             .map(|item| match item {
                 ConnectionListItem::Profile(i) => {
                     let conn = &state.connections()[*i];
-                    render_profile_item(&conn.id, conn.display_name(), active_id)
+                    render_profile_item(&conn.id, conn.display_name(), active_id, theme)
                 }
                 ConnectionListItem::Service(i) => {
                     let entry = &state.service_entries()[*i];
@@ -151,6 +159,7 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &AppState) -
                         active_id,
                         content_width,
                         source_label,
+                        theme,
                     )
                 }
             })
@@ -160,7 +169,7 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &AppState) -
     let list = List::new(items)
         .highlight_style(
             Style::default()
-                .fg(Theme::TEXT_ACCENT)
+                .fg(theme.text_accent)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("> ");
@@ -185,6 +194,7 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &AppState) -
                     viewport_size,
                     total_items,
                 },
+                theme,
             );
         }
     }

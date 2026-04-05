@@ -7,16 +7,16 @@ use ratatui::widgets::Paragraph;
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::ui::primitives::atoms::{spinner_char, text_cursor_spans};
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
-pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
+pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
     if let SqlModalStatus::ConfirmingHigh {
         decision,
         input,
         target_name,
     } = state.sql_modal.status()
     {
-        render_confirming_high_status(frame, area, decision, input, target_name.as_ref());
+        render_confirming_high_status(frame, area, decision, input, target_name.as_ref(), theme);
         return;
     }
 
@@ -25,26 +25,26 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
             if let Some(ref msg) = state.messages.last_success {
                 (
                     "[NORMAL]",
-                    Style::default().fg(Theme::TEXT_DIM),
+                    Style::default().fg(theme.text_dim),
                     format!("\u{2713} {msg}"),
-                    Style::default().fg(Theme::STATUS_SUCCESS),
+                    Style::default().fg(theme.status_success),
                 )
             } else {
                 (
                     "[NORMAL]",
-                    Style::default().fg(Theme::TEXT_DIM),
+                    Style::default().fg(theme.text_dim),
                     "Ready".to_string(),
-                    Style::default().fg(Theme::TEXT_DIM),
+                    Style::default().fg(theme.text_dim),
                 )
             }
         }
         SqlModalStatus::Editing => (
             "[INSERT]",
             Style::default()
-                .fg(Theme::TEXT_ACCENT)
+                .fg(theme.text_accent)
                 .add_modifier(Modifier::BOLD),
             "Ready".to_string(),
-            Style::default().fg(Theme::TEXT_DIM),
+            Style::default().fg(theme.text_dim),
         ),
         SqlModalStatus::Running => {
             let elapsed = state
@@ -57,19 +57,19 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
             let status = format!("{spinner} Running {elapsed_secs:.1}s");
             (
                 "[RUNNING]",
-                Style::default().fg(Theme::TEXT_ACCENT),
+                Style::default().fg(theme.text_accent),
                 status,
-                Style::default().fg(Theme::TEXT_ACCENT),
+                Style::default().fg(theme.text_accent),
             )
         }
         SqlModalStatus::Success => {
             let msg = success_status_message(state);
             (
                 "[NORMAL]",
-                Style::default().fg(Theme::STATUS_SUCCESS),
+                Style::default().fg(theme.status_success),
                 msg,
                 Style::default()
-                    .fg(Theme::STATUS_SUCCESS)
+                    .fg(theme.status_success)
                     .add_modifier(Modifier::BOLD),
             )
         }
@@ -77,21 +77,21 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
             let msg = error_status_message(state);
             (
                 "[NORMAL]",
-                Style::default().fg(Theme::STATUS_ERROR),
+                Style::default().fg(theme.status_error),
                 msg,
                 Style::default()
-                    .fg(Theme::STATUS_ERROR)
+                    .fg(theme.status_error)
                     .add_modifier(Modifier::BOLD),
             )
         }
         SqlModalStatus::ConfirmingAnalyzeHigh { .. } => (
             "[CONFIRM]",
             Style::default()
-                .fg(Theme::STATUS_ERROR)
+                .fg(theme.status_error)
                 .add_modifier(Modifier::BOLD),
             "Confirm ANALYZE".to_string(),
             Style::default()
-                .fg(Theme::STATUS_ERROR)
+                .fg(theme.status_error)
                 .add_modifier(Modifier::BOLD),
         ),
         SqlModalStatus::ConfirmingHigh { .. } => unreachable!(),
@@ -131,8 +131,9 @@ fn render_confirming_high_status(
     decision: &crate::app::policy::write::write_guardrails::AdhocRiskDecision,
     input: &crate::app::model::shared::text_input::TextInputState,
     target_name: Option<&String>,
+    theme: &ThemePalette,
 ) {
-    let error_style = Style::default().fg(Theme::STATUS_ERROR);
+    let error_style = Style::default().fg(theme.status_error);
 
     if let Some(name) = target_name {
         let is_match = input.content() == name;
@@ -145,7 +146,7 @@ fn render_confirming_high_status(
             line1_spans.push(Span::raw(" ".repeat(padding as usize)));
             line1_spans.push(Span::styled(
                 blocked_label,
-                Style::default().fg(Theme::TEXT_MUTED),
+                Style::default().fg(theme.text_muted),
             ));
         }
         let line1 = Line::from(line1_spans);
@@ -161,16 +162,17 @@ fn render_confirming_high_status(
             input.cursor(),
             input.viewport_offset(),
             visible_width,
+            theme,
         );
         let mut line2_spans = vec![Span::styled(
             prompt,
-            Style::default().fg(Theme::TEXT_SECONDARY),
+            Style::default().fg(theme.text_secondary),
         )];
         line2_spans.extend(cursor_spans);
         if is_match {
             line2_spans.push(Span::styled(
                 " \u{2713}",
-                Style::default().fg(Theme::STATUS_SUCCESS),
+                Style::default().fg(theme.status_success),
             ));
         }
         let line2 = Line::from(line2_spans);
@@ -184,7 +186,7 @@ fn render_confirming_high_status(
         ));
         let line2 = Line::from(Span::styled(
             "Cannot identify target object name.  Esc: Back",
-            Style::default().fg(Theme::TEXT_MUTED),
+            Style::default().fg(theme.text_muted),
         ));
         let paragraph = Paragraph::new(vec![line1, line2]);
         frame.render_widget(paragraph, area);

@@ -9,9 +9,15 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
-use crate::ui::theme::Theme;
+use crate::ui::theme::ThemePalette;
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> u16 {
+pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AppState,
+    now: Instant,
+    theme: &ThemePalette,
+) -> u16 {
     let can_yank = state.explain.left.is_some() && state.explain.right.is_some();
     let left = state.explain.left.as_ref();
     let right = state.explain.right.as_ref();
@@ -21,19 +27,19 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> 
     let mut flash_mask: Vec<bool> = Vec::new();
 
     if let (Some(l), Some(r)) = (left, right) {
-        render_verdict_section(&mut lines, &mut flash_mask, l, r, area.width);
+        render_verdict_section(&mut lines, &mut flash_mask, l, r, area.width, theme);
     }
 
     if area.width >= 60 {
-        render_slot_columns(&mut lines, &mut flash_mask, left, right, area.width);
+        render_slot_columns(&mut lines, &mut flash_mask, left, right, area.width, theme);
     } else {
-        render_slot_stacked(&mut lines, &mut flash_mask, left, right);
+        render_slot_stacked(&mut lines, &mut flash_mask, left, right, theme);
     }
 
     if lines.is_empty() {
         lines.push(Line::from(Span::styled(
             " Run EXPLAIN (Ctrl+E) to start comparing.",
-            Style::default().fg(Theme::PLACEHOLDER_TEXT),
+            Style::default().fg(theme.placeholder_text),
         )));
         flash_mask.push(false);
     }
@@ -50,8 +56,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> 
         );
     if flash_active {
         let flash_style = Style::default()
-            .fg(Theme::YANK_FLASH_FG)
-            .bg(Theme::YANK_FLASH_BG);
+            .fg(theme.yank_flash_fg)
+            .bg(theme.yank_flash_bg);
         for (line, &is_target) in visible.iter_mut().zip(visible_mask.iter()) {
             if is_target {
                 *line = std::mem::take(line).style(flash_style);
@@ -88,6 +94,7 @@ fn render_verdict_section(
     left: &CompareSlot,
     right: &CompareSlot,
     width: u16,
+    theme: &ThemePalette,
 ) {
     let result = explain_plan::compare_plans(&left.plan, &right.plan);
 
@@ -95,25 +102,25 @@ fn render_verdict_section(
         ComparisonVerdict::Improved => (
             "\u{2193} Improved",
             Style::default()
-                .fg(Theme::STATUS_SUCCESS)
+                .fg(theme.status_success)
                 .add_modifier(Modifier::BOLD),
         ),
         ComparisonVerdict::Worsened => (
             "\u{2191} Worsened",
             Style::default()
-                .fg(Theme::STATUS_ERROR)
+                .fg(theme.status_error)
                 .add_modifier(Modifier::BOLD),
         ),
         ComparisonVerdict::Similar => (
             "\u{2248} Similar",
             Style::default()
-                .fg(Theme::TEXT_ACCENT)
+                .fg(theme.text_accent)
                 .add_modifier(Modifier::BOLD),
         ),
         ComparisonVerdict::Unavailable => (
             "Comparison unavailable",
             Style::default()
-                .fg(Theme::TEXT_MUTED)
+                .fg(theme.text_muted)
                 .add_modifier(Modifier::BOLD),
         ),
     };
@@ -131,8 +138,8 @@ fn render_verdict_section(
             lines,
             flash_mask,
             Line::from(vec![
-                Span::styled("  \u{2022} ", Style::default().fg(Theme::TEXT_MUTED)),
-                Span::styled(reason.clone(), Style::default().fg(Theme::TEXT_PRIMARY)),
+                Span::styled("  \u{2022} ", Style::default().fg(theme.text_muted)),
+                Span::styled(reason.clone(), Style::default().fg(theme.text_primary)),
             ]),
         );
     }
@@ -144,7 +151,7 @@ fn render_verdict_section(
     push_chrome(
         lines,
         flash_mask,
-        Line::styled(format!(" {sep}"), Style::default().fg(Theme::MODAL_BORDER)),
+        Line::styled(format!(" {sep}"), Style::default().fg(theme.modal_border)),
     );
     push_empty(lines, flash_mask);
 }
@@ -157,15 +164,16 @@ fn render_slot_columns(
     left: Option<&CompareSlot>,
     right: Option<&CompareSlot>,
     total_width: u16,
+    theme: &ThemePalette,
 ) {
     let half = (total_width.saturating_sub(3) / 2) as usize;
-    let sep = Span::styled(" \u{2502} ", Style::default().fg(Theme::MODAL_BORDER));
+    let sep = Span::styled(" \u{2502} ", Style::default().fg(theme.modal_border));
 
     let active_header = Style::default()
-        .fg(Theme::TEXT_ACCENT)
+        .fg(theme.text_accent)
         .add_modifier(Modifier::BOLD);
     let empty_header = Style::default()
-        .fg(Theme::TEXT_DIM)
+        .fg(theme.text_dim)
         .add_modifier(Modifier::BOLD);
 
     let left_label = match left {
@@ -201,8 +209,8 @@ fn render_slot_columns(
         ]),
     );
 
-    let detail_style = Style::default().fg(Theme::TEXT_MUTED);
-    let placeholder_style = Style::default().fg(Theme::PLACEHOLDER_TEXT);
+    let detail_style = Style::default().fg(theme.text_muted);
+    let placeholder_style = Style::default().fg(theme.placeholder_text);
 
     let left_detail = slot_detail_text(left);
     let right_detail = slot_detail_text(right);
@@ -236,13 +244,13 @@ fn render_slot_columns(
         lines,
         flash_mask,
         Line::from(vec![
-            Span::styled(format!(" {thin_sep}"), Style::default().fg(Theme::TEXT_DIM)),
+            Span::styled(format!(" {thin_sep}"), Style::default().fg(theme.text_dim)),
             sep.clone(),
-            Span::styled(format!(" {thin_sep}"), Style::default().fg(Theme::TEXT_DIM)),
+            Span::styled(format!(" {thin_sep}"), Style::default().fg(theme.text_dim)),
         ]),
     );
 
-    let dim_style = Style::default().fg(Theme::TEXT_DIM);
+    let dim_style = Style::default().fg(theme.text_dim);
 
     let l_plan: Vec<&str> = left
         .map(|s| s.plan.raw_text.lines().collect())
@@ -260,12 +268,14 @@ fn render_slot_columns(
         row_spans.extend(super::plan_highlight::highlight_truncated(
             l,
             half.saturating_sub(1),
+            theme,
         ));
         row_spans.push(sep.clone());
         row_spans.push(Span::styled(" ".to_string(), dim_style));
         row_spans.extend(super::plan_highlight::highlight_truncated(
             r,
             half.saturating_sub(1),
+            theme,
         ));
         push_content(lines, flash_mask, Line::from(row_spans));
     }
@@ -278,11 +288,12 @@ fn render_slot_stacked(
     flash_mask: &mut Vec<bool>,
     left: Option<&CompareSlot>,
     right: Option<&CompareSlot>,
+    theme: &ThemePalette,
 ) {
     let header_style = Style::default()
-        .fg(Theme::TEXT_ACCENT)
+        .fg(theme.text_accent)
         .add_modifier(Modifier::BOLD);
-    let badge_style = Style::default().fg(Theme::TEXT_MUTED);
+    let badge_style = Style::default().fg(theme.text_muted);
 
     render_stacked_slot(
         lines,
@@ -291,6 +302,7 @@ fn render_slot_stacked(
         " Previous",
         header_style,
         badge_style,
+        theme,
     );
     push_empty(lines, flash_mask);
     render_stacked_slot(
@@ -300,6 +312,7 @@ fn render_slot_stacked(
         " Latest",
         header_style,
         badge_style,
+        theme,
     );
 }
 
@@ -310,6 +323,7 @@ fn render_stacked_slot(
     empty_label: &str,
     active_style: Style,
     badge_style: Style,
+    theme: &ThemePalette,
 ) {
     if let Some(s) = slot {
         push_chrome(
@@ -330,7 +344,7 @@ fn render_stacked_slot(
             push_content(
                 lines,
                 flash_mask,
-                super::plan_highlight::highlight_plan_line(line),
+                super::plan_highlight::highlight_plan_line(line, theme),
             );
         }
     } else {
@@ -340,7 +354,7 @@ fn render_stacked_slot(
             Line::from(Span::styled(
                 empty_label.to_string(),
                 Style::default()
-                    .fg(Theme::TEXT_DIM)
+                    .fg(theme.text_dim)
                     .add_modifier(Modifier::BOLD),
             )),
         );
@@ -349,7 +363,7 @@ fn render_stacked_slot(
             flash_mask,
             Line::from(Span::styled(
                 "  Run EXPLAIN again to compare",
-                Style::default().fg(Theme::PLACEHOLDER_TEXT),
+                Style::default().fg(theme.placeholder_text),
             )),
         );
     }
