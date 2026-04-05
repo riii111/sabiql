@@ -6,6 +6,8 @@ use harness::{
 };
 use ratatui::style::{Color, Modifier};
 use sabiql::app::model::shared::input_mode::InputMode;
+use sabiql::app::model::sql_editor::modal::SqlModalStatus;
+use sabiql::ui::theme::Theme;
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
 fn help_modal_origin() -> (u16, u16) {
@@ -185,4 +187,81 @@ fn modal_border_uses_ansi_darkgray() {
         my,
         cell.fg
     );
+}
+
+#[test]
+fn sql_modal_keyword_and_number_use_syntax_colors() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.editor.set_content("SELECT 42".to_string());
+    state.sql_modal.set_status(SqlModalStatus::Normal);
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+    let keyword_cell = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .find_map(|(x, y)| {
+            buffer.cell((x, y)).and_then(|cell| {
+                (cell.symbol() == "S" && cell.fg == Theme::SQL_KEYWORD).then_some(cell)
+            })
+        });
+    let number_cell = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .find_map(|(x, y)| {
+            buffer.cell((x, y)).and_then(|cell| {
+                (cell.symbol() == "4" && cell.fg == Theme::SQL_NUMBER).then_some(cell)
+            })
+        });
+
+    assert!(keyword_cell.is_some(), "Expected a blue SQL keyword cell");
+    assert!(
+        keyword_cell
+            .expect("keyword cell should exist")
+            .modifier
+            .contains(Modifier::BOLD)
+    );
+    assert!(number_cell.is_some(), "Expected a yellow SQL number cell");
+}
+
+#[test]
+fn sql_modal_string_comment_and_operator_use_syntax_colors() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content("SELECT 'x'::text -- note".to_string());
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+    let has_string = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "'" && cell.fg == Theme::SQL_STRING)
+        });
+    let has_operator = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == ":" && cell.fg == Theme::SQL_OPERATOR)
+        });
+    let has_comment = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "-" && cell.fg == Theme::SQL_COMMENT)
+        });
+
+    assert!(has_string, "Expected a green SQL string cell");
+    assert!(has_operator, "Expected a cyan SQL operator cell");
+    assert!(has_comment, "Expected a dark gray SQL comment cell");
 }
