@@ -4,6 +4,27 @@ use crate::app::update::action::{
 };
 use crate::app::update::input::keybindings::{Key, KeyCombo};
 
+fn line_scroll_action(
+    combo: KeyCombo,
+    target: ScrollTarget,
+    plain: bool,
+    ctrl: bool,
+) -> Option<Action> {
+    let direction = match combo.key {
+        Key::Char('j') | Key::Down if plain => Some(ScrollDirection::Down),
+        Key::Char('n') if ctrl => Some(ScrollDirection::Down),
+        Key::Char('k') | Key::Up if plain => Some(ScrollDirection::Up),
+        Key::Char('p') if ctrl => Some(ScrollDirection::Up),
+        _ => None,
+    }?;
+
+    Some(Action::Scroll {
+        target,
+        direction,
+        amount: ScrollAmount::Line,
+    })
+}
+
 pub fn handle_sql_modal_keys(
     combo: KeyCombo,
     completion_visible: bool,
@@ -40,29 +61,14 @@ pub fn handle_sql_modal_keys(
 
         // Plan tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Plan {
+            if let Some(action) = line_scroll_action(combo, ScrollTarget::ExplainPlan, plain, ctrl)
+            {
+                return action;
+            }
+
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
                 Key::Char('y') if plain => Action::SqlModalYank,
-                Key::Char('j') | Key::Down if plain => Action::Scroll {
-                    target: ScrollTarget::ExplainPlan,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                },
-                Key::Char('n') if ctrl => Action::Scroll {
-                    target: ScrollTarget::ExplainPlan,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                },
-                Key::Char('k') | Key::Up if plain => Action::Scroll {
-                    target: ScrollTarget::ExplainPlan,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                },
-                Key::Char('p') if ctrl => Action::Scroll {
-                    target: ScrollTarget::ExplainPlan,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                },
                 Key::Esc if plain => Action::CloseSqlModal,
                 _ => Action::None,
             };
@@ -70,30 +76,16 @@ pub fn handle_sql_modal_keys(
 
         // Compare tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Compare {
+            if let Some(action) =
+                line_scroll_action(combo, ScrollTarget::ExplainCompare, plain, ctrl)
+            {
+                return action;
+            }
+
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
                 Key::Char('y') if plain => Action::SqlModalYank,
                 Key::Char('e') if plain => Action::CompareEditQuery,
-                Key::Char('j') | Key::Down if plain => Action::Scroll {
-                    target: ScrollTarget::ExplainCompare,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                },
-                Key::Char('n') if ctrl => Action::Scroll {
-                    target: ScrollTarget::ExplainCompare,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                },
-                Key::Char('k') | Key::Up if plain => Action::Scroll {
-                    target: ScrollTarget::ExplainCompare,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                },
-                Key::Char('p') if ctrl => Action::Scroll {
-                    target: ScrollTarget::ExplainCompare,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                },
                 Key::Esc if plain => Action::CloseSqlModal,
                 _ => Action::None,
             };

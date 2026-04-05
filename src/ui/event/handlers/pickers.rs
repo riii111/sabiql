@@ -208,7 +208,41 @@ mod tests {
         fn picker_keys(#[case] key: Key, #[case] expected: Action) {
             let result = handle_query_history_picker_keys(combo(key));
 
-            assert_eq!(format!("{result:?}"), format!("{expected:?}"));
+            assert!(matches!(
+                (result, expected),
+                (
+                    Action::QueryHistoryConfirmSelection,
+                    Action::QueryHistoryConfirmSelection
+                ) | (
+                    Action::ListSelect {
+                        target: ListTarget::QueryHistory,
+                        motion: ListMotion::Previous,
+                    },
+                    Action::ListSelect {
+                        target: ListTarget::QueryHistory,
+                        motion: ListMotion::Previous,
+                    }
+                ) | (
+                    Action::ListSelect {
+                        target: ListTarget::QueryHistory,
+                        motion: ListMotion::Next,
+                    },
+                    Action::ListSelect {
+                        target: ListTarget::QueryHistory,
+                        motion: ListMotion::Next,
+                    }
+                ) | (
+                    Action::TextBackspace {
+                        target: InputTarget::QueryHistoryFilter,
+                    },
+                    Action::TextBackspace {
+                        target: InputTarget::QueryHistoryFilter,
+                    }
+                ) | (
+                    Action::CloseQueryHistoryPicker,
+                    Action::CloseQueryHistoryPicker
+                )
+            ));
         }
 
         #[test]
@@ -228,32 +262,26 @@ mod tests {
         fn ctrl_p_returns_select_previous() {
             let result = handle_query_history_picker_keys(combo_ctrl(Key::Char('p')));
 
-            assert_eq!(
-                format!("{result:?}"),
-                format!(
-                    "{:?}",
-                    Action::ListSelect {
-                        target: ListTarget::QueryHistory,
-                        motion: ListMotion::Previous,
-                    }
-                )
-            );
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Previous,
+                }
+            ));
         }
 
         #[test]
         fn ctrl_n_returns_select_next() {
             let result = handle_query_history_picker_keys(combo_ctrl(Key::Char('n')));
 
-            assert_eq!(
-                format!("{result:?}"),
-                format!(
-                    "{:?}",
-                    Action::ListSelect {
-                        target: ListTarget::QueryHistory,
-                        motion: ListMotion::Next,
-                    }
-                )
-            );
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Next,
+                }
+            ));
         }
     }
 
