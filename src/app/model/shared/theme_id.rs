@@ -2,4 +2,6 @@
 pub enum ThemeId {
     #[default]
     Default,
+    #[cfg(any(test, feature = "test-support"))]
+    TestContrast,
 }

@@ -185,9 +185,68 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     placeholder_text: Color::Rgb(0x5b, 0x5f, 0x6e),
 };
 
+#[cfg(any(test, feature = "test-support"))]
+pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
+    modal_border: Color::Rgb(0xd8, 0x2a, 0x1f),
+    modal_border_highlight: Color::Rgb(0xff, 0xe0, 0x66),
+    modal_title: Color::Rgb(0xf6, 0xf0, 0xe8),
+    modal_hint: Color::Rgb(0x7b, 0xe0, 0x73),
+    key_chip_bg: Color::Rgb(0x1a, 0x45, 0x5e),
+    key_chip_fg: Color::Rgb(0xff, 0xe0, 0x66),
+    editor_current_line_bg: Color::Rgb(0x1d, 0x2d, 0x3f),
+    completion_selected_bg: Color::Rgb(0x2d, 0x5d, 0x46),
+    input_value: Color::Rgb(0xf6, 0xf0, 0xe8),
+    note_text: Color::Rgb(0x92, 0xb3, 0xc2),
+    focus_border: Color::Rgb(0x2f, 0xc4, 0xb2),
+    unfocus_border: Color::Rgb(0x5d, 0x62, 0x74),
+    highlight_border: Color::Rgb(0xff, 0xc8, 0x57),
+    text_primary: Color::Rgb(0xf6, 0xf0, 0xe8),
+    text_secondary: Color::Rgb(0xc9, 0xd6, 0xdf),
+    text_muted: Color::Rgb(0x92, 0xb3, 0xc2),
+    text_dim: Color::Rgb(0x6a, 0x85, 0x95),
+    text_accent: Color::Rgb(0xff, 0xc8, 0x57),
+    status_success: Color::Rgb(0x7b, 0xe0, 0x73),
+    status_error: Color::Rgb(0xff, 0x7a, 0x59),
+    status_warning: Color::Rgb(0xff, 0xc8, 0x57),
+    status_medium_risk: Color::Rgb(0xff, 0x9f, 0x1c),
+    cursor_fg: Color::Rgb(0xff, 0xf4, 0xe0),
+    section_header: Color::Rgb(0x2f, 0xc4, 0xb2),
+    scrollbar_active: Color::Rgb(0x2f, 0xc4, 0xb2),
+    scrollbar_inactive: Color::Rgb(0x5d, 0x62, 0x74),
+    result_row_active_bg: Color::Rgb(0x2b, 0x32, 0x54),
+    result_cell_active_bg: Color::Rgb(0x3a, 0x44, 0x6e),
+    cell_edit_fg: Color::Rgb(0xff, 0xe0, 0x66),
+    cell_draft_pending_fg: Color::Rgb(0xff, 0x9f, 0x1c),
+    staged_delete_bg: Color::Rgb(0x4a, 0x1f, 0x1f),
+    staged_delete_fg: Color::Rgb(0xff, 0x7a, 0x59),
+    yank_flash_bg: Color::Rgb(0xff, 0xc8, 0x57),
+    yank_flash_fg: Color::Rgb(0x14, 0x17, 0x21),
+    sql_keyword: Color::Rgb(0x7d, 0xc4, 0xff),
+    sql_string: Color::Rgb(0x9b, 0xf0, 0x8f),
+    sql_number: Color::Rgb(0xff, 0xb8, 0x6b),
+    sql_comment: Color::Rgb(0x7c, 0x8a, 0xa5),
+    sql_operator: Color::Rgb(0x5e, 0xe0, 0xd5),
+    sql_text: Color::Rgb(0xf6, 0xf0, 0xe8),
+    json_key: Color::Rgb(0x2f, 0xc4, 0xb2),
+    json_string: Color::Rgb(0x9b, 0xf0, 0x8f),
+    json_number: Color::Rgb(0xff, 0xb8, 0x6b),
+    json_bool: Color::Rgb(0xff, 0xb8, 0x6b),
+    json_null: Color::Rgb(0x92, 0xb3, 0xc2),
+    json_bracket: Color::Rgb(0xc9, 0xd6, 0xdf),
+    striped_row_bg: Color::Rgb(0x1d, 0x21, 0x2b),
+    selection_bg: Color::Rgb(0x0d, 0x11, 0x18),
+    tab_active: Color::Rgb(0x2f, 0xc4, 0xb2),
+    tab_inactive: Color::Rgb(0x92, 0xb3, 0xc2),
+    active_indicator: Color::Rgb(0x2f, 0xc4, 0xb2),
+    inactive_indicator: Color::Rgb(0x92, 0xb3, 0xc2),
+    placeholder_text: Color::Rgb(0x92, 0xb3, 0xc2),
+};
+
 pub fn palette_for(theme_id: ThemeId) -> &'static ThemePalette {
     match theme_id {
         ThemeId::Default => &DEFAULT_THEME,
+        #[cfg(any(test, feature = "test-support"))]
+        ThemeId::TestContrast => &TEST_CONTRAST_THEME,
     }
 }
 
@@ -198,6 +257,12 @@ mod tests {
     #[test]
     fn palette_for_default_returns_default_theme() {
         assert_eq!(palette_for(ThemeId::Default), &DEFAULT_THEME);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[test]
+    fn palette_for_test_contrast_returns_test_theme() {
+        assert_eq!(palette_for(ThemeId::TestContrast), &TEST_CONTRAST_THEME);
     }
 
     #[test]

@@ -7,8 +7,9 @@ use harness::{
 };
 use ratatui::style::{Color, Modifier};
 use sabiql::app::model::shared::input_mode::InputMode;
+use sabiql::app::model::shared::theme_id::ThemeId;
 use sabiql::app::model::sql_editor::modal::SqlModalStatus;
-use sabiql::ui::theme::{DEFAULT_THEME, ThemePalette};
+use sabiql::ui::theme::{DEFAULT_THEME, TEST_CONTRAST_THEME, ThemePalette};
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
 fn help_modal_origin() -> (u16, u16) {
@@ -401,5 +402,29 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     assert!(
         has_custom_sql_hint,
         "Expected SQL modal hint to use injected hint color"
+    );
+}
+
+#[test]
+fn state_theme_id_drives_render_palette_resolution() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.set_theme(ThemeId::TestContrast);
+    state.ui.focused_pane = FocusedPane::Explorer;
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+    let has_test_theme_focus_border = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "─" && cell.fg == TEST_CONTRAST_THEME.focus_border
+            })
+        });
+
+    assert!(
+        has_test_theme_focus_border,
+        "Expected render() to resolve palette from state.theme_id"
     );
 }
