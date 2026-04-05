@@ -246,7 +246,7 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
     ModeRow {
         key_short: "^N/^P/↑↓",
         key: "Ctrl+N / Ctrl+P / ↑ / ↓",
-        desc_short: "Navigate",
+        desc_short: "Nav",
         description: "Navigate",
         bindings: &[
             ExecBinding {
@@ -554,7 +554,7 @@ pub const JSONB_DETAIL_KEYS: &[KeyBinding] = &[
     },
     // Navigation
     KeyBinding {
-        key_short: "^N/^P/j/k/↑↓",
+        key_short: "^N/j/↓",
         key: "Ctrl+N / j / ↓",
         desc_short: "Nav",
         description: "Move cursor down",

@@ -184,7 +184,7 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
     ModeRow {
         key_short: "^N/^P/↑↓",
         key: "Ctrl+N / Ctrl+P / ↑ / ↓ / j / k",
-        desc_short: "Select",
+        desc_short: "Nav",
         description: "Select connection",
         bindings: &[
             ExecBinding {

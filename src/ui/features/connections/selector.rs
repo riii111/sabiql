@@ -43,7 +43,11 @@ impl ConnectionSelector {
         let r = CONNECTION_SELECTOR_ROWS;
         use idx::connection_selector as cs;
 
-        let mut hints = vec![r[cs::CONFIRM].as_hint(), r[cs::NEW].as_hint()];
+        let mut hints = vec![
+            r[cs::CONFIRM].as_hint(),
+            r[cs::SELECT].as_hint(),
+            r[cs::NEW].as_hint(),
+        ];
         if !is_service_selected {
             hints.push(r[cs::EDIT].as_hint());
             hints.push(r[cs::DELETE].as_hint());
