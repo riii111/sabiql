@@ -1,5 +1,6 @@
 use ratatui::style::Style;
 use ratatui::text::Span;
+use std::cmp::Ordering;
 
 use crate::ui::theme::Theme;
 
@@ -100,12 +101,10 @@ fn split_at_cursor(text: &str, cursor_col: usize) -> (String, String, String) {
     let mut after = String::new();
 
     for (idx, ch) in text.chars().enumerate() {
-        if idx < cursor_col {
-            before.push(ch);
-        } else if idx == cursor_col {
-            current.push(ch);
-        } else {
-            after.push(ch);
+        match idx.cmp(&cursor_col) {
+            Ordering::Less => before.push(ch),
+            Ordering::Equal => current.push(ch),
+            Ordering::Greater => after.push(ch),
         }
     }
 
