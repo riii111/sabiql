@@ -12,4 +12,4 @@ test_project | test_db | - | no dsn | lo
 ││     {                              ││
 ││   -   "company_size":              ││
 ││                                    ││
-└╰ Enter: Confirm │ j/k/↑↓: Scroll │ E╯┘
+└╰ Enter: Confirm │ Esc: Cancel ──────╯┘

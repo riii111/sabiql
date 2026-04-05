@@ -71,6 +71,8 @@ pub fn map_nav_intent(combo: &KeyCombo) -> Option<NavIntent> {
 
     if combo.modifiers.ctrl {
         return match combo.key {
+            Key::Char('n') => Some(NavIntent::MoveDown),
+            Key::Char('p') => Some(NavIntent::MoveUp),
             Key::Char('d') => Some(NavIntent::HalfPageDown),
             Key::Char('u') => Some(NavIntent::HalfPageUp),
             Key::Char('f') => Some(NavIntent::FullPageDown),
@@ -409,8 +411,10 @@ mod tests {
     #[rstest]
     #[case(KeyCombo::plain(Key::Char('j')), NavIntent::MoveDown)]
     #[case(KeyCombo::plain(Key::Down), NavIntent::MoveDown)]
+    #[case(KeyCombo::ctrl(Key::Char('n')), NavIntent::MoveDown)]
     #[case(KeyCombo::plain(Key::Char('k')), NavIntent::MoveUp)]
     #[case(KeyCombo::plain(Key::Up), NavIntent::MoveUp)]
+    #[case(KeyCombo::ctrl(Key::Char('p')), NavIntent::MoveUp)]
     #[case(KeyCombo::plain(Key::Char('g')), NavIntent::MoveToFirst)]
     #[case(KeyCombo::plain(Key::Home), NavIntent::MoveToFirst)]
     #[case(KeyCombo::plain(Key::Char('G')), NavIntent::MoveToLast)]
@@ -446,7 +450,6 @@ mod tests {
     #[case(KeyCombo::plain(Key::Esc))]
     #[case(KeyCombo::plain(Key::Enter))]
     #[case(KeyCombo::plain(Key::Tab))]
-    #[case(KeyCombo::ctrl(Key::Char('p')))]
     #[case(KeyCombo::ctrl(Key::Char('h')))]
     #[case(KeyCombo::ctrl(Key::Char('k')))]
     #[case(KeyCombo::ctrl(Key::Char('r')))]

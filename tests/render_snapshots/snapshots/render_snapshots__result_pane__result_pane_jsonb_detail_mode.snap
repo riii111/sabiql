@@ -1,6 +1,5 @@
 ---
 source: tests/render_snapshots/result_pane.rs
-assertion_line: 220
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                       
@@ -22,7 +21,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       ╰ y:Copy  i:Edit  /:Search  j/k:Nav  h/l:Fold  Esc:Close ──────╯       │
+│       ╰ y:Copy  i:Edit  /:Search  h/l:Fold  Esc:Close ───────────────╯       │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-y:Copy  i:Edit  /:Search  j/↓:Down  h/l:Fold  Esc:Close
+y:Copy  i:Edit  /:Search  h/l:Fold  Esc:Close

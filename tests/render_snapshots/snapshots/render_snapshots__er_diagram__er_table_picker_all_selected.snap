@@ -24,4 +24,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │               ╰ 3/3 selected │ Space Select │ ^A All │ Enter ╯               │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Generate  Space:Select  ^A:All  type:Filter  ↑↓:Navigate  Esc:Close
+Enter:Generate  Space:Select  ^A:All  type:Filter  Esc:Close

@@ -285,8 +285,8 @@ fn confirm_dialog_update_preview_scrollable() {
     let output = render_to_string(&mut terminal, &mut state);
 
     assert!(
-        output.contains("Scroll"),
-        "Scrollable preview should show scroll hint"
+        output.contains("Enter: Confirm │ Esc: Cancel"),
+        "Scrollable preview should keep only primary actions in the hint"
     );
     insta::assert_snapshot!(output);
 }

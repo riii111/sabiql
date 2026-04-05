@@ -4,6 +4,27 @@ use crate::app::update::action::{
 };
 use crate::app::update::input::keybindings::{Key, KeyCombo};
 
+fn line_scroll_action(
+    combo: KeyCombo,
+    target: ScrollTarget,
+    plain: bool,
+    ctrl_only: bool,
+) -> Option<Action> {
+    let direction = match combo.key {
+        Key::Char('j') | Key::Down if plain => Some(ScrollDirection::Down),
+        Key::Char('n') if ctrl_only => Some(ScrollDirection::Down),
+        Key::Char('k') | Key::Up if plain => Some(ScrollDirection::Up),
+        Key::Char('p') if ctrl_only => Some(ScrollDirection::Up),
+        _ => None,
+    }?;
+
+    Some(Action::Scroll {
+        target,
+        direction,
+        amount: ScrollAmount::Line,
+    })
+}
+
 pub fn handle_sql_modal_keys(
     combo: KeyCombo,
     completion_visible: bool,
@@ -24,7 +45,10 @@ pub fn handle_sql_modal_keys(
     ) {
         let ctrl = combo.modifiers.ctrl;
         let alt = combo.modifiers.alt;
+        let shift = combo.modifiers.shift;
         let plain = !ctrl && !alt;
+        // Treat only pure Ctrl as the alias modifier so Ctrl+Alt (AltGr) does not trigger nav.
+        let ctrl_only = ctrl && !alt && !shift;
 
         if ctrl && combo.key == Key::Char('e') {
             return Action::ExplainRequest;
@@ -40,19 +64,15 @@ pub fn handle_sql_modal_keys(
 
         // Plan tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Plan {
+            if let Some(action) =
+                line_scroll_action(combo, ScrollTarget::ExplainPlan, plain, ctrl_only)
+            {
+                return action;
+            }
+
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
                 Key::Char('y') if plain => Action::SqlModalYank,
-                Key::Char('j') | Key::Down if plain => Action::Scroll {
-                    target: ScrollTarget::ExplainPlan,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                },
-                Key::Char('k') | Key::Up if plain => Action::Scroll {
-                    target: ScrollTarget::ExplainPlan,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                },
                 Key::Esc if plain => Action::CloseSqlModal,
                 _ => Action::None,
             };
@@ -60,20 +80,16 @@ pub fn handle_sql_modal_keys(
 
         // Compare tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Compare {
+            if let Some(action) =
+                line_scroll_action(combo, ScrollTarget::ExplainCompare, plain, ctrl_only)
+            {
+                return action;
+            }
+
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
                 Key::Char('y') if plain => Action::SqlModalYank,
                 Key::Char('e') if plain => Action::CompareEditQuery,
-                Key::Char('j') | Key::Down if plain => Action::Scroll {
-                    target: ScrollTarget::ExplainCompare,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                },
-                Key::Char('k') | Key::Up if plain => Action::Scroll {
-                    target: ScrollTarget::ExplainCompare,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                },
                 Key::Esc if plain => Action::CloseSqlModal,
                 _ => Action::None,
             };
@@ -198,6 +214,8 @@ pub fn handle_sql_modal_keys(
 
     let ctrl = combo.modifiers.ctrl;
     let alt = combo.modifiers.alt;
+    let shift = combo.modifiers.shift;
+    let ctrl_only = ctrl && !alt && !shift;
 
     if alt && combo.key == Key::Enter {
         return Action::SqlModalSubmit;
@@ -225,6 +243,8 @@ pub fn handle_sql_modal_keys(
 
     match (combo.key, completion_visible) {
         // Completion navigation (when popup is visible)
+        (Key::Char('p'), true) if ctrl_only => Action::CompletionPrev,
+        (Key::Char('n'), true) if ctrl_only => Action::CompletionNext,
         (Key::Up, true) => Action::CompletionPrev,
         (Key::Down, true) => Action::CompletionNext,
         (Key::Tab | Key::Enter, true) => Action::CompletionAccept,
@@ -456,6 +476,58 @@ mod tests {
         assert_action(result, expected);
     }
 
+    #[rstest]
+    #[case(Key::Char('p'), Expected::CompletionPrev)]
+    #[case(Key::Char('n'), Expected::CompletionNext)]
+    fn completion_visible_ctrl_aliases(#[case] code: Key, #[case] expected: Expected) {
+        let result = handle_sql_modal_keys(
+            combo_ctrl(code),
+            true,
+            &SqlModalStatus::Editing,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(Key::Char('p'))]
+    #[case(Key::Char('n'))]
+    fn ctrl_alt_aliases_fall_through_to_text_input(#[case] code: Key) {
+        let result = handle_sql_modal_keys(
+            KeyCombo::ctrl_alt(code),
+            true,
+            &SqlModalStatus::Editing,
+            SqlModalTab::Sql,
+        );
+        assert_action(
+            result,
+            Expected::SqlModalInput(match code {
+                Key::Char(c) => c,
+                _ => unreachable!(),
+            }),
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('p'))]
+    #[case(Key::Char('n'))]
+    fn ctrl_shift_aliases_fall_through_to_text_input(#[case] code: Key) {
+        let result = handle_sql_modal_keys(
+            KeyCombo::ctrl_shift(code),
+            true,
+            &SqlModalStatus::Editing,
+            SqlModalTab::Sql,
+        );
+        assert_action(
+            result,
+            Expected::SqlModalInput(match code {
+                Key::Char(c) => c,
+                _ => unreachable!(),
+            }),
+        );
+    }
+
     // Keys unaffected by completion visibility
     #[rstest]
     #[case(Key::Backspace, Expected::SqlModalBackspace)]
@@ -578,6 +650,72 @@ mod tests {
         );
 
         assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(Key::Char('n'), Expected::ExplainPlanScrollDown)]
+    #[case(Key::Char('p'), Expected::ExplainPlanScrollUp)]
+    fn plan_tab_ctrl_aliases_scroll(#[case] code: Key, #[case] expected: Expected) {
+        let result = handle_sql_modal_keys(
+            combo_ctrl(code),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Plan,
+        );
+
+        assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(Key::Char('n'), Expected::ExplainCompareScrollDown)]
+    #[case(Key::Char('p'), Expected::ExplainCompareScrollUp)]
+    fn compare_tab_ctrl_aliases_scroll(#[case] code: Key, #[case] expected: Expected) {
+        let result = handle_sql_modal_keys(
+            combo_ctrl(code),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(SqlModalTab::Plan, Key::Char('n'))]
+    #[case(SqlModalTab::Plan, Key::Char('p'))]
+    #[case(SqlModalTab::Compare, Key::Char('n'))]
+    #[case(SqlModalTab::Compare, Key::Char('p'))]
+    fn ctrl_alt_aliases_do_not_scroll_in_read_only_tabs(
+        #[case] tab: SqlModalTab,
+        #[case] code: Key,
+    ) {
+        let result = handle_sql_modal_keys(
+            KeyCombo::ctrl_alt(code),
+            false,
+            &SqlModalStatus::Normal,
+            tab,
+        );
+
+        assert_action(result, Expected::None);
+    }
+
+    #[rstest]
+    #[case(SqlModalTab::Plan, Key::Char('n'))]
+    #[case(SqlModalTab::Plan, Key::Char('p'))]
+    #[case(SqlModalTab::Compare, Key::Char('n'))]
+    #[case(SqlModalTab::Compare, Key::Char('p'))]
+    fn ctrl_shift_aliases_do_not_scroll_in_read_only_tabs(
+        #[case] tab: SqlModalTab,
+        #[case] code: Key,
+    ) {
+        let result = handle_sql_modal_keys(
+            KeyCombo::ctrl_shift(code),
+            false,
+            &SqlModalStatus::Normal,
+            tab,
+        );
+
+        assert_action(result, Expected::None);
     }
 
     #[test]

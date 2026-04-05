@@ -208,20 +208,16 @@ impl Footer {
             InputMode::TablePicker => vec![
                 TABLE_PICKER_ROWS[idx::table_picker::ENTER_SELECT].as_hint(),
                 TABLE_PICKER_ROWS[idx::table_picker::TYPE_FILTER].as_hint(),
-                TABLE_PICKER_ROWS[idx::table_picker::NAVIGATE].as_hint(),
                 TABLE_PICKER_ROWS[idx::table_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::CommandPalette => {
                 vec![
                     COMMAND_PALETTE_ROWS[idx::cmd_palette::ENTER_EXECUTE].as_hint(),
-                    COMMAND_PALETTE_ROWS[idx::cmd_palette::NAVIGATE_JK].as_hint(),
                     COMMAND_PALETTE_ROWS[idx::cmd_palette::ESC_CLOSE].as_hint(),
                 ]
             }
-            InputMode::Help => vec![
-                HELP_ROWS[idx::help::SCROLL].as_hint(),
-                HELP_ROWS[idx::help::CLOSE].as_hint(),
-            ],
+            InputMode::Help => vec![HELP_ROWS[idx::help::CLOSE].as_hint()],
+            InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {
                 if matches!(
                     state.sql_modal.status(),
@@ -267,19 +263,16 @@ impl Footer {
                     CONNECTION_ERROR_ROWS[idx::conn_error::ESC_CLOSE].as_hint(),
                 ]
             }
-            InputMode::ConfirmDialog => vec![],
             InputMode::ErTablePicker => vec![
                 ER_PICKER_ROWS[idx::er_picker::ENTER_GENERATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::SELECT].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::SELECT_ALL].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::TYPE_FILTER].as_hint(),
-                ER_PICKER_ROWS[idx::er_picker::NAVIGATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::QueryHistoryPicker => vec![
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ENTER_SELECT].as_hint(),
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::TYPE_FILTER].as_hint(),
-                QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::NAVIGATE].as_hint(),
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::JsonbDetail => {
@@ -294,7 +287,6 @@ impl Footer {
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::YANK].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::EDIT].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::SEARCH].as_hint(),
-                        JSONB_DETAIL_KEYS[idx::jsonb_detail::DOWN].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::FOLD].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::CLOSE].as_hint(),
                     ]
@@ -310,11 +302,7 @@ impl Footer {
                     state.connection_list_items(),
                     state.ui.connection_list_selected,
                 );
-                let mut list = vec![
-                    r[cs::CONFIRM].as_hint(),
-                    r[cs::SELECT].as_hint(),
-                    r[cs::NEW].as_hint(),
-                ];
+                let mut list = vec![r[cs::CONFIRM].as_hint(), r[cs::NEW].as_hint()];
                 if !is_service_selected {
                     list.push(r[cs::EDIT].as_hint());
                     list.push(r[cs::DELETE].as_hint());

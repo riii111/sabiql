@@ -13,11 +13,16 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
+    }
+
+    fn combo_ctrl(k: Key) -> KeyCombo {
+        KeyCombo::ctrl(k)
     }
 
     mod help {
@@ -43,6 +48,22 @@ mod tests {
 
             assert!(matches!(result, Action::None));
         }
+
+        #[rstest]
+        #[case(Key::Char('n'), ScrollDirection::Down)]
+        #[case(Key::Char('p'), ScrollDirection::Up)]
+        fn ctrl_aliases_scroll(#[case] code: Key, #[case] direction: ScrollDirection) {
+            let result = handle_help_keys(combo_ctrl(code));
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: dir,
+                    amount: ScrollAmount::Line
+                } if dir == direction
+            ));
+        }
     }
 
     mod confirm_dialog_keys {
@@ -63,10 +84,15 @@ mod tests {
         #[rstest]
         #[case(Key::Char('j'))]
         #[case(Key::Down)]
+        #[case(Key::Char('n'))]
         #[case(Key::Char('k'))]
         #[case(Key::Up)]
+        #[case(Key::Char('p'))]
         fn scroll_keys_return_scroll_action(#[case] code: Key) {
-            let result = handle_confirm_dialog_keys(combo(code));
+            let result = match code {
+                Key::Char('n' | 'p') => handle_confirm_dialog_keys(combo_ctrl(code)),
+                _ => handle_confirm_dialog_keys(combo(code)),
+            };
 
             assert!(matches!(result, Action::Scroll { .. }));
         }

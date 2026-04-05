@@ -30,7 +30,7 @@ impl HelpOverlay {
             Constraint::Percentage(70),
             Constraint::Percentage(80),
             " Help ",
-            " j/k / ↑↓ to scroll, ? or Esc to close ",
+            " ?/Esc Close ",
             theme,
         );
 

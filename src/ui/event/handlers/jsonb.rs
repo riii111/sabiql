@@ -101,3 +101,96 @@ pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
         _ => Action::None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::update::action::CursorMove;
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
+
+    fn combo(k: Key) -> KeyCombo {
+        KeyCombo::plain(k)
+    }
+
+    fn combo_ctrl(k: Key) -> KeyCombo {
+        KeyCombo::ctrl(k)
+    }
+
+    mod jsonb_detail {
+        use super::*;
+
+        #[test]
+        fn ctrl_n_moves_cursor_down_in_viewing_mode() {
+            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('n')), false);
+
+            assert!(matches!(result, Action::JsonbCursorDown));
+        }
+
+        #[test]
+        fn ctrl_p_moves_cursor_up_in_viewing_mode() {
+            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('p')), false);
+
+            assert!(matches!(result, Action::JsonbCursorUp));
+        }
+    }
+
+    mod jsonb_search {
+        use super::*;
+
+        #[test]
+        fn ctrl_n_still_falls_through_to_search_input() {
+            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('n')), true);
+
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::JsonbSearch,
+                    ch: 'n',
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_p_still_falls_through_to_search_input() {
+            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('p')), true);
+
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::JsonbSearch,
+                    ch: 'p',
+                }
+            ));
+        }
+    }
+
+    mod jsonb_edit {
+        use super::*;
+
+        #[test]
+        fn ctrl_n_still_falls_through_to_editor_input() {
+            let result = handle_jsonb_edit_keys(combo_ctrl(Key::Char('n')));
+
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::JsonbEdit,
+                    ch: 'n',
+                }
+            ));
+        }
+
+        #[test]
+        fn arrow_up_moves_editor_cursor() {
+            let result = handle_jsonb_edit_keys(combo(Key::Up));
+
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::Up,
+                }
+            ));
+        }
+    }
+}

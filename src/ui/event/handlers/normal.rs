@@ -25,9 +25,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Ctrl combos
     if combo.modifiers.ctrl {
         match combo.key {
-            Key::Char('p') if !state.query.is_history_mode() => {
-                return Action::OpenTablePicker;
-            }
             Key::Char('h') => {
                 return if state.query.is_history_mode() {
                     Action::ExitResultHistory
@@ -193,6 +190,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Char('i') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultEnterCellEdit
         }
+        Key::Char('p') => Action::OpenTablePicker,
         Key::Char('s') => Action::OpenSqlModal,
         Key::Char('e') => Action::OpenErTablePicker,
         Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
@@ -246,10 +244,10 @@ mod tests {
 
     // Important keys with special handling: keep individual tests
     #[test]
-    fn ctrl_p_opens_table_picker() {
+    fn p_opens_table_picker() {
         let state = browse_state();
 
-        let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
+        let result = handle_normal_mode(combo(Key::Char('p')), &state);
 
         assert!(matches!(result, Action::OpenTablePicker));
     }
@@ -338,6 +336,24 @@ mod tests {
         let result = handle_normal_mode(combo(code), &state);
 
         assert!(matches!(result, Action::Select(SelectMotion::Next)));
+    }
+
+    #[test]
+    fn ctrl_n_selects_next_when_explorer_focused() {
+        let state = browse_state();
+
+        let result = handle_normal_mode(combo_ctrl(Key::Char('n')), &state);
+
+        assert!(matches!(result, Action::Select(SelectMotion::Next)));
+    }
+
+    #[test]
+    fn ctrl_p_selects_previous_when_explorer_focused() {
+        let state = browse_state();
+
+        let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
+
+        assert!(matches!(result, Action::Select(SelectMotion::Previous)));
     }
 
     #[rstest]
@@ -921,6 +937,22 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn ctrl_p_scrolls_inspector_up() {
+        let state = inspector_focused_state();
+
+        let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
+
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Inspector,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::Line
+            }
+        ));
+    }
+
     #[rstest]
     #[case(Key::Char('G'))]
     #[case(Key::End)]
@@ -1361,21 +1393,43 @@ mod tests {
         }
 
         #[test]
-        fn ctrl_p_and_ctrl_k_blocked_in_history_mode() {
+        fn ctrl_k_blocked_in_history_mode() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
 
-            let p = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
             let k = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
 
-            assert!(
-                matches!(p, Action::None),
-                "^P should be blocked in history mode"
-            );
             assert!(
                 matches!(k, Action::None),
                 "^K should be blocked in history mode"
             );
+        }
+
+        #[test]
+        fn ctrl_p_and_ctrl_n_scroll_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.enter_history(1);
+            state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+
+            let prev = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
+            let next = handle_normal_mode(combo_ctrl(Key::Char('n')), &state);
+
+            assert!(matches!(
+                prev,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line
+                }
+            ));
+            assert!(matches!(
+                next,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line
+                }
+            ));
         }
 
         #[test]

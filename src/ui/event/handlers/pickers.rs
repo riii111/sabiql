@@ -58,6 +58,10 @@ mod tests {
         KeyCombo::plain(k)
     }
 
+    fn combo_ctrl(k: Key) -> KeyCombo {
+        KeyCombo::ctrl(k)
+    }
+
     mod table_picker {
         use super::*;
 
@@ -117,6 +121,21 @@ mod tests {
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
+        }
+
+        #[rstest]
+        #[case(Key::Char('p'), ListMotion::Previous)]
+        #[case(Key::Char('n'), ListMotion::Next)]
+        fn ctrl_alias_selects_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
+            let result = handle_table_picker_keys(combo_ctrl(key));
+
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::TablePicker,
+                    motion: actual_motion,
+                } if actual_motion == motion
+            ));
         }
     }
 
@@ -178,7 +197,49 @@ mod tests {
         fn picker_keys(#[case] key: Key, #[case] expected: Action) {
             let result = handle_query_history_picker_keys(combo(key));
 
-            assert_eq!(format!("{result:?}"), format!("{expected:?}"));
+            match expected {
+                Action::QueryHistoryConfirmSelection => {
+                    assert!(matches!(result, Action::QueryHistoryConfirmSelection));
+                }
+                Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Previous,
+                } => {
+                    assert!(matches!(
+                        result,
+                        Action::ListSelect {
+                            target: ListTarget::QueryHistory,
+                            motion: ListMotion::Previous,
+                        }
+                    ));
+                }
+                Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Next,
+                } => {
+                    assert!(matches!(
+                        result,
+                        Action::ListSelect {
+                            target: ListTarget::QueryHistory,
+                            motion: ListMotion::Next,
+                        }
+                    ));
+                }
+                Action::TextBackspace {
+                    target: InputTarget::QueryHistoryFilter,
+                } => {
+                    assert!(matches!(
+                        result,
+                        Action::TextBackspace {
+                            target: InputTarget::QueryHistoryFilter,
+                        }
+                    ));
+                }
+                Action::CloseQueryHistoryPicker => {
+                    assert!(matches!(result, Action::CloseQueryHistoryPicker));
+                }
+                _ => unreachable!("unexpected test case"),
+            }
         }
 
         #[test]
@@ -191,6 +252,21 @@ mod tests {
                     target: InputTarget::QueryHistoryFilter,
                     ch: 'a'
                 }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('p'), ListMotion::Previous)]
+        #[case(Key::Char('n'), ListMotion::Next)]
+        fn ctrl_alias_selects_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
+            let result = handle_query_history_picker_keys(combo_ctrl(key));
+
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: actual_motion,
+                } if actual_motion == motion
             ));
         }
     }
@@ -260,6 +336,21 @@ mod tests {
                     target: InputTarget::ErFilter,
                     ch: 'a'
                 }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('p'), ListMotion::Previous)]
+        #[case(Key::Char('n'), ListMotion::Next)]
+        fn ctrl_alias_selects_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
+            let result = handle_er_table_picker_keys(combo_ctrl(key));
+
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::ErTablePicker,
+                    motion: actual_motion,
+                } if actual_motion == motion
             ));
         }
     }

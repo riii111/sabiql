@@ -210,7 +210,6 @@ impl SqlModal {
         static PLAN: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::YANK].as_hint(),
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::SCROLL].as_hint(),
                 (
                     "Tab/⇧Tab",
                     SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
@@ -222,7 +221,6 @@ impl SqlModal {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK].as_hint(),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::SCROLL].as_hint(),
                 (
                     "Tab/⇧Tab",
                     SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
@@ -235,7 +233,6 @@ impl SqlModal {
         static COMPARE_NO_YANK: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::SCROLL].as_hint(),
                 (
                     "Tab/⇧Tab",
                     SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]

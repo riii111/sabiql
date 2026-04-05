@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │
-│               ╰ Enter Confirm  ↑/↓ Select  n New  Esc Close ─╯               │
+│               ╰ Enter Confirm  n New  Esc Close ─────────────╯               │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Confirm  ↑/↓:Select  n:New  Esc:Close
+Enter:Confirm  n:New  Esc:Close

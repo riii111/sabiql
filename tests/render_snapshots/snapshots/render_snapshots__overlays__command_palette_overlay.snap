@@ -11,7 +11,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                  │╭ Command Palette ─────────────────────╮                   │
 │                  ││  q                  Quit application │                   │
 │                  ││  ?                  Toggle help      │                   │
-│                  ││  Ctrl+P             Open Table Picker│                   │
+│                  ││  p                  Open Table Picker│                   │
 │                  ││  f                  Toggle Focus mode│                   │
 │                  ││  r                  Reload metadata  │───────────────────┘
 │                  ││  s                  Open SQL Editor  │───────────────────┐
@@ -19,9 +19,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                  ││  c                  Open Connection S│                   │
 │                  ││  Ctrl+E             Export result to │                   │
 │                  ││  Ctrl+R             Enable Read-Only │                   │
-│                  │╰ j/k / ↑↓ Navigate │ Enter Select │ Es╯                   │
+│                  │╰ Enter Select │ Esc Close ────────────╯                   │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Execute  j/k / ↑↓:Navigate  Esc:Close
+Enter:Execute  Esc:Close

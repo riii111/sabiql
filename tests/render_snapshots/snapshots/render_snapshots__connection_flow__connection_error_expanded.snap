@@ -19,7 +19,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │port 5432 failed: timeout expired                     │           │
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   y  Co│           │
-│           ╰ Scroll: ↑/↓/j/k  Esc to close ───────────────────────╯           │
+│           ╰ Esc to close ────────────────────────────────────────╯           │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

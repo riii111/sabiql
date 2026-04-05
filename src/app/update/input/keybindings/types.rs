@@ -75,6 +75,26 @@ impl KeyCombo {
             modifiers: Modifiers::ALT,
         }
     }
+    pub const fn ctrl_alt(key: Key) -> Self {
+        Self {
+            key,
+            modifiers: Modifiers {
+                ctrl: true,
+                alt: true,
+                shift: false,
+            },
+        }
+    }
+    pub const fn ctrl_shift(key: Key) -> Self {
+        Self {
+            key,
+            modifiers: Modifiers {
+                ctrl: true,
+                alt: false,
+                shift: true,
+            },
+        }
+    }
     pub const fn shift(key: Key) -> Self {
         Self {
             key,
