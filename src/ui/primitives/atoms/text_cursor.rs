@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 
 use ratatui::style::Style;
 use ratatui::text::Span;
-use std::cmp::Ordering;
 
 use crate::ui::theme::Theme;
 
