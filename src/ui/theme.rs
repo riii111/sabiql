@@ -50,7 +50,7 @@ impl Theme {
     // ============ Status Colors ============
 
     // Status indicators
-    pub const STATUS_SUCCESS: Color = Color::Green;
+    pub const STATUS_SUCCESS: Color = Color::Rgb(0x97, 0xc9, 0xc3);
     pub const STATUS_ERROR: Color = Color::Red;
     pub const STATUS_WARNING: Color = Color::Yellow;
     pub const STATUS_MEDIUM_RISK: Color = Color::Rgb(0xff, 0x99, 0x00);
@@ -64,7 +64,7 @@ impl Theme {
     pub const SECTION_HEADER: Color = Color::Rgb(0x7f, 0xb4, 0xca);
 
     // Scrollbar
-    pub const SCROLLBAR_ACTIVE: Color = Color::Rgb(0x7f, 0xb4, 0xca);
+    pub const SCROLLBAR_ACTIVE: Color = Color::Rgb(0x5a, 0x84, 0x96);
     pub const SCROLLBAR_INACTIVE: Color = Color::Rgb(0x45, 0x47, 0x55);
 
     // Result pane selection
@@ -102,7 +102,7 @@ impl Theme {
     pub const TAB_INACTIVE: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
 
     // Active/inactive toggle indicators
-    pub const ACTIVE_INDICATOR: Color = Color::Green;
+    pub const ACTIVE_INDICATOR: Color = Color::Rgb(0x97, 0xc9, 0xc3);
     pub const INACTIVE_INDICATOR: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
 
     // Placeholder / empty-value text
