@@ -59,7 +59,7 @@ pub fn insert_cursor_span(spans: Vec<Span<'static>>, cursor_col: usize) -> Vec<S
     let mut iter = spans.into_iter().peekable();
 
     while let Some(span) = iter.next() {
-        let content = span.content.to_string();
+        let content = span.content.as_ref();
         let len = content.chars().count();
 
         if remaining > len {
@@ -79,11 +79,11 @@ pub fn insert_cursor_span(spans: Vec<Span<'static>>, cursor_col: usize) -> Vec<S
             continue;
         }
 
-        let (before, current, after) = split_at_cursor(&content, remaining);
+        let (before, current, after) = split_at_cursor(content, remaining);
         if !before.is_empty() {
             output.push(Span::styled(before, span.style));
         }
-        output.push(Span::styled(current, cursor_style()));
+        output.push(Span::styled(current, span.style.patch(cursor_style())));
         if !after.is_empty() {
             output.push(Span::styled(after, span.style));
         }
@@ -114,6 +114,7 @@ fn split_at_cursor(text: &str, cursor_col: usize) -> (String, String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::Modifier;
 
     fn spans_to_strings(spans: &[Span<'_>]) -> Vec<String> {
         spans.iter().map(|s| s.content.to_string()).collect()
@@ -256,6 +257,23 @@ mod tests {
         assert_eq!(inserted[0].style.fg, Some(Theme::SQL_KEYWORD));
         assert_eq!(inserted[1].style, cursor_style());
         assert_eq!(inserted[2].style.fg, Some(Theme::SQL_STRING));
+    }
+
+    #[test]
+    fn insert_cursor_span_preserves_modifiers_on_cursor_character() {
+        let spans = vec![Span::styled(
+            "ab".to_string(),
+            Style::default()
+                .fg(Theme::SQL_KEYWORD)
+                .add_modifier(Modifier::BOLD),
+        )];
+
+        let inserted = insert_cursor_span(spans, 0);
+
+        assert_eq!(inserted[0].content.as_ref(), "a");
+        assert_eq!(inserted[0].style.bg, Some(Theme::CURSOR_FG));
+        assert_eq!(inserted[0].style.fg, Some(Theme::SELECTION_BG));
+        assert!(inserted[0].style.add_modifier.contains(Modifier::BOLD));
     }
 
     #[test]
