@@ -90,12 +90,12 @@ impl Theme {
     pub const YANK_FLASH_FG: Color = Color::Rgb(0x11, 0x14, 0x19);
 
     // SQL syntax highlighting
-    pub const SQL_KEYWORD: Color = Color::Blue;
-    pub const SQL_STRING: Color = Color::Green;
-    pub const SQL_NUMBER: Color = Color::Yellow;
-    pub const SQL_COMMENT: Color = Color::DarkGray;
-    pub const SQL_OPERATOR: Color = Color::Cyan;
-    pub const SQL_TEXT: Color = Color::White;
+    pub const SQL_KEYWORD: Color = Color::Rgb(0x89, 0xb4, 0xfa);
+    pub const SQL_STRING: Color = Color::Rgb(0xa6, 0xe3, 0xa1);
+    pub const SQL_NUMBER: Color = Color::Rgb(0xfa, 0xb3, 0x87);
+    pub const SQL_COMMENT: Color = Color::Rgb(0x6c, 0x70, 0x86);
+    pub const SQL_OPERATOR: Color = Color::Rgb(0x94, 0xe2, 0xd5);
+    pub const SQL_TEXT: Color = Color::Rgb(0xcd, 0xd6, 0xf4);
 
     // Striped table rows — ANSI 256 (#303030) for terminal-agnostic rendering
     pub const STRIPED_ROW_BG: Color = Color::Indexed(235);
