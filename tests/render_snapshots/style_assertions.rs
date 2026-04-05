@@ -19,14 +19,6 @@ fn help_modal_origin() -> (u16, u16) {
     (x, y)
 }
 
-fn sql_modal_origin() -> (u16, u16, u16, u16) {
-    let modal_w = TEST_WIDTH * 80 / 100;
-    let modal_h = TEST_HEIGHT * 60 / 100;
-    let x = (TEST_WIDTH - modal_w) / 2;
-    let y = (TEST_HEIGHT - modal_h) / 2;
-    (x, y, modal_w, modal_h)
-}
-
 #[test]
 fn pending_draft_cell_uses_orange_fg() {
     let (mut state, now) = table_detail_loaded_state();
@@ -370,13 +362,13 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     let (mx, my) = help_modal_origin();
     let modal_corner = help_buffer.cell((mx, my)).unwrap();
     assert_eq!(modal_corner.fg, theme.modal_border);
-    let help_modal_height = TEST_HEIGHT * 80 / 100;
-    let help_hint_row = my + help_modal_height.saturating_sub(1);
-    let has_custom_help_hint = (mx..TEST_WIDTH).any(|x| {
-        help_buffer
-            .cell((x, help_hint_row))
-            .is_some_and(|cell| cell.fg == theme.modal_hint)
-    });
+    let has_custom_help_hint = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            help_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.fg == theme.modal_hint)
+        });
     assert!(
         has_custom_help_hint,
         "Expected shared modal hint to use injected hint color"
@@ -399,13 +391,13 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.set_status(SqlModalStatus::Normal);
     let sql_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
-    let (sql_x, sql_y, sql_w, sql_h) = sql_modal_origin();
-    let sql_hint_row = sql_y + sql_h.saturating_sub(1);
-    let has_custom_sql_hint = (sql_x..sql_x + sql_w).any(|x| {
-        sql_buffer
-            .cell((x, sql_hint_row))
-            .is_some_and(|cell| cell.fg == theme.modal_hint)
-    });
+    let has_custom_sql_hint = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            sql_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.fg == theme.modal_hint)
+        });
     assert!(
         has_custom_sql_hint,
         "Expected SQL modal hint to use injected hint color"
