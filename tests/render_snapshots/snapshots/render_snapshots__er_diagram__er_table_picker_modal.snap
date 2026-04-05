@@ -21,7 +21,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │
-│               ╰ 0/3 selected │ Space Select │ ^A All │ Enter ╯               │
+│               ╰ 0/3 selected │ ^N/^P/↑↓ Navigate │ Space Sele╯               │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Generate  Space:Select  ^A:All  type:Filter  ↑↓:Navigate  Esc:Close
+Enter:Generate  Space:Select  ^A:All  type:Filter  ^N/^P/↑↓:Navigate  Esc:Close

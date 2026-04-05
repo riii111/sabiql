@@ -58,6 +58,10 @@ mod tests {
         KeyCombo::plain(k)
     }
 
+    fn combo_ctrl(k: Key) -> KeyCombo {
+        KeyCombo::ctrl(k)
+    }
+
     mod table_picker {
         use super::*;
 
@@ -117,6 +121,32 @@ mod tests {
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
+        }
+
+        #[test]
+        fn ctrl_p_returns_select_previous() {
+            let result = handle_table_picker_keys(combo_ctrl(Key::Char('p')));
+
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::TablePicker,
+                    motion: ListMotion::Previous,
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_n_returns_select_next() {
+            let result = handle_table_picker_keys(combo_ctrl(Key::Char('n')));
+
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::TablePicker,
+                    motion: ListMotion::Next,
+                }
+            ));
         }
     }
 
@@ -193,6 +223,38 @@ mod tests {
                 }
             ));
         }
+
+        #[test]
+        fn ctrl_p_returns_select_previous() {
+            let result = handle_query_history_picker_keys(combo_ctrl(Key::Char('p')));
+
+            assert_eq!(
+                format!("{result:?}"),
+                format!(
+                    "{:?}",
+                    Action::ListSelect {
+                        target: ListTarget::QueryHistory,
+                        motion: ListMotion::Previous,
+                    }
+                )
+            );
+        }
+
+        #[test]
+        fn ctrl_n_returns_select_next() {
+            let result = handle_query_history_picker_keys(combo_ctrl(Key::Char('n')));
+
+            assert_eq!(
+                format!("{result:?}"),
+                format!(
+                    "{:?}",
+                    Action::ListSelect {
+                        target: ListTarget::QueryHistory,
+                        motion: ListMotion::Next,
+                    }
+                )
+            );
+        }
     }
 
     mod er_table_picker {
@@ -259,6 +321,32 @@ mod tests {
                 Action::TextInput {
                     target: InputTarget::ErFilter,
                     ch: 'a'
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_p_returns_select_previous() {
+            let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('p')));
+
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::ErTablePicker,
+                    motion: ListMotion::Previous,
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_n_returns_select_next() {
+            let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('n')));
+
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::ErTablePicker,
+                    motion: ListMotion::Next,
                 }
             ));
         }

@@ -125,8 +125,8 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "↑↓",
-        key: "↑↓",
+        key_short: "^N/^P/↑↓",
+        key: "Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Navigate",
         description: "Navigate",
         bindings: &[
@@ -135,14 +135,14 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
                     target: ListTarget::TablePicker,
                     motion: ListMotion::Next,
                 },
-                combos: &[KeyCombo::plain(Key::Down)],
+                combos: &[KeyCombo::plain(Key::Down), KeyCombo::ctrl(Key::Char('n'))],
             },
             ExecBinding {
                 action: Action::ListSelect {
                     target: ListTarget::TablePicker,
                     motion: ListMotion::Previous,
                 },
-                combos: &[KeyCombo::plain(Key::Up)],
+                combos: &[KeyCombo::plain(Key::Up), KeyCombo::ctrl(Key::Char('p'))],
             },
         ],
     },
@@ -236,8 +236,8 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "↑↓",
-        key: "↑↓",
+        key_short: "^N/^P/↑↓",
+        key: "Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Navigate",
         description: "Navigate",
         bindings: &[
@@ -246,14 +246,14 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
                     target: ListTarget::ErTablePicker,
                     motion: ListMotion::Next,
                 },
-                combos: &[KeyCombo::plain(Key::Down)],
+                combos: &[KeyCombo::plain(Key::Down), KeyCombo::ctrl(Key::Char('n'))],
             },
             ExecBinding {
                 action: Action::ListSelect {
                     target: ListTarget::ErTablePicker,
                     motion: ListMotion::Previous,
                 },
-                combos: &[KeyCombo::plain(Key::Up)],
+                combos: &[KeyCombo::plain(Key::Up), KeyCombo::ctrl(Key::Char('p'))],
             },
         ],
     },
@@ -327,8 +327,8 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "↑↓",
-        key: "↑↓",
+        key_short: "^N/^P/↑↓",
+        key: "Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Navigate",
         description: "Navigate",
         bindings: &[
@@ -337,14 +337,14 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
                     target: ListTarget::QueryHistory,
                     motion: ListMotion::Next,
                 },
-                combos: &[KeyCombo::plain(Key::Down)],
+                combos: &[KeyCombo::plain(Key::Down), KeyCombo::ctrl(Key::Char('n'))],
             },
             ExecBinding {
                 action: Action::ListSelect {
                     target: ListTarget::QueryHistory,
                     motion: ListMotion::Previous,
                 },
-                combos: &[KeyCombo::plain(Key::Up)],
+                combos: &[KeyCombo::plain(Key::Up), KeyCombo::ctrl(Key::Char('p'))],
             },
         ],
     },
@@ -530,20 +530,28 @@ pub const JSONB_DETAIL_KEYS: &[KeyBinding] = &[
     },
     // Navigation
     KeyBinding {
-        key_short: "j/↓",
-        key: "j / ↓",
-        desc_short: "Down",
+        key_short: "j/k/^N/^P/↑↓",
+        key: "Ctrl+N / j / ↓",
+        desc_short: "Nav",
         description: "Move cursor down",
         action: Action::JsonbCursorDown,
-        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Down),
+            KeyCombo::ctrl(Key::Char('n')),
+        ],
     },
     KeyBinding {
-        key_short: "k/↑",
-        key: "k / ↑",
+        key_short: "^P/k/↑",
+        key: "Ctrl+P / k / ↑",
         desc_short: "Up",
         description: "Move cursor up",
         action: Action::JsonbCursorUp,
-        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+        combos: &[
+            KeyCombo::plain(Key::Char('k')),
+            KeyCombo::plain(Key::Up),
+            KeyCombo::ctrl(Key::Char('p')),
+        ],
     },
     KeyBinding {
         key_short: "h/l",

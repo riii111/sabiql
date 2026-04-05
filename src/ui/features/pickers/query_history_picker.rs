@@ -100,8 +100,9 @@ impl QueryHistoryPicker {
         // border(2) + filter(1) + actual entries + preview — capped at 70%
         let desired_height = (2 + 1 + (grouped_count as u16).max(1) + preview_est).min(max_height);
 
-        let border_footer =
-            format!(" {grouped_count} entries \u{2502} type to filter \u{2502} Enter Select ",);
+        let border_footer = format!(
+            " {grouped_count} entries \u{2502} type to filter \u{2502} ^N/^P/↑↓ Navigate \u{2502} Enter Select ",
+        );
 
         let (_, inner) = render_modal(
             frame,

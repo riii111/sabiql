@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │                                                      │           │
 │           │SELECT count(*) FROM users                            │           │
 │           │                                                      │           │
-│           ╰ 3 entries │ type to filter │ Enter Select ───────────╯           │
+│           ╰ 3 entries │ type to filter │ ^N/^P/↑↓ Navigate │ Ente╯           │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close
+Enter:Select  type:Filter  ^N/^P/↑↓:Navigate  Esc:Close

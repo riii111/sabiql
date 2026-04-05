@@ -28,7 +28,7 @@ impl TablePicker {
             Constraint::Percentage(60),
             Constraint::Percentage(70),
             " Table Picker ",
-            &format!(" {filtered_count} tables │ ↑↓ Navigate │ Enter Select "),
+            &format!(" {filtered_count} tables │ ^N/^P/↑↓ Navigate │ Enter Select "),
             theme,
         );
 
