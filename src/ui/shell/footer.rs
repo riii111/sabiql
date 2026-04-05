@@ -218,7 +218,7 @@ impl Footer {
                     COMMAND_PALETTE_ROWS[idx::cmd_palette::ESC_CLOSE].as_hint(),
                 ]
             }
-            InputMode::Help => vec![],
+            InputMode::Help | InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {
                 if matches!(
                     state.sql_modal.status(),
@@ -264,7 +264,6 @@ impl Footer {
                     CONNECTION_ERROR_ROWS[idx::conn_error::ESC_CLOSE].as_hint(),
                 ]
             }
-            InputMode::ConfirmDialog => vec![],
             InputMode::ErTablePicker => vec![
                 ER_PICKER_ROWS[idx::er_picker::ENTER_GENERATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::SELECT].as_hint(),

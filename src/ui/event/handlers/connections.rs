@@ -321,7 +321,7 @@ mod tests {
         #[case(Key::Char('n'), Expected::ScrollDown)]
         fn scroll_keys(#[case] code: Key, #[case] expected: Expected) {
             let result = match code {
-                Key::Char('p') | Key::Char('n') => handle_connection_error_keys(combo_ctrl(code)),
+                Key::Char('p' | 'n') => handle_connection_error_keys(combo_ctrl(code)),
                 _ => handle_connection_error_keys(combo(code)),
             };
 
@@ -375,9 +375,7 @@ mod tests {
         #[case(Key::Char('p'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
         fn selector_navigation_keys(#[case] code: Key, #[case] expected: Action) {
             let result = match code {
-                Key::Char('p') | Key::Char('n') => {
-                    handle_connection_selector_keys(combo_ctrl(code))
-                }
+                Key::Char('p' | 'n') => handle_connection_selector_keys(combo_ctrl(code)),
                 _ => handle_connection_selector_keys(combo(code)),
             };
 

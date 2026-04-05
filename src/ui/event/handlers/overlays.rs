@@ -90,7 +90,7 @@ mod tests {
         #[case(Key::Char('p'))]
         fn scroll_keys_return_scroll_action(#[case] code: Key) {
             let result = match code {
-                Key::Char('n') | Key::Char('p') => handle_confirm_dialog_keys(combo_ctrl(code)),
+                Key::Char('n' | 'p') => handle_confirm_dialog_keys(combo_ctrl(code)),
                 _ => handle_confirm_dialog_keys(combo(code)),
             };
 
