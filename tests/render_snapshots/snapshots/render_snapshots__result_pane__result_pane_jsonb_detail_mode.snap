@@ -21,7 +21,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       ╰ y:Copy  i:Edit  /:Search  ^N/j/↓:Nav  h/l:Fold  Esc:Close ───╯       │
+│       ╰ y:Copy  i:Edit  /:Search  h/l:Fold  Esc:Close ───────────────╯       │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-y:Copy  i:Edit  /:Search  ^N/j/↓:Nav  h/l:Fold  Esc:Close
+y:Copy  i:Edit  /:Search  h/l:Fold  Esc:Close

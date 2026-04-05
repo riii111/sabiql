@@ -214,6 +214,8 @@ pub fn handle_sql_modal_keys(
 
     let ctrl = combo.modifiers.ctrl;
     let alt = combo.modifiers.alt;
+    let shift = combo.modifiers.shift;
+    let ctrl_only = ctrl && !alt && !shift;
 
     if alt && combo.key == Key::Enter {
         return Action::SqlModalSubmit;
@@ -241,8 +243,8 @@ pub fn handle_sql_modal_keys(
 
     match (combo.key, completion_visible) {
         // Completion navigation (when popup is visible)
-        (Key::Char('p'), true) if ctrl => Action::CompletionPrev,
-        (Key::Char('n'), true) if ctrl => Action::CompletionNext,
+        (Key::Char('p'), true) if ctrl_only => Action::CompletionPrev,
+        (Key::Char('n'), true) if ctrl_only => Action::CompletionNext,
         (Key::Up, true) => Action::CompletionPrev,
         (Key::Down, true) => Action::CompletionNext,
         (Key::Tab | Key::Enter, true) => Action::CompletionAccept,
@@ -316,6 +318,17 @@ mod tests {
                 ctrl: true,
                 alt: true,
                 shift: false,
+            },
+        }
+    }
+
+    fn combo_ctrl_shift(k: Key) -> KeyCombo {
+        KeyCombo {
+            key: k,
+            modifiers: crate::app::update::input::keybindings::Modifiers {
+                ctrl: true,
+                alt: false,
+                shift: true,
             },
         }
     }
@@ -497,6 +510,39 @@ mod tests {
         );
 
         assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(Key::Char('p'))]
+    #[case(Key::Char('n'))]
+    fn completion_visible_aliases_ignore_extra_modifiers(#[case] code: Key) {
+        let result = handle_sql_modal_keys(
+            combo_ctrl_alt(code),
+            true,
+            &SqlModalStatus::Editing,
+            SqlModalTab::Sql,
+        );
+        assert_action(
+            result,
+            Expected::SqlModalInput(match code {
+                Key::Char(c) => c,
+                _ => unreachable!(),
+            }),
+        );
+
+        let result = handle_sql_modal_keys(
+            combo_ctrl_shift(code),
+            true,
+            &SqlModalStatus::Editing,
+            SqlModalTab::Sql,
+        );
+        assert_action(
+            result,
+            Expected::SqlModalInput(match code {
+                Key::Char(c) => c,
+                _ => unreachable!(),
+            }),
+        );
     }
 
     // Keys unaffected by completion visibility
