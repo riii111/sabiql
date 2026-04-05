@@ -42,8 +42,8 @@ pub fn render_horizontal_scroll_indicator(
     };
     let position_text = format!("col {:>3}%", percentage.min(100));
 
-    // Layout: [col XXX%][space][scrollbar with < and >]
-    let fixed_parts_len = position_text.len() + 1;
+    // Layout: [col XXX%][space][scrollbar with < and >][1-cell gap for border]
+    let fixed_parts_len = position_text.len() + 1 + 1;
     let scrollbar_width = available_width.saturating_sub(fixed_parts_len).max(5);
 
     use ratatui::text::{Line, Span};
@@ -104,6 +104,7 @@ pub struct VerticalScrollParams {
     pub position: usize,
     pub viewport_size: usize,
     pub total_items: usize,
+    pub has_horizontal_scrollbar: bool,
 }
 
 pub fn render_vertical_scroll_indicator_bar(
@@ -123,34 +124,14 @@ pub fn render_vertical_scroll_indicator_bar(
         return;
     }
 
-    // Need at least 3 rows for scrollbar (arrow + thumb + arrow)
-    if area.height < 3 {
-        return;
-    }
-
-    let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
-    let percentage = if scrollable_range > 0 {
-        (params.position * 100) / scrollable_range
+    // Reserve 1 row at bottom when horizontal scrollbar is also present
+    let height = if params.has_horizontal_scrollbar {
+        area.height.saturating_sub(1)
     } else {
-        0
+        area.height
     };
 
-    // Render position text at bottom-right
-    let position_text = format!("row {:>3}%", percentage.min(100));
-    let text_style = Style::default().fg(theme.scrollbar_active);
-    let text_width = position_text.len() as u16;
-
-    let text_area = Rect {
-        x: area.x + area.width.saturating_sub(text_width),
-        y: area.y + area.height.saturating_sub(1),
-        width: text_width,
-        height: 1,
-    };
-    frame.render_widget(Paragraph::new(position_text).style(text_style), text_area);
-
-    // Render scrollbar on the right edge (above the position text)
-    let scrollbar_height = area.height.saturating_sub(1); // Reserve 1 row for position text
-    if scrollbar_height < 3 {
+    if height < 3 {
         return;
     }
 
@@ -158,7 +139,7 @@ pub fn render_vertical_scroll_indicator_bar(
         x: area.x + area.width.saturating_sub(1),
         y: area.y,
         width: 1,
-        height: scrollbar_height,
+        height,
     };
 
     let arrow_active = Style::default().fg(theme.scrollbar_active);

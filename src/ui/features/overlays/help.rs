@@ -198,6 +198,7 @@ impl HelpOverlay {
                 position: scroll_offset,
                 viewport_size: viewport_height,
                 total_items: total_lines,
+                has_horizontal_scrollbar: false,
             },
             theme,
         );

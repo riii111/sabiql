@@ -109,6 +109,7 @@ impl Explorer {
                 use crate::ui::primitives::atoms::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,
                 };
+                let has_h_scroll = max_name_width > content_width;
                 render_vertical_scroll_indicator_bar(
                     frame,
                     area,
@@ -116,12 +117,12 @@ impl Explorer {
                         position: scroll_offset,
                         viewport_size,
                         total_items,
+                        has_horizontal_scrollbar: has_h_scroll,
                     },
                     theme,
                 );
             }
 
-            // Render horizontal scrollbar
             if max_name_width > content_width {
                 use crate::ui::primitives::atoms::scroll_indicator::{
                     HorizontalScrollParams, render_horizontal_scroll_indicator,

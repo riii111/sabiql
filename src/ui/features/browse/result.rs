@@ -368,6 +368,7 @@ impl ResultPane {
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
             render_vertical_scroll_indicator_bar,
         };
+        let has_h_scroll = total_cols > plan.column_count;
         render_vertical_scroll_indicator_bar(
             frame,
             inner,
@@ -375,6 +376,7 @@ impl ResultPane {
                 position: scroll_offset,
                 viewport_size: scroll_viewport_size,
                 total_items: total_rows,
+                has_horizontal_scrollbar: has_h_scroll,
             },
             theme,
         );

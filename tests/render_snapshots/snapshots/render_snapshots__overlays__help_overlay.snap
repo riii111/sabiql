@@ -21,7 +21,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │           │  Ctrl+E              Export result to CSV           ││           │
 │           │  Ctrl+R              Toggle Read-Only               ││           │
 │           │  Ctrl+O              Open Query History             ││           │
-│           │                                                     ▼│           │
-│           │▸ Navigation                                  row   0%│           │
+│           │                                                     ││           │
+│           │▸ Navigation                                         ▼│           │
 └───────────╰ j/k / ↑↓ to scroll, ? or Esc to close ───────────────╯───────────┘
 j/k / ↑↓:Scroll  ?/Esc:Close
