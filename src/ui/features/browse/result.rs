@@ -345,7 +345,9 @@ impl ResultPane {
             })
             .collect();
 
-        let table = Table::new(rows, widths).header(header);
+        let table = Table::new(rows, widths)
+            .header(header)
+            .style(Style::default().fg(Theme::TEXT_PRIMARY));
 
         frame.render_widget(table, inner);
 

@@ -24,18 +24,19 @@ pub struct Footer;
 
 impl Footer {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState, time_ms: Option<u128>) {
+        let base_style = Style::default().fg(Theme::TEXT_PRIMARY);
         if state.er_preparation.status == ErStatus::Waiting {
             let line = Self::build_er_waiting_line(state, time_ms);
-            frame.render_widget(Paragraph::new(line), area);
+            frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else if let Some(error) = &state.messages.last_error {
             let line = StatusMessage::render_line(error, MessageType::Error);
-            frame.render_widget(Paragraph::new(line), area);
+            frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
             let hints = Self::get_context_hints(state);
             let line =
                 Self::build_hint_line_with_success(&hints, state.messages.last_success.as_deref());
-            frame.render_widget(Paragraph::new(line), area);
+            frame.render_widget(Paragraph::new(line).style(base_style), area);
         }
     }
 

@@ -16,7 +16,7 @@ impl Theme {
     pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Gray;
 
     // Modal title (emphasized)
-    pub const MODAL_TITLE: Color = Color::White;
+    pub const MODAL_TITLE: Color = Color::Rgb(0xcd, 0xd6, 0xf4);
 
     // Modal hint text (de-emphasized)
     pub const MODAL_HINT: Color = Color::DarkGray;
@@ -47,7 +47,7 @@ impl Theme {
     // ============ Text Colors ============
 
     // Semantic text colors
-    pub const TEXT_PRIMARY: Color = Color::White;
+    pub const TEXT_PRIMARY: Color = Color::Rgb(0xcd, 0xd6, 0xf4);
     pub const TEXT_SECONDARY: Color = Color::Gray;
     pub const TEXT_MUTED: Color = Color::DarkGray;
     pub const TEXT_DIM: Color = Color::Rgb(0x77, 0x77, 0x88);

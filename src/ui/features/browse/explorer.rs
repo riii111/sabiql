@@ -79,6 +79,7 @@ impl Explorer {
         };
 
         let list = List::new(items)
+            .style(Style::default().fg(Theme::TEXT_PRIMARY))
             .highlight_style(
                 Style::default()
                     .fg(Theme::TEXT_ACCENT)

@@ -54,7 +54,9 @@ pub fn render_striped_table<'a>(
         })
         .collect();
 
-    let table_widget = Table::new(rows, config.widths).header(header);
+    let table_widget = Table::new(rows, config.widths)
+        .header(header)
+        .style(Style::default().fg(Theme::TEXT_PRIMARY));
     frame.render_widget(table_widget, area);
 
     render_vertical_scroll_indicator_bar(
