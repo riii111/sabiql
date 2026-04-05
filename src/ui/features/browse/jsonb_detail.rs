@@ -85,7 +85,7 @@ impl JsonbDetail {
         );
         crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
 
-        let paragraph = Paragraph::new(lines);
+        let paragraph = Paragraph::new(lines).style(Style::default().fg(Theme::TEXT_PRIMARY));
         frame.render_widget(paragraph, tree_area);
 
         if let Some(bottom) = bottom_area {
@@ -193,7 +193,7 @@ impl JsonbDetail {
             );
         }
 
-        let paragraph = Paragraph::new(lines);
+        let paragraph = Paragraph::new(lines).style(Style::default().fg(Theme::TEXT_PRIMARY));
         frame.render_widget(paragraph, area);
     }
 

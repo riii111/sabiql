@@ -8,12 +8,12 @@ const INDENT: &str = "  ";
 const FOLD_EXPANDED: &str = "\u{25bc} "; // ▼
 const FOLD_COLLAPSED: &str = "\u{25b6} "; // ▶
 
-const KEY_COLOR: ratatui::style::Color = Theme::SECTION_HEADER;
-const STRING_COLOR: ratatui::style::Color = Theme::STATUS_SUCCESS;
-const NUMBER_COLOR: ratatui::style::Color = Theme::TEXT_ACCENT;
-const BOOL_COLOR: ratatui::style::Color = Theme::STATUS_MEDIUM_RISK;
-const NULL_COLOR: ratatui::style::Color = Theme::TEXT_MUTED;
-const BRACKET_COLOR: ratatui::style::Color = Theme::TEXT_SECONDARY;
+const KEY_COLOR: ratatui::style::Color = Theme::JSON_KEY;
+const STRING_COLOR: ratatui::style::Color = Theme::JSON_STRING;
+const NUMBER_COLOR: ratatui::style::Color = Theme::JSON_NUMBER;
+const BOOL_COLOR: ratatui::style::Color = Theme::JSON_BOOL;
+const NULL_COLOR: ratatui::style::Color = Theme::JSON_NULL;
+const BRACKET_COLOR: ratatui::style::Color = Theme::JSON_BRACKET;
 const COUNT_COLOR: ratatui::style::Color = Theme::TEXT_DIM;
 
 fn json_escaped(s: &str) -> String {

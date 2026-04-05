@@ -91,6 +91,14 @@ impl Theme {
     pub const SQL_OPERATOR: Color = Color::Rgb(0x94, 0xe2, 0xd5);
     pub const SQL_TEXT: Color = Color::Rgb(0xc9, 0xce, 0xd8);
 
+    // JSON tree highlighting (muted to match overall theme)
+    pub const JSON_KEY: Color = Color::Rgb(0x7f, 0xb4, 0xca);
+    pub const JSON_STRING: Color = Color::Rgb(0x8a, 0xb8, 0x8a);
+    pub const JSON_NUMBER: Color = Color::Rgb(0xc8, 0x9b, 0x7a);
+    pub const JSON_BOOL: Color = Color::Rgb(0xc8, 0x9b, 0x7a);
+    pub const JSON_NULL: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
+    pub const JSON_BRACKET: Color = Color::Rgb(0xb0, 0xb4, 0xbe);
+
     // Striped table rows
     pub const STRIPED_ROW_BG: Color = Color::Rgb(0x22, 0x22, 0x28);
 
