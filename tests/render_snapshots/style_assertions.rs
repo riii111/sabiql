@@ -284,7 +284,7 @@ fn sql_modal_unterminated_string_keeps_string_highlight() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "'" || (cell.symbol() == "u" && cell.fg == Theme::SQL_STRING)
+                (cell.symbol() == "'" || cell.symbol() == "u") && cell.fg == Theme::SQL_STRING
             })
         });
 

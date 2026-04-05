@@ -61,6 +61,8 @@ fn highlight_sql_spans(text: &str) -> Vec<Vec<Span<'static>>> {
         }
     }
 
+    // Drop the trailing empty line so the line count matches `str::lines()`.
+    // The editor appends a cursor-only line separately when the text ends with '\n'.
     if text.ends_with('\n') {
         lines.pop();
     }
