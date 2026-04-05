@@ -76,7 +76,7 @@ fn render_profile_item(
     let style = if is_active {
         Style::default().fg(Theme::ACTIVE_INDICATOR)
     } else {
-        Style::default()
+        Style::default().fg(Theme::TEXT_SECONDARY)
     };
     ListItem::new(text).style(style)
 }

@@ -2,24 +2,18 @@ use ratatui::style::Color;
 
 use crate::app::policy::write::write_guardrails::RiskLevel;
 
-pub struct Palette;
-
-impl Palette {
-    pub const CATPPUCCIN_MOCHA: Color = Color::Rgb(0x1e, 0x1e, 0x2e);
-}
-
 pub struct Theme;
 
 impl Theme {
     // Modal border
     pub const MODAL_BORDER: Color = Color::DarkGray;
-    pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Gray;
+    pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Rgb(0xb0, 0xb4, 0xbe);
 
     // Modal title (emphasized)
     pub const MODAL_TITLE: Color = Color::Rgb(0xc9, 0xce, 0xd8);
 
     // Modal hint text (de-emphasized)
-    pub const MODAL_HINT: Color = Color::DarkGray;
+    pub const MODAL_HINT: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
 
     // Key chip (for important keys in Help)
     pub const KEY_CHIP_BG: Color = Color::Rgb(0x3a, 0x3a, 0x4a);
@@ -40,7 +34,7 @@ impl Theme {
     // ============ Panel/Border Colors ============
 
     // Panel border states
-    pub const FOCUS_BORDER: Color = Color::Cyan;
+    pub const FOCUS_BORDER: Color = Color::Rgb(0x7f, 0xb4, 0xca);
     pub const UNFOCUS_BORDER: Color = Color::DarkGray;
     pub const HIGHLIGHT_BORDER: Color = Color::Green;
 
@@ -48,8 +42,8 @@ impl Theme {
 
     // Semantic text colors
     pub const TEXT_PRIMARY: Color = Color::Rgb(0xc9, 0xce, 0xd8);
-    pub const TEXT_SECONDARY: Color = Color::Gray;
-    pub const TEXT_MUTED: Color = Color::DarkGray;
+    pub const TEXT_SECONDARY: Color = Color::Rgb(0xb0, 0xb4, 0xbe);
+    pub const TEXT_MUTED: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
     pub const TEXT_DIM: Color = Color::Rgb(0x77, 0x77, 0x88);
     pub const TEXT_ACCENT: Color = Color::Yellow;
 
@@ -105,14 +99,14 @@ impl Theme {
 
     // Inspector tab states
     pub const TAB_ACTIVE: Color = Color::Cyan;
-    pub const TAB_INACTIVE: Color = Color::DarkGray;
+    pub const TAB_INACTIVE: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
 
     // Active/inactive toggle indicators
     pub const ACTIVE_INDICATOR: Color = Color::Green;
-    pub const INACTIVE_INDICATOR: Color = Color::DarkGray;
+    pub const INACTIVE_INDICATOR: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
 
     // Placeholder / empty-value text
-    pub const PLACEHOLDER_TEXT: Color = Color::DarkGray;
+    pub const PLACEHOLDER_TEXT: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
 
     pub fn risk_color(level: RiskLevel) -> Color {
         match level {
