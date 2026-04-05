@@ -21,6 +21,11 @@ pub fn apply_yank_flash_masked(
     mask: &[bool],
     theme: &ThemePalette,
 ) {
+    debug_assert_eq!(
+        lines.len(),
+        mask.len(),
+        "flash mask must align with rendered lines",
+    );
     if !active {
         return;
     }

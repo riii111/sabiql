@@ -8,7 +8,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::query_history::GroupedEntry;
 use crate::domain::query_history::QueryResultStatus;
 use crate::ui::primitives::molecules::render_modal;
-use crate::ui::theme::ThemePalette;
+use crate::ui::theme::{StatusTone, ThemePalette};
 
 const TIMESTAMP_WIDTH: usize = 18;
 const STATUS_WIDTH: usize = 2;
@@ -38,13 +38,17 @@ fn format_short_timestamp(iso: &str) -> String {
 }
 
 fn status_span(status: QueryResultStatus, theme: &ThemePalette) -> Span<'static> {
+    let tone = status_tone(status);
     match status {
-        QueryResultStatus::Success => {
-            Span::styled("\u{2713} ", Style::default().fg(theme.status_success))
-        }
-        QueryResultStatus::Failed => {
-            Span::styled("\u{2717} ", Style::default().fg(theme.status_error))
-        }
+        QueryResultStatus::Success => Span::styled("\u{2713} ", theme.status_style(tone)),
+        QueryResultStatus::Failed => Span::styled("\u{2717} ", theme.status_style(tone)),
+    }
+}
+
+fn status_tone(status: QueryResultStatus) -> StatusTone {
+    match status {
+        QueryResultStatus::Success => StatusTone::Success,
+        QueryResultStatus::Failed => StatusTone::Error,
     }
 }
 
@@ -292,18 +296,13 @@ fn render_preview(
     let mut lines: Vec<Line> = Vec::new();
 
     let mut meta_spans = Vec::new();
+    let status_style = theme.status_style(status_tone(pd.result_status));
     match pd.result_status {
         QueryResultStatus::Success => {
-            meta_spans.push(Span::styled(
-                "\u{2713} Success",
-                Style::default().fg(theme.status_success),
-            ));
+            meta_spans.push(Span::styled("\u{2713} Success", status_style));
         }
         QueryResultStatus::Failed => {
-            meta_spans.push(Span::styled(
-                "\u{2717} Failed",
-                Style::default().fg(theme.status_error),
-            ));
+            meta_spans.push(Span::styled("\u{2717} Failed", status_style));
         }
     }
     if let Some(rows) = pd.affected_rows {

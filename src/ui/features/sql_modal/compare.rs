@@ -389,3 +389,83 @@ pub(super) fn pad_or_truncate(s: &str, width: usize) -> String {
         format!("{s:<width$}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::model::explain_context::SlotSource;
+    use crate::domain::explain_plan::ExplainPlan;
+    use crate::ui::theme::DEFAULT_THEME;
+
+    fn sample_slot(label: SlotSource, plan: &str) -> CompareSlot {
+        CompareSlot {
+            plan: ExplainPlan {
+                raw_text: plan.to_string(),
+                top_node_type: Some("Seq Scan".to_string()),
+                total_cost: Some(10.0),
+                estimated_rows: Some(1),
+                is_analyze: false,
+                execution_time_ms: 250,
+            },
+            query_snippet: "SELECT 1".to_string(),
+            full_query: "SELECT 1".to_string(),
+            source: label,
+        }
+    }
+
+    #[test]
+    fn stacked_compare_flashes_only_plan_content_rows() {
+        let left = sample_slot(
+            SlotSource::AutoPrevious,
+            "Seq Scan on users  (cost=0.00..10.00 rows=1 width=32)\n  Filter: (id > 1)",
+        );
+        let right = sample_slot(
+            SlotSource::AutoLatest,
+            "Index Scan using users_pkey on users  (cost=0.00..5.00 rows=1 width=32)",
+        );
+
+        let mut lines = Vec::new();
+        let mut flash_mask = Vec::new();
+        render_slot_stacked(
+            &mut lines,
+            &mut flash_mask,
+            Some(&left),
+            Some(&right),
+            &DEFAULT_THEME,
+        );
+
+        let rendered: Vec<String> = lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect()
+            })
+            .collect();
+
+        assert_eq!(lines.len(), flash_mask.len());
+        assert_eq!(
+            flash_mask,
+            vec![false, false, true, true, false, false, false, true]
+        );
+        assert!(rendered[0].contains("Previous"));
+        assert!(rendered[1].contains("EXPLAIN"));
+        assert!(rendered[2].contains("Seq Scan on users"));
+        assert!(rendered[3].contains("Filter:"));
+        assert!(rendered[4].is_empty());
+        assert!(rendered[5].contains("Latest"));
+        assert!(rendered[6].contains("EXPLAIN"));
+        assert!(rendered[7].contains("Index Scan using users_pkey"));
+    }
+
+    #[test]
+    fn stacked_compare_empty_slot_never_marks_flashable_rows() {
+        let mut lines = Vec::new();
+        let mut flash_mask = Vec::new();
+        render_slot_stacked(&mut lines, &mut flash_mask, None, None, &DEFAULT_THEME);
+
+        assert_eq!(lines.len(), flash_mask.len());
+        assert!(flash_mask.iter().all(|&flash| !flash));
+    }
+}
