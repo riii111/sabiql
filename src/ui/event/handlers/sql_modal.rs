@@ -8,13 +8,13 @@ fn line_scroll_action(
     combo: KeyCombo,
     target: ScrollTarget,
     plain: bool,
-    ctrl: bool,
+    ctrl_only: bool,
 ) -> Option<Action> {
     let direction = match combo.key {
         Key::Char('j') | Key::Down if plain => Some(ScrollDirection::Down),
-        Key::Char('n') if ctrl => Some(ScrollDirection::Down),
+        Key::Char('n') if ctrl_only => Some(ScrollDirection::Down),
         Key::Char('k') | Key::Up if plain => Some(ScrollDirection::Up),
-        Key::Char('p') if ctrl => Some(ScrollDirection::Up),
+        Key::Char('p') if ctrl_only => Some(ScrollDirection::Up),
         _ => None,
     }?;
 
@@ -45,7 +45,9 @@ pub fn handle_sql_modal_keys(
     ) {
         let ctrl = combo.modifiers.ctrl;
         let alt = combo.modifiers.alt;
+        let shift = combo.modifiers.shift;
         let plain = !ctrl && !alt;
+        let ctrl_only = ctrl && !alt && !shift;
 
         if ctrl && combo.key == Key::Char('e') {
             return Action::ExplainRequest;
@@ -61,7 +63,8 @@ pub fn handle_sql_modal_keys(
 
         // Plan tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Plan {
-            if let Some(action) = line_scroll_action(combo, ScrollTarget::ExplainPlan, plain, ctrl)
+            if let Some(action) =
+                line_scroll_action(combo, ScrollTarget::ExplainPlan, plain, ctrl_only)
             {
                 return action;
             }
@@ -77,7 +80,7 @@ pub fn handle_sql_modal_keys(
         // Compare tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Compare {
             if let Some(action) =
-                line_scroll_action(combo, ScrollTarget::ExplainCompare, plain, ctrl)
+                line_scroll_action(combo, ScrollTarget::ExplainCompare, plain, ctrl_only)
             {
                 return action;
             }
@@ -303,6 +306,17 @@ mod tests {
 
     fn combo_alt(k: Key) -> KeyCombo {
         KeyCombo::alt(k)
+    }
+
+    fn combo_ctrl_alt(k: Key) -> KeyCombo {
+        KeyCombo {
+            key: k,
+            modifiers: crate::app::update::input::keybindings::Modifiers {
+                ctrl: true,
+                alt: true,
+                shift: false,
+            },
+        }
     }
 
     #[derive(Debug, PartialEq)]
@@ -634,6 +648,21 @@ mod tests {
         );
 
         assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(SqlModalTab::Plan, Key::Char('n'))]
+    #[case(SqlModalTab::Plan, Key::Char('p'))]
+    #[case(SqlModalTab::Compare, Key::Char('n'))]
+    #[case(SqlModalTab::Compare, Key::Char('p'))]
+    fn ctrl_alt_aliases_do_not_scroll_in_read_only_tabs(
+        #[case] tab: SqlModalTab,
+        #[case] code: Key,
+    ) {
+        let result =
+            handle_sql_modal_keys(combo_ctrl_alt(code), false, &SqlModalStatus::Normal, tab);
+
+        assert_action(result, Expected::None);
     }
 
     #[test]
