@@ -54,16 +54,12 @@ pub fn render(
             crate::app::model::shared::flash_timer::FlashId::SqlModal,
             now,
         );
-    if flash_active {
-        let flash_style = Style::default()
-            .fg(theme.yank_flash_fg)
-            .bg(theme.yank_flash_bg);
-        for (line, &is_target) in visible.iter_mut().zip(visible_mask.iter()) {
-            if is_target {
-                *line = std::mem::take(line).style(flash_style);
-            }
-        }
-    }
+    crate::ui::primitives::atoms::apply_yank_flash_masked(
+        &mut visible,
+        flash_active,
+        &visible_mask,
+        theme,
+    );
 
     frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), area);
     area.height

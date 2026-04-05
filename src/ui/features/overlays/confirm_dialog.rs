@@ -7,6 +7,7 @@ use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
+use crate::ui::primitives::atoms::highlight_sql;
 use crate::ui::primitives::molecules::{render_modal, render_modal_with_border_color};
 use crate::ui::primitives::utils::text_utils::wrapped_line_count;
 use crate::ui::theme::ThemePalette;
@@ -313,41 +314,9 @@ impl ConfirmDialog {
     }
 
     fn highlight_sql_line(line: &str, theme: &ThemePalette) -> Line<'static> {
-        const SQL_KEYWORDS: &[&str] = &[
-            "UPDATE", "DELETE", "FROM", "SET", "WHERE", "AND", "OR", "NULL",
-        ];
-
-        let trimmed = line.trim_start();
-        let indent = &line[..line.len() - trimmed.len()];
-
-        let mut spans: Vec<Span<'static>> = Vec::new();
-        if !indent.is_empty() {
-            spans.push(Span::raw(indent.to_string()));
-        }
-
-        let keyword_hit = SQL_KEYWORDS.iter().find(|&&kw| {
-            trimmed.starts_with(kw)
-                && trimmed[kw.len()..].starts_with(|c: char| c.is_whitespace() || c == ';')
-        });
-
-        if let Some(&kw) = keyword_hit {
-            spans.push(Span::styled(
-                kw.to_string(),
-                Style::default()
-                    .fg(theme.sql_keyword)
-                    .add_modifier(Modifier::BOLD),
-            ));
-            spans.push(Span::styled(
-                trimmed[kw.len()..].to_string(),
-                Style::default().fg(theme.sql_text),
-            ));
-        } else {
-            spans.push(Span::styled(
-                trimmed.to_string(),
-                Style::default().fg(theme.sql_text),
-            ));
-        }
-
-        Line::from(spans)
+        highlight_sql(line, theme)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| Line::from(""))
     }
 }

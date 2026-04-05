@@ -259,7 +259,6 @@ mod tests {
         assert_eq!(palette_for(ThemeId::Default), &DEFAULT_THEME);
     }
 
-    #[cfg(any(test, feature = "test-support"))]
     #[test]
     fn palette_for_test_contrast_returns_test_theme() {
         assert_eq!(palette_for(ThemeId::TestContrast), &TEST_CONTRAST_THEME);

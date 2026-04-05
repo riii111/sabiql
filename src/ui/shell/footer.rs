@@ -16,6 +16,7 @@ use crate::app::update::input::keybindings::{
     QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
     SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
 };
+use crate::ui::primitives::atoms::key_text;
 use crate::ui::primitives::atoms::spinner_char;
 use crate::ui::primitives::atoms::status_message::{MessageType, StatusMessage};
 use crate::ui::theme::ThemePalette;
@@ -342,10 +343,7 @@ impl Footer {
             if i > 0 {
                 spans.push(Span::raw("  "));
             }
-            spans.push(Span::styled(
-                (*key).to_string(),
-                Style::default().fg(theme.text_accent),
-            ));
+            spans.push(key_text(key, theme));
             spans.push(Span::raw(format!(":{desc}")));
         }
 

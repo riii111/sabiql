@@ -48,6 +48,8 @@ impl MainLayout {
         )
     }
 
+    // `render_with_theme` is public only so the test harness can inject a palette.
+    // `#[doc(hidden)]` keeps it out of public docs; it is not part of the stable API.
     #[doc(hidden)]
     pub fn render_with_theme(
         frame: &mut Frame,

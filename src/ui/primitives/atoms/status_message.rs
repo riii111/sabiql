@@ -1,4 +1,3 @@
-use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use crate::ui::theme::{StatusTone, ThemePalette};
@@ -21,9 +20,6 @@ impl StatusMessage {
             MessageType::Success => ("", theme.status_style(StatusTone::Success)),
         };
 
-        Line::from(vec![Span::styled(
-            format!("{prefix}{message}"),
-            Style::default().patch(style),
-        )])
+        Line::from(vec![Span::styled(format!("{prefix}{message}"), style)])
     }
 }

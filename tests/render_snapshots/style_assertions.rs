@@ -428,3 +428,59 @@ fn state_theme_id_drives_render_palette_resolution() {
         "Expected render() to resolve palette from state.theme_id"
     );
 }
+
+#[test]
+fn sql_completion_popup_uses_injected_theme_styles() {
+    let (mut state, now) = connected_state();
+    let mut terminal = create_test_terminal();
+    let theme = ThemePalette {
+        modal_border: Color::Rgb(0xdd, 0x44, 0x11),
+        completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
+        ..DEFAULT_THEME
+    };
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.editor.set_content("SELECT ".to_string());
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.completion.visible = true;
+    state.sql_modal.completion.selected_index = 0;
+    state.sql_modal.completion.candidates = vec![
+        CompletionCandidate {
+            text: "users".into(),
+            kind: CompletionKind::Table,
+            score: 100,
+        },
+        CompletionCandidate {
+            text: "posts".into(),
+            kind: CompletionKind::Table,
+            score: 90,
+        },
+    ];
+
+    let buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
+
+    let has_completion_border = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                (cell.symbol() == "╭" || cell.symbol() == "╮" || cell.symbol() == "│")
+                    && cell.fg == theme.modal_border
+            })
+        });
+    let has_selected_completion = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.bg == theme.completion_selected_bg)
+        });
+
+    assert!(
+        has_completion_border,
+        "Expected completion popup border to use injected modal border color"
+    );
+    assert!(
+        has_selected_completion,
+        "Expected completion popup selection to use injected selected background"
+    );
+}

@@ -90,7 +90,7 @@ fn token_style(kind: &TokenKind, theme: &ThemePalette) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::theme::DEFAULT_THEME;
+    use crate::ui::theme::{DEFAULT_THEME, ThemePalette};
 
     fn line_text(line: &Line<'_>) -> String {
         line.spans
@@ -188,5 +188,26 @@ mod tests {
             .find(|span| span.content.as_ref() == "0")
             .expect("number token should be present");
         assert_eq!(number_span.style.bg, Some(DEFAULT_THEME.cursor_fg));
+    }
+
+    #[test]
+    fn highlight_sql_honors_injected_theme_colors() {
+        let custom_theme = ThemePalette {
+            sql_keyword: ratatui::style::Color::Rgb(0x12, 0x34, 0x56),
+            cursor_fg: ratatui::style::Color::Rgb(0xab, 0xcd, 0xef),
+            ..DEFAULT_THEME
+        };
+
+        let highlighted = highlight_sql("SELECT", &custom_theme);
+        let highlighted_with_cursor = highlight_sql_with_cursor("SELECT", 0, 0, &custom_theme);
+
+        assert_eq!(
+            highlighted[0].spans[0].style.fg,
+            Some(custom_theme.sql_keyword)
+        );
+        assert_eq!(
+            highlighted_with_cursor[0].spans[0].style.bg,
+            Some(custom_theme.cursor_fg)
+        );
     }
 }

@@ -67,7 +67,7 @@ pub(super) fn render_editor(
         } else {
             vec![
                 Line::from(vec![
-                    Span::styled("\u{258F}", Style::default().fg(theme.cursor_fg)),
+                    Span::styled("\u{258F}", cursor_style(theme)),
                     Span::styled(placeholder, Style::default().fg(theme.placeholder_text)),
                 ])
                 .style(current_line_style),

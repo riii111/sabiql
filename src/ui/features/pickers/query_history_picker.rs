@@ -134,7 +134,7 @@ impl QueryHistoryPicker {
         } else {
             Line::from(vec![
                 Span::styled("  > ", Style::default().fg(theme.modal_title)),
-                Span::raw(filter_content),
+                Span::styled(filter_content, Style::default().fg(theme.text_primary)),
                 Span::styled(
                     "\u{2588}",
                     Style::default()
