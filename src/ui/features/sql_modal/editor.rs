@@ -9,7 +9,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
-use crate::ui::primitives::atoms::text_cursor_spans;
+use crate::ui::primitives::atoms::{highlight_sql, highlight_sql_with_cursor};
 use crate::ui::theme::Theme;
 
 pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
@@ -68,26 +68,26 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState, now
             ]
         }
     } else if is_normal {
-        content
-            .lines()
+        highlight_sql(content)
+            .into_iter()
             .enumerate()
             .map(|(row, line)| {
                 if row == cursor_row {
-                    Line::from(line.to_string()).style(current_line_style)
+                    line.style(current_line_style)
                 } else {
-                    Line::from(line.to_string())
+                    line
                 }
             })
             .collect()
     } else {
-        content
-            .lines()
+        highlight_sql_with_cursor(content, cursor_row, cursor_col)
+            .into_iter()
             .enumerate()
             .map(|(row, line)| {
                 if row == cursor_row {
-                    line_with_cursor(line, cursor_col).style(current_line_style)
+                    line.style(current_line_style)
                 } else {
-                    Line::from(line.to_string())
+                    line
                 }
             })
             .collect()
@@ -96,8 +96,10 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState, now
     if !is_normal && content.ends_with('\n') && cursor_row == content.lines().count() {
         lines.push(
             Line::from(vec![Span::styled(
-                "\u{258F}",
-                Style::default().fg(Theme::CURSOR_FG),
+                " ",
+                Style::default()
+                    .bg(Theme::CURSOR_FG)
+                    .fg(Theme::SELECTION_BG),
             )])
             .style(current_line_style),
         );
@@ -117,8 +119,4 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState, now
             .style(Style::default()),
         area,
     );
-}
-
-fn line_with_cursor(line: &str, cursor_col: usize) -> Line<'static> {
-    Line::from(text_cursor_spans(line, cursor_col, 0, usize::MAX))
 }
