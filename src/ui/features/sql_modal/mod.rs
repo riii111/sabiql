@@ -170,7 +170,7 @@ impl SqlModal {
             .borders(Borders::ALL)
             .border_set(border::ROUNDED)
             .border_style(Style::default().fg(Theme::MODAL_BORDER))
-            .style(Style::default());
+            .style(Style::default().fg(Theme::TEXT_PRIMARY));
         let inner = block.inner(area);
         frame.render_widget(block, area);
 

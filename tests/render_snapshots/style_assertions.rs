@@ -137,7 +137,7 @@ fn result_highlight_respects_injected_now() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             let cell = buf_before.cell((x, y)).unwrap();
-            cell.fg == Color::Green && cell.symbol() == "─"
+            cell.fg == Theme::HIGHLIGHT_BORDER && cell.symbol() == "─"
         });
     assert!(
         has_green_border,
@@ -152,7 +152,7 @@ fn result_highlight_respects_injected_now() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             let cell = buf_after.cell((x, y)).unwrap();
-            cell.fg == Color::Green && cell.symbol() == "─"
+            cell.fg == Theme::HIGHLIGHT_BORDER && cell.symbol() == "─"
         });
     assert!(
         !has_green_border_after,
@@ -161,7 +161,7 @@ fn result_highlight_respects_injected_now() {
 }
 
 #[test]
-fn modal_border_uses_ansi_darkgray() {
+fn modal_border_uses_theme_color() {
     let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
@@ -181,8 +181,8 @@ fn modal_border_uses_ansi_darkgray() {
     );
     assert_eq!(
         cell.fg,
-        Color::DarkGray,
-        "Expected DarkGray fg on modal border at ({}, {}), got {:?}",
+        Theme::MODAL_BORDER,
+        "Expected MODAL_BORDER fg on modal border at ({}, {}), got {:?}",
         mx,
         my,
         cell.fg

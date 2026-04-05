@@ -6,7 +6,7 @@ pub struct Theme;
 
 impl Theme {
     // Modal border
-    pub const MODAL_BORDER: Color = Color::DarkGray;
+    pub const MODAL_BORDER: Color = Color::Rgb(0x45, 0x47, 0x55);
     pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Rgb(0xb0, 0xb4, 0xbe);
 
     // Modal title (emphasized)
@@ -35,8 +35,8 @@ impl Theme {
 
     // Panel border states
     pub const FOCUS_BORDER: Color = Color::Rgb(0x7f, 0xb4, 0xca);
-    pub const UNFOCUS_BORDER: Color = Color::DarkGray;
-    pub const HIGHLIGHT_BORDER: Color = Color::Green;
+    pub const UNFOCUS_BORDER: Color = Color::Rgb(0x45, 0x47, 0x55);
+    pub const HIGHLIGHT_BORDER: Color = Color::Rgb(0x9d, 0xd0, 0xe6);
 
     // ============ Text Colors ============
 
@@ -61,11 +61,11 @@ impl Theme {
     pub const CURSOR_FG: Color = Color::White;
 
     // Section headers
-    pub const SECTION_HEADER: Color = Color::Cyan;
+    pub const SECTION_HEADER: Color = Color::Rgb(0x7f, 0xb4, 0xca);
 
     // Scrollbar
-    pub const SCROLLBAR_ACTIVE: Color = Color::Yellow;
-    pub const SCROLLBAR_INACTIVE: Color = Color::DarkGray;
+    pub const SCROLLBAR_ACTIVE: Color = Color::Rgb(0x7f, 0xb4, 0xca);
+    pub const SCROLLBAR_INACTIVE: Color = Color::Rgb(0x45, 0x47, 0x55);
 
     // Result pane selection
     pub const RESULT_ROW_ACTIVE_BG: Color = Color::Rgb(0x2e, 0x2e, 0x44);
@@ -91,14 +91,14 @@ impl Theme {
     pub const SQL_OPERATOR: Color = Color::Rgb(0x94, 0xe2, 0xd5);
     pub const SQL_TEXT: Color = Color::Rgb(0xc9, 0xce, 0xd8);
 
-    // Striped table rows — ANSI 256 (#303030) for terminal-agnostic rendering
-    pub const STRIPED_ROW_BG: Color = Color::Indexed(235);
+    // Striped table rows
+    pub const STRIPED_ROW_BG: Color = Color::Rgb(0x22, 0x22, 0x28);
 
     // Text selection / cursor background in editors
     pub const SELECTION_BG: Color = Color::Black;
 
     // Inspector tab states
-    pub const TAB_ACTIVE: Color = Color::Cyan;
+    pub const TAB_ACTIVE: Color = Color::Rgb(0x7f, 0xb4, 0xca);
     pub const TAB_INACTIVE: Color = Color::Rgb(0x5b, 0x5f, 0x6e);
 
     // Active/inactive toggle indicators

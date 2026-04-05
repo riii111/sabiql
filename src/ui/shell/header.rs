@@ -1,11 +1,12 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::domain::MetadataState;
+use crate::ui::theme::Theme;
 
 pub struct Header;
 
@@ -14,14 +15,17 @@ impl Header {
         let db_name = state.session.database_name().unwrap_or("-");
         let table = state.session.selected_table_key().unwrap_or("-");
 
+        let sep_style = Style::default().fg(Theme::TEXT_MUTED);
+        let item_style = Style::default().fg(Theme::TEXT_SECONDARY);
+
         let (status_text, status_color) = if state.session.dsn.is_none() {
-            ("no dsn", Color::Red)
+            ("no dsn", Theme::STATUS_ERROR)
         } else {
             match &state.session.metadata_state() {
-                MetadataState::Loaded => ("connected", Color::Green),
-                MetadataState::Loading => ("loading...", Color::Yellow),
-                MetadataState::Error(_) => ("error", Color::Red),
-                MetadataState::NotLoaded => ("not loaded", Color::Gray),
+                MetadataState::Loaded => ("connected", Theme::STATUS_SUCCESS),
+                MetadataState::Loading => ("loading...", Theme::STATUS_WARNING),
+                MetadataState::Error(_) => ("error", Theme::STATUS_ERROR),
+                MetadataState::NotLoaded => ("not loaded", Theme::TEXT_MUTED),
             }
         };
 
@@ -32,24 +36,21 @@ impl Header {
             .unwrap_or("-");
 
         let mut line = Line::from(vec![
-            Span::styled(
-                &state.runtime.project_name,
-                Style::default().fg(Color::Gray),
-            ),
-            Span::styled(" | ", Style::default().fg(Color::DarkGray)),
-            Span::styled(db_name, Style::default().fg(Color::Gray)),
-            Span::styled(" | ", Style::default().fg(Color::DarkGray)),
-            Span::styled(table, Style::default().fg(Color::Yellow)),
-            Span::styled(" | ", Style::default().fg(Color::DarkGray)),
+            Span::styled(&state.runtime.project_name, item_style),
+            Span::styled(" | ", sep_style),
+            Span::styled(db_name, item_style),
+            Span::styled(" | ", sep_style),
+            Span::styled(table, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled(" | ", sep_style),
             Span::styled(status_text, Style::default().fg(status_color)),
-            Span::styled(" | ", Style::default().fg(Color::DarkGray)),
-            Span::styled(connection_name, Style::default().fg(Color::Gray)),
+            Span::styled(" | ", sep_style),
+            Span::styled(connection_name, item_style),
         ]);
         if state.session.read_only {
-            line.push_span(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+            line.push_span(Span::styled(" | ", sep_style));
             line.push_span(Span::styled(
                 "READ-ONLY",
-                Style::default().fg(Color::Magenta),
+                Style::default().fg(Theme::STATUS_WARNING),
             ));
         }
 
