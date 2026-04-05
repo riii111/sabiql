@@ -296,7 +296,7 @@ pub fn handle_sql_modal_keys(
 mod tests {
     use super::*;
     use crate::app::update::action::CursorMove;
-    use crate::app::update::input::keybindings::{Key, KeyCombo};
+    use crate::app::update::input::keybindings::{Key, KeyCombo, Modifiers};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -314,7 +314,7 @@ mod tests {
     fn combo_ctrl_alt(k: Key) -> KeyCombo {
         KeyCombo {
             key: k,
-            modifiers: crate::app::update::input::keybindings::Modifiers {
+            modifiers: Modifiers {
                 ctrl: true,
                 alt: true,
                 shift: false,
@@ -325,7 +325,7 @@ mod tests {
     fn combo_ctrl_shift(k: Key) -> KeyCombo {
         KeyCombo {
             key: k,
-            modifiers: crate::app::update::input::keybindings::Modifiers {
+            modifiers: Modifiers {
                 ctrl: true,
                 alt: false,
                 shift: true,

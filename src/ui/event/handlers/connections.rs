@@ -89,7 +89,7 @@ mod tests {
     use crate::app::update::action::{
         ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
     };
-    use crate::app::update::input::keybindings::{Key, KeyCombo};
+    use crate::app::update::input::keybindings::{Key, KeyCombo, Modifiers};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -107,7 +107,7 @@ mod tests {
     fn combo_ctrl_alt(k: Key) -> KeyCombo {
         KeyCombo {
             key: k,
-            modifiers: crate::app::update::input::keybindings::Modifiers {
+            modifiers: Modifiers {
                 ctrl: true,
                 alt: true,
                 shift: false,
@@ -118,7 +118,7 @@ mod tests {
     fn combo_ctrl_shift(k: Key) -> KeyCombo {
         KeyCombo {
             key: k,
-            modifiers: crate::app::update::input::keybindings::Modifiers {
+            modifiers: Modifiers {
                 ctrl: true,
                 alt: false,
                 shift: true,
@@ -227,7 +227,6 @@ mod tests {
 
         #[test]
         fn altgr_char_is_allowed() {
-            use crate::app::update::input::keybindings::Modifiers;
             let state = setup_state();
             let altgr = KeyCombo {
                 key: Key::Char('@'),

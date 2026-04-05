@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │TCP/IP connections?                                   │           │
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   y  Co│           │
-│           ╰ Scroll: ↑/↓/j/k  Esc to close ───────────────────────╯           │
+│           ╰ Esc to close ────────────────────────────────────────╯           │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
