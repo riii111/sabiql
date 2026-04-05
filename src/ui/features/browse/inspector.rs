@@ -470,7 +470,8 @@ impl Inspector {
     fn render_rls(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
         match &table.rls {
             None => {
-                let msg = Paragraph::new("RLS not enabled");
+                let msg = Paragraph::new("RLS not enabled")
+                    .style(Style::default().fg(Theme::PLACEHOLDER_TEXT));
                 frame.render_widget(msg, area);
             }
             Some(rls) => {

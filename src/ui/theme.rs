@@ -51,7 +51,7 @@ impl Theme {
 
     // Status indicators
     pub const STATUS_SUCCESS: Color = Color::Rgb(0x97, 0xc9, 0xc3);
-    pub const STATUS_ERROR: Color = Color::Red;
+    pub const STATUS_ERROR: Color = Color::Rgb(0xc4, 0x74, 0x6e);
     pub const STATUS_WARNING: Color = Color::Rgb(0xc4, 0xb2, 0x8a);
     pub const STATUS_MEDIUM_RISK: Color = Color::Rgb(0xff, 0x99, 0x00);
 
