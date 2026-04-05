@@ -6,6 +6,7 @@ use super::focused_pane::FocusedPane;
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
+use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
 use crate::app::update::input::keybindings::help_content_line_count;
 use unicode_width::UnicodeWidthStr;
@@ -134,6 +135,7 @@ impl ResultSelection {
 
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
+    theme_id: ThemeId,
     pub focused_pane: FocusedPane,
     pub focus_mode: FocusMode,
     pub explorer_selected: usize,
@@ -182,6 +184,14 @@ impl UiState {
 
     pub fn is_focus_mode(&self) -> bool {
         self.focus_mode.is_active()
+    }
+
+    pub fn theme_id(&self) -> ThemeId {
+        self.theme_id
+    }
+
+    pub fn set_theme(&mut self, theme_id: ThemeId) {
+        self.theme_id = theme_id;
     }
 
     pub fn result_visible_rows(&self) -> usize {
