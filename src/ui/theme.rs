@@ -157,7 +157,7 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     cursor_bg: Color::White,
     cursor_text_fg: Color::Black,
     section_header: Color::Rgb(0x97, 0xc9, 0xc3),
-    scrollbar_active: Color::Rgb(0x6a, 0x9e, 0x98),
+    scrollbar_active: Color::Rgb(0x63, 0x8e, 0x88),
     scrollbar_inactive: Color::Rgb(0x45, 0x47, 0x55),
     result_row_active_bg: Color::Rgb(0x2e, 0x2e, 0x44),
     result_cell_active_bg: Color::Rgb(0x3a, 0x3a, 0x5a),
