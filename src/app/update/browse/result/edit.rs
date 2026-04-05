@@ -97,7 +97,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
         }
         Action::ResultCancelCellEdit => {
-            state.result_interaction.clear_write_preview();
+            if !state.result_interaction.cell_edit().has_pending_draft() {
+                state.result_interaction.discard_cell_edit();
+            } else {
+                state.result_interaction.clear_write_preview();
+            }
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
@@ -258,6 +262,44 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("Table metadata does not match current preview target")
             );
+        }
+        #[test]
+        fn cancel_without_changes_clears_cell_edit() {
+            let mut state = preview_state_with_selection();
+            state
+                .session
+                .set_table_detail_raw(Some(minimal_users_table()));
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "alice".to_string());
+            state.modal.set_mode(InputMode::CellEdit);
+
+            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(!state.result_interaction.cell_edit().is_active());
+        }
+
+        #[test]
+        fn cancel_with_changes_preserves_draft() {
+            let mut state = preview_state_with_selection();
+            state
+                .session
+                .set_table_detail_raw(Some(minimal_users_table()));
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "alice".to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content("bob".to_string());
+            state.modal.set_mode(InputMode::CellEdit);
+
+            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.result_interaction.cell_edit().is_active());
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "bob");
         }
     }
 
