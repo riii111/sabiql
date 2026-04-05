@@ -208,10 +208,49 @@ mod tests {
         fn picker_keys(#[case] key: Key, #[case] expected: Action) {
             let result = handle_query_history_picker_keys(combo(key));
 
-            assert_eq!(
-                std::mem::discriminant(&result),
-                std::mem::discriminant(&expected)
-            );
+            match expected {
+                Action::QueryHistoryConfirmSelection => {
+                    assert!(matches!(result, Action::QueryHistoryConfirmSelection));
+                }
+                Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Previous,
+                } => {
+                    assert!(matches!(
+                        result,
+                        Action::ListSelect {
+                            target: ListTarget::QueryHistory,
+                            motion: ListMotion::Previous,
+                        }
+                    ));
+                }
+                Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Next,
+                } => {
+                    assert!(matches!(
+                        result,
+                        Action::ListSelect {
+                            target: ListTarget::QueryHistory,
+                            motion: ListMotion::Next,
+                        }
+                    ));
+                }
+                Action::TextBackspace {
+                    target: InputTarget::QueryHistoryFilter,
+                } => {
+                    assert!(matches!(
+                        result,
+                        Action::TextBackspace {
+                            target: InputTarget::QueryHistoryFilter,
+                        }
+                    ));
+                }
+                Action::CloseQueryHistoryPicker => {
+                    assert!(matches!(result, Action::CloseQueryHistoryPicker));
+                }
+                _ => unreachable!("unexpected test case"),
+            }
         }
 
         #[test]

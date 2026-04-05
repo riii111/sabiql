@@ -47,6 +47,7 @@ pub fn handle_sql_modal_keys(
         let alt = combo.modifiers.alt;
         let shift = combo.modifiers.shift;
         let plain = !ctrl && !alt;
+        // Treat only pure Ctrl as the alias modifier so Ctrl+Alt (AltGr) does not trigger nav.
         let ctrl_only = ctrl && !alt && !shift;
 
         if ctrl && combo.key == Key::Char('e') {
