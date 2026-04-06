@@ -9,7 +9,9 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
-use crate::ui::primitives::atoms::{CursorKind, cursor_style_for, highlight_sql_with_cursor_kind};
+use crate::ui::primitives::atoms::{
+    CursorKind, cursor_style_for, highlight_sql_spans, insert_cursor_span_with_kind,
+};
 use crate::ui::theme::ThemePalette;
 
 pub(super) fn render_editor(
@@ -73,14 +75,20 @@ pub(super) fn render_editor(
             .style(current_line_style),
         ]
     } else {
-        highlight_sql_with_cursor_kind(content, cursor_row, cursor_col, cursor_kind, theme)
+        let mut lines = highlight_sql_spans(content, theme);
+        if let Some(line) = lines.get_mut(cursor_row) {
+            let spans = std::mem::take(line);
+            *line = insert_cursor_span_with_kind(spans, cursor_col, cursor_kind, theme);
+        }
+
+        lines
             .into_iter()
             .enumerate()
             .map(|(row, line)| {
                 if row == cursor_row {
-                    line.style(current_line_style)
+                    Line::from(line).style(current_line_style)
                 } else {
-                    line
+                    Line::from(line)
                 }
             })
             .collect()

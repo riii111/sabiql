@@ -2,7 +2,6 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::app::policy::sql::lexer::{SqlLexer, TokenKind};
-use crate::ui::primitives::atoms::{CursorKind, insert_cursor_span_with_kind};
 use crate::ui::theme::ThemePalette;
 
 pub fn highlight_sql(text: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
@@ -12,32 +11,7 @@ pub fn highlight_sql(text: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
         .collect()
 }
 
-pub fn highlight_sql_with_cursor(
-    text: &str,
-    cursor_row: usize,
-    cursor_col: usize,
-    theme: &ThemePalette,
-) -> Vec<Line<'static>> {
-    highlight_sql_with_cursor_kind(text, cursor_row, cursor_col, CursorKind::Block, theme)
-}
-
-pub fn highlight_sql_with_cursor_kind(
-    text: &str,
-    cursor_row: usize,
-    cursor_col: usize,
-    kind: CursorKind,
-    theme: &ThemePalette,
-) -> Vec<Line<'static>> {
-    let mut lines = highlight_sql_spans(text, theme);
-    if let Some(line) = lines.get_mut(cursor_row) {
-        let spans = std::mem::take(line);
-        *line = insert_cursor_span_with_kind(spans, cursor_col, kind, theme);
-    }
-
-    lines.into_iter().map(Line::from).collect()
-}
-
-fn highlight_sql_spans(text: &str, theme: &ThemePalette) -> Vec<Vec<Span<'static>>> {
+pub fn highlight_sql_spans(text: &str, theme: &ThemePalette) -> Vec<Vec<Span<'static>>> {
     if text.is_empty() {
         return vec![];
     }
@@ -100,6 +74,7 @@ fn token_style(kind: &TokenKind, theme: &ThemePalette) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::primitives::atoms::{CursorKind, insert_cursor_span_with_kind};
     use crate::ui::theme::{DEFAULT_THEME, ThemePalette};
 
     fn line_text(line: &Line<'_>) -> String {
@@ -107,6 +82,20 @@ mod tests {
             .iter()
             .map(|span| span.content.as_ref())
             .collect::<String>()
+    }
+
+    fn line_spans_with_cursor(
+        text: &str,
+        cursor_row: usize,
+        cursor_col: usize,
+        kind: CursorKind,
+    ) -> Vec<Span<'static>> {
+        let mut lines = highlight_sql_spans(text, &DEFAULT_THEME);
+        let line = lines
+            .get_mut(cursor_row)
+            .expect("cursor test should target an existing line");
+        let spans = std::mem::take(line);
+        insert_cursor_span_with_kind(spans, cursor_col, kind, &DEFAULT_THEME)
     }
 
     #[test]
@@ -144,8 +133,7 @@ mod tests {
 
     #[test]
     fn highlight_sql_with_cursor_preserves_neighbor_styles() {
-        let lines = highlight_sql_with_cursor("SELECT 'x'", 0, 8, &DEFAULT_THEME);
-        let spans = &lines[0].spans;
+        let spans = line_spans_with_cursor("SELECT 'x'", 0, 8, CursorKind::Block);
 
         assert_eq!(spans[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
         assert_eq!(spans[2].style.fg, Some(DEFAULT_THEME.sql_string));
@@ -156,16 +144,17 @@ mod tests {
 
     #[test]
     fn highlight_sql_with_insert_cursor_inserts_bar_before_token() {
-        let lines =
-            highlight_sql_with_cursor_kind("SELECT 'x'", 0, 7, CursorKind::Insert, &DEFAULT_THEME);
-        let spans = &lines[0].spans;
+        let spans = line_spans_with_cursor("SELECT 'x'", 0, 7, CursorKind::Insert);
         let bar = spans
             .iter()
             .find(|span| span.content.as_ref() == CursorKind::Insert.glyph())
             .expect("insert cursor bar should be present");
 
         assert_eq!(
-            line_text(&lines[0]),
+            spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>(),
             format!("SELECT {}'x'", CursorKind::Insert.glyph())
         );
         assert_eq!(bar.style.fg, Some(DEFAULT_THEME.cursor_fg));
@@ -173,19 +162,31 @@ mod tests {
 
     #[test]
     fn highlight_sql_with_cursor_on_empty_middle_line_adds_cursor_cell() {
-        let lines = highlight_sql_with_cursor("SELECT 1\n\nFROM users", 1, 0, &DEFAULT_THEME);
+        let lines = highlight_sql("SELECT 1\n\nFROM users", &DEFAULT_THEME);
+        let spans = line_spans_with_cursor("SELECT 1\n\nFROM users", 1, 0, CursorKind::Block);
 
         assert_eq!(lines.len(), 3);
-        assert_eq!(line_text(&lines[1]), " ");
-        assert_eq!(lines[1].spans[0].style.bg, Some(DEFAULT_THEME.cursor_bg));
+        assert_eq!(
+            spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>(),
+            " "
+        );
+        assert_eq!(spans[0].style.bg, Some(DEFAULT_THEME.cursor_bg));
     }
 
     #[test]
     fn highlight_sql_with_cursor_at_line_end_appends_cursor_cell() {
-        let lines = highlight_sql_with_cursor("SELECT", 0, 6, &DEFAULT_THEME);
-        let spans = &lines[0].spans;
+        let spans = line_spans_with_cursor("SELECT", 0, 6, CursorKind::Block);
 
-        assert_eq!(line_text(&lines[0]), "SELECT ");
+        assert_eq!(
+            spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>(),
+            "SELECT "
+        );
         assert_eq!(
             spans.last().unwrap().style.bg,
             Some(DEFAULT_THEME.cursor_bg)
@@ -195,10 +196,15 @@ mod tests {
 
     #[test]
     fn highlight_sql_with_cursor_marks_double_quote_at_token_start() {
-        let lines = highlight_sql_with_cursor(r#"SET "email" = 0"#, 0, 4, &DEFAULT_THEME);
-        let spans = &lines[0].spans;
+        let spans = line_spans_with_cursor(r#"SET "email" = 0"#, 0, 4, CursorKind::Block);
 
-        assert_eq!(line_text(&lines[0]), r#"SET "email" = 0"#);
+        assert_eq!(
+            spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>(),
+            r#"SET "email" = 0"#
+        );
         assert_eq!(spans[2].content.as_ref(), "\"");
         assert_eq!(spans[2].style.bg, Some(DEFAULT_THEME.cursor_bg));
         assert_eq!(spans[3].content.as_ref(), "email\"");
@@ -206,10 +212,15 @@ mod tests {
 
     #[test]
     fn highlight_sql_with_cursor_marks_number_at_token_start() {
-        let lines = highlight_sql_with_cursor(r#"SET "email" = 0"#, 0, 14, &DEFAULT_THEME);
-        let spans = &lines[0].spans;
+        let spans = line_spans_with_cursor(r#"SET "email" = 0"#, 0, 14, CursorKind::Block);
 
-        assert_eq!(line_text(&lines[0]), r#"SET "email" = 0"#);
+        assert_eq!(
+            spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>(),
+            r#"SET "email" = 0"#
+        );
         let number_span = spans
             .iter()
             .find(|span| span.content.as_ref() == "0")
@@ -221,20 +232,14 @@ mod tests {
     fn highlight_sql_honors_injected_theme_colors() {
         let custom_theme = ThemePalette {
             sql_keyword: ratatui::style::Color::Rgb(0x12, 0x34, 0x56),
-            cursor_bg: ratatui::style::Color::Rgb(0xab, 0xcd, 0xef),
             ..DEFAULT_THEME
         };
 
         let highlighted = highlight_sql("SELECT", &custom_theme);
-        let highlighted_with_cursor = highlight_sql_with_cursor("SELECT", 0, 0, &custom_theme);
 
         assert_eq!(
             highlighted[0].spans[0].style.fg,
             Some(custom_theme.sql_keyword)
-        );
-        assert_eq!(
-            highlighted_with_cursor[0].spans[0].style.bg,
-            Some(custom_theme.cursor_bg)
         );
     }
 
@@ -245,11 +250,17 @@ mod tests {
             ..DEFAULT_THEME
         };
 
+        let mut lines = highlight_sql_spans("SELECT", &custom_theme);
+        let spans = std::mem::take(
+            lines
+                .get_mut(0)
+                .expect("insert cursor theme test should target an existing line"),
+        );
         let highlighted_with_cursor =
-            highlight_sql_with_cursor_kind("SELECT", 0, 0, CursorKind::Insert, &custom_theme);
+            insert_cursor_span_with_kind(spans, 0, CursorKind::Insert, &custom_theme);
 
         assert_eq!(
-            highlighted_with_cursor[0].spans[0].style.fg,
+            highlighted_with_cursor[0].style.fg,
             Some(custom_theme.cursor_fg)
         );
     }
