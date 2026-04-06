@@ -2,7 +2,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::app::policy::sql::lexer::{SqlLexer, TokenKind};
-use crate::ui::primitives::atoms::insert_cursor_span;
+use crate::ui::primitives::atoms::{CursorKind, insert_cursor_span_with_kind};
 use crate::ui::theme::ThemePalette;
 
 pub fn highlight_sql(text: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
@@ -18,10 +18,20 @@ pub fn highlight_sql_with_cursor(
     cursor_col: usize,
     theme: &ThemePalette,
 ) -> Vec<Line<'static>> {
+    highlight_sql_with_cursor_kind(text, cursor_row, cursor_col, CursorKind::Block, theme)
+}
+
+pub fn highlight_sql_with_cursor_kind(
+    text: &str,
+    cursor_row: usize,
+    cursor_col: usize,
+    kind: CursorKind,
+    theme: &ThemePalette,
+) -> Vec<Line<'static>> {
     let mut lines = highlight_sql_spans(text, theme);
     if let Some(line) = lines.get_mut(cursor_row) {
         let spans = std::mem::take(line);
-        *line = insert_cursor_span(spans, cursor_col, theme);
+        *line = insert_cursor_span_with_kind(spans, cursor_col, kind, theme);
     }
 
     lines.into_iter().map(Line::from).collect()
@@ -145,6 +155,20 @@ mod tests {
     }
 
     #[test]
+    fn highlight_sql_with_insert_cursor_inserts_bar_before_token() {
+        let lines =
+            highlight_sql_with_cursor_kind("SELECT 'x'", 0, 7, CursorKind::Insert, &DEFAULT_THEME);
+        let spans = &lines[0].spans;
+        let bar = spans
+            .iter()
+            .find(|span| span.content.as_ref() == "\u{258f}")
+            .expect("insert cursor bar should be present");
+
+        assert_eq!(line_text(&lines[0]), "SELECT \u{258f}'x'");
+        assert_eq!(bar.style.fg, Some(DEFAULT_THEME.cursor_fg));
+    }
+
+    #[test]
     fn highlight_sql_with_cursor_on_empty_middle_line_adds_cursor_cell() {
         let lines = highlight_sql_with_cursor("SELECT 1\n\nFROM users", 1, 0, &DEFAULT_THEME);
 
@@ -208,6 +232,27 @@ mod tests {
         assert_eq!(
             highlighted_with_cursor[0].spans[0].style.bg,
             Some(custom_theme.cursor_bg)
+        );
+    }
+
+    #[test]
+    fn highlight_sql_with_insert_cursor_honors_injected_cursor_fg() {
+        let custom_theme = ThemePalette {
+            cursor_fg: ratatui::style::Color::Rgb(0xfe, 0xdc, 0xba),
+            ..DEFAULT_THEME
+        };
+
+        let highlighted_with_cursor = highlight_sql_with_cursor_kind(
+            "SELECT",
+            0,
+            0,
+            CursorKind::Insert,
+            &custom_theme,
+        );
+
+        assert_eq!(
+            highlighted_with_cursor[0].spans[0].style.fg,
+            Some(custom_theme.cursor_fg)
         );
     }
 }

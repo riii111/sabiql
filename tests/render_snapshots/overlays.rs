@@ -105,6 +105,20 @@ fn sql_modal_cursor_at_head() {
 }
 
 #[test]
+fn sql_modal_normal_cursor_at_head() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.editor = MultiLineInputState::new("SELECT 1", 0);
+    state.sql_modal.set_status(SqlModalStatus::Normal);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_cursor_at_middle() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -119,6 +133,20 @@ fn sql_modal_cursor_at_middle() {
 }
 
 #[test]
+fn sql_modal_normal_cursor_at_middle() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.editor = MultiLineInputState::new("SELECT 1", 4);
+    state.sql_modal.set_status(SqlModalStatus::Normal);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_cursor_at_tail() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -126,6 +154,20 @@ fn sql_modal_cursor_at_tail() {
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor.set_content("SELECT 1".to_string());
     state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_normal_cursor_at_tail() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.editor.set_content("SELECT 1".to_string());
+    state.sql_modal.set_status(SqlModalStatus::Normal);
 
     let output = render_to_string(&mut terminal, &mut state);
 

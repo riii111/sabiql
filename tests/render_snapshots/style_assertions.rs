@@ -276,6 +276,41 @@ fn sql_modal_string_comment_and_operator_use_syntax_colors() {
 }
 
 #[test]
+fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.editor.set_content("SELECT 1".to_string());
+    state.sql_modal.set_status(SqlModalStatus::Normal);
+
+    let normal_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_block_cursor = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            normal_buffer.cell((x, y)).is_some_and(|cell| {
+                cell.bg == DEFAULT_THEME.cursor_bg && cell.fg == DEFAULT_THEME.cursor_text_fg
+            })
+        });
+
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let insert_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_insert_bar = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            insert_buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "\u{258f}"
+                    && cell.fg == DEFAULT_THEME.cursor_fg
+                    && cell.bg != DEFAULT_THEME.cursor_bg
+            })
+        });
+
+    assert!(has_block_cursor, "Expected block cursor styling in SQL normal mode");
+    assert!(has_insert_bar, "Expected thin insert cursor glyph in SQL insert mode");
+}
+
+#[test]
 fn sql_modal_unterminated_string_keeps_string_highlight() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

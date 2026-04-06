@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │  Press Enter to edit...                                      │       │
+│       │   Press Enter to edit...                                     │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │

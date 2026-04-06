@@ -125,8 +125,16 @@ impl ThemePalette {
         Style::default().fg(color)
     }
 
-    pub fn cursor_style(&self) -> Style {
+    pub fn block_cursor_style(&self) -> Style {
         Style::default().bg(self.cursor_bg).fg(self.cursor_text_fg)
+    }
+
+    pub fn insert_cursor_style(&self) -> Style {
+        Style::default().fg(self.cursor_fg)
+    }
+
+    pub fn cursor_style(&self) -> Style {
+        self.block_cursor_style()
     }
 }
 

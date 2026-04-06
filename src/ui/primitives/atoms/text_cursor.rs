@@ -5,8 +5,21 @@ use ratatui::text::Span;
 
 use crate::ui::theme::ThemePalette;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorKind {
+    Block,
+    Insert,
+}
+
 pub fn cursor_style(theme: &ThemePalette) -> Style {
-    theme.cursor_style()
+    cursor_style_for(CursorKind::Block, theme)
+}
+
+pub fn cursor_style_for(kind: CursorKind, theme: &ThemePalette) -> Style {
+    match kind {
+        CursorKind::Block => theme.block_cursor_style(),
+        CursorKind::Insert => theme.insert_cursor_style(),
+    }
 }
 
 pub fn text_cursor_spans(
@@ -14,6 +27,24 @@ pub fn text_cursor_spans(
     cursor: usize,
     viewport_offset: usize,
     visible_width: usize,
+    theme: &ThemePalette,
+) -> Vec<Span<'static>> {
+    text_cursor_spans_with_kind(
+        content,
+        cursor,
+        viewport_offset,
+        visible_width,
+        CursorKind::Block,
+        theme,
+    )
+}
+
+pub fn text_cursor_spans_with_kind(
+    content: &str,
+    cursor: usize,
+    viewport_offset: usize,
+    visible_width: usize,
+    kind: CursorKind,
     theme: &ThemePalette,
 ) -> Vec<Span<'static>> {
     if visible_width == 0 {
@@ -31,31 +62,61 @@ pub fn text_cursor_spans(
     let visible: Vec<char> = chars[vp..view_end].to_vec();
     let cursor_in_view = cursor.checked_sub(vp);
 
-    // Block cursor: thin bar (▏) occupies a full cell and shifts text right, so we use bg/fg inversion instead.
-    let cursor_style = cursor_style(theme);
+    match kind {
+        CursorKind::Block => {
+            let cursor_style = cursor_style_for(kind, theme);
 
-    if cursor >= total {
-        let text: String = visible.iter().collect();
-        vec![Span::raw(text), Span::styled(" ", cursor_style)]
-    } else if let Some(ci) = cursor_in_view.filter(|&i| i < visible.len()) {
-        let before: String = visible[..ci].iter().collect();
-        let cursor_char: String = visible[ci].to_string();
-        let after: String = visible[ci + 1..].iter().collect();
-        vec![
-            Span::raw(before),
-            Span::styled(cursor_char, cursor_style),
-            Span::raw(after),
-        ]
-    } else {
-        // Cursor outside visible window (fallback): just show text
-        let text: String = visible.iter().collect();
-        vec![Span::raw(text)]
+            if cursor >= total {
+                let text: String = visible.iter().collect();
+                vec![Span::raw(text), Span::styled(" ", cursor_style)]
+            } else if let Some(ci) = cursor_in_view.filter(|&i| i < visible.len()) {
+                let before: String = visible[..ci].iter().collect();
+                let cursor_char: String = visible[ci].to_string();
+                let after: String = visible[ci + 1..].iter().collect();
+                vec![
+                    Span::raw(before),
+                    Span::styled(cursor_char, cursor_style),
+                    Span::raw(after),
+                ]
+            } else {
+                let text: String = visible.iter().collect();
+                vec![Span::raw(text)]
+            }
+        }
+        CursorKind::Insert => {
+            let cursor_style = cursor_style_for(kind, theme);
+
+            if cursor >= total {
+                let text: String = visible.iter().collect();
+                vec![Span::raw(text), Span::styled("\u{258f}", cursor_style)]
+            } else if let Some(ci) = cursor_in_view.filter(|&i| i <= visible.len()) {
+                let before: String = visible[..ci].iter().collect();
+                let after: String = visible[ci..].iter().collect();
+                vec![
+                    Span::raw(before),
+                    Span::styled("\u{258f}", cursor_style),
+                    Span::raw(after),
+                ]
+            } else {
+                let text: String = visible.iter().collect();
+                vec![Span::raw(text)]
+            }
+        }
     }
 }
 
 pub fn insert_cursor_span(
     spans: Vec<Span<'static>>,
     cursor_col: usize,
+    theme: &ThemePalette,
+) -> Vec<Span<'static>> {
+    insert_cursor_span_with_kind(spans, cursor_col, CursorKind::Block, theme)
+}
+
+pub fn insert_cursor_span_with_kind(
+    spans: Vec<Span<'static>>,
+    cursor_col: usize,
+    kind: CursorKind,
     theme: &ThemePalette,
 ) -> Vec<Span<'static>> {
     let mut output = Vec::new();
@@ -75,7 +136,19 @@ pub fn insert_cursor_span(
         if remaining == len {
             output.push(span);
             if iter.peek().is_none() {
-                output.push(Span::styled(" ", cursor_style(theme)));
+                let cursor = match kind {
+                    CursorKind::Block => Span::styled(" ", cursor_style_for(kind, theme)),
+                    CursorKind::Insert => {
+                        Span::styled("\u{258f}", cursor_style_for(kind, theme))
+                    }
+                };
+                output.push(cursor);
+                return output;
+            }
+
+            if matches!(kind, CursorKind::Insert) {
+                output.push(Span::styled("\u{258f}", cursor_style_for(kind, theme)));
+                output.extend(iter);
                 return output;
             }
 
@@ -83,19 +156,41 @@ pub fn insert_cursor_span(
             continue;
         }
 
-        let (before, current, after) = split_at_cursor(content, remaining);
-        if !before.is_empty() {
-            output.push(Span::styled(before, span.style));
-        }
-        output.push(Span::styled(current, span.style.patch(cursor_style(theme))));
-        if !after.is_empty() {
-            output.push(Span::styled(after, span.style));
+        match kind {
+            CursorKind::Block => {
+                let (before, current, after) = split_at_cursor(content, remaining);
+                if !before.is_empty() {
+                    output.push(Span::styled(before, span.style));
+                }
+                output.push(Span::styled(
+                    current,
+                    span.style.patch(cursor_style_for(kind, theme)),
+                ));
+                if !after.is_empty() {
+                    output.push(Span::styled(after, span.style));
+                }
+            }
+            CursorKind::Insert => {
+                let (before, current, after) = split_at_cursor(content, remaining);
+                if !before.is_empty() {
+                    output.push(Span::styled(before, span.style));
+                }
+                output.push(Span::styled("\u{258f}", cursor_style_for(kind, theme)));
+                let remainder = format!("{current}{after}");
+                if !remainder.is_empty() {
+                    output.push(Span::styled(remainder, span.style));
+                }
+            }
         }
         output.extend(iter);
         return output;
     }
 
-    output.push(Span::styled(" ", cursor_style(theme)));
+    let cursor = match kind {
+        CursorKind::Block => Span::styled(" ", cursor_style_for(kind, theme)),
+        CursorKind::Insert => Span::styled("\u{258f}", cursor_style_for(kind, theme)),
+    };
+    output.push(cursor);
     output
 }
 
@@ -231,6 +326,37 @@ mod tests {
     }
 
     #[test]
+    fn insert_mode_cursor_uses_bar_glyph() {
+        let spans = text_cursor_spans_with_kind(
+            "abc",
+            1,
+            0,
+            usize::MAX,
+            CursorKind::Insert,
+            &DEFAULT_THEME,
+        );
+
+        let texts = spans_to_strings(&spans);
+        assert_eq!(texts, vec!["a", "\u{258f}", "bc"]);
+        assert_eq!(spans[1].style, cursor_style_for(CursorKind::Insert, &DEFAULT_THEME));
+    }
+
+    #[test]
+    fn insert_mode_cursor_at_end_appends_bar_glyph() {
+        let spans = text_cursor_spans_with_kind(
+            "abc",
+            3,
+            0,
+            usize::MAX,
+            CursorKind::Insert,
+            &DEFAULT_THEME,
+        );
+
+        let texts = spans_to_strings(&spans);
+        assert_eq!(texts, vec!["abc", "\u{258f}"]);
+    }
+
+    #[test]
     fn insert_cursor_span_preserves_existing_styles_across_boundary() {
         let spans = vec![
             Span::styled(
@@ -314,5 +440,20 @@ mod tests {
         let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
         assert_eq!(texts, vec!["ab", "cd", " "]);
         assert_eq!(inserted[2].style, cursor_style(&DEFAULT_THEME));
+    }
+
+    #[test]
+    fn insert_cursor_span_with_insert_kind_keeps_text_after_bar() {
+        let spans = vec![Span::styled(
+            "abcd".to_string(),
+            Style::default().fg(DEFAULT_THEME.sql_keyword),
+        )];
+
+        let inserted = insert_cursor_span_with_kind(spans, 2, CursorKind::Insert, &DEFAULT_THEME);
+
+        let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
+        assert_eq!(texts, vec!["ab", "\u{258f}", "cd"]);
+        assert_eq!(inserted[1].style, cursor_style_for(CursorKind::Insert, &DEFAULT_THEME));
+        assert_eq!(inserted[2].style.fg, Some(DEFAULT_THEME.sql_keyword));
     }
 }

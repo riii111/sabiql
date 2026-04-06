@@ -8,7 +8,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │  public.posts    ││(select a table)                                          │
 │  public.comments ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │ SELECT                                                       │       │
+│       │ SELECT ▏                                                     │       │
 │       │        ┌───────────────────────────────────────────┐         │       │
 │       │        │ posts       table                         │         │       │
 │       │        │ comments    table                         │         │       │
