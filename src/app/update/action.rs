@@ -107,7 +107,7 @@ impl ScrollAmount {
 
         Some(match self {
             Self::HalfPage => (visible / 2).max(1),
-            Self::FullPage => visible.max(1),
+            Self::FullPage => visible,
             _ => return None,
         })
     }
@@ -579,5 +579,47 @@ mod tests {
     })]
     fn non_scroll_action_returns_false(#[case] action: Action) {
         assert!(!action.is_scroll());
+    }
+
+    mod shared_scroll_helpers {
+        use super::*;
+
+        #[rstest]
+        #[case(ScrollDirection::Down, 3, 10, 4, 7)]
+        #[case(ScrollDirection::Down, 3, 5, 10, 5)]
+        #[case(ScrollDirection::Down, 3, 0, 10, 0)]
+        #[case(ScrollDirection::Up, 8, 10, 3, 5)]
+        #[case(ScrollDirection::Up, 3, 10, 5, 0)]
+        #[case(ScrollDirection::Up, 3, 0, 5, 0)]
+        #[case(ScrollDirection::Left, 4, 10, 6, 4)]
+        #[case(ScrollDirection::Right, 4, 10, 6, 4)]
+        fn clamp_vertical_offset_handles_boundaries(
+            #[case] direction: ScrollDirection,
+            #[case] current: usize,
+            #[case] max: usize,
+            #[case] delta: usize,
+            #[case] expected: usize,
+        ) {
+            assert_eq!(
+                direction.clamp_vertical_offset(current, max, delta),
+                expected
+            );
+        }
+
+        #[rstest]
+        #[case(ScrollAmount::HalfPage, 0, None)]
+        #[case(ScrollAmount::HalfPage, 1, Some(1))]
+        #[case(ScrollAmount::HalfPage, 17, Some(8))]
+        #[case(ScrollAmount::FullPage, 0, None)]
+        #[case(ScrollAmount::FullPage, 1, Some(1))]
+        #[case(ScrollAmount::FullPage, 17, Some(17))]
+        #[case(ScrollAmount::Line, 17, None)]
+        fn page_delta_respects_visible_rows(
+            #[case] amount: ScrollAmount,
+            #[case] visible: usize,
+            #[case] expected: Option<usize>,
+        ) {
+            assert_eq!(amount.page_delta(visible), expected);
+        }
     }
 }

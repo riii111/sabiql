@@ -202,5 +202,64 @@ mod tests {
             assert!(effects.is_some());
             assert_eq!(state.ui.inspector_scroll_offset, 0);
         }
+
+        #[test]
+        fn inspector_half_page_scroll_advances_by_half_visible_rows() {
+            let mut state = state_with_table_detail(20);
+            state.ui.inspector_scroll_offset = 1;
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::HalfPage,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.inspector_scroll_offset, 3);
+        }
+
+        #[test]
+        fn inspector_full_page_scroll_clamps_to_max() {
+            let mut state = state_with_table_detail(20);
+            state.ui.inspector_scroll_offset = 12;
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.inspector_scroll_offset, 15);
+        }
+
+        #[test]
+        fn inspector_page_scroll_stays_zero_when_content_fits_viewport() {
+            let mut state = state_with_table_detail(4);
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
+        }
     }
 }

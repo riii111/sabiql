@@ -21,7 +21,9 @@ pub const RESULT_PANE_OVERHEAD: u16 = 2 + RESULT_INNER_OVERHEAD;
 pub const EXPLORER_PANEL_BORDER_WIDTH: u16 = 2;
 pub const EXPLORER_HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
 pub const EXPLORER_SCROLLBAR_RESERVED_WIDTH: u16 = 1;
+// Help modal height as a percent of the available terminal height.
 pub const HELP_MODAL_HEIGHT_PERCENT: u16 = 80;
+// Top and bottom modal border rows subtracted from the inner visible area.
 pub const MODAL_VERTICAL_BORDER_OVERHEAD: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -428,6 +428,7 @@ mod tests {
         #[test]
         fn help_half_page_scroll_uses_half_of_visible_rows() {
             let mut state = create_test_state();
+            state.ui.terminal_height = 24;
             state.ui.help_scroll_offset = 1;
             let now = Instant::now();
 
@@ -449,6 +450,7 @@ mod tests {
         #[test]
         fn help_full_page_scroll_uses_visible_rows() {
             let mut state = create_test_state();
+            state.ui.terminal_height = 24;
             state.ui.help_scroll_offset = 2;
             let now = Instant::now();
 
