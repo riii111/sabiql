@@ -1,6 +1,5 @@
 ---
 source: tests/render_snapshots/result_pane.rs
-assertion_line: 233
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                       
@@ -9,7 +8,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │  public.posts    ││Owner:   postgres                                         │
 │  publi╭ JSONB Edit ── settings (jsonb) ──────────────────────────────╮       │
 │       │{                                                             │       │
-│       │  "count": 5,                                                 │       │
+│       │ ▏ "count": 5,                                                │       │
 │       │  "nested": {                                                 │       │
 │       │    "enabled": true,                                          │       │
 │       │    "roles": [                                                │       │
@@ -22,7 +21,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │✓ Valid JSON                                                  │       │
-│       ╰ Esc:Back (applies valid changes) ────────────────────────────╯       │
+│       ╰ Esc:Normal ──────────────────────────────────────────────────╯       │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Esc:Back
+Esc:Normal  ↑↓←→:Move  Home/End:Line

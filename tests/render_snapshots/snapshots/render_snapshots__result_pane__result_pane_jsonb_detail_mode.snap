@@ -7,21 +7,21 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
 │  public.posts    ││Owner:   postgres                                         │
 │  publi╭ JSONB Detail ── settings─────────────────────────────────────╮       │
-│       │▼ { [3 keys]                                                  │       │
-│       │  "count": 5                                                  │       │
-│       │  ▼ "nested": { [2 keys]                                      │       │
-│       │    "enabled": true                                           │       │
-│       │    ▼ "roles": [ [2 items]                                    │       │
-│       │      "admin"                                                 │       │
+│       │{                                                             │       │
+│       │  "count": 5,                                                 │       │
+│       │  "nested": {                                                 │       │
+│       │    "enabled": true,                                          │       │
+│       │    "roles": [                                                │       │
+│       │      "admin",                                                │       │
 │       │      "writer"                                                │───────┘
 │       │    ]                                                         │───────┐
-│       │  }                                                           │       │
+│       │  },                                                          │       │
 │       │  "theme": "dark"                                             │ount...│
 │       │}                                                             │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       ╰ y:Copy  i:Edit  /:Search  h/l:Fold  Esc:Close ───────────────╯       │
+│       │✓ Valid JSON                                                  │       │
+│       ╰ y:Copy  Enter/i:Insert  Esc:Close ───────────────────────────╯       │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-y:Copy  i:Edit  /:Search  h/l:Fold  Esc:Close
+y:Copy  Enter/i:Insert  hjkl/↑↓←→:Move  Home/End:Line  Esc:Close

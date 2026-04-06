@@ -9,7 +9,67 @@ pub fn handle_jsonb_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
         return handle_search_input(combo);
     }
 
-    keymap::resolve(&combo, JSONB_DETAIL_KEYS).unwrap_or(Action::None)
+    if let Some(action) = keymap::resolve(&combo, JSONB_DETAIL_KEYS) {
+        return action;
+    }
+
+    let ctrl = combo.modifiers.ctrl;
+    let alt = combo.modifiers.alt;
+    let shift = combo.modifiers.shift;
+    let plain = !ctrl && !alt;
+    let ctrl_only = ctrl && !alt && !shift;
+
+    match combo.key {
+        Key::Char('h') if plain => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Left,
+        },
+        Key::Char('l') if plain => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Right,
+        },
+        Key::Char('j') if plain || ctrl_only => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Down,
+        },
+        Key::Char('k') if plain || ctrl_only => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Up,
+        },
+        Key::Char('n') if ctrl_only => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Down,
+        },
+        Key::Char('p') if ctrl_only => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Up,
+        },
+        Key::Left => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Left,
+        },
+        Key::Right => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Right,
+        },
+        Key::Up => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Up,
+        },
+        Key::Down => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Down,
+        },
+        Key::Home => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Home,
+        },
+        Key::End => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::End,
+        },
+        _ => Action::None,
+    }
 }
 
 fn handle_search_input(combo: KeyCombo) -> Action {
@@ -120,17 +180,49 @@ mod tests {
         use super::*;
 
         #[test]
-        fn ctrl_n_moves_cursor_down_in_viewing_mode() {
+        fn ctrl_n_moves_cursor_down_in_normal_mode() {
             let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('n')), false);
 
-            assert!(matches!(result, Action::JsonbCursorDown));
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::Down,
+                }
+            ));
         }
 
         #[test]
-        fn ctrl_p_moves_cursor_up_in_viewing_mode() {
+        fn ctrl_p_moves_cursor_up_in_normal_mode() {
             let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('p')), false);
 
-            assert!(matches!(result, Action::JsonbCursorUp));
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::Up,
+                }
+            ));
+        }
+
+        #[test]
+        fn enter_enters_insert_mode() {
+            let result = handle_jsonb_detail_keys(combo(Key::Enter), false);
+
+            assert!(matches!(result, Action::JsonbEnterEdit));
+        }
+
+        #[test]
+        fn h_moves_cursor_left_in_normal_mode() {
+            let result = handle_jsonb_detail_keys(combo(Key::Char('h')), false);
+
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::Left,
+                }
+            ));
         }
     }
 

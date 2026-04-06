@@ -285,16 +285,18 @@ impl Footer {
                 } else {
                     vec![
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::YANK].as_hint(),
-                        JSONB_DETAIL_KEYS[idx::jsonb_detail::EDIT].as_hint(),
-                        JSONB_DETAIL_KEYS[idx::jsonb_detail::SEARCH].as_hint(),
-                        JSONB_DETAIL_KEYS[idx::jsonb_detail::FOLD].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::INSERT].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::MOVE].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::HOME_END].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::CLOSE].as_hint(),
                     ]
                 }
             }
-            InputMode::JsonbEdit => {
-                vec![JSONB_EDIT_KEYS[idx::jsonb_edit::BACK].as_hint()]
-            }
+            InputMode::JsonbEdit => vec![
+                JSONB_EDIT_KEYS[idx::jsonb_edit::ESC_NORMAL].as_hint(),
+                JSONB_EDIT_KEYS[idx::jsonb_edit::MOVE].as_hint(),
+                JSONB_EDIT_KEYS[idx::jsonb_edit::HOME_END].as_hint(),
+            ],
             InputMode::ConnectionSelector => {
                 let r = CONNECTION_SELECTOR_ROWS;
                 use idx::connection_selector as cs;

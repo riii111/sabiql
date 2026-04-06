@@ -181,7 +181,6 @@ fn result_pane_cell_edit_cursor_at_tail() {
     state
         .result_interaction
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
-    // cursor at end of content (tail)
     let len = state.result_interaction.cell_edit().input.content().len();
     state
         .result_interaction
@@ -238,6 +237,24 @@ fn result_pane_jsonb_edit_mode() {
         now,
     );
     assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+    reduce_result(
+        &mut state,
+        &Action::TextMoveCursor {
+            target: sabiql::app::update::action::InputTarget::JsonbEdit,
+            direction: sabiql::app::update::action::CursorMove::Down,
+        },
+        &AppServices::stub(),
+        now,
+    );
+    reduce_result(
+        &mut state,
+        &Action::TextMoveCursor {
+            target: sabiql::app::update::action::InputTarget::JsonbEdit,
+            direction: sabiql::app::update::action::CursorMove::Right,
+        },
+        &AppServices::stub(),
+        now,
+    );
     reduce_result(
         &mut state,
         &Action::JsonbEnterEdit,

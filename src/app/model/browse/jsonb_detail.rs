@@ -1,8 +1,5 @@
 use crate::app::model::shared::multi_line_input::MultiLineInputState;
 use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
-use crate::app::policy::json::visible_line_indices;
-
-use super::json_tree::JsonTree;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JsonbDetailMode {
@@ -28,10 +25,7 @@ pub struct JsonbDetailState {
     original_json: String,
     pretty_original: String,
     mode: JsonbDetailMode,
-    tree: JsonTree,
-    visible_indices: Vec<usize>,
     scroll_offset: usize,
-    selected_line: usize,
     editor: MultiLineInputState,
     validation_error: Option<String>,
     search: JsonbSearchState,
@@ -39,14 +33,7 @@ pub struct JsonbDetailState {
 }
 
 impl JsonbDetailState {
-    pub fn open(
-        row: usize,
-        col: usize,
-        column_name: String,
-        original_json: String,
-        tree: JsonTree,
-    ) -> Self {
-        let visible_indices = visible_line_indices(&tree);
+    pub fn open(row: usize, col: usize, column_name: String, original_json: String) -> Self {
         let pretty_original = serde_json::from_str::<serde_json::Value>(&original_json)
             .ok()
             .and_then(|v| serde_json::to_string_pretty(&v).ok())
@@ -56,13 +43,10 @@ impl JsonbDetailState {
             col,
             column_name,
             original_json,
+            editor: MultiLineInputState::new(pretty_original.clone(), 0),
             pretty_original,
             mode: JsonbDetailMode::Viewing,
-            tree,
-            visible_indices,
             scroll_offset: 0,
-            selected_line: 0,
-            editor: MultiLineInputState::default(),
             validation_error: None,
             search: JsonbSearchState::default(),
             active: true,
@@ -101,73 +85,8 @@ impl JsonbDetailState {
         &self.pretty_original
     }
 
-    pub fn tree(&self) -> &JsonTree {
-        &self.tree
-    }
-
-    pub fn visible_indices(&self) -> &[usize] {
-        &self.visible_indices
-    }
-
-    pub fn visible_count(&self) -> usize {
-        self.visible_indices.len()
-    }
-
-    fn rebuild_visible_indices(&mut self) {
-        self.visible_indices = visible_line_indices(&self.tree);
-    }
-
-    pub fn toggle_fold(&mut self, visible_line_idx: usize) {
-        if let Some(&real_idx) = self.visible_indices.get(visible_line_idx) {
-            self.tree.toggle_fold(real_idx);
-            self.rebuild_visible_indices();
-        }
-    }
-
-    pub fn fold_all(&mut self) {
-        self.tree.fold_all();
-        self.rebuild_visible_indices();
-        let vc = self.visible_count();
-        self.clamp_cursor(vc);
-        self.clamp_scroll(vc);
-    }
-
-    pub fn unfold_all(&mut self) {
-        self.tree.unfold_all();
-        self.rebuild_visible_indices();
-    }
-
-    pub fn scroll_offset(&self) -> usize {
-        self.scroll_offset
-    }
-
     pub fn set_scroll_offset(&mut self, scroll_offset: usize) {
         self.scroll_offset = scroll_offset;
-    }
-
-    pub fn adjusted_scroll(&self, viewport_height: usize) -> usize {
-        let visible_count = self.visible_indices.len();
-        let selected_line = self.selected_line.min(visible_count.saturating_sub(1));
-        let scroll_offset = self.scroll_offset.min(visible_count.saturating_sub(1));
-
-        if viewport_height == 0 || visible_count == 0 {
-            return scroll_offset;
-        }
-
-        let max_scroll = visible_count.saturating_sub(viewport_height);
-        let candidate = if selected_line < scroll_offset {
-            selected_line
-        } else if selected_line >= scroll_offset + viewport_height {
-            selected_line - viewport_height + 1
-        } else {
-            scroll_offset
-        };
-
-        candidate.min(max_scroll)
-    }
-
-    pub fn selected_line(&self) -> usize {
-        self.selected_line
     }
 
     pub fn editor(&self) -> &MultiLineInputState {
@@ -198,55 +117,6 @@ impl JsonbDetailState {
         self.mode = mode;
     }
 
-    pub fn set_selected_line(&mut self, line: usize) {
-        self.selected_line = line;
-    }
-
-    pub fn cursor_up(&mut self, visible_count: usize) {
-        if visible_count == 0 {
-            return;
-        }
-        self.selected_line = self.selected_line.saturating_sub(1);
-    }
-
-    pub fn cursor_down(&mut self, visible_count: usize) {
-        if visible_count == 0 {
-            return;
-        }
-        let max = visible_count.saturating_sub(1);
-        if self.selected_line < max {
-            self.selected_line += 1;
-        }
-    }
-
-    pub fn cursor_to_top(&mut self) {
-        self.selected_line = 0;
-        self.scroll_offset = 0;
-    }
-
-    pub fn cursor_to_end(&mut self, visible_count: usize) {
-        if visible_count == 0 {
-            return;
-        }
-        self.selected_line = visible_count.saturating_sub(1);
-    }
-
-    pub fn clamp_cursor(&mut self, visible_count: usize) {
-        if visible_count == 0 {
-            self.selected_line = 0;
-        } else if self.selected_line >= visible_count {
-            self.selected_line = visible_count - 1;
-        }
-    }
-
-    pub fn clamp_scroll(&mut self, visible_count: usize) {
-        if visible_count == 0 {
-            self.scroll_offset = 0;
-        } else if self.scroll_offset >= visible_count {
-            self.scroll_offset = visible_count.saturating_sub(1);
-        }
-    }
-
     pub fn enter_search(&mut self) {
         self.mode = JsonbDetailMode::Searching;
         self.search.active = true;
@@ -260,9 +130,7 @@ impl JsonbDetailState {
         self.mode = JsonbDetailMode::Viewing;
     }
 
-    pub fn enter_edit(&mut self, pretty_json: String, target_line: usize) {
-        let cursor = char_offset_of_line(&pretty_json, target_line);
-        self.editor = MultiLineInputState::new(pretty_json, cursor);
+    pub fn enter_edit(&mut self) {
         self.validation_error = None;
         self.mode = JsonbDetailMode::Editing;
     }
@@ -271,16 +139,8 @@ impl JsonbDetailState {
         self.mode = JsonbDetailMode::Viewing;
     }
 
-    pub fn replace_tree(&mut self, tree: JsonTree) {
-        self.tree = tree;
-        self.rebuild_visible_indices();
-        self.selected_line = 0;
-        self.scroll_offset = 0;
-    }
-
     pub fn current_json_for_yank(&self) -> String {
         if self.has_pending_changes() {
-            // Return compact JSON from editor content
             serde_json::from_str::<serde_json::Value>(self.editor.content())
                 .ok()
                 .and_then(|v| serde_json::to_string(&v).ok())
@@ -315,88 +175,24 @@ impl JsonbDetailState {
     }
 }
 
-fn char_offset_of_line(s: &str, target_line: usize) -> usize {
-    let mut line = 0;
-    for (i, ch) in s.chars().enumerate() {
-        if line == target_line {
-            return i;
-        }
-        if ch == '\n' {
-            line += 1;
-        }
-    }
-    s.chars().count()
-}
-
 #[cfg(test)]
 mod tests {
     use super::JsonbDetailState;
-    use crate::app::model::browse::json_tree::{JsonTree, LineType, TreeLine, TreeValue};
+    use crate::app::model::shared::text_input::TextInputLike;
 
-    fn state_with_lines(lines: usize) -> JsonbDetailState {
-        let mut state = JsonbDetailState::open(
+    #[test]
+    fn open_initializes_editor_with_pretty_json() {
+        let state = JsonbDetailState::open(
             0,
             0,
-            "col".to_string(),
-            "[]".to_string(),
-            JsonTree::new(
-                (0..lines)
-                    .map(|i| TreeLine {
-                        depth: 0,
-                        key: Some(format!("k{i}")),
-                        value: TreeValue::String(format!("v{i}")),
-                        collapsed: false,
-                        line_type: LineType::KeyValue,
-                    })
-                    .collect(),
-            ),
+            "settings".to_string(),
+            r#"{"theme":"dark","count":5}"#.to_string(),
         );
-        state.set_scroll_offset(0);
-        state
-    }
 
-    #[test]
-    fn adjusted_scroll_keeps_offset_when_viewport_height_is_zero() {
-        let mut state = state_with_lines(10);
-        state.set_selected_line(4);
-        state.set_scroll_offset(3);
-
-        assert_eq!(state.adjusted_scroll(0), 3);
-    }
-
-    #[test]
-    fn adjusted_scroll_moves_up_when_selection_is_above_scroll() {
-        let mut state = state_with_lines(10);
-        state.set_selected_line(2);
-        state.set_scroll_offset(5);
-
-        assert_eq!(state.adjusted_scroll(4), 2);
-    }
-
-    #[test]
-    fn adjusted_scroll_moves_down_when_selection_is_below_viewport() {
-        let mut state = state_with_lines(10);
-        state.set_selected_line(8);
-        state.set_scroll_offset(3);
-
-        assert_eq!(state.adjusted_scroll(4), 5);
-    }
-
-    #[test]
-    fn adjusted_scroll_keeps_offset_when_selection_is_visible() {
-        let mut state = state_with_lines(10);
-        state.set_selected_line(4);
-        state.set_scroll_offset(3);
-
-        assert_eq!(state.adjusted_scroll(4), 3);
-    }
-
-    #[test]
-    fn adjusted_scroll_clamps_to_visible_count() {
-        let mut state = state_with_lines(3);
-        state.set_selected_line(10);
-        state.set_scroll_offset(9);
-
-        assert_eq!(state.adjusted_scroll(5), 0);
+        assert_eq!(state.editor().cursor(), 0);
+        assert_eq!(
+            state.editor().content(),
+            "{\n  \"count\": 5,\n  \"theme\": \"dark\"\n}"
+        );
     }
 }
