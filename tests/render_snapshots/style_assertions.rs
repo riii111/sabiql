@@ -331,12 +331,15 @@ fn sql_modal_block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(
 fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
+    let content = "SELECT 1".to_string();
+    let middle_col = 4;
+    let tail_col = content.chars().count();
 
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
         .editor
-        .set_content_with_cursor("SELECT 1".to_string(), 0);
+        .set_content_with_cursor(content.clone(), 0);
     state.sql_modal.set_status(SqlModalStatus::Normal);
 
     let head_buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -346,7 +349,7 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
     state
         .sql_modal
         .editor
-        .set_content_with_cursor("SELECT 1".to_string(), 4);
+        .set_content_with_cursor(content.clone(), middle_col);
     let middle_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let middle = sql_modal_block_cursor_position(&middle_buffer)
         .expect("Expected block cursor in SQL normal mode at middle");
@@ -354,7 +357,7 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
     state
         .sql_modal
         .editor
-        .set_content_with_cursor("SELECT 1".to_string(), "SELECT 1".chars().count());
+        .set_content_with_cursor(content, tail_col);
     let tail_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let tail = sql_modal_block_cursor_position(&tail_buffer)
         .expect("Expected block cursor in SQL normal mode at tail");
@@ -367,14 +370,8 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
         middle.1, tail.1,
         "Expected middle and tail cursor on the same row"
     );
-    assert!(
-        head.0 < middle.0,
-        "Expected middle cursor to be right of head cursor"
-    );
-    assert!(
-        middle.0 < tail.0,
-        "Expected tail cursor to be right of middle cursor"
-    );
+    assert_eq!(middle.0, head.0 + middle_col as u16);
+    assert_eq!(tail.0, head.0 + tail_col as u16);
 }
 
 #[test]
