@@ -9,6 +9,15 @@ use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTa
 
 use super::inspector_max_scroll;
 
+fn inspector_page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
+    let visible = match state.ui.inspector_tab {
+        InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
+        _ => state.inspector_visible_rows(),
+    };
+
+    amount.page_delta(visible)
+}
+
 pub fn reduce(
     state: &mut AppState,
     action: &Action,
@@ -52,74 +61,14 @@ pub fn reduce(
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::HalfPage,
+            direction,
+            amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
-            let visible = match state.ui.inspector_tab {
-                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
-                _ => state.inspector_visible_rows(),
-            };
-            let delta = ScrollAmount::HalfPage.page_delta(visible).unwrap_or(0);
-            let max = inspector_max_scroll(state, services);
-            state.ui.inspector_scroll_offset = ScrollDirection::Down.clamp_vertical_offset(
-                state.ui.inspector_scroll_offset,
-                max,
-                delta,
-            );
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::HalfPage,
-        } => {
-            let visible = match state.ui.inspector_tab {
-                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
-                _ => state.inspector_visible_rows(),
-            };
-            let delta = ScrollAmount::HalfPage.page_delta(visible).unwrap_or(0);
-            let max = inspector_max_scroll(state, services);
-            state.ui.inspector_scroll_offset = ScrollDirection::Up.clamp_vertical_offset(
-                state.ui.inspector_scroll_offset,
-                max,
-                delta,
-            );
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::FullPage,
-        } => {
-            let visible = match state.ui.inspector_tab {
-                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
-                _ => state.inspector_visible_rows(),
-            };
-            let delta = ScrollAmount::FullPage.page_delta(visible).unwrap_or(0);
-            let max = inspector_max_scroll(state, services);
-            state.ui.inspector_scroll_offset = ScrollDirection::Down.clamp_vertical_offset(
-                state.ui.inspector_scroll_offset,
-                max,
-                delta,
-            );
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::FullPage,
-        } => {
-            let visible = match state.ui.inspector_tab {
-                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
-                _ => state.inspector_visible_rows(),
-            };
-            let delta = ScrollAmount::FullPage.page_delta(visible).unwrap_or(0);
-            let max = inspector_max_scroll(state, services);
-            state.ui.inspector_scroll_offset = ScrollDirection::Up.clamp_vertical_offset(
-                state.ui.inspector_scroll_offset,
-                max,
-                delta,
-            );
+            if let Some(delta) = inspector_page_scroll_delta(state, *amount) {
+                let max = inspector_max_scroll(state, services);
+                state.ui.inspector_scroll_offset =
+                    direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, delta);
+            }
             Some(vec![])
         }
         Action::Scroll {
