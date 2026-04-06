@@ -161,10 +161,13 @@ mod tests {
         let spans = &lines[0].spans;
         let bar = spans
             .iter()
-            .find(|span| span.content.as_ref() == "\u{258f}")
+            .find(|span| span.content.as_ref() == CursorKind::Insert.glyph())
             .expect("insert cursor bar should be present");
 
-        assert_eq!(line_text(&lines[0]), "SELECT \u{258f}'x'");
+        assert_eq!(
+            line_text(&lines[0]),
+            format!("SELECT {}'x'", CursorKind::Insert.glyph())
+        );
         assert_eq!(bar.style.fg, Some(DEFAULT_THEME.cursor_fg));
     }
 

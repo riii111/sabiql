@@ -11,6 +11,15 @@ pub enum CursorKind {
     Insert,
 }
 
+impl CursorKind {
+    pub fn glyph(self) -> &'static str {
+        match self {
+            Self::Block => " ",
+            Self::Insert => "\u{258f}",
+        }
+    }
+}
+
 pub fn cursor_style(theme: &ThemePalette) -> Style {
     cursor_style_for(CursorKind::Block, theme)
 }
@@ -62,13 +71,13 @@ pub fn text_cursor_spans_with_kind(
     let visible: Vec<char> = chars[vp..view_end].to_vec();
     let cursor_in_view = cursor.checked_sub(vp);
 
+    let cursor_style = cursor_style_for(kind, theme);
+
     match kind {
         CursorKind::Block => {
-            let cursor_style = cursor_style_for(kind, theme);
-
             if cursor >= total {
                 let text: String = visible.iter().collect();
-                vec![Span::raw(text), Span::styled(" ", cursor_style)]
+                vec![Span::raw(text), Span::styled(kind.glyph(), cursor_style)]
             } else if let Some(ci) = cursor_in_view.filter(|&i| i < visible.len()) {
                 let before: String = visible[..ci].iter().collect();
                 let cursor_char: String = visible[ci].to_string();
@@ -84,17 +93,15 @@ pub fn text_cursor_spans_with_kind(
             }
         }
         CursorKind::Insert => {
-            let cursor_style = cursor_style_for(kind, theme);
-
             if cursor >= total {
                 let text: String = visible.iter().collect();
-                vec![Span::raw(text), Span::styled("\u{258f}", cursor_style)]
+                vec![Span::raw(text), Span::styled(kind.glyph(), cursor_style)]
             } else if let Some(ci) = cursor_in_view.filter(|&i| i <= visible.len()) {
                 let before: String = visible[..ci].iter().collect();
                 let after: String = visible[ci..].iter().collect();
                 vec![
                     Span::raw(before),
-                    Span::styled("\u{258f}", cursor_style),
+                    Span::styled(kind.glyph(), cursor_style),
                     Span::raw(after),
                 ]
             } else {
@@ -119,6 +126,7 @@ pub fn insert_cursor_span_with_kind(
     kind: CursorKind,
     theme: &ThemePalette,
 ) -> Vec<Span<'static>> {
+    let cursor_style = cursor_style_for(kind, theme);
     let mut output = Vec::new();
     let mut remaining = cursor_col;
     let mut iter = spans.into_iter().peekable();
@@ -136,16 +144,12 @@ pub fn insert_cursor_span_with_kind(
         if remaining == len {
             output.push(span);
             if iter.peek().is_none() {
-                let cursor = match kind {
-                    CursorKind::Block => Span::styled(" ", cursor_style_for(kind, theme)),
-                    CursorKind::Insert => Span::styled("\u{258f}", cursor_style_for(kind, theme)),
-                };
-                output.push(cursor);
+                output.push(Span::styled(kind.glyph(), cursor_style));
                 return output;
             }
 
             if matches!(kind, CursorKind::Insert) {
-                output.push(Span::styled("\u{258f}", cursor_style_for(kind, theme)));
+                output.push(Span::styled(kind.glyph(), cursor_style));
                 output.extend(iter);
                 return output;
             }
@@ -154,27 +158,22 @@ pub fn insert_cursor_span_with_kind(
             continue;
         }
 
+        let (before, current, after) = split_at_cursor(content, remaining);
+        if !before.is_empty() {
+            output.push(Span::styled(before, span.style));
+        }
+
         match kind {
             CursorKind::Block => {
-                let (before, current, after) = split_at_cursor(content, remaining);
-                if !before.is_empty() {
-                    output.push(Span::styled(before, span.style));
-                }
-                output.push(Span::styled(
-                    current,
-                    span.style.patch(cursor_style_for(kind, theme)),
-                ));
+                output.push(Span::styled(current, span.style.patch(cursor_style)));
                 if !after.is_empty() {
                     output.push(Span::styled(after, span.style));
                 }
             }
             CursorKind::Insert => {
-                let (before, current, after) = split_at_cursor(content, remaining);
-                if !before.is_empty() {
-                    output.push(Span::styled(before, span.style));
-                }
-                output.push(Span::styled("\u{258f}", cursor_style_for(kind, theme)));
-                let remainder = format!("{current}{after}");
+                output.push(Span::styled(kind.glyph(), cursor_style));
+                let mut remainder = current;
+                remainder.push_str(&after);
                 if !remainder.is_empty() {
                     output.push(Span::styled(remainder, span.style));
                 }
@@ -184,11 +183,7 @@ pub fn insert_cursor_span_with_kind(
         return output;
     }
 
-    let cursor = match kind {
-        CursorKind::Block => Span::styled(" ", cursor_style_for(kind, theme)),
-        CursorKind::Insert => Span::styled("\u{258f}", cursor_style_for(kind, theme)),
-    };
-    output.push(cursor);
+    output.push(Span::styled(kind.glyph(), cursor_style));
     output
 }
 
@@ -335,7 +330,7 @@ mod tests {
         );
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["a", "\u{258f}", "bc"]);
+        assert_eq!(texts, vec!["a", CursorKind::Insert.glyph(), "bc"]);
         assert_eq!(
             spans[1].style,
             cursor_style_for(CursorKind::Insert, &DEFAULT_THEME)
@@ -354,7 +349,7 @@ mod tests {
         );
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["abc", "\u{258f}"]);
+        assert_eq!(texts, vec!["abc", CursorKind::Insert.glyph()]);
     }
 
     #[test]
@@ -453,7 +448,7 @@ mod tests {
         let inserted = insert_cursor_span_with_kind(spans, 2, CursorKind::Insert, &DEFAULT_THEME);
 
         let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
-        assert_eq!(texts, vec!["ab", "\u{258f}", "cd"]);
+        assert_eq!(texts, vec!["ab", CursorKind::Insert.glyph(), "cd"]);
         assert_eq!(
             inserted[1].style,
             cursor_style_for(CursorKind::Insert, &DEFAULT_THEME)

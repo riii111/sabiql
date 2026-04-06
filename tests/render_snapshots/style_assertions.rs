@@ -10,6 +10,7 @@ use ratatui::style::{Color, Modifier};
 use sabiql::app::model::shared::input_mode::InputMode;
 use sabiql::app::model::shared::theme_id::ThemeId;
 use sabiql::app::model::sql_editor::modal::SqlModalStatus;
+use sabiql::ui::primitives::atoms::CursorKind;
 use sabiql::ui::theme::{DEFAULT_THEME, TEST_CONTRAST_THEME, ThemePalette};
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
@@ -300,7 +301,7 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             insert_buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "\u{258f}"
+                cell.symbol() == CursorKind::Insert.glyph()
                     && cell.fg == DEFAULT_THEME.cursor_fg
                     && cell.bg != DEFAULT_THEME.cursor_bg
             })

@@ -57,7 +57,7 @@ pub(super) fn render_editor(
     } else {
         CursorKind::Insert
     };
-    let placeholder_cursor = if is_normal { " " } else { "\u{258f}" };
+    let placeholder_cursor = cursor_kind.glyph();
 
     let mut lines: Vec<Line> = if content.is_empty() {
         let placeholder = if is_normal {
