@@ -28,6 +28,17 @@ mod tests {
     mod help {
         use super::*;
 
+        fn assert_help_scroll(result: Action, direction: ScrollDirection, amount: ScrollAmount) {
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: dir,
+                    amount: actual_amount
+                } if dir == direction && actual_amount == amount
+            ));
+        }
+
         #[test]
         fn esc_closes_help() {
             let result = handle_help_keys(combo(Key::Esc));
@@ -50,19 +61,59 @@ mod tests {
         }
 
         #[rstest]
-        #[case(Key::Char('n'), ScrollDirection::Down)]
-        #[case(Key::Char('p'), ScrollDirection::Up)]
-        fn ctrl_aliases_scroll(#[case] code: Key, #[case] direction: ScrollDirection) {
-            let result = handle_help_keys(combo_ctrl(code));
+        #[case(combo(Key::Char('j')), ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(combo(Key::Down), ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(combo_ctrl(Key::Char('n')), ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(combo(Key::Char('k')), ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(combo(Key::Up), ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(combo_ctrl(Key::Char('p')), ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(combo(Key::Char('g')), ScrollDirection::Up, ScrollAmount::ToStart)]
+        #[case(combo(Key::Home), ScrollDirection::Up, ScrollAmount::ToStart)]
+        #[case(combo(Key::Char('G')), ScrollDirection::Down, ScrollAmount::ToEnd)]
+        #[case(combo(Key::End), ScrollDirection::Down, ScrollAmount::ToEnd)]
+        #[case(
+            combo_ctrl(Key::Char('d')),
+            ScrollDirection::Down,
+            ScrollAmount::HalfPage
+        )]
+        #[case(
+            combo_ctrl(Key::Char('u')),
+            ScrollDirection::Up,
+            ScrollAmount::HalfPage
+        )]
+        #[case(
+            combo_ctrl(Key::Char('f')),
+            ScrollDirection::Down,
+            ScrollAmount::FullPage
+        )]
+        #[case(combo(Key::PageDown), ScrollDirection::Down, ScrollAmount::FullPage)]
+        #[case(
+            combo_ctrl(Key::Char('b')),
+            ScrollDirection::Up,
+            ScrollAmount::FullPage
+        )]
+        #[case(combo(Key::PageUp), ScrollDirection::Up, ScrollAmount::FullPage)]
+        fn supported_help_scroll_keys_map_to_expected_action(
+            #[case] combo: KeyCombo,
+            #[case] direction: ScrollDirection,
+            #[case] amount: ScrollAmount,
+        ) {
+            let result = handle_help_keys(combo);
 
-            assert!(matches!(
-                result,
-                Action::Scroll {
-                    target: ScrollTarget::Help,
-                    direction: dir,
-                    amount: ScrollAmount::Line
-                } if dir == direction
-            ));
+            assert_help_scroll(result, direction, amount);
+        }
+
+        #[rstest]
+        #[case(Key::Char('H'))]
+        #[case(Key::Char('M'))]
+        #[case(Key::Char('L'))]
+        #[case(Key::Char('h'))]
+        #[case(Key::Char('l'))]
+        #[case(Key::Char('z'))]
+        fn unsupported_help_navigation_keys_return_none(#[case] code: Key) {
+            let result = handle_help_keys(combo(code));
+
+            assert!(matches!(result, Action::None));
         }
     }
 

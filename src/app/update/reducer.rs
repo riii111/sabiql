@@ -177,9 +177,7 @@ mod tests {
     use crate::app::ports::DbOperationError;
     use crate::app::ports::connection_store::ConnectionStoreError;
     use crate::app::update::action::{ConnectionSaveError, ConnectionTarget};
-    use crate::app::update::action::{
-        InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, SelectMotion,
-    };
+    use crate::app::update::action::{InputTarget, SelectMotion};
 
     fn create_test_state() -> AppState {
         AppState::new("test_project".to_string())
@@ -257,6 +255,7 @@ mod tests {
 
     mod scroll_actions {
         use super::*;
+        use crate::app::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
         use rstest::rstest;
 
         #[test]
@@ -333,6 +332,10 @@ mod tests {
         #[case(ScrollTarget::Inspector, ScrollDirection::Up, ScrollAmount::Line)]
         #[case(ScrollTarget::Help, ScrollDirection::Up, ScrollAmount::Line)]
         #[case(ScrollTarget::Help, ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(ScrollTarget::Help, ScrollDirection::Up, ScrollAmount::ToStart)]
+        #[case(ScrollTarget::Help, ScrollDirection::Down, ScrollAmount::ToEnd)]
+        #[case(ScrollTarget::Help, ScrollDirection::Up, ScrollAmount::HalfPage)]
+        #[case(ScrollTarget::Help, ScrollDirection::Down, ScrollAmount::FullPage)]
         #[case(
             ScrollTarget::ConnectionError,
             ScrollDirection::Down,
@@ -379,6 +382,133 @@ mod tests {
                 effects.is_empty(),
                 "scroll reduce must return empty effects for coalescing safety"
             );
+        }
+
+        #[test]
+        fn help_scroll_top_resets_offset_to_zero() {
+            let mut state = create_test_state();
+            state.ui.help_scroll_offset = 8;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.help_scroll_offset, 0);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn help_scroll_bottom_moves_to_max_scroll() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.help_scroll_offset, state.ui.help_max_scroll());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn help_half_page_scroll_uses_half_of_visible_rows() {
+            let mut state = create_test_state();
+            state.ui.help_scroll_offset = 1;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::HalfPage,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.help_scroll_offset, 9);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn help_full_page_scroll_uses_visible_rows() {
+            let mut state = create_test_state();
+            state.ui.help_scroll_offset = 2;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.help_scroll_offset, 19);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn help_page_scroll_saturates_at_bounds() {
+            let mut state = create_test_state();
+            state.ui.help_scroll_offset = state.ui.help_max_scroll();
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.help_scroll_offset, state.ui.help_max_scroll());
+
+            reduce(
+                &mut state,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::FullPage,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            reduce(
+                &mut state,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.help_scroll_offset, 0);
         }
     }
 
@@ -438,6 +568,20 @@ mod tests {
             // Toggle back to normal
             let effects = reduce(&mut state, Action::OpenHelp, now, &AppServices::stub());
             assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn close_help_resets_scroll_offset() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::Help);
+            state.ui.help_scroll_offset = 12;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::CloseHelp, now, &AppServices::stub());
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.ui.help_scroll_offset, 0);
             assert!(effects.is_empty());
         }
     }
