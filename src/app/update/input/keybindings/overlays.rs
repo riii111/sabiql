@@ -106,6 +106,81 @@ pub const HELP_ROWS: &[ModeRow] = &[
         ],
     },
     ModeRow {
+        key_short: "g/G/Home/End",
+        key: "g / Home / G / End",
+        desc_short: "Top/Btm",
+        description: "Jump to top / bottom",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart,
+                },
+                combos: &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd,
+                },
+                combos: &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
+            },
+        ],
+    },
+    ModeRow {
+        key_short: "^D/^U",
+        key: "Ctrl+D / Ctrl+U",
+        desc_short: "Half Page",
+        description: "Scroll half page down / up",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::HalfPage,
+                },
+                combos: &[KeyCombo::ctrl(Key::Char('d'))],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::HalfPage,
+                },
+                combos: &[KeyCombo::ctrl(Key::Char('u'))],
+            },
+        ],
+    },
+    ModeRow {
+        key_short: "^F/^B/PgDn/Up",
+        key: "Ctrl+F / Ctrl+B / PageDown / PageUp",
+        desc_short: "Full Page",
+        description: "Scroll full page down / up",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage,
+                },
+                combos: &[
+                    KeyCombo::ctrl(Key::Char('f')),
+                    KeyCombo::plain(Key::PageDown),
+                ],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::FullPage,
+                },
+                combos: &[KeyCombo::ctrl(Key::Char('b')), KeyCombo::plain(Key::PageUp)],
+            },
+        ],
+    },
+    ModeRow {
         key_short: "?/Esc",
         key: "? / Esc",
         desc_short: "Close",

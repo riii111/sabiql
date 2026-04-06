@@ -214,9 +214,12 @@ impl UiState {
         self.inspector_pane_height.saturating_sub(3) as usize
     }
 
+    pub fn help_visible_rows(&self) -> usize {
+        (self.terminal_height as usize * 80 / 100).saturating_sub(2)
+    }
+
     pub fn help_max_scroll(&self) -> usize {
-        let viewport = (self.terminal_height as usize * 80 / 100).saturating_sub(2);
-        help_content_line_count().saturating_sub(viewport)
+        help_content_line_count().saturating_sub(self.help_visible_rows())
     }
 
     pub fn toggle_focus(&mut self) -> bool {
@@ -527,14 +530,12 @@ mod tests {
 
         #[test]
         fn help_max_scroll_plus_viewport_equals_content_line_count() {
-            // terminal_height=24 → viewport = 24*80/100 - 2 = 17
-            // max_scroll should equal total_lines - viewport (not saturated)
             let terminal_height: u16 = 24;
             let state = UiState {
                 terminal_height,
                 ..Default::default()
             };
-            let viewport = (terminal_height as usize * 80 / 100).saturating_sub(2);
+            let viewport = state.help_visible_rows();
 
             let max = state.help_max_scroll();
 
@@ -555,10 +556,19 @@ mod tests {
                 ..Default::default()
             };
 
-            // viewport is huge, so max_scroll saturates at 0
             let max = state.help_max_scroll();
 
             assert_eq!(max, 0);
+        }
+
+        #[test]
+        fn help_visible_rows_matches_modal_layout_height() {
+            let state = UiState {
+                terminal_height: 24,
+                ..Default::default()
+            };
+
+            assert_eq!(state.help_visible_rows(), 17);
         }
     }
 
