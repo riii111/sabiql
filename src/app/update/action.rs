@@ -77,6 +77,16 @@ pub enum ScrollDirection {
     Right,
 }
 
+impl ScrollDirection {
+    pub fn clamp_vertical_offset(self, current: usize, max: usize, delta: usize) -> usize {
+        match self {
+            Self::Down => (current + delta).min(max),
+            Self::Up => current.saturating_sub(delta),
+            Self::Left | Self::Right => current,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrollAmount {
     Line,
@@ -87,6 +97,20 @@ pub enum ScrollAmount {
     ViewportBottom,
     HalfPage,
     FullPage,
+}
+
+impl ScrollAmount {
+    pub fn page_delta(self, visible: usize) -> Option<usize> {
+        if visible == 0 {
+            return None;
+        }
+
+        Some(match self {
+            Self::HalfPage => (visible / 2).max(1),
+            Self::FullPage => visible.max(1),
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

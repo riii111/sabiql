@@ -24,4 +24,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │           │                                                     ││           │
 │           │▸ Navigation                                         ▼│           │
 └───────────╰ ?/Esc Close ─────────────────────────────────────────╯───────────┘
-g/G/Home/End:Top/Btm
+?/Esc:Close

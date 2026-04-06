@@ -110,7 +110,7 @@ mod tests {
         #[case(Key::Char('h'))]
         #[case(Key::Char('l'))]
         #[case(Key::Char('z'))]
-        fn unsupported_help_navigation_keys_return_none(#[case] code: Key) {
+        fn issue_non_goals_remain_unbound_in_help_mode(#[case] code: Key) {
             let result = handle_help_keys(combo(code));
 
             assert!(matches!(result, Action::None));

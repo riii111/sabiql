@@ -21,6 +21,8 @@ pub const RESULT_PANE_OVERHEAD: u16 = 2 + RESULT_INNER_OVERHEAD;
 pub const EXPLORER_PANEL_BORDER_WIDTH: u16 = 2;
 pub const EXPLORER_HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
 pub const EXPLORER_SCROLLBAR_RESERVED_WIDTH: u16 = 1;
+pub const HELP_MODAL_HEIGHT_PERCENT: u16 = 80;
+pub const MODAL_VERTICAL_BORDER_OVERHEAD: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResultNavMode {
@@ -215,7 +217,8 @@ impl UiState {
     }
 
     pub fn help_visible_rows(&self) -> usize {
-        (self.terminal_height as usize * 80 / 100).saturating_sub(2)
+        (self.terminal_height as usize * HELP_MODAL_HEIGHT_PERCENT as usize / 100)
+            .saturating_sub(MODAL_VERTICAL_BORDER_OVERHEAD)
     }
 
     pub fn help_max_scroll(&self) -> usize {

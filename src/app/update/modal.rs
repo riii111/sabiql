@@ -8,26 +8,10 @@ use crate::app::update::action::{
     Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 
-fn help_page_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
-    let visible = state.ui.help_visible_rows();
-    if visible == 0 {
-        return None;
-    }
-
-    Some(match amount {
-        ScrollAmount::HalfPage => (visible / 2).max(1),
-        ScrollAmount::FullPage => visible.max(1),
-        _ => return None,
-    })
-}
-
 fn scroll_help_by(state: &mut AppState, direction: ScrollDirection, delta: usize) {
     let max_scroll = state.ui.help_max_scroll();
-    state.ui.help_scroll_offset = match direction {
-        ScrollDirection::Down => (state.ui.help_scroll_offset + delta).min(max_scroll),
-        ScrollDirection::Up => state.ui.help_scroll_offset.saturating_sub(delta),
-        _ => state.ui.help_scroll_offset,
-    };
+    state.ui.help_scroll_offset =
+        direction.clamp_vertical_offset(state.ui.help_scroll_offset, max_scroll, delta);
 }
 
 pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -62,43 +46,21 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::Scroll {
             target: ScrollTarget::Help,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::Line,
+            direction,
+            amount,
         } => {
-            scroll_help_by(state, ScrollDirection::Up, 1);
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Help,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        } => {
-            scroll_help_by(state, ScrollDirection::Down, 1);
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Help,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::ToStart,
-        } => {
-            state.ui.help_scroll_offset = 0;
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Help,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::ToEnd,
-        } => {
-            state.ui.help_scroll_offset = state.ui.help_max_scroll();
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Help,
-            direction: direction @ (ScrollDirection::Down | ScrollDirection::Up),
-            amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
-        } => {
-            if let Some(delta) = help_page_delta(state, *amount) {
-                scroll_help_by(state, *direction, delta);
+            match amount {
+                ScrollAmount::Line => scroll_help_by(state, *direction, 1),
+                ScrollAmount::ToStart => state.ui.help_scroll_offset = 0,
+                ScrollAmount::ToEnd => state.ui.help_scroll_offset = state.ui.help_max_scroll(),
+                ScrollAmount::HalfPage | ScrollAmount::FullPage => {
+                    if let Some(delta) = amount.page_delta(state.ui.help_visible_rows()) {
+                        scroll_help_by(state, *direction, delta);
+                    }
+                }
+                ScrollAmount::ViewportTop
+                | ScrollAmount::ViewportMiddle
+                | ScrollAmount::ViewportBottom => {}
             }
             Some(vec![])
         }

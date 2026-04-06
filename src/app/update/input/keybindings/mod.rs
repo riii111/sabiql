@@ -242,7 +242,10 @@ pub mod idx {
 
     pub mod help {
         pub const SCROLL: usize = 0;
-        pub const CLOSE: usize = 1;
+        pub const TOP_BOTTOM: usize = 1;
+        pub const HALF_PAGE: usize = 2;
+        pub const FULL_PAGE: usize = 3;
+        pub const CLOSE: usize = 4;
     }
 
     pub mod result_active {
@@ -550,6 +553,9 @@ mod tests {
 
         // HELP_ROWS
         assert!(idx::help::SCROLL < HELP_ROWS.len());
+        assert!(idx::help::TOP_BOTTOM < HELP_ROWS.len());
+        assert!(idx::help::HALF_PAGE < HELP_ROWS.len());
+        assert!(idx::help::FULL_PAGE < HELP_ROWS.len());
         assert!(idx::help::CLOSE < HELP_ROWS.len());
 
         // RESULT_ACTIVE_KEYS

@@ -7,6 +7,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::ui::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::ui_state::HELP_MODAL_HEIGHT_PERCENT;
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_ROWS, CONFIRM_DIALOG_KEYS,
     CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, ER_PICKER_ROWS,
@@ -28,7 +29,7 @@ impl HelpOverlay {
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
-            Constraint::Percentage(80),
+            Constraint::Percentage(HELP_MODAL_HEIGHT_PERCENT),
             " Help ",
             " ?/Esc Close ",
             theme,

@@ -45,25 +45,13 @@ fn move_row_or_scroll(state: &mut AppState, new_row: usize, scroll_fn: impl FnOn
 }
 
 fn page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
-    let visible = state.result_visible_rows();
-    if visible == 0 {
-        return None;
-    }
-
-    Some(match amount {
-        ScrollAmount::HalfPage => (visible / 2).max(1),
-        ScrollAmount::FullPage => visible.max(1),
-        _ => return None,
-    })
+    amount.page_delta(state.result_visible_rows())
 }
 
 fn scroll_result_by(state: &mut AppState, direction: ScrollDirection, delta: usize) {
     let max_scroll = result_max_scroll(state);
-    state.result_interaction.scroll_offset = match direction {
-        ScrollDirection::Down => (state.result_interaction.scroll_offset + delta).min(max_scroll),
-        ScrollDirection::Up => state.result_interaction.scroll_offset.saturating_sub(delta),
-        _ => state.result_interaction.scroll_offset,
-    };
+    state.result_interaction.scroll_offset =
+        direction.clamp_vertical_offset(state.result_interaction.scroll_offset, max_scroll, delta);
 }
 
 fn move_result_row_and_scroll(state: &mut AppState, direction: ScrollDirection, delta: usize) {

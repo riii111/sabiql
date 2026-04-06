@@ -59,9 +59,13 @@ pub fn reduce(
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
             };
-            let delta = (visible / 2).max(1);
+            let delta = ScrollAmount::HalfPage.page_delta(visible).unwrap_or(0);
             let max = inspector_max_scroll(state, services);
-            state.ui.inspector_scroll_offset = (state.ui.inspector_scroll_offset + delta).min(max);
+            state.ui.inspector_scroll_offset = ScrollDirection::Down.clamp_vertical_offset(
+                state.ui.inspector_scroll_offset,
+                max,
+                delta,
+            );
             Some(vec![])
         }
         Action::Scroll {
@@ -73,9 +77,13 @@ pub fn reduce(
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
             };
-            let delta = (visible / 2).max(1);
-            state.ui.inspector_scroll_offset =
-                state.ui.inspector_scroll_offset.saturating_sub(delta);
+            let delta = ScrollAmount::HalfPage.page_delta(visible).unwrap_or(0);
+            let max = inspector_max_scroll(state, services);
+            state.ui.inspector_scroll_offset = ScrollDirection::Up.clamp_vertical_offset(
+                state.ui.inspector_scroll_offset,
+                max,
+                delta,
+            );
             Some(vec![])
         }
         Action::Scroll {
@@ -87,9 +95,13 @@ pub fn reduce(
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
             };
-            let delta = visible.max(1);
+            let delta = ScrollAmount::FullPage.page_delta(visible).unwrap_or(0);
             let max = inspector_max_scroll(state, services);
-            state.ui.inspector_scroll_offset = (state.ui.inspector_scroll_offset + delta).min(max);
+            state.ui.inspector_scroll_offset = ScrollDirection::Down.clamp_vertical_offset(
+                state.ui.inspector_scroll_offset,
+                max,
+                delta,
+            );
             Some(vec![])
         }
         Action::Scroll {
@@ -101,9 +113,13 @@ pub fn reduce(
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
             };
-            let delta = visible.max(1);
-            state.ui.inspector_scroll_offset =
-                state.ui.inspector_scroll_offset.saturating_sub(delta);
+            let delta = ScrollAmount::FullPage.page_delta(visible).unwrap_or(0);
+            let max = inspector_max_scroll(state, services);
+            state.ui.inspector_scroll_offset = ScrollDirection::Up.clamp_vertical_offset(
+                state.ui.inspector_scroll_offset,
+                max,
+                delta,
+            );
             Some(vec![])
         }
         Action::Scroll {
