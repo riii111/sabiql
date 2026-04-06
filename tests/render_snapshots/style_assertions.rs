@@ -306,8 +306,74 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
             })
         });
 
-    assert!(has_block_cursor, "Expected block cursor styling in SQL normal mode");
-    assert!(has_insert_bar, "Expected thin insert cursor glyph in SQL insert mode");
+    assert!(
+        has_block_cursor,
+        "Expected block cursor styling in SQL normal mode"
+    );
+    assert!(
+        has_insert_bar,
+        "Expected thin insert cursor glyph in SQL insert mode"
+    );
+}
+
+fn sql_modal_block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)> {
+    (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .find(|&(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.bg == DEFAULT_THEME.cursor_bg && cell.fg == DEFAULT_THEME.cursor_text_fg
+            })
+        })
+}
+
+#[test]
+fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content_with_cursor("SELECT 1".to_string(), 0);
+    state.sql_modal.set_status(SqlModalStatus::Normal);
+
+    let head_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let head = sql_modal_block_cursor_position(&head_buffer)
+        .expect("Expected block cursor in SQL normal mode at head");
+
+    state
+        .sql_modal
+        .editor
+        .set_content_with_cursor("SELECT 1".to_string(), 4);
+    let middle_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let middle = sql_modal_block_cursor_position(&middle_buffer)
+        .expect("Expected block cursor in SQL normal mode at middle");
+
+    state
+        .sql_modal
+        .editor
+        .set_content_with_cursor("SELECT 1".to_string(), "SELECT 1".chars().count());
+    let tail_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let tail = sql_modal_block_cursor_position(&tail_buffer)
+        .expect("Expected block cursor in SQL normal mode at tail");
+
+    assert_eq!(
+        head.1, middle.1,
+        "Expected head and middle cursor on the same row"
+    );
+    assert_eq!(
+        middle.1, tail.1,
+        "Expected middle and tail cursor on the same row"
+    );
+    assert!(
+        head.0 < middle.0,
+        "Expected middle cursor to be right of head cursor"
+    );
+    assert!(
+        middle.0 < tail.0,
+        "Expected tail cursor to be right of middle cursor"
+    );
 }
 
 #[test]

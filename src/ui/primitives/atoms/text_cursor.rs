@@ -138,9 +138,7 @@ pub fn insert_cursor_span_with_kind(
             if iter.peek().is_none() {
                 let cursor = match kind {
                     CursorKind::Block => Span::styled(" ", cursor_style_for(kind, theme)),
-                    CursorKind::Insert => {
-                        Span::styled("\u{258f}", cursor_style_for(kind, theme))
-                    }
+                    CursorKind::Insert => Span::styled("\u{258f}", cursor_style_for(kind, theme)),
                 };
                 output.push(cursor);
                 return output;
@@ -338,7 +336,10 @@ mod tests {
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["a", "\u{258f}", "bc"]);
-        assert_eq!(spans[1].style, cursor_style_for(CursorKind::Insert, &DEFAULT_THEME));
+        assert_eq!(
+            spans[1].style,
+            cursor_style_for(CursorKind::Insert, &DEFAULT_THEME)
+        );
     }
 
     #[test]
@@ -453,7 +454,10 @@ mod tests {
 
         let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
         assert_eq!(texts, vec!["ab", "\u{258f}", "cd"]);
-        assert_eq!(inserted[1].style, cursor_style_for(CursorKind::Insert, &DEFAULT_THEME));
+        assert_eq!(
+            inserted[1].style,
+            cursor_style_for(CursorKind::Insert, &DEFAULT_THEME)
+        );
         assert_eq!(inserted[2].style.fg, Some(DEFAULT_THEME.sql_keyword));
     }
 }

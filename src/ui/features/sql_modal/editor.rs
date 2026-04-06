@@ -9,9 +9,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
-use crate::ui::primitives::atoms::{
-    CursorKind, cursor_style_for, highlight_sql_with_cursor_kind,
-};
+use crate::ui::primitives::atoms::{CursorKind, cursor_style_for, highlight_sql_with_cursor_kind};
 use crate::ui::theme::ThemePalette;
 
 pub(super) fn render_editor(
@@ -74,20 +72,8 @@ pub(super) fn render_editor(
             ])
             .style(current_line_style),
         ]
-    } else if is_normal {
-        highlight_sql_with_cursor_kind(content, cursor_row, cursor_col, CursorKind::Block, theme)
-            .into_iter()
-            .enumerate()
-            .map(|(row, line)| {
-                if row == cursor_row {
-                    line.style(current_line_style)
-                } else {
-                    line
-                }
-            })
-            .collect()
     } else {
-        highlight_sql_with_cursor_kind(content, cursor_row, cursor_col, CursorKind::Insert, theme)
+        highlight_sql_with_cursor_kind(content, cursor_row, cursor_col, cursor_kind, theme)
             .into_iter()
             .enumerate()
             .map(|(row, line)| {
@@ -100,19 +86,11 @@ pub(super) fn render_editor(
             .collect()
     };
 
-    if !is_normal && content.ends_with('\n') && cursor_row == content.lines().count() {
+    if content.ends_with('\n') && cursor_row == content.lines().count() {
         lines.push(
             Line::from(vec![Span::styled(
-                "\u{258f}",
-                cursor_style_for(CursorKind::Insert, theme),
-            )])
-            .style(current_line_style),
-        );
-    } else if is_normal && content.ends_with('\n') && cursor_row == content.lines().count() {
-        lines.push(
-            Line::from(vec![Span::styled(
-                " ",
-                cursor_style_for(CursorKind::Block, theme),
+                placeholder_cursor,
+                cursor_style_for(cursor_kind, theme),
             )])
             .style(current_line_style),
         );

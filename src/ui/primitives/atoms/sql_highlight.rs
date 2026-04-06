@@ -242,13 +242,8 @@ mod tests {
             ..DEFAULT_THEME
         };
 
-        let highlighted_with_cursor = highlight_sql_with_cursor_kind(
-            "SELECT",
-            0,
-            0,
-            CursorKind::Insert,
-            &custom_theme,
-        );
+        let highlighted_with_cursor =
+            highlight_sql_with_cursor_kind("SELECT", 0, 0, CursorKind::Insert, &custom_theme);
 
         assert_eq!(
             highlighted_with_cursor[0].spans[0].style.fg,
