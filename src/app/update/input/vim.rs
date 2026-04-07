@@ -605,6 +605,7 @@ fn scroll_to_cursor_action(target: ScrollToCursorTarget, position: CursorPositio
 mod tests {
     use super::*;
     use crate::app::model::shared::focused_pane::FocusedPane;
+    use rstest::rstest;
 
     fn combo(key: Key) -> KeyCombo {
         KeyCombo::plain(key)
@@ -614,65 +615,123 @@ mod tests {
         KeyCombo::ctrl(key)
     }
 
-    #[test]
-    fn classify_mode_transition_keys() {
+    fn result_ctx(mode: ResultNavMode) -> ResultVimContext {
+        ResultVimContext {
+            mode,
+            has_pending_draft: false,
+            yank_pending: false,
+            delete_pending: false,
+        }
+    }
+
+    fn browse_result(ctx: ResultVimContext) -> VimSurfaceContext {
+        VimSurfaceContext::Browse(BrowseVimContext::Result(ctx))
+    }
+
+    #[rstest]
+    #[case(Key::Char('i'), VimModeTransition::Insert)]
+    #[case(Key::Enter, VimModeTransition::ConfirmOrEnter)]
+    #[case(Key::Esc, VimModeTransition::Escape)]
+    fn classify_mode_transition_keys(#[case] key: Key, #[case] expected: VimModeTransition) {
         assert_eq!(
-            classify_command(&combo(Key::Char('i'))),
-            Some(VimCommand::ModeTransition(VimModeTransition::Insert))
-        );
-        assert_eq!(
-            classify_command(&combo(Key::Enter)),
-            Some(VimCommand::ModeTransition(
-                VimModeTransition::ConfirmOrEnter
-            ))
-        );
-        assert_eq!(
-            classify_command(&combo(Key::Esc)),
-            Some(VimCommand::ModeTransition(VimModeTransition::Escape))
+            classify_command(&combo(key)),
+            Some(VimCommand::ModeTransition(expected))
         );
     }
 
-    #[test]
-    fn classify_search_and_operator_keys() {
+    #[rstest]
+    #[case(Key::Char('n'), SearchContinuation::Next)]
+    #[case(Key::Char('N'), SearchContinuation::Prev)]
+    fn classify_search_keys(#[case] key: Key, #[case] expected: SearchContinuation) {
         assert_eq!(
-            classify_command(&combo(Key::Char('n'))),
-            Some(VimCommand::SearchContinuation(SearchContinuation::Next))
-        );
-        assert_eq!(
-            classify_command(&combo(Key::Char('N'))),
-            Some(VimCommand::SearchContinuation(SearchContinuation::Prev))
-        );
-        assert_eq!(
-            classify_command(&combo(Key::Char('y'))),
-            Some(VimCommand::Operator(VimOperator::Yank))
-        );
-        assert_eq!(
-            classify_command(&combo(Key::Char('d'))),
-            Some(VimCommand::Operator(VimOperator::Delete))
+            classify_command(&combo(key)),
+            Some(VimCommand::SearchContinuation(expected))
         );
     }
 
-    #[test]
-    fn classify_navigation_aliases() {
+    #[rstest]
+    #[case(Key::Char('y'), VimOperator::Yank)]
+    #[case(Key::Char('d'), VimOperator::Delete)]
+    fn classify_operator_keys(#[case] key: Key, #[case] expected: VimOperator) {
         assert_eq!(
-            classify_command(&combo_ctrl(Key::Char('n'))),
-            Some(VimCommand::Navigation(VimNavigation::MoveDown))
-        );
-        assert_eq!(
-            classify_command(&combo(Key::Char('h'))),
-            Some(VimCommand::Navigation(VimNavigation::MoveLeft))
+            classify_command(&combo(key)),
+            Some(VimCommand::Operator(expected))
         );
     }
 
-    #[test]
-    fn classify_z_sequence_as_navigation() {
+    #[rstest]
+    #[case(Key::Char('n'), true, VimNavigation::MoveDown)]
+    #[case(Key::Down, false, VimNavigation::MoveDown)]
+    #[case(Key::Char('p'), true, VimNavigation::MoveUp)]
+    #[case(Key::Up, false, VimNavigation::MoveUp)]
+    fn classify_vertical_navigation_aliases(
+        #[case] key: Key,
+        #[case] ctrl: bool,
+        #[case] expected: VimNavigation,
+    ) {
+        let combo = if ctrl { combo_ctrl(key) } else { combo(key) };
+
         assert_eq!(
-            classify_sequence_command(Prefix::Z, &combo(Key::Char('z'))),
-            Some(VimCommand::Navigation(VimNavigation::ScrollCursorCenter))
+            classify_command(&combo),
+            Some(VimCommand::Navigation(expected))
         );
+    }
+
+    #[rstest]
+    #[case(Key::Char('h'), VimNavigation::MoveLeft)]
+    #[case(Key::Left, VimNavigation::MoveLeft)]
+    #[case(Key::Char('l'), VimNavigation::MoveRight)]
+    #[case(Key::Right, VimNavigation::MoveRight)]
+    fn classify_horizontal_navigation_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
         assert_eq!(
-            classify_sequence_command(Prefix::Z, &combo(Key::Char('t'))),
-            Some(VimCommand::Navigation(VimNavigation::ScrollCursorTop))
+            classify_command(&combo(key)),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('g'), VimNavigation::MoveToFirst)]
+    #[case(Key::Home, VimNavigation::MoveToFirst)]
+    #[case(Key::Char('G'), VimNavigation::MoveToLast)]
+    #[case(Key::End, VimNavigation::MoveToLast)]
+    #[case(Key::Char('H'), VimNavigation::ViewportTop)]
+    #[case(Key::Char('M'), VimNavigation::ViewportMiddle)]
+    #[case(Key::Char('L'), VimNavigation::ViewportBottom)]
+    fn classify_boundary_navigation_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
+        assert_eq!(
+            classify_command(&combo(key)),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('d'), true, VimNavigation::HalfPageDown)]
+    #[case(Key::Char('u'), true, VimNavigation::HalfPageUp)]
+    #[case(Key::Char('f'), true, VimNavigation::FullPageDown)]
+    #[case(Key::PageDown, false, VimNavigation::FullPageDown)]
+    #[case(Key::Char('b'), true, VimNavigation::FullPageUp)]
+    #[case(Key::PageUp, false, VimNavigation::FullPageUp)]
+    fn classify_paging_navigation_aliases(
+        #[case] key: Key,
+        #[case] ctrl: bool,
+        #[case] expected: VimNavigation,
+    ) {
+        let combo = if ctrl { combo_ctrl(key) } else { combo(key) };
+
+        assert_eq!(
+            classify_command(&combo),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('z'), VimNavigation::ScrollCursorCenter)]
+    #[case(Key::Char('t'), VimNavigation::ScrollCursorTop)]
+    #[case(Key::Char('b'), VimNavigation::ScrollCursorBottom)]
+    fn classify_z_sequence_as_navigation(#[case] key: Key, #[case] expected: VimNavigation) {
+        assert_eq!(
+            classify_sequence_command(Prefix::Z, &combo(key)),
+            Some(VimCommand::Navigation(expected))
         );
     }
 
@@ -698,27 +757,20 @@ mod tests {
     fn browse_result_cell_escape_with_draft_discards_edit() {
         let action = resolve(
             VimCommand::ModeTransition(VimModeTransition::Escape),
-            VimSurfaceContext::Browse(BrowseVimContext::Result(ResultVimContext {
-                mode: ResultNavMode::CellActive,
+            browse_result(ResultVimContext {
                 has_pending_draft: true,
-                yank_pending: false,
-                delete_pending: false,
-            })),
+                ..result_ctx(ResultNavMode::CellActive)
+            }),
         );
 
         assert!(matches!(action, Some(Action::ResultDiscardCellEdit)));
     }
 
     #[test]
-    fn browse_result_navigation_matrix_still_matches_existing_actions() {
+    fn browse_result_scroll_mode_move_down_resolves_to_result_line_scroll() {
         let action = resolve(
             VimCommand::Navigation(VimNavigation::MoveDown),
-            VimSurfaceContext::Browse(BrowseVimContext::Result(ResultVimContext {
-                mode: ResultNavMode::Scroll,
-                has_pending_draft: false,
-                yank_pending: false,
-                delete_pending: false,
-            })),
+            browse_result(result_ctx(ResultNavMode::Scroll)),
         );
 
         assert!(matches!(
@@ -758,147 +810,177 @@ mod tests {
     }
 
     #[test]
-    fn browse_result_cell_horizontal_navigation_uses_cell_actions() {
-        let ctx = VimSurfaceContext::Browse(BrowseVimContext::Result(ResultVimContext {
-            mode: ResultNavMode::CellActive,
-            has_pending_draft: false,
-            yank_pending: false,
-            delete_pending: false,
-        }));
+    fn browse_result_cell_left_navigation_uses_cell_action() {
+        let action = resolve(
+            VimCommand::Navigation(VimNavigation::MoveLeft),
+            browse_result(result_ctx(ResultNavMode::CellActive)),
+        );
 
-        assert!(matches!(
-            resolve(VimCommand::Navigation(VimNavigation::MoveLeft), ctx),
-            Some(Action::ResultCellLeft)
-        ));
-        assert!(matches!(
-            resolve(VimCommand::Navigation(VimNavigation::MoveRight), ctx),
-            Some(Action::ResultCellRight)
-        ));
+        assert!(matches!(action, Some(Action::ResultCellLeft)));
     }
 
     #[test]
-    fn browse_operator_matrix_covers_row_cell_and_inspector() {
-        let row_ctx = BrowseVimContext::Result(ResultVimContext {
-            mode: ResultNavMode::RowActive,
-            has_pending_draft: false,
-            yank_pending: false,
-            delete_pending: false,
-        });
-        let row_pending_ctx = BrowseVimContext::Result(ResultVimContext {
-            yank_pending: true,
-            delete_pending: true,
-            ..match row_ctx {
-                BrowseVimContext::Result(ctx) => ctx,
-                _ => unreachable!(),
-            }
-        });
-        let cell_ctx = BrowseVimContext::Result(ResultVimContext {
-            mode: ResultNavMode::CellActive,
-            has_pending_draft: false,
-            yank_pending: false,
-            delete_pending: false,
-        });
+    fn browse_result_cell_right_navigation_uses_cell_action() {
+        let action = resolve(
+            VimCommand::Navigation(VimNavigation::MoveRight),
+            browse_result(result_ctx(ResultNavMode::CellActive)),
+        );
 
-        assert!(matches!(
-            resolve(
-                VimCommand::Operator(VimOperator::Yank),
-                VimSurfaceContext::Browse(row_ctx)
-            ),
-            Some(Action::ResultRowYankOperatorPending)
-        ));
-        assert!(matches!(
-            resolve(
-                VimCommand::Operator(VimOperator::Yank),
-                VimSurfaceContext::Browse(row_pending_ctx)
-            ),
-            Some(Action::ResultRowYank)
-        ));
-        assert!(matches!(
-            resolve(
-                VimCommand::Operator(VimOperator::Delete),
-                VimSurfaceContext::Browse(row_ctx)
-            ),
-            Some(Action::ResultDeleteOperatorPending)
-        ));
-        assert!(matches!(
-            resolve(
-                VimCommand::Operator(VimOperator::Delete),
-                VimSurfaceContext::Browse(row_pending_ctx)
-            ),
-            Some(Action::StageRowForDelete)
-        ));
-        assert!(matches!(
-            resolve(
-                VimCommand::Operator(VimOperator::Yank),
-                VimSurfaceContext::Browse(cell_ctx)
-            ),
-            Some(Action::ResultCellYank)
-        ));
-        assert!(matches!(
-            resolve(
-                VimCommand::Operator(VimOperator::Yank),
-                VimSurfaceContext::Browse(BrowseVimContext::Inspector(InspectorVimContext::Ddl))
-            ),
-            Some(Action::DdlYank)
-        ));
+        assert!(matches!(action, Some(Action::ResultCellRight)));
     }
 
     #[test]
-    fn sql_query_normal_shares_insert_and_yank() {
+    fn browse_result_row_yank_without_pending_sets_yank_pending() {
+        let action = resolve(
+            VimCommand::Operator(VimOperator::Yank),
+            browse_result(result_ctx(ResultNavMode::RowActive)),
+        );
+
+        assert!(matches!(action, Some(Action::ResultRowYankOperatorPending)));
+    }
+
+    #[test]
+    fn browse_result_row_yank_with_pending_executes_row_yank() {
+        let action = resolve(
+            VimCommand::Operator(VimOperator::Yank),
+            browse_result(ResultVimContext {
+                yank_pending: true,
+                ..result_ctx(ResultNavMode::RowActive)
+            }),
+        );
+
+        assert!(matches!(action, Some(Action::ResultRowYank)));
+    }
+
+    #[test]
+    fn browse_result_row_delete_without_pending_sets_delete_pending() {
+        let action = resolve(
+            VimCommand::Operator(VimOperator::Delete),
+            browse_result(result_ctx(ResultNavMode::RowActive)),
+        );
+
+        assert!(matches!(action, Some(Action::ResultDeleteOperatorPending)));
+    }
+
+    #[test]
+    fn browse_result_row_delete_with_pending_stages_row_delete() {
+        let action = resolve(
+            VimCommand::Operator(VimOperator::Delete),
+            browse_result(ResultVimContext {
+                delete_pending: true,
+                ..result_ctx(ResultNavMode::RowActive)
+            }),
+        );
+
+        assert!(matches!(action, Some(Action::StageRowForDelete)));
+    }
+
+    #[test]
+    fn browse_result_cell_yank_resolves_to_cell_yank() {
+        let action = resolve(
+            VimCommand::Operator(VimOperator::Yank),
+            browse_result(result_ctx(ResultNavMode::CellActive)),
+        );
+
+        assert!(matches!(action, Some(Action::ResultCellYank)));
+    }
+
+    #[test]
+    fn browse_inspector_ddl_yank_resolves_to_ddl_yank() {
+        let action = resolve(
+            VimCommand::Operator(VimOperator::Yank),
+            VimSurfaceContext::Browse(BrowseVimContext::Inspector(InspectorVimContext::Ddl)),
+        );
+
+        assert!(matches!(action, Some(Action::DdlYank)));
+    }
+
+    #[test]
+    fn sql_query_normal_insert_command_enters_insert() {
         let ctx = VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal);
 
         assert!(matches!(
             resolve_command(&combo(Key::Char('i')), ctx),
             Some(Action::SqlModalEnterInsert)
         ));
+    }
+
+    #[test]
+    fn sql_query_normal_confirm_command_enters_insert() {
+        let ctx = VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal);
+
         assert!(matches!(
             resolve_command(&combo(Key::Enter), ctx),
             Some(Action::SqlModalEnterInsert)
         ));
+    }
+
+    #[test]
+    fn sql_query_normal_yank_command_yanks_query() {
+        let ctx = VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal);
+
         assert!(matches!(
             resolve_command(&combo(Key::Char('y')), ctx),
             Some(Action::SqlModalYank)
         ));
     }
 
-    #[test]
-    fn sql_plan_viewer_shares_ctrl_n_and_ctrl_p_scroll() {
-        let ctx = VimSurfaceContext::SqlModal(SqlModalVimContext::PlanViewer);
+    #[rstest]
+    #[case(Key::Char('n'), ScrollDirection::Down)]
+    #[case(Key::Char('p'), ScrollDirection::Up)]
+    fn sql_plan_viewer_ctrl_aliases_scroll_by_line(
+        #[case] key: Key,
+        #[case] expected_direction: ScrollDirection,
+    ) {
+        let action = resolve_command(
+            &combo_ctrl(key),
+            VimSurfaceContext::SqlModal(SqlModalVimContext::PlanViewer),
+        );
 
         assert!(matches!(
-            resolve_command(&combo_ctrl(Key::Char('n')), ctx),
+            action,
             Some(Action::Scroll {
                 target: ScrollTarget::ExplainPlan,
-                direction: ScrollDirection::Down,
+                direction,
                 amount: ScrollAmount::Line,
-            })
-        ));
-        assert!(matches!(
-            resolve_command(&combo_ctrl(Key::Char('p')), ctx),
-            Some(Action::Scroll {
-                target: ScrollTarget::ExplainPlan,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::Line,
-            })
+            }) if direction == expected_direction
         ));
     }
 
     #[test]
-    fn jsonb_viewing_shares_mode_navigation_search_and_yank() {
+    fn jsonb_viewing_enter_command_enters_edit_mode() {
         let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
 
         assert!(matches!(
             resolve_command(&combo(Key::Enter), ctx),
             Some(Action::JsonbEnterEdit)
         ));
+    }
+
+    #[test]
+    fn jsonb_viewing_search_next_command_moves_to_next_match() {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
         assert!(matches!(
             resolve_command(&combo(Key::Char('n')), ctx),
             Some(Action::JsonbSearchNext)
         ));
+    }
+
+    #[test]
+    fn jsonb_viewing_yank_command_yanks_full_json() {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
         assert!(matches!(
             resolve_command(&combo(Key::Char('y')), ctx),
             Some(Action::JsonbYankAll)
         ));
+    }
+
+    #[test]
+    fn jsonb_viewing_left_navigation_moves_text_cursor_left() {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
         assert!(matches!(
             resolve_command(&combo(Key::Char('h')), ctx),
             Some(Action::TextMoveCursor {
@@ -912,12 +994,7 @@ mod tests {
     fn browse_result_search_continuation_stays_unsupported() {
         let action = resolve(
             VimCommand::SearchContinuation(SearchContinuation::Next),
-            VimSurfaceContext::Browse(BrowseVimContext::Result(ResultVimContext {
-                mode: ResultNavMode::Scroll,
-                has_pending_draft: false,
-                yank_pending: false,
-                delete_pending: false,
-            })),
+            browse_result(result_ctx(ResultNavMode::Scroll)),
         );
 
         assert!(action.is_none());

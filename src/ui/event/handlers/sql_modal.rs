@@ -883,7 +883,7 @@ mod tests {
     #[case(Key::Down, Expected::ExplainPlanScrollDown)]
     #[case(Key::Char('k'), Expected::ExplainPlanScrollUp)]
     #[case(Key::Up, Expected::ExplainPlanScrollUp)]
-    fn plan_tab_scroll_keys_scroll_plan(#[case] code: Key, #[case] expected: Expected) {
+    fn plan_tab_jk_and_arrow_keys_scroll_plan(#[case] code: Key, #[case] expected: Expected) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
