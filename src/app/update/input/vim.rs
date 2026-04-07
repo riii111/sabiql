@@ -3,7 +3,6 @@ use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::key_sequence::Prefix;
 use crate::app::model::shared::ui_state::ResultNavMode;
-use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::app::update::action::{
     Action, CursorMove, CursorPosition, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
     ScrollToCursorTarget, SelectMotion,
@@ -127,27 +126,6 @@ pub enum SqlModalVimContext {
     CompareViewer,
 }
 
-impl SqlModalVimContext {
-    pub fn from_status(status: &SqlModalStatus, active_tab: SqlModalTab) -> Option<Self> {
-        match (status, active_tab) {
-            (SqlModalStatus::Editing, SqlModalTab::Sql) => Some(Self::QueryEditing),
-            (
-                SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error,
-                SqlModalTab::Sql,
-            ) => Some(Self::QueryNormal),
-            (
-                SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error,
-                SqlModalTab::Plan,
-            ) => Some(Self::PlanViewer),
-            (
-                SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error,
-                SqlModalTab::Compare,
-            ) => Some(Self::CompareViewer),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JsonbDetailVimContext {
     Viewing,
@@ -258,20 +236,20 @@ fn classify_navigation(combo: &KeyCombo) -> Option<VimNavigation> {
 
 fn resolve_browse(command: VimCommand, ctx: BrowseVimContext) -> Option<Action> {
     match command {
-        VimCommand::Navigation(navigation) => resolve_browse_navigation(navigation, ctx),
-        VimCommand::ModeTransition(transition) => resolve_browse_mode_transition(transition, ctx),
+        VimCommand::Navigation(navigation) => Some(resolve_browse_navigation(navigation, ctx)),
+        VimCommand::ModeTransition(transition) => {
+            Some(resolve_browse_mode_transition(transition, ctx))
+        }
         VimCommand::SearchContinuation(_) => None,
         VimCommand::Operator(operator) => resolve_browse_operator(operator, ctx),
     }
 }
 
-fn resolve_browse_navigation(navigation: VimNavigation, ctx: BrowseVimContext) -> Option<Action> {
+fn resolve_browse_navigation(navigation: VimNavigation, ctx: BrowseVimContext) -> Action {
     match ctx {
-        BrowseVimContext::Explorer => Some(resolve_explorer_navigation(navigation)),
-        BrowseVimContext::Inspector(_) => Some(resolve_inspector_navigation(navigation)),
-        BrowseVimContext::Result(result_ctx) => {
-            Some(resolve_result_navigation(navigation, result_ctx))
-        }
+        BrowseVimContext::Explorer => resolve_explorer_navigation(navigation),
+        BrowseVimContext::Inspector(_) => resolve_inspector_navigation(navigation),
+        BrowseVimContext::Result(result_ctx) => resolve_result_navigation(navigation, result_ctx),
     }
 }
 
@@ -462,17 +440,14 @@ fn resolve_result_navigation(navigation: VimNavigation, ctx: ResultVimContext) -
     }
 }
 
-fn resolve_browse_mode_transition(
-    transition: VimModeTransition,
-    ctx: BrowseVimContext,
-) -> Option<Action> {
+fn resolve_browse_mode_transition(transition: VimModeTransition, ctx: BrowseVimContext) -> Action {
     match (transition, ctx) {
         (
             VimModeTransition::Escape,
             BrowseVimContext::Explorer | BrowseVimContext::Inspector(_),
-        ) => Some(Action::Escape),
+        ) => Action::Escape,
         (VimModeTransition::Escape, BrowseVimContext::Result(result_ctx)) => {
-            Some(match result_ctx.mode {
+            match result_ctx.mode {
                 ResultNavMode::Scroll => Action::Escape,
                 ResultNavMode::RowActive => Action::ResultExitToScroll,
                 ResultNavMode::CellActive => {
@@ -482,25 +457,23 @@ fn resolve_browse_mode_transition(
                         Action::ResultExitToRowActive
                     }
                 }
-            })
+            }
         }
-        (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Explorer) => {
-            Some(Action::ConfirmSelection)
-        }
-        (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Inspector(_)) => Some(Action::None),
+        (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Explorer) => Action::ConfirmSelection,
         (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Result(result_ctx)) => {
-            Some(match result_ctx.mode {
+            match result_ctx.mode {
                 ResultNavMode::Scroll => Action::ResultEnterRowActive,
                 ResultNavMode::RowActive => Action::ResultEnterCellActive,
                 ResultNavMode::CellActive => Action::None,
-            })
+            }
         }
         (VimModeTransition::Insert, BrowseVimContext::Result(result_ctx))
             if result_ctx.mode == ResultNavMode::CellActive =>
         {
-            Some(Action::ResultEnterCellEdit)
+            Action::ResultEnterCellEdit
         }
-        (VimModeTransition::Insert, _) => Some(Action::None),
+        (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Inspector(_))
+        | (VimModeTransition::Insert, _) => Action::None,
     }
 }
 
@@ -537,10 +510,9 @@ fn resolve_sql_modal(command: VimCommand, ctx: SqlModalVimContext) -> Option<Act
     match ctx {
         SqlModalVimContext::QueryNormal => match command {
             VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseSqlModal),
-            VimCommand::ModeTransition(VimModeTransition::Insert)
-            | VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter) => {
-                Some(Action::SqlModalEnterInsert)
-            }
+            VimCommand::ModeTransition(
+                VimModeTransition::Insert | VimModeTransition::ConfirmOrEnter,
+            ) => Some(Action::SqlModalEnterInsert),
             VimCommand::Operator(VimOperator::Yank) => Some(Action::SqlModalYank),
             _ => None,
         },
@@ -550,11 +522,28 @@ fn resolve_sql_modal(command: VimCommand, ctx: SqlModalVimContext) -> Option<Act
             }
             _ => None,
         },
-        SqlModalVimContext::PlanViewer | SqlModalVimContext::CompareViewer => match command {
-            VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseSqlModal),
-            VimCommand::Operator(VimOperator::Yank) => Some(Action::SqlModalYank),
-            _ => None,
-        },
+        SqlModalVimContext::PlanViewer => resolve_sql_viewer(command, ScrollTarget::ExplainPlan),
+        SqlModalVimContext::CompareViewer => {
+            resolve_sql_viewer(command, ScrollTarget::ExplainCompare)
+        }
+    }
+}
+
+fn resolve_sql_viewer(command: VimCommand, target: ScrollTarget) -> Option<Action> {
+    match command {
+        VimCommand::Navigation(VimNavigation::MoveDown) => Some(scroll_action(
+            target,
+            ScrollDirection::Down,
+            ScrollAmount::Line,
+        )),
+        VimCommand::Navigation(VimNavigation::MoveUp) => Some(scroll_action(
+            target,
+            ScrollDirection::Up,
+            ScrollAmount::Line,
+        )),
+        VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseSqlModal),
+        VimCommand::Operator(VimOperator::Yank) => Some(Action::SqlModalYank),
+        _ => None,
     }
 }
 
@@ -563,10 +552,9 @@ fn resolve_jsonb_detail(command: VimCommand, ctx: JsonbDetailVimContext) -> Opti
         JsonbDetailVimContext::Viewing => match command {
             VimCommand::Navigation(navigation) => jsonb_navigation_action(navigation),
             VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseJsonbDetail),
-            VimCommand::ModeTransition(VimModeTransition::Insert)
-            | VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter) => {
-                Some(Action::JsonbEnterEdit)
-            }
+            VimCommand::ModeTransition(
+                VimModeTransition::Insert | VimModeTransition::ConfirmOrEnter,
+            ) => Some(Action::JsonbEnterEdit),
             VimCommand::SearchContinuation(SearchContinuation::Next) => {
                 Some(Action::JsonbSearchNext)
             }
@@ -825,6 +813,28 @@ mod tests {
         assert!(matches!(
             resolve_command(&combo(Key::Char('y')), ctx),
             Some(Action::SqlModalYank)
+        ));
+    }
+
+    #[test]
+    fn sql_plan_viewer_shares_ctrl_n_and_ctrl_p_scroll() {
+        let ctx = VimSurfaceContext::SqlModal(SqlModalVimContext::PlanViewer);
+
+        assert!(matches!(
+            resolve_command(&combo_ctrl(Key::Char('n')), ctx),
+            Some(Action::Scroll {
+                target: ScrollTarget::ExplainPlan,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line,
+            })
+        ));
+        assert!(matches!(
+            resolve_command(&combo_ctrl(Key::Char('p')), ctx),
+            Some(Action::Scroll {
+                target: ScrollTarget::ExplainPlan,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::Line,
+            })
         ));
     }
 

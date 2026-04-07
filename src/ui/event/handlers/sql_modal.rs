@@ -5,27 +5,6 @@ use crate::app::update::action::{
 use crate::app::update::input::keybindings::{Key, KeyCombo};
 use crate::app::update::input::vim::{SqlModalVimContext, VimSurfaceContext, resolve_command};
 
-fn line_scroll_action(
-    combo: KeyCombo,
-    target: ScrollTarget,
-    plain: bool,
-    ctrl_only: bool,
-) -> Option<Action> {
-    let direction = match combo.key {
-        Key::Char('j') | Key::Down if plain => Some(ScrollDirection::Down),
-        Key::Char('n') if ctrl_only => Some(ScrollDirection::Down),
-        Key::Char('k') | Key::Up if plain => Some(ScrollDirection::Up),
-        Key::Char('p') if ctrl_only => Some(ScrollDirection::Up),
-        _ => None,
-    }?;
-
-    Some(Action::Scroll {
-        target,
-        direction,
-        amount: ScrollAmount::Line,
-    })
-}
-
 pub fn handle_sql_modal_keys(
     combo: KeyCombo,
     completion_visible: bool,
@@ -46,10 +25,7 @@ pub fn handle_sql_modal_keys(
     ) {
         let ctrl = combo.modifiers.ctrl;
         let alt = combo.modifiers.alt;
-        let shift = combo.modifiers.shift;
         let plain = !ctrl && !alt;
-        // Treat only pure Ctrl as the alias modifier so Ctrl+Alt (AltGr) does not trigger nav.
-        let ctrl_only = ctrl && !alt && !shift;
 
         if ctrl && combo.key == Key::Char('e') {
             return Action::ExplainRequest;
@@ -65,12 +41,6 @@ pub fn handle_sql_modal_keys(
 
         // Plan tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Plan {
-            if let Some(action) =
-                line_scroll_action(combo, ScrollTarget::ExplainPlan, plain, ctrl_only)
-            {
-                return action;
-            }
-
             if let Some(action) = resolve_command(
                 &combo,
                 VimSurfaceContext::SqlModal(SqlModalVimContext::PlanViewer),
@@ -86,12 +56,6 @@ pub fn handle_sql_modal_keys(
 
         // Compare tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Compare {
-            if let Some(action) =
-                line_scroll_action(combo, ScrollTarget::ExplainCompare, plain, ctrl_only)
-            {
-                return action;
-            }
-
             if let Some(action) = resolve_command(
                 &combo,
                 VimSurfaceContext::SqlModal(SqlModalVimContext::CompareViewer),
