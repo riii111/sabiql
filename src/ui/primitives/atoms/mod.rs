@@ -12,7 +12,8 @@ pub use panel_border::{panel_block, panel_block_highlight};
 pub use spinner::spinner_char;
 pub use sql_highlight::{highlight_sql, highlight_sql_spans};
 pub use text_cursor::{
-    CursorKind, cursor_style, cursor_style_for, insert_cursor_span, insert_cursor_span_with_kind,
+    CursorKind, ModalTextSurface, build_modal_text_surface_lines, cursor_style, cursor_style_for,
+    insert_cursor_span, insert_cursor_span_with_kind, render_modal_text_surface,
     set_terminal_cursor, text_cursor_spans, text_cursor_spans_with_kind,
 };
 pub use yank_flash::{apply_yank_flash, apply_yank_flash_masked};

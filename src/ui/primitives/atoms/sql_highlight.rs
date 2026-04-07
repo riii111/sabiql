@@ -143,21 +143,21 @@ mod tests {
     }
 
     #[test]
-    fn highlight_sql_with_insert_cursor_inserts_bar_before_token() {
+    fn highlight_sql_with_insert_cursor_preserves_token_text() {
         let spans = line_spans_with_cursor("SELECT 'x'", 0, 7, CursorKind::Insert);
-        let bar = spans
-            .iter()
-            .find(|span| span.content.as_ref() == CursorKind::Insert.glyph())
-            .expect("insert cursor bar should be present");
 
         assert_eq!(
             spans
                 .iter()
                 .map(|span| span.content.as_ref())
                 .collect::<String>(),
-            format!("SELECT {}'x'", CursorKind::Insert.glyph())
+            "SELECT 'x'"
         );
-        assert_eq!(bar.style.fg, Some(DEFAULT_THEME.cursor_fg));
+        assert!(
+            spans
+                .iter()
+                .all(|span| span.content.as_ref() != CursorKind::Insert.glyph())
+        );
     }
 
     #[test]
@@ -244,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn highlight_sql_with_insert_cursor_honors_injected_cursor_fg() {
+    fn highlight_sql_with_insert_cursor_preserves_injected_token_style() {
         let custom_theme = ThemePalette {
             cursor_fg: ratatui::style::Color::Rgb(0xfe, 0xdc, 0xba),
             ..DEFAULT_THEME
@@ -261,7 +261,7 @@ mod tests {
 
         assert_eq!(
             highlighted_with_cursor[0].style.fg,
-            Some(custom_theme.cursor_fg)
+            Some(custom_theme.sql_keyword)
         );
     }
 }

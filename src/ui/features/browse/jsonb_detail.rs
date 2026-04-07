@@ -2,13 +2,14 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::ui::primitives::atoms::{
-    CursorKind, cursor_style_for, set_terminal_cursor, text_cursor_spans_with_kind,
+    CursorKind, ModalTextSurface, build_modal_text_surface_lines, render_modal_text_surface,
+    set_terminal_cursor, text_cursor_spans_with_kind,
 };
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::ThemePalette;
@@ -90,60 +91,35 @@ impl JsonbDetail {
     ) {
         let editor = state.jsonb_detail.editor();
         let content = editor.content();
-        let scroll_row = editor.scroll_row();
         let (cursor_row, cursor_col) = editor.cursor_to_position();
-        let current_line_style = Style::default().bg(theme.editor_current_line_bg);
         let cursor_kind = if is_editing {
             CursorKind::Insert
         } else {
             CursorKind::Block
         };
-        let placeholder_cursor = cursor_kind.glyph();
 
-        let mut lines: Vec<Line<'_>> = if content.is_empty() {
-            let placeholder = if is_editing {
-                " Enter JSON..."
-            } else {
-                " Press Enter or i to edit..."
-            };
-            vec![
-                Line::from(vec![
-                    Span::styled(placeholder_cursor, cursor_style_for(cursor_kind, theme)),
-                    Span::styled(placeholder, Style::default().fg(theme.placeholder_text)),
-                ])
-                .style(current_line_style),
-            ]
-        } else {
-            content
-                .lines()
-                .enumerate()
-                .map(|(row, line_str)| {
-                    if row == cursor_row {
-                        Line::from(text_cursor_spans_with_kind(
-                            line_str,
-                            cursor_col,
-                            0,
-                            usize::MAX,
-                            cursor_kind,
-                            theme,
-                        ))
-                        .style(current_line_style)
-                    } else {
-                        Line::from(Span::raw(line_str.to_owned()))
-                    }
-                })
-                .collect()
-        };
-
-        if content.ends_with('\n') && cursor_row == content.lines().count() {
-            lines.push(
-                Line::from(vec![Span::styled(
-                    placeholder_cursor,
-                    cursor_style_for(cursor_kind, theme),
-                )])
-                .style(current_line_style),
-            );
-        }
+        let line_spans: Vec<Vec<Span<'static>>> = content
+            .lines()
+            .map(|line| vec![Span::raw(line.to_owned())])
+            .collect();
+        let mut lines = build_modal_text_surface_lines(
+            ModalTextSurface {
+                content,
+                cursor_row,
+                cursor_col,
+                scroll_row: editor.scroll_row(),
+                cursor_kind,
+                empty_placeholder: if is_editing {
+                    " Enter JSON..."
+                } else {
+                    " Press Enter or i to edit..."
+                },
+                base_style: Style::default().fg(theme.text_primary),
+                current_line_style: Style::default().bg(theme.editor_current_line_bg),
+            },
+            line_spans,
+            theme,
+        );
 
         let flash_active = state.flash_timers.is_active(
             crate::app::model::shared::flash_timer::FlashId::JsonbDetail,
@@ -151,15 +127,25 @@ impl JsonbDetail {
         );
         crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
 
-        let paragraph = Paragraph::new(lines)
-            .style(Style::default().fg(theme.text_primary))
-            .wrap(Wrap { trim: false })
-            .scroll((scroll_row as u16, 0));
-        frame.render_widget(paragraph, area);
-
-        if is_editing {
-            set_terminal_cursor(frame, area, cursor_row, cursor_col, scroll_row, 0);
-        }
+        render_modal_text_surface(
+            frame,
+            area,
+            ModalTextSurface {
+                content,
+                cursor_row,
+                cursor_col,
+                scroll_row: editor.scroll_row(),
+                cursor_kind,
+                empty_placeholder: if is_editing {
+                    " Enter JSON..."
+                } else {
+                    " Press Enter or i to edit..."
+                },
+                base_style: Style::default().fg(theme.text_primary),
+                current_line_style: Style::default().bg(theme.editor_current_line_bg),
+            },
+            lines,
+        );
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {

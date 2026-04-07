@@ -3,7 +3,8 @@ use std::cmp::Ordering;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::text::Span;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::ui::theme::ThemePalette;
 
@@ -209,6 +210,97 @@ pub fn set_terminal_cursor(
     let y = area.y.saturating_add(visible_row);
 
     frame.set_cursor_position((x, y));
+}
+
+pub struct ModalTextSurface<'a> {
+    pub content: &'a str,
+    pub cursor_row: usize,
+    pub cursor_col: usize,
+    pub scroll_row: usize,
+    pub cursor_kind: CursorKind,
+    pub empty_placeholder: &'a str,
+    pub base_style: Style,
+    pub current_line_style: Style,
+}
+
+pub fn build_modal_text_surface_lines(
+    surface: ModalTextSurface<'_>,
+    mut line_spans: Vec<Vec<Span<'static>>>,
+    theme: &ThemePalette,
+) -> Vec<Line<'static>> {
+    let placeholder_cursor = surface.cursor_kind.glyph();
+
+    let mut lines = if surface.content.is_empty() {
+        vec![
+            Line::from(vec![
+                Span::styled(
+                    placeholder_cursor,
+                    cursor_style_for(surface.cursor_kind, theme),
+                ),
+                Span::styled(
+                    surface.empty_placeholder.to_string(),
+                    Style::default().fg(theme.placeholder_text),
+                ),
+            ])
+            .style(surface.current_line_style),
+        ]
+    } else {
+        if let Some(line) = line_spans.get_mut(surface.cursor_row) {
+            let spans = std::mem::take(line);
+            *line =
+                insert_cursor_span_with_kind(spans, surface.cursor_col, surface.cursor_kind, theme);
+        }
+
+        line_spans
+            .into_iter()
+            .enumerate()
+            .map(|(row, spans)| {
+                if row == surface.cursor_row {
+                    Line::from(spans).style(surface.current_line_style)
+                } else {
+                    Line::from(spans)
+                }
+            })
+            .collect()
+    };
+
+    if surface.content.ends_with('\n') && surface.cursor_row == surface.content.lines().count() {
+        lines.push(
+            Line::from(vec![Span::styled(
+                placeholder_cursor,
+                cursor_style_for(surface.cursor_kind, theme),
+            )])
+            .style(surface.current_line_style),
+        );
+    }
+
+    lines
+}
+
+pub fn render_modal_text_surface(
+    frame: &mut Frame,
+    area: Rect,
+    surface: ModalTextSurface<'_>,
+    lines: Vec<Line<'static>>,
+) {
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((surface.scroll_row as u16, 0))
+            .style(surface.base_style),
+        area,
+    );
+
+    if matches!(surface.cursor_kind, CursorKind::Insert) {
+        set_terminal_cursor(
+            frame,
+            area,
+            surface.cursor_row,
+            surface.cursor_col,
+            surface.scroll_row,
+            0,
+        );
+    }
 }
 
 fn split_at_cursor(text: &str, cursor_col: usize) -> (String, String, String) {
