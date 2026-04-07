@@ -230,6 +230,7 @@ mod tests {
 
     mod jsonb_edit {
         use super::*;
+        use rstest::rstest;
 
         #[test]
         fn ctrl_n_still_falls_through_to_editor_input() {
@@ -241,6 +242,26 @@ mod tests {
                     target: InputTarget::JsonbEdit,
                     ch: 'n',
                 }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('i'), 'i')]
+        #[case(Key::Char('d'), 'd')]
+        #[case(Key::Char('n'), 'n')]
+        #[case(Key::Char('h'), 'h')]
+        fn vim_character_keys_still_fall_through_to_editor_input(
+            #[case] key: Key,
+            #[case] ch: char,
+        ) {
+            let result = handle_jsonb_edit_keys(combo(key));
+
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::JsonbEdit,
+                    ch: actual_ch,
+                } if actual_ch == ch
             ));
         }
 

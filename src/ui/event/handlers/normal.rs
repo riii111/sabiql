@@ -10,6 +10,8 @@ use crate::app::update::input::vim::{
 };
 
 #[cfg(test)]
+use crate::app::model::connection::error::ConnectionErrorInfo;
+#[cfg(test)]
 use crate::app::model::shared::ui_state::FocusMode;
 
 pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
@@ -97,7 +99,12 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     if kb::is_focus_toggle(&combo) {
         return Action::ToggleFocus;
     }
-    if combo.key == Key::Enter && state.connection_error.error_info.is_some() {
+    if combo.key == Key::Enter
+        && !combo.modifiers.ctrl
+        && !combo.modifiers.alt
+        && !combo.modifiers.shift
+        && state.connection_error.error_info.is_some()
+    {
         return Action::ConfirmSelection;
     }
 
@@ -319,6 +326,16 @@ mod tests {
         let result = handle_normal_mode(combo(Key::Enter), &state);
 
         assert!(matches!(result, Action::ConfirmSelection));
+    }
+
+    #[test]
+    fn alt_enter_does_not_confirm_connection_error() {
+        let mut state = browse_state();
+        state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
+
+        let result = handle_normal_mode(KeyCombo::alt(Key::Enter), &state);
+
+        assert!(matches!(result, Action::None));
     }
 
     #[test]
