@@ -11,6 +11,7 @@ use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::ui::primitives::atoms::{
     CursorKind, cursor_style_for, highlight_sql_spans, insert_cursor_span_with_kind,
+    set_terminal_cursor,
 };
 use crate::ui::theme::ThemePalette;
 
@@ -118,4 +119,8 @@ pub(super) fn render_editor(
             .style(Style::default()),
         area,
     );
+
+    if !is_normal {
+        set_terminal_cursor(frame, area, cursor_row, cursor_col, scroll_row as usize, 0);
+    }
 }

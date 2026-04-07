@@ -1,16 +1,22 @@
 use std::time::Duration;
+use std::time::Instant;
 
 use super::*;
 use harness::{
-    TEST_HEIGHT, TEST_WIDTH, connected_state, render_and_get_buffer_at_with_theme,
-    table_detail_loaded_state, with_current_result,
+    TEST_HEIGHT, TEST_WIDTH, connected_state, render_and_get_buffer,
+    render_and_get_buffer_at_with_theme, render_and_get_cursor_position, table_detail_loaded_state,
+    with_current_result,
 };
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier};
+use sabiql::app::model::app_state::AppState;
 use sabiql::app::model::shared::input_mode::InputMode;
 use sabiql::app::model::shared::theme_id::ThemeId;
 use sabiql::app::model::sql_editor::modal::SqlModalStatus;
-use sabiql::ui::primitives::atoms::CursorKind;
+use sabiql::app::services::AppServices;
+use sabiql::app::update::action::{Action, CursorMove, InputTarget};
+use sabiql::app::update::browse::result::reduce_result;
+use sabiql::domain::{Column, QueryResult, QuerySource};
 use sabiql::ui::theme::{DEFAULT_THEME, TEST_CONTRAST_THEME, ThemePalette};
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
@@ -20,6 +26,66 @@ fn help_modal_origin() -> (u16, u16) {
     let x = (TEST_WIDTH - modal_w) / 2;
     let y = (TEST_HEIGHT - modal_h) / 2;
     (x, y)
+}
+
+fn jsonb_detail_state() -> (AppState, Instant) {
+    let now = test_instant();
+    let mut state = create_test_state();
+    state
+        .session
+        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+    let mut table = fixtures::sample_table_detail();
+    table.columns.push(Column {
+        name: "settings".to_string(),
+        data_type: "jsonb".to_string(),
+        nullable: true,
+        is_primary_key: false,
+        is_unique: false,
+        default: None,
+        comment: None,
+        ordinal_position: 4,
+    });
+    let _ = state.session.set_table_detail(table, 0);
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
+        columns: vec![
+            "id".to_string(),
+            "name".to_string(),
+            "email".to_string(),
+            "settings".to_string(),
+        ],
+        rows: vec![vec![
+            "1".to_string(),
+            "Alice".to_string(),
+            "alice@example.com".to_string(),
+            r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
+                .to_string(),
+        ]],
+        row_count: 1,
+        execution_time_ms: 1,
+        executed_at: now,
+        source: QuerySource::Preview,
+        error: None,
+        command_tag: None,
+    }));
+    state.query.pagination.schema = "public".to_string();
+    state.query.pagination.table = "users".to_string();
+    state.ui.focused_pane = FocusedPane::Result;
+    state.result_interaction.enter_row(0);
+    state.result_interaction.enter_cell(3);
+    reduce_result(
+        &mut state,
+        &Action::OpenJsonbDetail,
+        &AppServices::stub(),
+        now,
+    );
+    reduce_result(
+        &mut state,
+        &Action::JsonbEnterEdit,
+        &AppServices::stub(),
+        now,
+    );
+    (state, now)
 }
 
 #[test]
@@ -297,14 +363,12 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
     state.sql_modal.set_status(SqlModalStatus::Editing);
 
     let insert_buffer = render_and_get_buffer(&mut terminal, &mut state);
-    let has_insert_bar = (0..TEST_HEIGHT)
+    let has_insert_glyph = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
-            insert_buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == CursorKind::Insert.glyph()
-                    && cell.fg == DEFAULT_THEME.cursor_fg
-                    && cell.bg != DEFAULT_THEME.cursor_bg
-            })
+            insert_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "\u{258f}")
         });
 
     assert!(
@@ -312,8 +376,8 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
         "Expected block cursor styling in SQL normal mode"
     );
     assert!(
-        has_insert_bar,
-        "Expected thin insert cursor glyph in SQL insert mode"
+        !has_insert_glyph,
+        "Expected no fake insert cursor glyph in SQL insert mode"
     );
 }
 
@@ -372,6 +436,82 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
     );
     assert_eq!(middle.0, head.0 + middle_col as u16);
     assert_eq!(tail.0, head.0 + tail_col as u16);
+}
+
+#[test]
+fn sql_modal_insert_cursor_position_tracks_head_middle_and_tail() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    let content = "SELECT 1".to_string();
+    let middle_col = 4;
+    let tail_col = content.chars().count();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content_with_cursor(content.clone(), 0);
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let head = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    state
+        .sql_modal
+        .editor
+        .set_content_with_cursor(content.clone(), middle_col);
+    let middle = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    state
+        .sql_modal
+        .editor
+        .set_content_with_cursor(content, tail_col);
+    let tail = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    assert_eq!(head.y, middle.y);
+    assert_eq!(middle.y, tail.y);
+    assert_eq!(middle.x, head.x + middle_col as u16);
+    assert_eq!(tail.x, head.x + tail_col as u16);
+}
+
+#[test]
+fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
+    let (mut state, now) = jsonb_detail_state();
+    let mut terminal = create_test_terminal();
+
+    let head_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_insert_glyph_at_head = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            head_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "\u{258f}")
+        });
+    let head = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    reduce_result(
+        &mut state,
+        &Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Right,
+        },
+        &AppServices::stub(),
+        now,
+    );
+
+    let moved_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_insert_glyph_after_move = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            moved_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "\u{258f}")
+        });
+    let moved = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    assert!(!has_insert_glyph_at_head);
+    assert!(!has_insert_glyph_after_move);
+    assert_eq!(head.y, moved.y);
+    assert_eq!(moved.x, head.x + 1);
 }
 
 #[test]

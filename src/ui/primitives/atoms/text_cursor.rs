@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 
+use ratatui::Frame;
+use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::Span;
 
@@ -93,21 +95,10 @@ pub fn text_cursor_spans_with_kind(
             }
         }
         CursorKind::Insert => {
-            if cursor >= total {
-                let text: String = visible.iter().collect();
-                vec![Span::raw(text), Span::styled(kind.glyph(), cursor_style)]
-            } else if let Some(ci) = cursor_in_view.filter(|&i| i <= visible.len()) {
-                let before: String = visible[..ci].iter().collect();
-                let after: String = visible[ci..].iter().collect();
-                vec![
-                    Span::raw(before),
-                    Span::styled(kind.glyph(), cursor_style),
-                    Span::raw(after),
-                ]
-            } else {
-                let text: String = visible.iter().collect();
-                vec![Span::raw(text)]
-            }
+            let _ = cursor_in_view;
+            let _ = cursor_style;
+            let text: String = visible.iter().collect();
+            vec![Span::raw(text)]
         }
     }
 }
@@ -143,13 +134,16 @@ pub fn insert_cursor_span_with_kind(
 
         if remaining == len {
             output.push(span);
-            if iter.peek().is_none() {
+            if iter.peek().is_none() && matches!(kind, CursorKind::Block) {
                 output.push(Span::styled(kind.glyph(), cursor_style));
                 return output;
             }
 
+            if iter.peek().is_none() {
+                return output;
+            }
+
             if matches!(kind, CursorKind::Insert) {
-                output.push(Span::styled(kind.glyph(), cursor_style));
                 output.extend(iter);
                 return output;
             }
@@ -171,20 +165,50 @@ pub fn insert_cursor_span_with_kind(
                 }
             }
             CursorKind::Insert => {
-                output.push(Span::styled(kind.glyph(), cursor_style));
                 let mut remainder = current;
                 remainder.push_str(&after);
                 if !remainder.is_empty() {
                     output.push(Span::styled(remainder, span.style));
                 }
+                output.extend(iter);
+                return output;
             }
         }
         output.extend(iter);
         return output;
     }
 
-    output.push(Span::styled(kind.glyph(), cursor_style));
+    if matches!(kind, CursorKind::Block) {
+        output.push(Span::styled(kind.glyph(), cursor_style));
+    }
     output
+}
+
+pub fn set_terminal_cursor(
+    frame: &mut Frame,
+    area: Rect,
+    cursor_row: usize,
+    cursor_col: usize,
+    scroll_row: usize,
+    x_offset: u16,
+) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+
+    let visible_row = match cursor_row.checked_sub(scroll_row) {
+        Some(row) if row < area.height as usize => row as u16,
+        _ => return,
+    };
+
+    let x = area
+        .x
+        .saturating_add(x_offset)
+        .saturating_add(cursor_col as u16)
+        .min(area.right().saturating_sub(1));
+    let y = area.y.saturating_add(visible_row);
+
+    frame.set_cursor_position((x, y));
 }
 
 fn split_at_cursor(text: &str, cursor_col: usize) -> (String, String, String) {
@@ -330,15 +354,11 @@ mod tests {
         );
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["a", CursorKind::Insert.glyph(), "bc"]);
-        assert_eq!(
-            spans[1].style,
-            cursor_style_for(CursorKind::Insert, &DEFAULT_THEME)
-        );
+        assert_eq!(texts, vec!["abc"]);
     }
 
     #[test]
-    fn insert_mode_cursor_at_end_appends_bar_glyph() {
+    fn insert_mode_cursor_at_end_keeps_text_width() {
         let spans = text_cursor_spans_with_kind(
             "abc",
             3,
@@ -349,7 +369,7 @@ mod tests {
         );
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["abc", CursorKind::Insert.glyph()]);
+        assert_eq!(texts, vec!["abc"]);
     }
 
     #[test]
@@ -439,7 +459,7 @@ mod tests {
     }
 
     #[test]
-    fn insert_cursor_span_with_insert_kind_keeps_text_after_bar() {
+    fn insert_cursor_span_with_insert_kind_preserves_text_without_glyph() {
         let spans = vec![Span::styled(
             "abcd".to_string(),
             Style::default().fg(DEFAULT_THEME.sql_keyword),
@@ -448,11 +468,8 @@ mod tests {
         let inserted = insert_cursor_span_with_kind(spans, 2, CursorKind::Insert, &DEFAULT_THEME);
 
         let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
-        assert_eq!(texts, vec!["ab", CursorKind::Insert.glyph(), "cd"]);
-        assert_eq!(
-            inserted[1].style,
-            cursor_style_for(CursorKind::Insert, &DEFAULT_THEME)
-        );
-        assert_eq!(inserted[2].style.fg, Some(DEFAULT_THEME.sql_keyword));
+        assert_eq!(texts, vec!["ab", "cd"]);
+        assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
+        assert_eq!(inserted[1].style.fg, Some(DEFAULT_THEME.sql_keyword));
     }
 }

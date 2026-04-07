@@ -4,8 +4,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ratatui::Terminal;
+use ratatui::backend::Backend;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Position;
 
 use sabiql::app::model::app_state::AppState;
 use sabiql::app::services::AppServices;
@@ -80,6 +82,14 @@ pub fn render_and_get_buffer_at_with_theme(
 pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
     let buffer = render_and_get_buffer(terminal, state);
     buffer_to_string(&buffer)
+}
+
+pub fn render_and_get_cursor_position(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+) -> Position {
+    let _ = render_and_get_buffer(terminal, state);
+    terminal.backend_mut().get_cursor_position().unwrap()
 }
 
 fn buffer_to_string(buffer: &Buffer) -> String {

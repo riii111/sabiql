@@ -8,7 +8,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │  public.posts    ││Owner:   postgres                                         │
 │  publi╭ JSONB Edit ── settings (jsonb) ──────────────────────────────╮       │
 │       │{                                                             │       │
-│       │ ▏ "count": 5,                                                │       │
+│       │  "count": 5,                                                 │       │
 │       │  "nested": {                                                 │       │
 │       │    "enabled": true,                                          │       │
 │       │    "roles": [                                                │       │
