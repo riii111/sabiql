@@ -517,12 +517,7 @@ mod tests {
         #[test]
         fn preview_delete_reselection_preserves_active_column_and_offset() {
             let mut state = create_test_state();
-            state
-                .query
-                .set_post_delete_selection(PostDeleteRowSelection::Select(1));
-            state.result_interaction.horizontal_offset = 2;
-            state.result_interaction.activate_cell(3, 2);
-            state.query.set_current_result(Arc::new(QueryResult {
+            let result = Arc::new(QueryResult {
                 query: "SELECT * FROM users".to_string(),
                 columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
                 rows: vec![
@@ -543,33 +538,18 @@ mod tests {
                 source: QuerySource::Preview,
                 error: None,
                 command_tag: None,
-            }));
+            });
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(1));
+            state.result_interaction.horizontal_offset = 2;
+            state.result_interaction.activate_cell(3, 2);
+            state.query.set_current_result(Arc::clone(&result));
 
             reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
-                    result: Arc::new(QueryResult {
-                        query: "SELECT * FROM users".to_string(),
-                        columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
-                        rows: vec![
-                            vec![
-                                "1".to_string(),
-                                "Alice".to_string(),
-                                "a@example.com".to_string(),
-                            ],
-                            vec![
-                                "2".to_string(),
-                                "Bob".to_string(),
-                                "b@example.com".to_string(),
-                            ],
-                        ],
-                        row_count: 2,
-                        execution_time_ms: 10,
-                        executed_at: Instant::now(),
-                        source: QuerySource::Preview,
-                        error: None,
-                        command_tag: None,
-                    }),
+                    result,
                     generation: 0,
                     target_page: Some(0),
                 },
