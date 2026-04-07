@@ -3,16 +3,14 @@ use crate::app::update::input::keybindings::{
     JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo,
 };
 use crate::app::update::input::keymap;
-use crate::app::update::input::vim::{
-    JsonbDetailVimContext, VimSurfaceContext, resolve_command as resolve_vim_command,
-};
+use crate::app::update::input::vim::{JsonbDetailVimContext, VimSurfaceContext, resolve_command};
 
 pub fn handle_jsonb_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
     if is_searching {
         return handle_search_input(combo);
     }
 
-    if let Some(action) = resolve_vim_command(
+    if let Some(action) = resolve_command(
         &combo,
         VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing),
     ) {
@@ -64,7 +62,7 @@ fn handle_search_input(combo: KeyCombo) -> Action {
 }
 
 pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
-    if let Some(action) = resolve_vim_command(
+    if let Some(action) = resolve_command(
         &combo,
         VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Editing),
     ) {

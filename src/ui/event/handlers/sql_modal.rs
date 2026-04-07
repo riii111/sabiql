@@ -3,9 +3,7 @@ use crate::app::update::action::{
     Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 use crate::app::update::input::keybindings::{Key, KeyCombo};
-use crate::app::update::input::vim::{
-    SqlModalVimContext, VimSurfaceContext, resolve_command as resolve_vim_command,
-};
+use crate::app::update::input::vim::{SqlModalVimContext, VimSurfaceContext, resolve_command};
 
 fn line_scroll_action(
     combo: KeyCombo,
@@ -73,7 +71,7 @@ pub fn handle_sql_modal_keys(
                 return action;
             }
 
-            if let Some(action) = resolve_vim_command(
+            if let Some(action) = resolve_command(
                 &combo,
                 VimSurfaceContext::SqlModal(SqlModalVimContext::PlanViewer),
             ) {
@@ -82,7 +80,6 @@ pub fn handle_sql_modal_keys(
 
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
-                Key::Char('y') if plain => Action::SqlModalYank,
                 _ => Action::None,
             };
         }
@@ -95,7 +92,7 @@ pub fn handle_sql_modal_keys(
                 return action;
             }
 
-            if let Some(action) = resolve_vim_command(
+            if let Some(action) = resolve_command(
                 &combo,
                 VimSurfaceContext::SqlModal(SqlModalVimContext::CompareViewer),
             ) {
@@ -104,7 +101,6 @@ pub fn handle_sql_modal_keys(
 
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
-                Key::Char('y') if plain => Action::SqlModalYank,
                 Key::Char('e') if plain => Action::CompareEditQuery,
                 _ => Action::None,
             };
@@ -120,7 +116,7 @@ pub fn handle_sql_modal_keys(
             return Action::SqlModalClear;
         }
 
-        if let Some(action) = resolve_vim_command(
+        if let Some(action) = resolve_command(
             &combo,
             VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),
         ) {
@@ -129,7 +125,6 @@ pub fn handle_sql_modal_keys(
 
         return match combo.key {
             Key::Enter if alt => Action::SqlModalSubmit,
-            Key::Char('y') if plain => Action::SqlModalYank,
             Key::Up => Action::TextMoveCursor {
                 target: InputTarget::SqlModal,
                 direction: CursorMove::Up,
@@ -273,7 +268,7 @@ pub fn handle_sql_modal_keys(
         }
     }
 
-    if let Some(action) = resolve_vim_command(
+    if let Some(action) = resolve_command(
         &combo,
         VimSurfaceContext::SqlModal(SqlModalVimContext::QueryEditing),
     ) {

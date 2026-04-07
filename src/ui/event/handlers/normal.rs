@@ -1,14 +1,12 @@
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::key_sequence::Prefix;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::update::action::Action;
 use crate::app::update::input::keybindings::{self as kb, Key, KeyCombo};
-use crate::app::update::input::nav_intent::NavIntent;
 use crate::app::update::input::vim::{
-    BrowseVimContext, VimCommand, VimSurfaceContext, classify_command, resolve as resolve_vim,
-    resolve_command as resolve_vim_command,
+    BrowseVimContext, VimCommand, VimSurfaceContext, classify_command, resolve_command,
+    resolve_key_input,
 };
 
 #[cfg(test)]
@@ -43,8 +41,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 return Action::RequestCsvExport;
             }
             _ => {
-                if let Some(action) =
-                    resolve_vim_command(&combo, VimSurfaceContext::Browse(browse_ctx))
+                if let Some(action) = resolve_command(&combo, VimSurfaceContext::Browse(browse_ctx))
                 {
                     return action;
                 }
@@ -62,25 +59,10 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         if combo.modifiers.ctrl || combo.modifiers.alt {
             return Action::CancelKeySequence;
         }
-        return match prefix {
-            Prefix::Z => {
-                if inspector_navigation {
-                    return Action::CancelKeySequence;
-                }
-                let intent = match combo.key {
-                    Key::Char('z') => NavIntent::ScrollCursorCenter,
-                    Key::Char('t') => NavIntent::ScrollCursorTop,
-                    Key::Char('b') => NavIntent::ScrollCursorBottom,
-                    _ => return Action::CancelKeySequence,
-                };
-                resolve_vim(
-                    VimCommand::Navigation(intent),
-                    VimSurfaceContext::Browse(browse_ctx),
-                )
-                .unwrap_or_else(|| {
-                    panic!("shared vim resolver must support z-sequence intent {intent:?}")
-                })
-            }
+        return match resolve_key_input(&combo, Some(prefix), VimSurfaceContext::Browse(browse_ctx))
+        {
+            Some(Action::None) | None => Action::CancelKeySequence,
+            Some(action) => action,
         };
     }
 
@@ -93,7 +75,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             // Home/End/PageDown/PageUp are blocked in history mode
             // (only char keys g/G and Ctrl+D/U/F/B are allowed for these motions)
             Key::Home | Key::End | Key::PageDown | Key::PageUp => return Action::None,
-            // Scroll keys fall through to normal handling via NavIntent
+            // Scroll keys fall through to shared vim navigation handling
             _ if matches!(classify_command(&combo), Some(VimCommand::Navigation(_))) => {}
             Key::Char('z') => {}
             _ => return Action::None,
@@ -120,8 +102,8 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         return Action::ConfirmSelection;
     }
 
-    // NavIntent-based navigation (context-dependent)
-    if let Some(action) = resolve_vim_command(&combo, VimSurfaceContext::Browse(browse_ctx)) {
+    // Shared vim semantics (navigation, mode, operators)
+    if let Some(action) = resolve_command(&combo, VimSurfaceContext::Browse(browse_ctx)) {
         return action;
     }
 
@@ -155,26 +137,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Tab if inspector_navigation => Action::InspectorNextTab,
         Key::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
-        Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
-            if state.result_interaction.yank_op_pending {
-                Action::ResultRowYank
-            } else {
-                Action::ResultRowYankOperatorPending
-            }
-        }
-        Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
-            Action::ResultCellYank
-        }
-        Key::Char('y') if inspector_navigation && state.ui.inspector_tab == InspectorTab::Ddl => {
-            Action::DdlYank
-        }
-        Key::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
-            if state.result_interaction.delete_op_pending {
-                Action::StageRowForDelete
-            } else {
-                Action::ResultDeleteOperatorPending
-            }
-        }
         Key::Char('u') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
             Action::UnstageLastStagedRow
         }
