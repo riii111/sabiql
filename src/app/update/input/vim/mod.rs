@@ -1,8 +1,6 @@
 mod actions;
 mod classify;
 mod dispatch;
-#[cfg(test)]
-mod tests;
 mod types;
 
 use crate::app::model::shared::key_sequence::Prefix;

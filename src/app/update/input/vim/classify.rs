@@ -77,3 +77,127 @@ fn navigation(combo: &KeyCombo) -> Option<VimNavigation> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::update::input::keybindings::KeyCombo;
+    use rstest::rstest;
+
+    fn combo(key: Key) -> KeyCombo {
+        KeyCombo::plain(key)
+    }
+
+    fn combo_ctrl(key: Key) -> KeyCombo {
+        KeyCombo::ctrl(key)
+    }
+
+    #[rstest]
+    #[case(Key::Char('i'), VimModeTransition::Insert)]
+    #[case(Key::Enter, VimModeTransition::ConfirmOrEnter)]
+    #[case(Key::Esc, VimModeTransition::Escape)]
+    fn mode_transition_keys(#[case] key: Key, #[case] expected: VimModeTransition) {
+        assert_eq!(
+            classify_command(&combo(key)),
+            Some(VimCommand::ModeTransition(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('n'), SearchContinuation::Next)]
+    #[case(Key::Char('N'), SearchContinuation::Prev)]
+    fn search_keys(#[case] key: Key, #[case] expected: SearchContinuation) {
+        assert_eq!(
+            classify_command(&combo(key)),
+            Some(VimCommand::SearchContinuation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('y'), VimOperator::Yank)]
+    #[case(Key::Char('d'), VimOperator::Delete)]
+    fn operator_keys(#[case] key: Key, #[case] expected: VimOperator) {
+        assert_eq!(
+            classify_command(&combo(key)),
+            Some(VimCommand::Operator(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('j'), false, VimNavigation::MoveDown)]
+    #[case(Key::Down, false, VimNavigation::MoveDown)]
+    #[case(Key::Char('n'), true, VimNavigation::MoveDown)]
+    #[case(Key::Char('k'), false, VimNavigation::MoveUp)]
+    #[case(Key::Up, false, VimNavigation::MoveUp)]
+    #[case(Key::Char('p'), true, VimNavigation::MoveUp)]
+    fn vertical_navigation_aliases(
+        #[case] key: Key,
+        #[case] ctrl: bool,
+        #[case] expected: VimNavigation,
+    ) {
+        let combo = if ctrl { combo_ctrl(key) } else { combo(key) };
+
+        assert_eq!(
+            classify_command(&combo),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('h'), VimNavigation::MoveLeft)]
+    #[case(Key::Left, VimNavigation::MoveLeft)]
+    #[case(Key::Char('l'), VimNavigation::MoveRight)]
+    #[case(Key::Right, VimNavigation::MoveRight)]
+    fn horizontal_navigation_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
+        assert_eq!(
+            classify_command(&combo(key)),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('g'), VimNavigation::MoveToFirst)]
+    #[case(Key::Home, VimNavigation::MoveToFirst)]
+    #[case(Key::Char('G'), VimNavigation::MoveToLast)]
+    #[case(Key::End, VimNavigation::MoveToLast)]
+    #[case(Key::Char('H'), VimNavigation::ViewportTop)]
+    #[case(Key::Char('M'), VimNavigation::ViewportMiddle)]
+    #[case(Key::Char('L'), VimNavigation::ViewportBottom)]
+    fn boundary_navigation_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
+        assert_eq!(
+            classify_command(&combo(key)),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('d'), true, VimNavigation::HalfPageDown)]
+    #[case(Key::Char('u'), true, VimNavigation::HalfPageUp)]
+    #[case(Key::Char('f'), true, VimNavigation::FullPageDown)]
+    #[case(Key::PageDown, false, VimNavigation::FullPageDown)]
+    #[case(Key::Char('b'), true, VimNavigation::FullPageUp)]
+    #[case(Key::PageUp, false, VimNavigation::FullPageUp)]
+    fn paging_navigation_aliases(
+        #[case] key: Key,
+        #[case] ctrl: bool,
+        #[case] expected: VimNavigation,
+    ) {
+        let combo = if ctrl { combo_ctrl(key) } else { combo(key) };
+
+        assert_eq!(
+            classify_command(&combo),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('z'), VimNavigation::ScrollCursorCenter)]
+    #[case(Key::Char('t'), VimNavigation::ScrollCursorTop)]
+    #[case(Key::Char('b'), VimNavigation::ScrollCursorBottom)]
+    fn z_sequence_navigation(#[case] key: Key, #[case] expected: VimNavigation) {
+        assert_eq!(
+            classify_sequence(Prefix::Z, &combo(key)),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+}

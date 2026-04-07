@@ -126,3 +126,27 @@ pub enum JsonbDetailVimContext {
     Editing,
     Searching,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::model::app_state::AppState;
+
+    #[test]
+    fn browse_context_detects_result_pending_state() {
+        let mut state = AppState::new("test".to_string());
+        state.ui.focused_pane = FocusedPane::Result;
+        state.result_interaction.enter_row(0);
+        state.result_interaction.enter_cell(0);
+        state.result_interaction.yank_op_pending = true;
+        state.result_interaction.delete_op_pending = true;
+
+        let BrowseVimContext::Result(result_ctx) = BrowseVimContext::from_state(&state) else {
+            panic!("expected result context");
+        };
+
+        assert_eq!(result_ctx.mode, ResultNavMode::CellActive);
+        assert!(result_ctx.yank_pending);
+        assert!(result_ctx.delete_pending);
+    }
+}

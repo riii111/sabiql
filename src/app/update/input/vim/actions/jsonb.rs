@@ -49,3 +49,56 @@ fn navigation_action(navigation: VimNavigation) -> Option<Action> {
         direction,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
+    use crate::app::update::input::vim::{VimSurfaceContext, action_for_key};
+
+    fn combo(key: Key) -> KeyCombo {
+        KeyCombo::plain(key)
+    }
+
+    #[test]
+    fn enter_opens_edit_mode() {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
+        let action = action_for_key(&combo(Key::Enter), ctx);
+
+        assert!(matches!(action, Some(Action::JsonbEnterEdit)));
+    }
+
+    #[test]
+    fn search_next_moves_to_match() {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
+        let action = action_for_key(&combo(Key::Char('n')), ctx);
+
+        assert!(matches!(action, Some(Action::JsonbSearchNext)));
+    }
+
+    #[test]
+    fn yank_copies_full_json() {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
+        let action = action_for_key(&combo(Key::Char('y')), ctx);
+
+        assert!(matches!(action, Some(Action::JsonbYankAll)));
+    }
+
+    #[test]
+    fn left_navigation_moves_text_cursor_left() {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
+        let action = action_for_key(&combo(Key::Char('h')), ctx);
+
+        assert!(matches!(
+            action,
+            Some(Action::TextMoveCursor {
+                target: InputTarget::JsonbEdit,
+                direction: CursorMove::Left,
+            })
+        ));
+    }
+}

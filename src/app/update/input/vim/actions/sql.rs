@@ -42,3 +42,58 @@ fn viewer(command: VimCommand, target: ScrollTarget) -> Option<Action> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
+    use crate::app::update::input::vim::{VimSurfaceContext, action_for_key};
+    use rstest::rstest;
+
+    fn combo(key: Key) -> KeyCombo {
+        KeyCombo::plain(key)
+    }
+
+    fn combo_ctrl(key: Key) -> KeyCombo {
+        KeyCombo::ctrl(key)
+    }
+
+    #[rstest]
+    #[case(Key::Char('i'))]
+    #[case(Key::Enter)]
+    fn insert_and_confirm_enter_insert(#[case] key: Key) {
+        let ctx = VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal);
+
+        let action = action_for_key(&combo(key), ctx);
+
+        assert!(matches!(action, Some(Action::SqlModalEnterInsert)));
+    }
+
+    #[test]
+    fn yank_copies_query() {
+        let ctx = VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal);
+
+        let action = action_for_key(&combo(Key::Char('y')), ctx);
+
+        assert!(matches!(action, Some(Action::SqlModalYank)));
+    }
+
+    #[rstest]
+    #[case(Key::Char('n'), ScrollDirection::Down)]
+    #[case(Key::Char('p'), ScrollDirection::Up)]
+    fn ctrl_aliases_scroll_by_line(#[case] key: Key, #[case] expected_direction: ScrollDirection) {
+        let action = action_for_key(
+            &combo_ctrl(key),
+            VimSurfaceContext::SqlModal(SqlModalVimContext::PlanViewer),
+        );
+
+        assert!(matches!(
+            action,
+            Some(Action::Scroll {
+                target: ScrollTarget::ExplainPlan,
+                direction,
+                amount: ScrollAmount::Line,
+            }) if direction == expected_direction
+        ));
+    }
+}
