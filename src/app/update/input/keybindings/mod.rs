@@ -83,6 +83,12 @@ pub const COMMAND_PALETTE: ModeBindings = ModeBindings {
 pub const CONNECTION_SELECTOR: ModeBindings = ModeBindings {
     rows: CONNECTION_SELECTOR_ROWS,
 };
+pub const JSONB_DETAIL: ModeBindings = ModeBindings {
+    rows: JSONB_DETAIL_ROWS,
+};
+pub const JSONB_EDIT: ModeBindings = ModeBindings {
+    rows: JSONB_EDIT_ROWS,
+};
 
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("HELP", &HELP),
@@ -92,6 +98,8 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("QUERY_HISTORY_PICKER", &QUERY_HISTORY_PICKER),
     ("COMMAND_PALETTE", &COMMAND_PALETTE),
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
+    ("JSONB_DETAIL", &JSONB_DETAIL),
+    ("JSONB_EDIT", &JSONB_EDIT),
 ];
 
 // =============================================================================
@@ -351,8 +359,8 @@ pub const fn help_content_line_count() -> usize {
         + COMMAND_PALETTE_ROWS.len()
         + HELP_ROWS.len()
         + CONFIRM_DIALOG_KEYS.len()
-        + JSONB_DETAIL_KEYS.len()
-        + JSONB_EDIT_KEYS.len()
+        + JSONB_DETAIL_ROWS.len()
+        + JSONB_EDIT_ROWS.len()
         + JSONB_SEARCH_KEYS.len()
 }
 
@@ -590,24 +598,24 @@ mod tests {
         assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
         assert!(idx::connection_selector::CLOSE < CONNECTION_SELECTOR_ROWS.len());
 
-        // JSONB_DETAIL_KEYS
-        assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_KEYS.len());
-        assert!(idx::jsonb_detail::INSERT < JSONB_DETAIL_KEYS.len());
-        assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_KEYS.len());
-        assert!(idx::jsonb_detail::NEXT_PREV < JSONB_DETAIL_KEYS.len());
-        assert!(idx::jsonb_detail::MOVE < JSONB_DETAIL_KEYS.len());
-        assert!(idx::jsonb_detail::HOME_END < JSONB_DETAIL_KEYS.len());
-        assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_KEYS.len());
+        // JSONB_DETAIL_ROWS
+        assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_ROWS.len());
+        assert!(idx::jsonb_detail::INSERT < JSONB_DETAIL_ROWS.len());
+        assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_ROWS.len());
+        assert!(idx::jsonb_detail::NEXT_PREV < JSONB_DETAIL_ROWS.len());
+        assert!(idx::jsonb_detail::MOVE < JSONB_DETAIL_ROWS.len());
+        assert!(idx::jsonb_detail::HOME_END < JSONB_DETAIL_ROWS.len());
+        assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_ROWS.len());
 
         // JSONB_SEARCH_KEYS
         assert!(idx::jsonb_search::TYPE_SEARCH < JSONB_SEARCH_KEYS.len());
         assert!(idx::jsonb_search::CONFIRM < JSONB_SEARCH_KEYS.len());
         assert!(idx::jsonb_search::CANCEL < JSONB_SEARCH_KEYS.len());
 
-        // JSONB_EDIT_KEYS
-        assert!(idx::jsonb_edit::ESC_NORMAL < JSONB_EDIT_KEYS.len());
-        assert!(idx::jsonb_edit::MOVE < JSONB_EDIT_KEYS.len());
-        assert!(idx::jsonb_edit::HOME_END < JSONB_EDIT_KEYS.len());
+        // JSONB_EDIT_ROWS
+        assert!(idx::jsonb_edit::ESC_NORMAL < JSONB_EDIT_ROWS.len());
+        assert!(idx::jsonb_edit::MOVE < JSONB_EDIT_ROWS.len());
+        assert!(idx::jsonb_edit::HOME_END < JSONB_EDIT_ROWS.len());
     }
 
     #[test]
@@ -635,8 +643,8 @@ mod tests {
             COMMAND_PALETTE_ROWS.len(),
             HELP_ROWS.len(),
             CONFIRM_DIALOG_KEYS.len(),
-            JSONB_DETAIL_KEYS.len(),
-            JSONB_EDIT_KEYS.len(),
+            JSONB_DETAIL_ROWS.len(),
+            JSONB_EDIT_ROWS.len(),
             JSONB_SEARCH_KEYS.len(),
         ];
         let section_count = sections.len();
@@ -779,9 +787,7 @@ mod tests {
             check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
             check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
-            check_non_none_have_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
             check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-            check_non_none_have_combos(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
         }
 
         // ------------------------------------------------------------------ //
@@ -853,9 +859,7 @@ mod tests {
         fn no_duplicate_combos_in_simple_modes() {
             check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-            check_no_duplicate_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
             check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-            check_no_duplicate_combos(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
             for (name, mb) in ALL_MODE_BINDINGS {
                 check_no_duplicate_combos_rows(mb.rows, name);
             }
@@ -908,9 +912,7 @@ mod tests {
         fn keymap_resolve_roundtrip_for_simple_modes() {
             check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-            check_keymap_roundtrip(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
             check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-            check_keymap_roundtrip(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
             for (name, mb) in ALL_MODE_BINDINGS {
                 check_resolve_mode_roundtrip(mb.rows, name);
             }
@@ -1046,9 +1048,7 @@ mod tests {
             );
             check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
             check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
-            check_none_action_entries_have_no_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
             check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-            check_none_action_entries_have_no_combos(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
         }
 
         // ------------------------------------------------------------------ //
@@ -1058,7 +1058,7 @@ mod tests {
         // HELP, CONNECTION_ERROR, TABLE_PICKER, ER_PICKER, COMMAND_PALETTE, CONNECTION_SELECTOR
         #[test]
         fn all_mode_bindings_count() {
-            assert_eq!(ALL_MODE_BINDINGS.len(), 7);
+            assert_eq!(ALL_MODE_BINDINGS.len(), 9);
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::app::update::input::keybindings::{
-    JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS, JSONB_SEARCH_KEYS, Key, KeyCombo,
+    JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo,
 };
 use crate::app::update::input::keymap;
 
@@ -9,69 +9,10 @@ pub fn handle_jsonb_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
         return handle_search_input(combo);
     }
 
-    if let Some(action) = keymap::resolve(&combo, JSONB_DETAIL_KEYS) {
+    if let Some(action) = JSONB_DETAIL.resolve(&combo) {
         return action;
     }
-
-    let ctrl = combo.modifiers.ctrl;
-    let alt = combo.modifiers.alt;
-    let shift = combo.modifiers.shift;
-    let plain = !ctrl && !alt;
-    let ctrl_only = ctrl && !alt && !shift;
-
-    match combo.key {
-        Key::Char('n') if plain => Action::JsonbSearchNext,
-        Key::Char('N') if plain => Action::JsonbSearchPrev,
-        Key::Char('h') if plain => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Left,
-        },
-        Key::Char('l') if plain => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Right,
-        },
-        Key::Char('j') if plain || ctrl_only => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Down,
-        },
-        Key::Char('k') if plain || ctrl_only => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Up,
-        },
-        Key::Char('n') if ctrl_only => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Down,
-        },
-        Key::Char('p') if ctrl_only => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Up,
-        },
-        Key::Left => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Left,
-        },
-        Key::Right => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Right,
-        },
-        Key::Up => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Up,
-        },
-        Key::Down => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Down,
-        },
-        Key::Home => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::Home,
-        },
-        Key::End => Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
-            direction: CursorMove::End,
-        },
-        _ => Action::None,
-    }
+    Action::None
 }
 
 fn handle_search_input(combo: KeyCombo) -> Action {
@@ -113,7 +54,7 @@ fn handle_search_input(combo: KeyCombo) -> Action {
 }
 
 pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
-    if let Some(action) = keymap::resolve(&combo, JSONB_EDIT_KEYS) {
+    if let Some(action) = JSONB_EDIT.resolve(&combo) {
         return action;
     }
 
