@@ -6,18 +6,10 @@ use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::shared::ui_state::{ResultSelection, YankFlash};
 use crate::app::policy::write::write_guardrails::WritePreview;
 
-// # Invariants
-//
-// - `reset_view` and `reset_interaction` clear `selection`, `cell_edit`,
-//   `staged_delete_rows`, and `pending_write_preview` together. Use those
-//   aggregate transitions instead of manipulating these fields individually.
-//
-// - `exit_cell_to_scroll()` is intentionally narrower: it clears
-//   `selection`, `cell_edit`, and `pending_write_preview`, while preserving
-//   `staged_delete_rows` so Esc does not discard a staged batch.
-//
-// - After calling `exit_cell_to_scroll()`, the caller is responsible for
-//   setting `input_mode` back to `Normal` if it was `CellEdit`.
+// Invariants:
+// - `reset_view` / `reset_interaction` clear staged deletes too.
+// - `exit_cell_to_scroll()` preserves staged deletes so Esc does not drop a staged batch.
+// - Callers must restore `input_mode` themselves when leaving `CellEdit`.
 #[derive(Debug, Clone, Default)]
 pub struct ResultInteraction {
     pub scroll_offset: usize,
