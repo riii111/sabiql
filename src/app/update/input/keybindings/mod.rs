@@ -287,9 +287,11 @@ pub mod idx {
     pub mod jsonb_detail {
         pub const YANK: usize = 0;
         pub const INSERT: usize = 1;
-        pub const MOVE: usize = 2;
-        pub const HOME_END: usize = 3;
-        pub const CLOSE: usize = 4;
+        pub const SEARCH: usize = 2;
+        pub const NEXT_PREV: usize = 3;
+        pub const MOVE: usize = 4;
+        pub const HOME_END: usize = 5;
+        pub const CLOSE: usize = 6;
     }
 
     pub mod jsonb_search {
@@ -591,6 +593,8 @@ mod tests {
         // JSONB_DETAIL_KEYS
         assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::INSERT < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::NEXT_PREV < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::MOVE < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::HOME_END < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_KEYS.len());

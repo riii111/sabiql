@@ -518,13 +518,6 @@ pub enum Action {
     // JSONB Detail View
     OpenJsonbDetail,
     CloseJsonbDetail,
-    JsonbCursorUp,
-    JsonbCursorDown,
-    JsonbScrollToTop,
-    JsonbScrollToEnd,
-    JsonbToggleFold,
-    JsonbFoldAll,
-    JsonbUnfoldAll,
     JsonbYankAll,
     JsonbEnterEdit,
     JsonbExitEdit,

@@ -20,6 +20,8 @@ pub fn handle_jsonb_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
     let ctrl_only = ctrl && !alt && !shift;
 
     match combo.key {
+        Key::Char('n') if plain => Action::JsonbSearchNext,
+        Key::Char('N') if plain => Action::JsonbSearchPrev,
         Key::Char('h') if plain => Action::TextMoveCursor {
             target: InputTarget::JsonbEdit,
             direction: CursorMove::Left,
@@ -223,6 +225,20 @@ mod tests {
                     direction: CursorMove::Left,
                 }
             ));
+        }
+
+        #[test]
+        fn n_moves_to_next_search_match() {
+            let result = handle_jsonb_detail_keys(combo(Key::Char('n')), false);
+
+            assert!(matches!(result, Action::JsonbSearchNext));
+        }
+
+        #[test]
+        fn upper_n_moves_to_previous_search_match() {
+            let result = handle_jsonb_detail_keys(combo(Key::Char('N')), false);
+
+            assert!(matches!(result, Action::JsonbSearchPrev));
         }
     }
 

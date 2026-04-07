@@ -619,6 +619,22 @@ pub const JSONB_DETAIL_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Enter), KeyCombo::plain(Key::Char('i'))],
     },
     KeyBinding {
+        key_short: "/",
+        key: "/",
+        desc_short: "Search",
+        description: "Search JSON text",
+        action: Action::JsonbEnterSearch,
+        combos: &[KeyCombo::plain(Key::Char('/'))],
+    },
+    KeyBinding {
+        key_short: "n/N",
+        key: "n / N",
+        desc_short: "Next/Prev",
+        description: "Jump to next / previous search result",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
         key_short: "hjkl/↑↓←→",
         key: "h / j / k / l / ↑↓←→",
         desc_short: "Move",

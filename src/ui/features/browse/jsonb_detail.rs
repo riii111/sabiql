@@ -39,7 +39,7 @@ impl JsonbDetail {
         let hint = if is_editing {
             " Esc:Normal "
         } else {
-            " y:Copy  Enter/i:Insert  Esc:Close "
+            " y:Copy  /:Search  Enter/i:Insert  Esc:Close "
         };
 
         let (_area, inner) = render_modal(
@@ -51,11 +51,22 @@ impl JsonbDetail {
             theme,
         );
 
-        let [editor_area, status_area] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-
-        Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
-        Self::render_status(frame, status_area, state, theme);
+        if state.jsonb_detail.search().active {
+            let [editor_area, status_area, search_area] = Layout::vertical([
+                Constraint::Min(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .areas(inner);
+            Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
+            Self::render_status(frame, status_area, state, theme);
+            Self::render_search(frame, search_area, state, theme);
+        } else {
+            let [editor_area, status_area] =
+                Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+            Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
+            Self::render_status(frame, status_area, state, theme);
+        }
 
         Some(state.jsonb_detail.editor().scroll_row())
     }
@@ -159,6 +170,34 @@ impl JsonbDetail {
                 Style::default().fg(theme.status_success),
             ));
         }
+
+        frame.render_widget(Paragraph::new(Line::from(spans)), area);
+    }
+
+    fn render_search(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
+        let search = state.jsonb_detail.search();
+        let input = search.input.content();
+        let cursor = search.input.cursor();
+        let match_info = if search.matches.is_empty() {
+            "0/0".to_string()
+        } else {
+            format!("{}/{}", search.current_match + 1, search.matches.len())
+        };
+
+        let mut spans = vec![Span::styled("/", Style::default().fg(theme.text_accent))];
+        spans.extend(text_cursor_spans_with_kind(
+            input,
+            cursor,
+            0,
+            usize::MAX,
+            CursorKind::Insert,
+            theme,
+        ));
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            match_info,
+            Style::default().fg(theme.text_muted),
+        ));
 
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }

@@ -50,6 +50,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 _ => return Some(vec![]),
             };
 
+            // Parse JSON
             match parse_json_tree(cell_value) {
                 Ok(_) => {}
                 Err(msg) => {
@@ -324,6 +325,27 @@ fn original_char_offset_for_lowered_byte(
 ) -> usize {
     let idx = offset_map.partition_point(|(byte_offset, _)| *byte_offset <= lowered_byte_offset);
     offset_map[idx.saturating_sub(1)].1
+}
+
+fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let query_lower = query.to_lowercase();
+    let mut matches = Vec::new();
+    let mut offset = 0;
+
+    for segment in content.split_inclusive('\n') {
+        let line = segment.strip_suffix('\n').unwrap_or(segment);
+        let lowered = line.to_lowercase();
+        if let Some(match_idx) = lowered.find(&query_lower) {
+            matches.push(offset + lowered[..match_idx].chars().count());
+        }
+        offset += segment.chars().count();
+    }
+
+    matches
 }
 
 fn apply_pending_edit_as_draft(state: &mut AppState) {

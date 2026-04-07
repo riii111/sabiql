@@ -21,7 +21,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │✓ Valid JSON                                                  │       │
-│       ╰ y:Copy  Enter/i:Insert  Esc:Close ───────────────────────────╯       │
+│       ╰ y:Copy  /:Search  Enter/i:Insert  Esc:Close ─────────────────╯       │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-y:Copy  Enter/i:Insert  hjkl/↑↓←→:Move  Home/End:Line  Esc:Close
+y:Copy  Enter/i:Insert  /:Search  n/N:Next/Prev  hjkl/↑↓←→:Move  Esc:Close

@@ -286,8 +286,9 @@ impl Footer {
                     vec![
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::YANK].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::INSERT].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::SEARCH].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::NEXT_PREV].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::MOVE].as_hint(),
-                        JSONB_DETAIL_KEYS[idx::jsonb_detail::HOME_END].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::CLOSE].as_hint(),
                     ]
                 }
