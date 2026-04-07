@@ -732,6 +732,51 @@ mod tests {
     }
 
     #[test]
+    fn browse_explorer_scroll_cursor_center_resolves_to_scroll_to_cursor() {
+        let action = resolve(
+            VimCommand::Navigation(VimNavigation::ScrollCursorCenter),
+            VimSurfaceContext::Browse(BrowseVimContext::Explorer),
+        );
+
+        assert!(matches!(
+            action,
+            Some(Action::ScrollToCursor {
+                target: ScrollToCursorTarget::Explorer,
+                position: CursorPosition::Center,
+            })
+        ));
+    }
+
+    #[test]
+    fn browse_inspector_viewport_navigation_resolves_to_none_action() {
+        let action = resolve(
+            VimCommand::Navigation(VimNavigation::ViewportTop),
+            VimSurfaceContext::Browse(BrowseVimContext::Inspector(InspectorVimContext::Other)),
+        );
+
+        assert!(matches!(action, Some(Action::None)));
+    }
+
+    #[test]
+    fn browse_result_cell_horizontal_navigation_uses_cell_actions() {
+        let ctx = VimSurfaceContext::Browse(BrowseVimContext::Result(ResultVimContext {
+            mode: ResultNavMode::CellActive,
+            has_pending_draft: false,
+            yank_pending: false,
+            delete_pending: false,
+        }));
+
+        assert!(matches!(
+            resolve(VimCommand::Navigation(VimNavigation::MoveLeft), ctx),
+            Some(Action::ResultCellLeft)
+        ));
+        assert!(matches!(
+            resolve(VimCommand::Navigation(VimNavigation::MoveRight), ctx),
+            Some(Action::ResultCellRight)
+        ));
+    }
+
+    #[test]
     fn browse_operator_matrix_covers_row_cell_and_inspector() {
         let row_ctx = BrowseVimContext::Result(ResultVimContext {
             mode: ResultNavMode::RowActive,
