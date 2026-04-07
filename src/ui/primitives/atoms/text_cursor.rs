@@ -239,15 +239,12 @@ pub fn build_modal_text_surface_lines(
     mut line_spans: Vec<Vec<Span<'static>>>,
     theme: &ThemePalette,
 ) -> Vec<Line<'static>> {
-    let placeholder_cursor = surface.cursor_kind.glyph();
+    let placeholder_span = placeholder_span(surface.cursor_kind, theme);
 
     let mut lines = if surface.content.is_empty() {
         vec![
             Line::from(vec![
-                Span::styled(
-                    placeholder_cursor,
-                    cursor_style_for(surface.cursor_kind, theme),
-                ),
+                placeholder_span.clone(),
                 Span::styled(
                     surface.empty_placeholder.to_string(),
                     Style::default().fg(theme.placeholder_text),
@@ -276,13 +273,7 @@ pub fn build_modal_text_surface_lines(
     };
 
     if surface.content.ends_with('\n') && surface.cursor_row == surface.content.lines().count() {
-        lines.push(
-            Line::from(vec![Span::styled(
-                placeholder_cursor,
-                cursor_style_for(surface.cursor_kind, theme),
-            )])
-            .style(surface.current_line_style),
-        );
+        lines.push(Line::from(vec![placeholder_span]).style(surface.current_line_style));
     }
 
     lines
@@ -321,6 +312,13 @@ fn display_width_up_to_char(text: &str, cursor_col: usize) -> u16 {
         .nth(cursor_col)
         .map_or(text.len(), |(idx, _)| idx);
     UnicodeWidthStr::width(&text[..byte_idx]).min(u16::MAX as usize) as u16
+}
+
+fn placeholder_span(kind: CursorKind, theme: &ThemePalette) -> Span<'static> {
+    match kind {
+        CursorKind::Block => Span::styled(kind.glyph(), cursor_style_for(kind, theme)),
+        CursorKind::Insert => Span::raw(" "),
+    }
 }
 
 fn visual_cursor_position(
