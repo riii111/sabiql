@@ -33,11 +33,13 @@ pub struct JsonbDetailState {
 }
 
 impl JsonbDetailState {
-    pub fn open(row: usize, col: usize, column_name: String, original_json: String) -> Self {
-        let pretty_original = serde_json::from_str::<serde_json::Value>(&original_json)
-            .ok()
-            .and_then(|v| serde_json::to_string_pretty(&v).ok())
-            .unwrap_or_else(|| original_json.clone());
+    pub fn open_pretty(
+        row: usize,
+        col: usize,
+        column_name: String,
+        original_json: String,
+        pretty_original: String,
+    ) -> Self {
         Self {
             row,
             col,
@@ -51,6 +53,14 @@ impl JsonbDetailState {
             search: JsonbSearchState::default(),
             active: true,
         }
+    }
+
+    pub fn open(row: usize, col: usize, column_name: String, original_json: String) -> Self {
+        let pretty_original = serde_json::from_str::<serde_json::Value>(&original_json)
+            .ok()
+            .and_then(|v| serde_json::to_string_pretty(&v).ok())
+            .unwrap_or_else(|| original_json.clone());
+        Self::open_pretty(row, col, column_name, original_json, pretty_original)
     }
 
     pub fn close(&mut self) {

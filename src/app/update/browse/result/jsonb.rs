@@ -5,7 +5,6 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::text_input::TextInputLike;
-use crate::app::policy::json::parse_json_tree;
 use crate::app::update::action::{Action, InputTarget};
 use crate::domain::QuerySource;
 
@@ -50,17 +49,25 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 _ => return Some(vec![]),
             };
 
-            // Parse JSON
-            match parse_json_tree(cell_value) {
-                Ok(_) => {}
-                Err(msg) => {
-                    state.messages.set_error_at(msg, now);
+            let pretty_original = match serde_json::from_str::<serde_json::Value>(cell_value) {
+                Ok(value) => {
+                    serde_json::to_string_pretty(&value).unwrap_or_else(|_| cell_value.clone())
+                }
+                Err(err) => {
+                    state
+                        .messages
+                        .set_error_at(format!("Invalid JSON: {err}"), now);
                     return Some(vec![]);
                 }
-            }
+            };
 
-            state.jsonb_detail =
-                JsonbDetailState::open(row_idx, col_idx, column.name.clone(), cell_value.clone());
+            state.jsonb_detail = JsonbDetailState::open_pretty(
+                row_idx,
+                col_idx,
+                column.name.clone(),
+                cell_value.clone(),
+                pretty_original,
+            );
             state.modal.push_mode(InputMode::JsonbDetail);
             Some(vec![])
         }
