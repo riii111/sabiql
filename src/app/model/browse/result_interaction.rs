@@ -10,10 +10,10 @@ use crate::app::policy::write::write_guardrails::WritePreview;
 //
 // - `selection`, `cell_edit`, `staged_delete_rows`, and `pending_write_preview`
 //   must be reset together during mode transitions. Use the aggregate transition
-//   API (`reset_view`, `reset_interaction`, `exit_cell_to_row`, `exit_row_to_scroll`)
+//   API (`reset_view`, `reset_interaction`, `exit_cell_to_scroll`)
 //   instead of manipulating these fields individually.
 //
-// - After calling `exit_cell_to_row()` or `exit_row_to_scroll()`, the caller is
+// - After calling `exit_cell_to_scroll()`, the caller is
 //   responsible for setting `input_mode` back to `Normal` if it was `CellEdit`.
 #[derive(Debug, Clone, Default)]
 pub struct ResultInteraction {
@@ -46,16 +46,16 @@ impl ResultInteraction {
         self.pending_write_preview.as_ref()
     }
 
-    pub fn enter_row(&mut self, row: usize) {
-        self.selection.enter_row(row);
+    pub fn activate_cell(&mut self, row: usize, col: usize) {
+        self.selection.enter_cell(row, col);
     }
 
     pub fn move_row(&mut self, row: usize) {
         self.selection.move_row(row);
     }
 
-    pub fn enter_cell(&mut self, col: usize) {
-        self.selection.enter_cell(col);
+    pub fn move_cell(&mut self, col: usize) {
+        self.selection.move_cell(col);
     }
 
     pub fn clamp_selection(&mut self, max_rows: usize, max_cols: usize) {
@@ -117,18 +117,8 @@ impl ResultInteraction {
         self.pending_write_preview = None;
     }
 
-    // Preserves `staged_delete_rows`: cell edit is orthogonal to delete staging,
-    // so returning to row-active should not discard a partially-staged batch.
-    //
     // Caller must set `input_mode` to `Normal` if it was `CellEdit` (SAB-136).
-    pub fn exit_cell_to_row(&mut self) {
-        self.selection.exit_to_row();
-        self.cell_edit.clear();
-        self.pending_write_preview = None;
-    }
-
-    // Caller must set `input_mode` to `Normal` if it was `CellEdit` (SAB-136).
-    pub fn exit_row_to_scroll(&mut self) {
+    pub fn exit_cell_to_scroll(&mut self) {
         self.selection.reset();
         self.cell_edit.clear();
         self.staged_delete_rows.clear();
@@ -166,8 +156,7 @@ mod tests {
             horizontal_offset: 5,
             ..Default::default()
         };
-        ri.enter_row(3);
-        ri.enter_cell(2);
+        ri.activate_cell(3, 2);
         ri.begin_cell_edit(3, 2, "val".to_string());
         ri.stage_row(1);
         ri.set_write_preview(test_preview());
@@ -189,7 +178,7 @@ mod tests {
             horizontal_offset: 5,
             ..Default::default()
         };
-        ri.enter_row(3);
+        ri.activate_cell(3, 0);
         ri.stage_row(1);
 
         ri.reset_interaction();
@@ -203,8 +192,7 @@ mod tests {
     #[test]
     fn discard_cell_edit_clears_edit_and_preview_only() {
         let mut ri = ResultInteraction::default();
-        ri.enter_row(2);
-        ri.enter_cell(4);
+        ri.activate_cell(2, 4);
         ri.begin_cell_edit(2, 4, "val".to_string());
         ri.set_write_preview(test_preview());
         ri.stage_row(0);
@@ -218,37 +206,32 @@ mod tests {
     }
 
     #[test]
-    fn exit_cell_to_row_transitions_to_row_active() {
+    fn exit_cell_to_scroll_clears_selection_and_staging() {
         let mut ri = ResultInteraction::default();
-        ri.enter_row(2);
-        ri.enter_cell(4);
+        ri.activate_cell(2, 4);
         ri.begin_cell_edit(2, 4, "val".to_string());
         ri.set_write_preview(test_preview());
         ri.stage_row(0);
 
-        ri.exit_cell_to_row();
-
-        assert_eq!(ri.selection().mode(), ResultNavMode::RowActive);
-        assert_eq!(ri.selection().row(), Some(2));
-        assert!(!ri.cell_edit().is_active());
-        assert!(ri.pending_write_preview().is_none());
-        assert!(ri.staged_delete_rows().contains(&0));
-    }
-
-    #[test]
-    fn exit_row_to_scroll_clears_selection_and_staging() {
-        let mut ri = ResultInteraction::default();
-        ri.enter_row(2);
-        ri.begin_cell_edit(2, 0, "val".to_string());
-        ri.stage_row(0);
-        ri.stage_row(1);
-        ri.set_write_preview(test_preview());
-
-        ri.exit_row_to_scroll();
+        ri.exit_cell_to_scroll();
 
         assert_eq!(ri.selection().mode(), ResultNavMode::Scroll);
         assert!(!ri.cell_edit().is_active());
+        assert!(ri.pending_write_preview().is_none());
         assert!(ri.staged_delete_rows().is_empty());
+    }
+
+    #[test]
+    fn exit_cell_to_scroll_clears_pending_preview_even_without_staging() {
+        let mut ri = ResultInteraction::default();
+        ri.activate_cell(2, 0);
+        ri.begin_cell_edit(2, 0, "val".to_string());
+        ri.set_write_preview(test_preview());
+
+        ri.exit_cell_to_scroll();
+
+        assert_eq!(ri.selection().mode(), ResultNavMode::Scroll);
+        assert!(!ri.cell_edit().is_active());
         assert!(ri.pending_write_preview().is_none());
     }
 
@@ -301,13 +284,14 @@ mod tests {
     }
 
     #[test]
-    fn enter_row_delegates_correctly() {
+    fn enter_cell_delegates_correctly() {
         let mut ri = ResultInteraction::default();
 
-        ri.enter_row(5);
+        ri.activate_cell(5, 2);
 
-        assert_eq!(ri.selection().mode(), ResultNavMode::RowActive);
+        assert_eq!(ri.selection().mode(), ResultNavMode::CellActive);
         assert_eq!(ri.selection().row(), Some(5));
+        assert_eq!(ri.selection().cell(), Some(2));
     }
 
     #[test]
@@ -336,7 +320,7 @@ mod tests {
     #[test]
     fn clamp_selection_delegates() {
         let mut ri = ResultInteraction::default();
-        ri.enter_row(10);
+        ri.activate_cell(10, 0);
 
         ri.clamp_selection(5, 5);
 

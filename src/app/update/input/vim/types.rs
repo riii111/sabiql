@@ -136,8 +136,7 @@ mod tests {
     fn browse_context_detects_result_pending_state() {
         let mut state = AppState::new("test".to_string());
         state.ui.focused_pane = FocusedPane::Result;
-        state.result_interaction.enter_row(0);
-        state.result_interaction.enter_cell(0);
+        state.result_interaction.activate_cell(0, 0);
         state.result_interaction.yank_op_pending = true;
         state.result_interaction.delete_op_pending = true;
 

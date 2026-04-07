@@ -33,12 +33,11 @@ pub(in crate::app::update::input::vim) fn mode_transition(
         (VimModeTransition::Escape, BrowseVimContext::Result(result_ctx)) => {
             match result_ctx.mode {
                 ResultNavMode::Scroll => Action::Escape,
-                ResultNavMode::RowActive => Action::ResultExitToScroll,
                 ResultNavMode::CellActive => {
                     if result_ctx.has_pending_draft {
                         Action::ResultDiscardCellEdit
                     } else {
-                        Action::ResultExitToRowActive
+                        Action::ResultExitToScroll
                     }
                 }
             }
@@ -46,8 +45,7 @@ pub(in crate::app::update::input::vim) fn mode_transition(
         (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Explorer) => Action::ConfirmSelection,
         (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Result(result_ctx)) => {
             match result_ctx.mode {
-                ResultNavMode::Scroll => Action::ResultEnterRowActive,
-                ResultNavMode::RowActive => Action::ResultEnterCellActive,
+                ResultNavMode::Scroll => Action::ResultActivateCell,
                 ResultNavMode::CellActive => Action::None,
             }
         }
@@ -71,17 +69,16 @@ pub(in crate::app::update::input::vim) fn operator(
         }
         (VimOperator::Yank, BrowseVimContext::Result(result_ctx)) => Some(match result_ctx.mode {
             ResultNavMode::Scroll => Action::None,
-            ResultNavMode::RowActive => {
+            ResultNavMode::CellActive => {
                 if result_ctx.yank_pending {
                     Action::ResultRowYank
                 } else {
-                    Action::ResultRowYankOperatorPending
+                    Action::ResultCellYankAndArmRowYank
                 }
             }
-            ResultNavMode::CellActive => Action::ResultCellYank,
         }),
         (VimOperator::Delete, BrowseVimContext::Result(result_ctx))
-            if result_ctx.mode == ResultNavMode::RowActive =>
+            if result_ctx.mode == ResultNavMode::CellActive =>
         {
             Some(if result_ctx.delete_pending {
                 Action::StageRowForDelete
@@ -379,10 +376,10 @@ mod tests {
     fn result_row_yank_without_pending_sets_pending() {
         let action = action_for_command(
             VimCommand::Operator(VimOperator::Yank),
-            browse_result(result_ctx(ResultNavMode::RowActive)),
+            browse_result(result_ctx(ResultNavMode::CellActive)),
         );
 
-        assert!(matches!(action, Some(Action::ResultRowYankOperatorPending)));
+        assert!(matches!(action, Some(Action::ResultCellYankAndArmRowYank)));
     }
 
     #[test]
@@ -391,7 +388,7 @@ mod tests {
             VimCommand::Operator(VimOperator::Yank),
             browse_result(ResultVimContext {
                 yank_pending: true,
-                ..result_ctx(ResultNavMode::RowActive)
+                ..result_ctx(ResultNavMode::CellActive)
             }),
         );
 
@@ -402,7 +399,7 @@ mod tests {
     fn result_row_delete_without_pending_sets_pending() {
         let action = action_for_command(
             VimCommand::Operator(VimOperator::Delete),
-            browse_result(result_ctx(ResultNavMode::RowActive)),
+            browse_result(result_ctx(ResultNavMode::CellActive)),
         );
 
         assert!(matches!(action, Some(Action::ResultDeleteOperatorPending)));
@@ -414,7 +411,7 @@ mod tests {
             VimCommand::Operator(VimOperator::Delete),
             browse_result(ResultVimContext {
                 delete_pending: true,
-                ..result_ctx(ResultNavMode::RowActive)
+                ..result_ctx(ResultNavMode::CellActive)
             }),
         );
 
@@ -425,10 +422,13 @@ mod tests {
     fn result_cell_yank_resolves_to_cell_yank() {
         let action = action_for_command(
             VimCommand::Operator(VimOperator::Yank),
-            browse_result(result_ctx(ResultNavMode::CellActive)),
+            browse_result(ResultVimContext {
+                yank_pending: false,
+                ..result_ctx(ResultNavMode::CellActive)
+            }),
         );
 
-        assert!(matches!(action, Some(Action::ResultCellYank)));
+        assert!(matches!(action, Some(Action::ResultCellYankAndArmRowYank)));
     }
 
     #[test]

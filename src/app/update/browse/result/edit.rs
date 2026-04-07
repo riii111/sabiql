@@ -187,8 +187,7 @@ mod tests {
             }));
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.result_interaction.enter_row(0);
-            state.result_interaction.enter_cell(1);
+            state.result_interaction.activate_cell(0, 1);
             state
         }
 

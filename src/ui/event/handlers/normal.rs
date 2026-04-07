@@ -1,7 +1,6 @@
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::key_sequence::Prefix;
-use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::update::action::Action;
 use crate::app::update::input::keybindings::{self as kb, Key, KeyCombo};
 use crate::app::update::input::vim::{
@@ -18,7 +17,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let browse_ctx = BrowseVimContext::from_state(state);
     let result_navigation = browse_ctx.is_result();
     let inspector_navigation = browse_ctx.is_inspector();
-    let result_nav_mode = state.result_interaction.selection().mode();
 
     // Ctrl combos
     if combo.modifiers.ctrl {
@@ -143,7 +141,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Tab if inspector_navigation => Action::InspectorNextTab,
         Key::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
-        Key::Char('u') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
+        Key::Char('u')
+            if result_navigation && !state.result_interaction.staged_delete_rows().is_empty() =>
+        {
             Action::UnstageLastStagedRow
         }
         Key::Char('p') => Action::OpenTablePicker,
@@ -359,13 +359,13 @@ mod tests {
     }
 
     #[test]
-    fn enter_enters_row_active_when_result_focused() {
+    fn enter_activates_cell_when_result_focused() {
         let mut state = browse_state();
         state.ui.focused_pane = FocusedPane::Result;
 
         let result = handle_normal_mode(combo(Key::Enter), &state);
 
-        assert!(matches!(result, Action::ResultEnterRowActive));
+        assert!(matches!(result, Action::ResultActivateCell));
     }
 
     // Pane focus switching in Browse mode (1/2/3 keys)
@@ -598,9 +598,9 @@ mod tests {
     }
 
     #[test]
-    fn d_sets_delete_op_pending_in_row_active() {
+    fn d_sets_delete_op_pending_in_cell_active() {
         let mut state = result_focused_state();
-        state.result_interaction.enter_row(0);
+        state.result_interaction.activate_cell(0, 0);
 
         let result = handle_normal_mode(combo(Key::Char('d')), &state);
 
@@ -608,9 +608,9 @@ mod tests {
     }
 
     #[test]
-    fn dd_stages_row_for_delete_in_row_active() {
+    fn dd_stages_row_for_delete_in_cell_active() {
         let mut state = result_focused_state();
-        state.result_interaction.enter_row(0);
+        state.result_interaction.activate_cell(0, 0);
         state.result_interaction.delete_op_pending = true;
 
         let result = handle_normal_mode(combo(Key::Char('d')), &state);
@@ -628,19 +628,19 @@ mod tests {
     }
 
     #[test]
-    fn y_sets_yank_op_pending_in_row_active() {
+    fn y_in_cell_active_yanks_cell_and_arms_row_yank() {
         let mut state = result_focused_state();
-        state.result_interaction.enter_row(0);
+        state.result_interaction.activate_cell(0, 0);
 
         let result = handle_normal_mode(combo(Key::Char('y')), &state);
 
-        assert!(matches!(result, Action::ResultRowYankOperatorPending));
+        assert!(matches!(result, Action::ResultCellYankAndArmRowYank));
     }
 
     #[test]
-    fn yy_triggers_row_yank_in_row_active() {
+    fn yy_triggers_row_yank_in_cell_active() {
         let mut state = result_focused_state();
-        state.result_interaction.enter_row(0);
+        state.result_interaction.activate_cell(0, 0);
         state.result_interaction.yank_op_pending = true;
 
         let result = handle_normal_mode(combo(Key::Char('y')), &state);
@@ -660,12 +660,11 @@ mod tests {
     #[test]
     fn y_in_cell_active_still_cell_yank() {
         let mut state = result_focused_state();
-        state.result_interaction.enter_row(0);
-        state.result_interaction.enter_cell(0);
+        state.result_interaction.activate_cell(0, 0);
 
         let result = handle_normal_mode(combo(Key::Char('y')), &state);
 
-        assert!(matches!(result, Action::ResultCellYank));
+        assert!(matches!(result, Action::ResultCellYankAndArmRowYank));
     }
 
     #[test]
@@ -730,8 +729,7 @@ mod tests {
     #[test]
     fn esc_in_cell_active_with_draft_returns_discard() {
         let mut state = result_focused_state();
-        state.result_interaction.enter_row(0);
-        state.result_interaction.enter_cell(1);
+        state.result_interaction.activate_cell(0, 1);
         state
             .result_interaction
             .begin_cell_edit(0, 1, "original".to_string());
@@ -746,21 +744,19 @@ mod tests {
     }
 
     #[test]
-    fn esc_in_cell_active_without_draft_returns_exit_to_row_active() {
+    fn esc_in_cell_active_without_draft_returns_exit_to_scroll() {
         let mut state = result_focused_state();
-        state.result_interaction.enter_row(0);
-        state.result_interaction.enter_cell(1);
+        state.result_interaction.activate_cell(0, 1);
 
         let result = handle_normal_mode(combo(Key::Esc), &state);
 
-        assert!(matches!(result, Action::ResultExitToRowActive));
+        assert!(matches!(result, Action::ResultExitToScroll));
     }
 
     #[test]
     fn i_key_enters_cell_edit_when_cell_active() {
         let mut state = result_focused_state();
-        state.result_interaction.enter_row(0);
-        state.result_interaction.enter_cell(1);
+        state.result_interaction.activate_cell(0, 1);
 
         let result = handle_normal_mode(combo(Key::Char('i')), &state);
 
@@ -1716,16 +1712,9 @@ mod tests {
             result_focused_state()
         }
 
-        fn result_row_active_ctx() -> AppState {
-            let mut state = result_focused_state();
-            state.result_interaction.enter_row(0);
-            state
-        }
-
         fn result_cell_active_ctx() -> AppState {
             let mut state = result_focused_state();
-            state.result_interaction.enter_row(0);
-            state.result_interaction.enter_cell(0);
+            state.result_interaction.activate_cell(0, 0);
             state
         }
 
@@ -1763,8 +1752,6 @@ mod tests {
         #[case("explorer", Key::Char('k'), Action::Select(SelectMotion::Previous))]
         #[case("result_scroll", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
         #[case("result_scroll", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
-        #[case("result_row_active", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
-        #[case("result_row_active", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
         #[case("result_cell_active", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
         #[case("result_cell_active", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
         #[case("inspector", Key::Char('j'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
@@ -1777,7 +1764,6 @@ mod tests {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
                 "result_scroll" => result_scroll_ctx(),
-                "result_row_active" => result_row_active_ctx(),
                 "result_cell_active" => result_cell_active_ctx(),
                 "inspector" => inspector_ctx(),
                 "history_focus" => history_focus_ctx(),
@@ -1794,8 +1780,6 @@ mod tests {
         #[case("explorer", Key::Char('G'), Action::Select(SelectMotion::Last))]
         #[case("result_scroll", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
         #[case("result_scroll", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
-        #[case("result_row_active", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
-        #[case("result_row_active", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         #[case("result_cell_active", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
         #[case("result_cell_active", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         #[case("inspector", Key::Char('g'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
@@ -1808,7 +1792,6 @@ mod tests {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
                 "result_scroll" => result_scroll_ctx(),
-                "result_row_active" => result_row_active_ctx(),
                 "result_cell_active" => result_cell_active_ctx(),
                 "inspector" => inspector_ctx(),
                 "history_focus" => history_focus_ctx(),
@@ -1835,17 +1818,6 @@ mod tests {
         #[case("result_scroll", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
         #[case("result_scroll", Key::Char('M'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
         #[case("result_scroll", Key::Char('L'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
-        #[case("result_row_active", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
-        #[case(
-            "result_row_active",
-            Key::Char('M'),
-            Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle }
-        )]
-        #[case(
-            "result_row_active",
-            Key::Char('L'),
-            Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom }
-        )]
         #[case("result_cell_active", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
         #[case(
             "result_cell_active",
@@ -1870,7 +1842,6 @@ mod tests {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
                 "result_scroll" => result_scroll_ctx(),
-                "result_row_active" => result_row_active_ctx(),
                 "result_cell_active" => result_cell_active_ctx(),
                 "inspector" => inspector_ctx(),
                 "history_focus" => history_focus_ctx(),
@@ -1889,9 +1860,6 @@ mod tests {
         #[case("result_scroll", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
         #[case("result_scroll", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
         #[case("result_scroll", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
-        #[case("result_row_active", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
-        #[case("result_row_active", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
-        #[case("result_row_active", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
         #[case("result_cell_active", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
         #[case("result_cell_active", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
         #[case("result_cell_active", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
@@ -1912,7 +1880,6 @@ mod tests {
             let mut state = match ctx_name {
                 "explorer" => explorer_ctx(),
                 "result_scroll" => result_scroll_ctx(),
-                "result_row_active" => result_row_active_ctx(),
                 "result_cell_active" => result_cell_active_ctx(),
                 "inspector" => inspector_ctx(),
                 "history_focus" => history_focus_ctx(),
@@ -1928,7 +1895,6 @@ mod tests {
         #[rstest]
         #[case("explorer", explorer_ctx())]
         #[case("result_scroll", result_scroll_ctx())]
-        #[case("result_row_active", result_row_active_ctx())]
         #[case("result_cell_active", result_cell_active_ctx())]
         #[case("inspector", inspector_ctx())]
         #[case("history_focus", history_focus_ctx())]

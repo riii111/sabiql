@@ -108,12 +108,21 @@ pub fn reduce(
                     match state.query.post_delete_row_selection() {
                         PostDeleteRowSelection::Keep => {}
                         PostDeleteRowSelection::Clear => {
-                            state.result_interaction.exit_row_to_scroll();
+                            state.result_interaction.exit_cell_to_scroll();
                         }
                         PostDeleteRowSelection::Select(row) => {
-                            if !result.rows.is_empty() {
+                            if !result.rows.is_empty() && !result.columns.is_empty() {
                                 let clamped = row.min(result.rows.len() - 1);
-                                state.result_interaction.enter_row(clamped);
+                                let col =
+                                    state.result_interaction.selection().cell().unwrap_or_else(
+                                        || {
+                                            state
+                                                .result_interaction
+                                                .horizontal_offset
+                                                .min(result.columns.len() - 1)
+                                        },
+                                    );
+                                state.result_interaction.activate_cell(clamped, col);
 
                                 let visible = state.result_visible_rows();
                                 if visible > 0 && clamped >= visible {
@@ -424,7 +433,7 @@ mod tests {
             let mut state = create_test_state();
             state.result_interaction.scroll_offset = 50;
             state.result_interaction.horizontal_offset = 10;
-            state.result_interaction.enter_row(5);
+            state.result_interaction.activate_cell(5, 0);
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(2);
             let result = adhoc_result();
@@ -459,7 +468,7 @@ mod tests {
             state.query.set_current_result(preview_result(5));
             state.result_interaction.scroll_offset = 20;
             state.result_interaction.horizontal_offset = 5;
-            state.result_interaction.enter_row(3);
+            state.result_interaction.activate_cell(3, 0);
             let result = adhoc_error_result();
 
             reduce_query(
@@ -516,8 +525,7 @@ mod tests {
         fn resets_result_selection_and_offsets() {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
-            state.result_interaction.enter_row(5);
-            state.result_interaction.enter_cell(2);
+            state.result_interaction.activate_cell(5, 2);
             state.result_interaction.scroll_offset = 10;
             state.result_interaction.horizontal_offset = 3;
 

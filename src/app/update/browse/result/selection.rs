@@ -21,35 +21,25 @@ fn ensure_cell_visible(state: &mut AppState) {
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
-        Action::ResultEnterRowActive => {
+        Action::ResultActivateCell => {
             let rows = result_row_count(state);
-            if rows > 0 {
-                let clamped = state.result_interaction.scroll_offset.min(rows - 1);
-                state.result_interaction.enter_row(clamped);
+            let cols = result_col_count(state);
+            if rows > 0 && cols > 0 {
+                let row = state.result_interaction.scroll_offset.min(rows - 1);
+                let col = state.result_interaction.horizontal_offset.min(cols - 1);
+                state.result_interaction.activate_cell(row, col);
             }
-            Some(vec![])
-        }
-        Action::ResultEnterCellActive => {
-            if state.result_interaction.selection().row().is_some() {
-                state
-                    .result_interaction
-                    .enter_cell(state.result_interaction.horizontal_offset);
-            }
-            Some(vec![])
-        }
-        Action::ResultExitToRowActive => {
-            state.result_interaction.exit_cell_to_row();
             Some(vec![])
         }
         Action::ResultExitToScroll => {
-            state.result_interaction.exit_row_to_scroll();
+            state.result_interaction.exit_cell_to_scroll();
             Some(vec![])
         }
         Action::ResultCellLeft => {
             if let Some(c) = state.result_interaction.selection().cell()
                 && c > 0
             {
-                state.result_interaction.enter_cell(c - 1);
+                state.result_interaction.move_cell(c - 1);
                 ensure_cell_visible(state);
             }
             Some(vec![])
@@ -58,7 +48,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if let Some(c) = state.result_interaction.selection().cell() {
                 let max_col = result_col_count(state).saturating_sub(1);
                 if c < max_col {
-                    state.result_interaction.enter_cell(c + 1);
+                    state.result_interaction.move_cell(c + 1);
                     ensure_cell_visible(state);
                 }
             }
@@ -76,10 +66,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 );
                 return Some(vec![]);
             }
-            if state.result_interaction.selection().mode()
-                == crate::app::model::shared::ui_state::ResultNavMode::RowActive
-                && let Some(row_idx) = state.result_interaction.selection().row()
-            {
+            if let Some(row_idx) = state.result_interaction.selection().row() {
                 state.result_interaction.stage_row(row_idx);
             }
             Some(vec![])
@@ -162,7 +149,7 @@ mod tests {
         #[test]
         fn dd_stages_active_row() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
 
             reduce(&mut state, &Action::StageRowForDelete, Instant::now());
 
@@ -172,7 +159,7 @@ mod tests {
         #[test]
         fn dd_on_already_staged_row_is_noop() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
             reduce(&mut state, &Action::StageRowForDelete, Instant::now());
@@ -181,7 +168,7 @@ mod tests {
         }
 
         #[test]
-        fn staging_requires_row_active_mode() {
+        fn staging_requires_active_cell() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
 
             reduce(&mut state, &Action::StageRowForDelete, Instant::now());
@@ -227,7 +214,7 @@ mod tests {
         #[test]
         fn read_only_blocks_stage_row_for_delete() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
             state.session.read_only = true;
 
             let effects = reduce(&mut state, &Action::StageRowForDelete, Instant::now()).unwrap();
@@ -244,7 +231,7 @@ mod tests {
         #[test]
         fn next_page_returns_none_without_mutating_state() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
             let result = reduce(&mut state, &Action::ResultNextPage, Instant::now());
@@ -257,7 +244,7 @@ mod tests {
         #[test]
         fn prev_page_returns_none_without_mutating_state() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
             let result = reduce(&mut state, &Action::ResultPrevPage, Instant::now());

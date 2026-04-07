@@ -15,7 +15,10 @@ pub fn reduce(
     now: Instant,
 ) -> Option<Vec<Effect>> {
     match action {
-        Action::ResultCellYank => {
+        Action::ResultCellYank | Action::ResultCellYankAndArmRowYank => {
+            if matches!(action, Action::ResultCellYankAndArmRowYank) {
+                state.result_interaction.yank_op_pending = true;
+            }
             if let (Some(row_idx), Some(col_idx)) = (
                 state.result_interaction.selection().row(),
                 state.result_interaction.selection().cell(),
@@ -63,10 +66,6 @@ pub fn reduce(
                     })),
                 }]);
             }
-            Some(vec![])
-        }
-        Action::ResultRowYankOperatorPending => {
-            state.result_interaction.yank_op_pending = true;
             Some(vec![])
         }
         Action::ResultRowYank => {
@@ -160,8 +159,7 @@ mod tests {
         #[test]
         fn out_of_bounds_row_sets_error() {
             let mut state = state_with_grid(3, 3);
-            state.result_interaction.enter_row(10);
-            state.result_interaction.enter_cell(0);
+            state.result_interaction.activate_cell(10, 0);
 
             let effects = reduce(
                 &mut state,
@@ -178,8 +176,7 @@ mod tests {
         #[test]
         fn out_of_bounds_col_sets_error() {
             let mut state = state_with_grid(3, 3);
-            state.result_interaction.enter_row(0);
-            state.result_interaction.enter_cell(10);
+            state.result_interaction.activate_cell(0, 10);
 
             let effects = reduce(
                 &mut state,
@@ -196,8 +193,7 @@ mod tests {
         #[test]
         fn valid_cell_emits_copy_effect() {
             let mut state = state_with_grid(3, 3);
-            state.result_interaction.enter_row(1);
-            state.result_interaction.enter_cell(2);
+            state.result_interaction.activate_cell(1, 2);
 
             let effects = reduce(
                 &mut state,
@@ -229,8 +225,7 @@ mod tests {
                     crate::domain::QuerySource::Adhoc,
                 )));
             state.query.enter_history(0);
-            state.result_interaction.enter_row(0);
-            state.result_interaction.enter_cell(0);
+            state.result_interaction.activate_cell(0, 0);
 
             let effects = reduce(
                 &mut state,
@@ -289,7 +284,7 @@ mod tests {
         #[test]
         fn emits_tsv_copy_effect() {
             let mut state = state_with_row(vec!["v0", "v1", "v2"]);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
 
             let effects = reduce(
                 &mut state,
@@ -321,7 +316,7 @@ mod tests {
                     crate::domain::QuerySource::Adhoc,
                 )));
             state.query.enter_history(0);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
 
             let effects = reduce(
                 &mut state,
@@ -340,7 +335,7 @@ mod tests {
         #[test]
         fn escapes_tab_and_newline() {
             let mut state = state_with_row(vec!["a\tb", "c\nd"]);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
 
             let effects = reduce(
                 &mut state,
@@ -362,7 +357,7 @@ mod tests {
         #[test]
         fn escapes_backslash() {
             let mut state = state_with_row(vec!["a\\b"]);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
 
             let effects = reduce(
                 &mut state,
@@ -384,7 +379,7 @@ mod tests {
         #[test]
         fn out_of_bounds_sets_error() {
             let mut state = state_with_row(vec!["val"]);
-            state.result_interaction.enter_row(99);
+            state.result_interaction.activate_cell(99, 0);
 
             let effects = reduce(
                 &mut state,
@@ -411,21 +406,6 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn yank_op_pending_sets_flag() {
-            let mut state = AppState::new("test".to_string());
-
-            reduce(
-                &mut state,
-                &Action::ResultRowYankOperatorPending,
-                &AppServices::stub(),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.result_interaction.yank_op_pending);
         }
     }
 

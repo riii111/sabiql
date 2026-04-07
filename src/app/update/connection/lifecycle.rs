@@ -172,8 +172,7 @@ mod tests {
         state
             .connection_caches
             .save(&target_id, ConnectionCache::default());
-        state.result_interaction.enter_row(3);
-        state.result_interaction.enter_cell(2);
+        state.result_interaction.activate_cell(3, 2);
 
         let action = create_switch_action(&target_id, "cached_db");
         reduce(&mut state, &action, Instant::now());
@@ -189,7 +188,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
 
-        state.result_interaction.enter_row(5);
+        state.result_interaction.activate_cell(5, 0);
 
         let action = create_switch_action(&new_id, "fresh_db");
         reduce(&mut state, &action, Instant::now());

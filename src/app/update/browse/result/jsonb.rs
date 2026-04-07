@@ -428,8 +428,7 @@ mod tests {
         state.query.pagination.schema = "public".to_string();
         state.query.pagination.table = "users".to_string();
         state.session.set_table_detail_raw(Some(jsonb_table()));
-        state.result_interaction.enter_row(0);
-        state.result_interaction.enter_cell(1);
+        state.result_interaction.activate_cell(0, 1);
         state
     }
 
@@ -453,7 +452,7 @@ mod tests {
         #[test]
         fn blocked_on_non_jsonb_column() {
             let mut state = state_with_jsonb_cell();
-            state.result_interaction.enter_cell(0);
+            state.result_interaction.move_cell(0);
 
             reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
 

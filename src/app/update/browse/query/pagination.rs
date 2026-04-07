@@ -310,7 +310,7 @@ mod tests {
             let mut state = create_test_state();
             state.query.set_current_result(preview_result(100));
             state.query.pagination.reached_end = true;
-            state.result_interaction.enter_row(2);
+            state.result_interaction.activate_cell(2, 0);
             state.result_interaction.stage_row(2);
 
             reduce_query(
@@ -337,7 +337,7 @@ mod tests {
                 schema: "public".to_string(),
                 table: "users".to_string(),
             };
-            state.result_interaction.enter_row(3);
+            state.result_interaction.activate_cell(3, 0);
             state.result_interaction.stage_row(3);
 
             reduce_query(
@@ -419,7 +419,7 @@ mod tests {
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.current_page = 0;
-            state.result_interaction.enter_row(1);
+            state.result_interaction.activate_cell(1, 0);
             state.result_interaction.stage_row(1);
 
             reduce_query(

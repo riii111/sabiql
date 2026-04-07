@@ -897,7 +897,7 @@ mod tests {
         fn query_completed_clears_selection_when_requested() {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
-            state.result_interaction.enter_row(0);
+            state.result_interaction.activate_cell(0, 0);
             state
                 .query
                 .set_post_delete_selection(PostDeleteRowSelection::Clear);
