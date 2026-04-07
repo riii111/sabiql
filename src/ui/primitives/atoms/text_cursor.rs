@@ -223,6 +223,7 @@ pub fn set_terminal_cursor(
     frame.set_cursor_position((x, y));
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct ModalTextSurface<'a> {
     pub content: &'a str,
     pub cursor_row: usize,
