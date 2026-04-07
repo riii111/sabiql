@@ -327,25 +327,27 @@ fn original_char_offset_for_lowered_byte(
     offset_map[idx.saturating_sub(1)].1
 }
 
-fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
-    if query.is_empty() {
-        return Vec::new();
-    }
+fn lowercase_with_char_offsets(text: &str) -> (String, Vec<(usize, usize)>) {
+    let mut lowered = String::new();
+    let mut offset_map = Vec::new();
 
-    let query_lower = query.to_lowercase();
-    let mut matches = Vec::new();
-    let mut offset = 0;
-
-    for segment in content.split_inclusive('\n') {
-        let line = segment.strip_suffix('\n').unwrap_or(segment);
-        let lowered = line.to_lowercase();
-        if let Some(match_idx) = lowered.find(&query_lower) {
-            matches.push(offset + lowered[..match_idx].chars().count());
+    for (original_char_offset, ch) in text.chars().enumerate() {
+        for lower in ch.to_lowercase() {
+            offset_map.push((lowered.len(), original_char_offset));
+            lowered.push(lower);
         }
-        offset += segment.chars().count();
     }
 
-    matches
+    offset_map.push((lowered.len(), text.chars().count()));
+    (lowered, offset_map)
+}
+
+fn original_char_offset_for_lowered_byte(
+    offset_map: &[(usize, usize)],
+    lowered_byte_offset: usize,
+) -> usize {
+    let idx = offset_map.partition_point(|(byte_offset, _)| *byte_offset <= lowered_byte_offset);
+    offset_map[idx.saturating_sub(1)].1
 }
 
 fn apply_pending_edit_as_draft(state: &mut AppState) {
