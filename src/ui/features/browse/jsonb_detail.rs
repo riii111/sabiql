@@ -16,7 +16,7 @@ use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::ThemePalette;
 
 pub struct JsonbDetailRenderMetrics {
-    pub scroll_offset: usize,
+    pub editor_visible_rows: usize,
 }
 pub struct JsonbDetail;
 
@@ -79,7 +79,7 @@ impl JsonbDetail {
         }
 
         Some(JsonbDetailRenderMetrics {
-            scroll_offset: state.jsonb_detail.editor().scroll_row(),
+            editor_visible_rows: editor_area.height as usize,
         })
     }
 

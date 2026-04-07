@@ -25,7 +25,6 @@ pub struct JsonbDetailState {
     original_json: String,
     pretty_original: String,
     mode: JsonbDetailMode,
-    scroll_offset: usize,
     editor: MultiLineInputState,
     validation_error: Option<String>,
     search: JsonbSearchState,
@@ -48,7 +47,6 @@ impl JsonbDetailState {
             editor: MultiLineInputState::new(pretty_original.clone(), 0),
             pretty_original,
             mode: JsonbDetailMode::Viewing,
-            scroll_offset: 0,
             validation_error: None,
             search: JsonbSearchState::default(),
             active: true,
@@ -93,10 +91,6 @@ impl JsonbDetailState {
 
     pub fn pretty_original(&self) -> &str {
         &self.pretty_original
-    }
-
-    pub fn set_scroll_offset(&mut self, scroll_offset: usize) {
-        self.scroll_offset = scroll_offset;
     }
 
     pub fn editor(&self) -> &MultiLineInputState {

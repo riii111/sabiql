@@ -125,6 +125,10 @@ impl AppState {
         self.ui.inspector_ddl_visible_rows()
     }
 
+    pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
+        self.ui.jsonb_detail_editor_visible_rows
+    }
+
     pub fn tables(&self) -> Vec<&TableSummary> {
         self.session.tables()
     }

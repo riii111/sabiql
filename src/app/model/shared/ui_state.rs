@@ -25,6 +25,7 @@ pub const EXPLORER_SCROLLBAR_RESERVED_WIDTH: u16 = 1;
 pub const HELP_MODAL_HEIGHT_PERCENT: u16 = 80;
 // Top and bottom modal border rows subtracted from the inner visible area.
 pub const MODAL_VERTICAL_BORDER_OVERHEAD: usize = 2;
+pub const DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResultNavMode {
@@ -170,6 +171,7 @@ pub struct UiState {
     pub result_viewport_plan: ViewportPlan,
     pub result_widths_cache: ColumnWidthsCache,
     pub result_pane_height: u16,
+    pub jsonb_detail_editor_visible_rows: usize,
 
     pub help_scroll_offset: usize,
 
@@ -182,6 +184,7 @@ impl UiState {
     pub fn new() -> Self {
         Self {
             terminal_height: 24,
+            jsonb_detail_editor_visible_rows: DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS,
             ..Default::default()
         }
     }

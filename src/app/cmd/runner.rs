@@ -267,8 +267,8 @@ impl EffectRunner {
                 if let Some(height) = output.query_history_picker_pane_height {
                     state.query_history_picker.pane_height = height;
                 }
-                if let Some(scroll_offset) = output.jsonb_detail_scroll_offset {
-                    state.jsonb_detail.set_scroll_offset(scroll_offset);
+                if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
+                    state.ui.jsonb_detail_editor_visible_rows = visible_rows;
                 }
                 state.confirm_dialog.preview_viewport_height =
                     output.confirm_preview_viewport_height;

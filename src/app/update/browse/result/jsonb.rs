@@ -6,10 +6,9 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::text_input::TextInputLike;
+use crate::app::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::app::update::action::{Action, InputTarget};
 use crate::domain::QuerySource;
-
-const JSONB_EDITOR_VISIBLE_ROWS: usize = 8;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -124,10 +123,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             } else {
                 state.jsonb_detail.editor_mut().insert_char(*ch);
             }
-            state
-                .jsonb_detail
-                .editor_mut()
-                .update_scroll(JSONB_EDITOR_VISIBLE_ROWS);
+            update_editor_scroll(state);
             validate_editor_inline(state);
             Some(vec![])
         }
@@ -136,10 +132,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             target: InputTarget::JsonbEdit,
         } => {
             state.jsonb_detail.editor_mut().backspace();
-            state
-                .jsonb_detail
-                .editor_mut()
-                .update_scroll(JSONB_EDITOR_VISIBLE_ROWS);
+            update_editor_scroll(state);
             validate_editor_inline(state);
             Some(vec![])
         }
@@ -148,10 +141,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             target: InputTarget::JsonbEdit,
         } => {
             state.jsonb_detail.editor_mut().delete();
-            state
-                .jsonb_detail
-                .editor_mut()
-                .update_scroll(JSONB_EDITOR_VISIBLE_ROWS);
+            update_editor_scroll(state);
             validate_editor_inline(state);
             Some(vec![])
         }
@@ -161,19 +151,13 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             direction,
         } => {
             state.jsonb_detail.editor_mut().move_cursor(*direction);
-            state
-                .jsonb_detail
-                .editor_mut()
-                .update_scroll(JSONB_EDITOR_VISIBLE_ROWS);
+            update_editor_scroll(state);
             Some(vec![])
         }
 
         Action::Paste(text) if state.input_mode() == InputMode::JsonbEdit => {
             state.jsonb_detail.editor_mut().insert_str(text);
-            state
-                .jsonb_detail
-                .editor_mut()
-                .update_scroll(JSONB_EDITOR_VISIBLE_ROWS);
+            update_editor_scroll(state);
             validate_editor_inline(state);
             Some(vec![])
         }
@@ -284,11 +268,16 @@ fn jump_to_current_match(state: &mut AppState) {
             .editor_mut()
             .text_input_mut()
             .set_cursor(match_pos);
-        state
-            .jsonb_detail
-            .editor_mut()
-            .update_scroll(JSONB_EDITOR_VISIBLE_ROWS);
+        update_editor_scroll(state);
     }
+}
+
+fn update_editor_scroll(state: &mut AppState) {
+    let visible_rows = match state.jsonb_detail_editor_visible_rows() {
+        0 => DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS,
+        rows => rows,
+    };
+    state.jsonb_detail.editor_mut().update_scroll(visible_rows);
 }
 
 fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
@@ -303,8 +292,11 @@ fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
     for segment in content.split_inclusive('\n') {
         let line = segment.strip_suffix('\n').unwrap_or(segment);
         let (folded, offset_map) = casefold_with_char_offsets(line);
-        if let Some(match_idx) = folded.find(&query_folded) {
+        let mut search_from = 0;
+        while let Some(rel_idx) = folded[search_from..].find(&query_folded) {
+            let match_idx = search_from + rel_idx;
             matches.push(offset + original_char_offset_for_folded_byte(&offset_map, match_idx));
+            search_from = match_idx + query_folded.len();
         }
         offset += segment.chars().count();
     }
@@ -576,6 +568,32 @@ mod tests {
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
             assert_eq!(state.jsonb_detail.editor().cursor(), expected);
+        }
+
+        #[test]
+        fn movement_updates_scroll_with_current_editor_viewport_height() {
+            let mut state = state_with_jsonb_value(r#"{"items":["admin","writer","reader"]}"#);
+            state.ui.jsonb_detail_editor_visible_rows = 2;
+            open_detail(&mut state);
+
+            reduce(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: crate::app::update::action::CursorMove::Down,
+                },
+                Instant::now(),
+            );
+            reduce(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: crate::app::update::action::CursorMove::Down,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.jsonb_detail.editor().scroll_row(), 1);
         }
 
         #[test]
@@ -865,6 +883,13 @@ mod tests {
             let matches = find_text_matches("ὈΔΥΣΣΕΎΣ", "ὀδυσσεύς");
 
             assert_eq!(matches, vec![0]);
+        }
+
+        #[test]
+        fn returns_all_matches_within_single_line() {
+            let matches = find_text_matches("theme theme", "theme");
+
+            assert_eq!(matches, vec![0, 6]);
         }
     }
 }

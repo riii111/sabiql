@@ -141,10 +141,13 @@ impl MainLayout {
             None
         };
 
-        let jsonb_detail_scroll_offset = match state.input_mode() {
+        let jsonb_detail_editor_visible_rows = match state.input_mode() {
             InputMode::JsonbDetail | InputMode::JsonbEdit => {
-                JsonbDetail::render(frame, state, now, theme)
-                    .map(|JsonbDetailRenderMetrics { scroll_offset }| scroll_offset)
+                JsonbDetail::render(frame, state, now, theme).map(
+                    |JsonbDetailRenderMetrics {
+                         editor_visible_rows,
+                     }| editor_visible_rows,
+                )
             }
             _ => None,
         };
@@ -165,7 +168,7 @@ impl MainLayout {
             er_picker_pane_height,
             er_picker_filter_visible_width,
             query_history_picker_pane_height,
-            jsonb_detail_scroll_offset,
+            jsonb_detail_editor_visible_rows,
             confirm_preview_viewport_height,
             confirm_preview_content_height,
             confirm_preview_scroll,
