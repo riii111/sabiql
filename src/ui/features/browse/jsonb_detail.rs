@@ -67,17 +67,17 @@ impl JsonbDetail {
             Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
             Self::render_status(frame, status_area, state, theme);
             Self::render_search(frame, search_area, state, theme);
-            return Some(JsonbDetailRenderMetrics {
+            Some(JsonbDetailRenderMetrics {
                 scroll_offset: state.jsonb_detail.editor().scroll_row(),
-            });
+            })
         } else {
             let [editor_area, status_area] =
                 Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
             Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
             Self::render_status(frame, status_area, state, theme);
-            return Some(JsonbDetailRenderMetrics {
+            Some(JsonbDetailRenderMetrics {
                 scroll_offset: state.jsonb_detail.editor().scroll_row(),
-            });
+            })
         }
     }
 
