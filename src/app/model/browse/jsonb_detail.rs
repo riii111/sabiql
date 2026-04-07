@@ -135,6 +135,7 @@ impl JsonbDetailState {
     }
 
     pub fn enter_edit(&mut self) {
+        self.search.active = false;
         self.validation_error = None;
         self.mode = JsonbDetailMode::Editing;
     }
@@ -185,7 +186,7 @@ mod tests {
     use crate::app::model::shared::text_input::TextInputLike;
 
     #[test]
-    fn open_initializes_editor_with_pretty_json() {
+    fn open_prettifies_valid_json_into_editor() {
         let state = JsonbDetailState::open(
             0,
             0,
@@ -198,5 +199,43 @@ mod tests {
             state.editor().content(),
             "{\n  \"count\": 5,\n  \"theme\": \"dark\"\n}"
         );
+    }
+
+    #[test]
+    fn open_pretty_uses_provided_pretty_content() {
+        let state = JsonbDetailState::open_pretty(
+            0,
+            0,
+            "settings".to_string(),
+            r#"{"theme":"dark","count":5}"#.to_string(),
+            "{\n  \"theme\": \"custom\"\n}".to_string(),
+        );
+
+        assert_eq!(state.editor().cursor(), 0);
+        assert_eq!(state.editor().content(), "{\n  \"theme\": \"custom\"\n}");
+    }
+
+    #[test]
+    fn open_falls_back_to_original_input_when_json_is_invalid() {
+        let state =
+            JsonbDetailState::open(0, 0, "settings".to_string(), "{invalid json}".to_string());
+
+        assert_eq!(state.editor().cursor(), 0);
+        assert_eq!(state.editor().content(), "{invalid json}");
+    }
+
+    #[test]
+    fn enter_edit_deactivates_search() {
+        let mut state = JsonbDetailState::open(
+            0,
+            0,
+            "settings".to_string(),
+            r#"{"theme":"dark","count":5}"#.to_string(),
+        );
+        state.enter_search();
+
+        state.enter_edit();
+
+        assert!(!state.search().active);
     }
 }
