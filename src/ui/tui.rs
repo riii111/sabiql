@@ -1,6 +1,7 @@
 use std::io::{Stdout, stdout};
 
 use color_eyre::eyre::Result;
+use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
     Event as CrosstermEvent, EventStream, KeyEventKind,
@@ -60,6 +61,7 @@ impl TuiRunner {
         if crossterm::terminal::is_raw_mode_enabled()? {
             execute!(
                 stdout(),
+                SetCursorStyle::DefaultUserShape,
                 LeaveAlternateScreen,
                 DisableMouseCapture,
                 DisableBracketedPaste

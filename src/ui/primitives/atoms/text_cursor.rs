@@ -189,8 +189,8 @@ pub fn insert_cursor_span_with_kind(
 pub fn set_terminal_cursor(
     frame: &mut Frame,
     area: Rect,
+    content: &str,
     cursor_row: usize,
-    line_text: &str,
     cursor_col: usize,
     scroll_row: usize,
     x_offset: u16,
@@ -199,17 +199,26 @@ pub fn set_terminal_cursor(
         return;
     }
 
-    let visible_row = match cursor_row.checked_sub(scroll_row) {
-        Some(row) if row < area.height as usize => row as u16,
-        _ => return,
+    let available_width = area.width.saturating_sub(x_offset) as usize;
+    if available_width == 0 {
+        return;
+    }
+
+    let Some((visible_row, visible_col)) =
+        visual_cursor_position(content, cursor_row, cursor_col, scroll_row, available_width)
+    else {
+        return;
     };
+    if visible_row >= area.height as usize {
+        return;
+    }
 
     let x = area
         .x
         .saturating_add(x_offset)
-        .saturating_add(display_width_up_to_char(line_text, cursor_col))
+        .saturating_add(visible_col as u16)
         .min(area.right().saturating_sub(1));
-    let y = area.y.saturating_add(visible_row);
+    let y = area.y.saturating_add(visible_row as u16);
 
     frame.set_cursor_position((x, y));
 }
@@ -294,16 +303,11 @@ pub fn render_modal_text_surface(
     );
 
     if matches!(surface.cursor_kind, CursorKind::Insert) {
-        let current_line = surface
-            .content
-            .split('\n')
-            .nth(surface.cursor_row)
-            .unwrap_or("");
         set_terminal_cursor(
             frame,
             area,
+            surface.content,
             surface.cursor_row,
-            current_line,
             surface.cursor_col,
             surface.scroll_row,
             0,
@@ -317,6 +321,41 @@ fn display_width_up_to_char(text: &str, cursor_col: usize) -> u16 {
         .nth(cursor_col)
         .map_or(text.len(), |(idx, _)| idx);
     UnicodeWidthStr::width(&text[..byte_idx]).min(u16::MAX as usize) as u16
+}
+
+fn visual_cursor_position(
+    content: &str,
+    cursor_row: usize,
+    cursor_col: usize,
+    scroll_row: usize,
+    available_width: usize,
+) -> Option<(usize, usize)> {
+    if available_width == 0 || cursor_row < scroll_row {
+        return None;
+    }
+
+    let lines: Vec<&str> = content.split('\n').collect();
+    let current_line = *lines.get(cursor_row).unwrap_or(&"");
+
+    let wrapped_rows_before_cursor = lines
+        .iter()
+        .skip(scroll_row)
+        .take(cursor_row.saturating_sub(scroll_row))
+        .map(|line| wrapped_visual_rows(line, available_width))
+        .sum::<usize>();
+
+    let cursor_display_width = display_width_up_to_char(current_line, cursor_col) as usize;
+
+    Some((
+        wrapped_rows_before_cursor + cursor_display_width / available_width,
+        cursor_display_width % available_width,
+    ))
+}
+
+fn wrapped_visual_rows(line: &str, available_width: usize) -> usize {
+    UnicodeWidthStr::width(line)
+        .max(1)
+        .div_ceil(available_width)
 }
 
 fn split_at_cursor(text: &str, cursor_col: usize) -> (String, String, String) {
@@ -459,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn insert_mode_cursor_uses_bar_glyph() {
+    fn insert_mode_cursor_preserves_text_without_glyph() {
         let spans = text_cursor_spans_with_kind(
             "abc",
             1,
@@ -486,6 +525,11 @@ mod tests {
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["abc"]);
+    }
+
+    #[test]
+    fn visual_cursor_position_wraps_with_display_width() {
+        assert_eq!(visual_cursor_position("a語b", 0, 2, 0, 2), Some((1, 1)));
     }
 
     #[test]

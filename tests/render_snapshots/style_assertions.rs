@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::*;
 use harness::{
-    TEST_HEIGHT, TEST_WIDTH, connected_state, render_and_get_buffer,
+    TEST_HEIGHT, TEST_WIDTH, connected_state, create_test_terminal_sized, render_and_get_buffer,
     render_and_get_buffer_at_with_theme, render_and_get_cursor_position, table_detail_loaded_state,
     with_current_result,
 };
@@ -493,6 +493,27 @@ fn sql_modal_insert_cursor_uses_display_width_for_wide_chars() {
 
     assert_eq!(after_wide.y, head.y);
     assert_eq!(after_wide.x, head.x + 3);
+}
+
+#[test]
+fn sql_modal_insert_cursor_advances_visual_row_when_line_wraps() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal_sized(24, TEST_HEIGHT);
+    let content = "12345678901234567890".to_string();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content_with_cursor(content.clone(), 0);
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let head = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    state.sql_modal.editor.set_content_with_cursor(content, 18);
+    let wrapped = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    assert!(wrapped.y > head.y);
 }
 
 #[test]

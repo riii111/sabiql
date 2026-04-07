@@ -3,6 +3,7 @@ use std::panic;
 
 use color_eyre::eyre::Result;
 use crossterm::{
+    cursor::SetCursorStyle,
     execute,
     terminal::{LeaveAlternateScreen, disable_raw_mode},
 };
@@ -26,6 +27,7 @@ pub fn install_hooks() -> Result<()> {
 
 fn restore_terminal() -> Result<()> {
     if crossterm::terminal::is_raw_mode_enabled()? {
+        let _ = execute!(stdout(), SetCursorStyle::DefaultUserShape);
         execute!(stdout(), LeaveAlternateScreen)?;
         disable_raw_mode()?;
     }

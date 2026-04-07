@@ -13,11 +13,15 @@ use crate::ui::tui::TuiRunner;
 
 pub struct TuiAdapter<'a> {
     tui: &'a mut TuiRunner,
+    last_cursor_insert: Option<bool>,
 }
 
 impl<'a> TuiAdapter<'a> {
     pub fn new(tui: &'a mut TuiRunner) -> Self {
-        Self { tui }
+        Self {
+            tui,
+            last_cursor_insert: None,
+        }
     }
 }
 
@@ -32,14 +36,18 @@ impl Renderer for TuiAdapter<'_> {
         self.tui.terminal().draw(|frame| {
             output = MainLayout::render(frame, state, None, services, now);
         })?;
-        execute!(
-            std::io::stdout(),
-            if uses_insert_cursor(state) {
-                SetCursorStyle::SteadyBar
-            } else {
-                SetCursorStyle::SteadyBlock
-            }
-        )?;
+        let uses_insert = uses_insert_cursor(state);
+        if self.last_cursor_insert != Some(uses_insert) {
+            let _ = execute!(
+                std::io::stdout(),
+                if uses_insert {
+                    SetCursorStyle::SteadyBar
+                } else {
+                    SetCursorStyle::SteadyBlock
+                }
+            );
+            self.last_cursor_insert = Some(uses_insert);
+        }
         Ok(output)
     }
 }
