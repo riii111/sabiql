@@ -11,7 +11,7 @@ use crate::app::ports::RenderOutput;
 use crate::app::services::AppServices;
 use crate::ui::features::browse::explorer::Explorer;
 use crate::ui::features::browse::inspector::Inspector;
-use crate::ui::features::browse::jsonb_detail::JsonbDetail;
+use crate::ui::features::browse::jsonb_detail::{JsonbDetail, JsonbDetailRenderMetrics};
 use crate::ui::features::browse::result::ResultPane;
 use crate::ui::features::connections::error::ConnectionError;
 use crate::ui::features::connections::selector::ConnectionSelector;

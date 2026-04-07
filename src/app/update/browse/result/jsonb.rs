@@ -327,29 +327,6 @@ fn original_char_offset_for_lowered_byte(
     offset_map[idx.saturating_sub(1)].1
 }
 
-fn lowercase_with_char_offsets(text: &str) -> (String, Vec<(usize, usize)>) {
-    let mut lowered = String::new();
-    let mut offset_map = Vec::new();
-
-    for (original_char_offset, ch) in text.chars().enumerate() {
-        for lower in ch.to_lowercase() {
-            offset_map.push((lowered.len(), original_char_offset));
-            lowered.push(lower);
-        }
-    }
-
-    offset_map.push((lowered.len(), text.chars().count()));
-    (lowered, offset_map)
-}
-
-fn original_char_offset_for_lowered_byte(
-    offset_map: &[(usize, usize)],
-    lowered_byte_offset: usize,
-) -> usize {
-    let idx = offset_map.partition_point(|(byte_offset, _)| *byte_offset <= lowered_byte_offset);
-    offset_map[idx.saturating_sub(1)].1
-}
-
 fn apply_pending_edit_as_draft(state: &mut AppState) {
     if !state.jsonb_detail.has_pending_changes() {
         return;
