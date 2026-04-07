@@ -474,6 +474,28 @@ fn sql_modal_insert_cursor_position_tracks_head_middle_and_tail() {
 }
 
 #[test]
+fn sql_modal_insert_cursor_uses_display_width_for_wide_chars() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    let content = "a語b".to_string();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content_with_cursor(content.clone(), 0);
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let head = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    state.sql_modal.editor.set_content_with_cursor(content, 2);
+    let after_wide = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    assert_eq!(after_wide.y, head.y);
+    assert_eq!(after_wide.x, head.x + 3);
+}
+
+#[test]
 fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
     let (mut state, now) = jsonb_detail_state();
     let mut terminal = create_test_terminal();
@@ -512,6 +534,50 @@ fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
     assert!(!has_insert_glyph_after_move);
     assert_eq!(head.y, moved.y);
     assert_eq!(moved.x, head.x + 1);
+}
+
+#[test]
+fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
+    let (mut state, now) = jsonb_detail_state();
+    let mut terminal = create_test_terminal();
+    reduce_result(
+        &mut state,
+        &Action::JsonbExitEdit,
+        &AppServices::stub(),
+        now,
+    );
+    reduce_result(
+        &mut state,
+        &Action::JsonbEnterSearch,
+        &AppServices::stub(),
+        now,
+    );
+
+    let head = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    reduce_result(
+        &mut state,
+        &Action::TextInput {
+            target: InputTarget::JsonbSearch,
+            ch: 'a',
+        },
+        &AppServices::stub(),
+        now,
+    );
+    reduce_result(
+        &mut state,
+        &Action::TextInput {
+            target: InputTarget::JsonbSearch,
+            ch: '語',
+        },
+        &AppServices::stub(),
+        now,
+    );
+
+    let after_wide = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    assert_eq!(after_wide.y, head.y);
+    assert_eq!(after_wide.x, head.x + 3);
 }
 
 #[test]

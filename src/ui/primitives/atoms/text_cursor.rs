@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
+use unicode_width::UnicodeWidthStr;
 
 use crate::ui::theme::ThemePalette;
 
@@ -189,6 +190,7 @@ pub fn set_terminal_cursor(
     frame: &mut Frame,
     area: Rect,
     cursor_row: usize,
+    line_text: &str,
     cursor_col: usize,
     scroll_row: usize,
     x_offset: u16,
@@ -205,7 +207,7 @@ pub fn set_terminal_cursor(
     let x = area
         .x
         .saturating_add(x_offset)
-        .saturating_add(cursor_col as u16)
+        .saturating_add(display_width_up_to_char(line_text, cursor_col))
         .min(area.right().saturating_sub(1));
     let y = area.y.saturating_add(visible_row);
 
@@ -292,15 +294,29 @@ pub fn render_modal_text_surface(
     );
 
     if matches!(surface.cursor_kind, CursorKind::Insert) {
+        let current_line = surface
+            .content
+            .split('\n')
+            .nth(surface.cursor_row)
+            .unwrap_or("");
         set_terminal_cursor(
             frame,
             area,
             surface.cursor_row,
+            current_line,
             surface.cursor_col,
             surface.scroll_row,
             0,
         );
     }
+}
+
+fn display_width_up_to_char(text: &str, cursor_col: usize) -> u16 {
+    let byte_idx = text
+        .char_indices()
+        .nth(cursor_col)
+        .map_or(text.len(), |(idx, _)| idx);
+    UnicodeWidthStr::width(&text[..byte_idx]).min(u16::MAX as usize) as u16
 }
 
 fn split_at_cursor(text: &str, cursor_col: usize) -> (String, String, String) {
@@ -401,6 +417,14 @@ mod tests {
         let spans = text_cursor_spans("abc", 1, 0, 0, &DEFAULT_THEME);
 
         assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn display_width_uses_terminal_cell_width() {
+        assert_eq!(display_width_up_to_char("a語b", 0), 0);
+        assert_eq!(display_width_up_to_char("a語b", 1), 1);
+        assert_eq!(display_width_up_to_char("a語b", 2), 3);
+        assert_eq!(display_width_up_to_char("a語b", 3), 4);
     }
 
     #[test]

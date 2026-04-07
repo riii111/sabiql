@@ -199,6 +199,6 @@ impl JsonbDetail {
         ));
 
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
-        set_terminal_cursor(frame, area, 0, cursor, 0, 1);
+        set_terminal_cursor(frame, area, 0, input, cursor, 0, 1);
     }
 }
