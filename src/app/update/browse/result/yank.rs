@@ -135,7 +135,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let columns: Vec<String> = (0..cols).map(|c| format!("col_{c}")).collect();
             let result_rows: Vec<Vec<String>> = (0..rows)
-                .map(|r| (0..cols).map(|c| format!("r{r}c{c}")).collect())
+                .map(|r| {
+                    let row_prefix = format!("r{r}");
+                    (0..cols).map(|c| format!("{row_prefix}c{c}")).collect()
+                })
                 .collect();
             let row_count = result_rows.len();
             state

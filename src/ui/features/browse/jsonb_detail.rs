@@ -237,7 +237,7 @@ fn slice_chars_fitting_width(input: &str, start: usize, visible_width: usize) ->
 
     for ch in input.chars().skip(start) {
         let ch_width = char_width(ch);
-        if !visible.is_empty() && width + ch_width > visible_width {
+        if width + ch_width > visible_width {
             break;
         }
         width += ch_width;
@@ -253,4 +253,19 @@ fn display_width(chars: &[char]) -> usize {
 
 fn char_width(ch: char) -> usize {
     UnicodeWidthChar::width(ch).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::slice_chars_fitting_width;
+
+    #[test]
+    fn slice_chars_fitting_width_omits_first_wide_char_when_viewport_is_too_narrow() {
+        assert_eq!(slice_chars_fitting_width("界a", 0, 1), "");
+    }
+
+    #[test]
+    fn slice_chars_fitting_width_keeps_chars_that_fit_exactly() {
+        assert_eq!(slice_chars_fitting_width("ab", 0, 2), "ab");
+    }
 }
