@@ -5,8 +5,8 @@ use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::update::action::Action;
 use crate::app::update::input::keybindings::{self as kb, Key, KeyCombo};
 use crate::app::update::input::vim::{
-    BrowseVimContext, VimCommand, VimSurfaceContext, classify_command, resolve_command,
-    resolve_key_input,
+    BrowseVimContext, VimCommand, VimSurfaceContext, action_for_input, action_for_key,
+    classify_command,
 };
 
 #[cfg(test)]
@@ -41,7 +41,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 return Action::RequestCsvExport;
             }
             _ => {
-                if let Some(action) = resolve_command(&combo, VimSurfaceContext::Browse(browse_ctx))
+                if let Some(action) = action_for_key(&combo, VimSurfaceContext::Browse(browse_ctx))
                 {
                     return action;
                 }
@@ -59,8 +59,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         if combo.modifiers.ctrl || combo.modifiers.alt {
             return Action::CancelKeySequence;
         }
-        return match resolve_key_input(&combo, Some(prefix), VimSurfaceContext::Browse(browse_ctx))
-        {
+        return match action_for_input(&combo, Some(prefix), VimSurfaceContext::Browse(browse_ctx)) {
             Some(Action::None) | None => Action::CancelKeySequence,
             Some(action) => action,
         };
@@ -103,7 +102,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     }
 
     // Shared vim semantics (navigation, mode, operators)
-    if let Some(action) = resolve_command(&combo, VimSurfaceContext::Browse(browse_ctx)) {
+    if let Some(action) = action_for_key(&combo, VimSurfaceContext::Browse(browse_ctx)) {
         return action;
     }
 

@@ -3,7 +3,7 @@ use crate::app::update::action::{
     Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 use crate::app::update::input::keybindings::{Key, KeyCombo};
-use crate::app::update::input::vim::{SqlModalVimContext, VimSurfaceContext, resolve_command};
+use crate::app::update::input::vim::{SqlModalVimContext, VimSurfaceContext, action_for_key};
 
 pub fn handle_sql_modal_keys(
     combo: KeyCombo,
@@ -41,7 +41,7 @@ pub fn handle_sql_modal_keys(
 
         // Plan tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Plan {
-            if let Some(action) = resolve_command(
+            if let Some(action) = action_for_key(
                 &combo,
                 VimSurfaceContext::SqlModal(SqlModalVimContext::PlanViewer),
             ) {
@@ -56,7 +56,7 @@ pub fn handle_sql_modal_keys(
 
         // Compare tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Compare {
-            if let Some(action) = resolve_command(
+            if let Some(action) = action_for_key(
                 &combo,
                 VimSurfaceContext::SqlModal(SqlModalVimContext::CompareViewer),
             ) {
@@ -80,7 +80,7 @@ pub fn handle_sql_modal_keys(
             return Action::SqlModalClear;
         }
 
-        if let Some(action) = resolve_command(
+        if let Some(action) = action_for_key(
             &combo,
             VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),
         ) {
@@ -232,7 +232,7 @@ pub fn handle_sql_modal_keys(
         }
     }
 
-    if let Some(action) = resolve_command(
+    if let Some(action) = action_for_key(
         &combo,
         VimSurfaceContext::SqlModal(SqlModalVimContext::QueryEditing),
     ) {
