@@ -2,15 +2,20 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::shared::text_input::TextInputLike;
-use crate::ui::primitives::atoms::{CursorKind, cursor_style_for, text_cursor_spans_with_kind};
+use crate::ui::primitives::atoms::{
+    CursorKind, cursor_style_for, set_terminal_cursor, text_cursor_spans_with_kind,
+};
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::ThemePalette;
 
+pub struct JsonbDetailRenderMetrics {
+    pub scroll_offset: usize,
+}
 pub struct JsonbDetail;
 
 impl JsonbDetail {
@@ -19,7 +24,7 @@ impl JsonbDetail {
         state: &AppState,
         now: std::time::Instant,
         theme: &ThemePalette,
-    ) -> Option<usize> {
+    ) -> Option<JsonbDetailRenderMetrics> {
         if !state.jsonb_detail.is_active() {
             return None;
         }
@@ -61,14 +66,18 @@ impl JsonbDetail {
             Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
             Self::render_status(frame, status_area, state, theme);
             Self::render_search(frame, search_area, state, theme);
+            return Some(JsonbDetailRenderMetrics {
+                scroll_offset: state.jsonb_detail.editor().scroll_row(),
+            });
         } else {
             let [editor_area, status_area] =
                 Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
             Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
             Self::render_status(frame, status_area, state, theme);
+            return Some(JsonbDetailRenderMetrics {
+                scroll_offset: state.jsonb_detail.editor().scroll_row(),
+            });
         }
-
-        Some(state.jsonb_detail.editor().scroll_row())
     }
 
     fn render_editor_content(
@@ -82,7 +91,6 @@ impl JsonbDetail {
         let editor = state.jsonb_detail.editor();
         let content = editor.content();
         let scroll_row = editor.scroll_row();
-        let viewport_height = area.height as usize;
         let (cursor_row, cursor_col) = editor.cursor_to_position();
         let current_line_style = Style::default().bg(theme.editor_current_line_bg);
         let cursor_kind = if is_editing {
@@ -109,8 +117,6 @@ impl JsonbDetail {
             content
                 .lines()
                 .enumerate()
-                .skip(scroll_row)
-                .take(viewport_height)
                 .map(|(row, line_str)| {
                     if row == cursor_row {
                         Line::from(text_cursor_spans_with_kind(
@@ -145,8 +151,15 @@ impl JsonbDetail {
         );
         crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
 
-        let paragraph = Paragraph::new(lines).style(Style::default().fg(theme.text_primary));
+        let paragraph = Paragraph::new(lines)
+            .style(Style::default().fg(theme.text_primary))
+            .wrap(Wrap { trim: false })
+            .scroll((scroll_row as u16, 0));
         frame.render_widget(paragraph, area);
+
+        if is_editing {
+            set_terminal_cursor(frame, area, cursor_row, cursor_col, scroll_row, 0);
+        }
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
@@ -200,5 +213,6 @@ impl JsonbDetail {
         ));
 
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
+        set_terminal_cursor(frame, area, 0, cursor, 0, 1);
     }
 }

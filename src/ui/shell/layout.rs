@@ -143,7 +143,10 @@ impl MainLayout {
 
         let jsonb_detail_scroll_offset = match state.input_mode() {
             InputMode::JsonbDetail | InputMode::JsonbEdit => {
-                JsonbDetail::render(frame, state, now, theme)
+                match JsonbDetail::render(frame, state, now, theme) {
+                    Some(JsonbDetailRenderMetrics { scroll_offset }) => Some(scroll_offset),
+                    None => None,
+                }
             }
             _ => None,
         };
