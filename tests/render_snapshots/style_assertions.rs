@@ -71,8 +71,7 @@ fn jsonb_detail_state() -> (AppState, Instant) {
     state.query.pagination.schema = "public".to_string();
     state.query.pagination.table = "users".to_string();
     state.ui.focused_pane = FocusedPane::Result;
-    state.result_interaction.enter_row(0);
-    state.result_interaction.enter_cell(3);
+    state.result_interaction.activate_cell(0, 3);
     reduce_result(
         &mut state,
         &Action::OpenJsonbDetail,
@@ -95,8 +94,7 @@ fn pending_draft_cell_uses_orange_fg() {
 
     with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
-    state.result_interaction.enter_row(1);
-    state.result_interaction.enter_cell(2);
+    state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
     state
         .result_interaction
@@ -128,8 +126,7 @@ fn active_cell_edit_uses_yellow_fg() {
 
     with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
-    state.result_interaction.enter_row(1);
-    state.result_interaction.enter_cell(2);
+    state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
     state
         .result_interaction
@@ -161,7 +158,7 @@ fn staged_delete_row_uses_dark_red_bg() {
 
     with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
-    state.result_interaction.enter_row(0);
+    state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
