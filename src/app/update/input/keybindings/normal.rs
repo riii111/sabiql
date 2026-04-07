@@ -360,7 +360,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         key_short: "Esc",
         key: "Esc",
         desc_short: "Back",
-        description: "Exit cell selection and return to scroll mode",
+        description: "Exit cell selection and return to scroll mode without clearing staged deletes",
         action: Action::ResultExitToScroll,
         combos: &[KeyCombo::plain(Key::Esc)],
     },

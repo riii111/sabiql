@@ -206,6 +206,18 @@ mod tests {
 
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
+
+        #[test]
+        fn exit_to_scroll_preserves_staged_rows() {
+            let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
+            state.result_interaction.activate_cell(0, 0);
+            state.result_interaction.stage_row(0);
+
+            reduce(&mut state, &Action::ResultExitToScroll, Instant::now());
+
+            assert_eq!(state.result_interaction.selection().row(), None);
+            assert!(state.result_interaction.staged_delete_rows().contains(&0));
+        }
     }
 
     mod read_only_guard {

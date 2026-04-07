@@ -8,13 +8,16 @@ use crate::app::policy::write::write_guardrails::WritePreview;
 
 // # Invariants
 //
-// - `selection`, `cell_edit`, `staged_delete_rows`, and `pending_write_preview`
-//   must be reset together during mode transitions. Use the aggregate transition
-//   API (`reset_view`, `reset_interaction`, `exit_cell_to_scroll`)
-//   instead of manipulating these fields individually.
+// - `reset_view` and `reset_interaction` clear `selection`, `cell_edit`,
+//   `staged_delete_rows`, and `pending_write_preview` together. Use those
+//   aggregate transitions instead of manipulating these fields individually.
 //
-// - After calling `exit_cell_to_scroll()`, the caller is
-//   responsible for setting `input_mode` back to `Normal` if it was `CellEdit`.
+// - `exit_cell_to_scroll()` is intentionally narrower: it clears
+//   `selection`, `cell_edit`, and `pending_write_preview`, while preserving
+//   `staged_delete_rows` so Esc does not discard a staged batch.
+//
+// - After calling `exit_cell_to_scroll()`, the caller is responsible for
+//   setting `input_mode` back to `Normal` if it was `CellEdit`.
 #[derive(Debug, Clone, Default)]
 pub struct ResultInteraction {
     pub scroll_offset: usize,
@@ -30,6 +33,12 @@ pub struct ResultInteraction {
 }
 
 impl ResultInteraction {
+    fn clear_active_cell_state(&mut self) {
+        self.selection.reset();
+        self.cell_edit.clear();
+        self.pending_write_preview = None;
+    }
+
     pub fn selection(&self) -> &ResultSelection {
         &self.selection
     }
@@ -104,25 +113,17 @@ impl ResultInteraction {
     pub fn reset_view(&mut self) {
         self.scroll_offset = 0;
         self.horizontal_offset = 0;
-        self.selection.reset();
-        self.cell_edit.clear();
-        self.staged_delete_rows.clear();
-        self.pending_write_preview = None;
+        self.reset_interaction();
     }
 
     pub fn reset_interaction(&mut self) {
-        self.selection.reset();
-        self.cell_edit.clear();
+        self.clear_active_cell_state();
         self.staged_delete_rows.clear();
-        self.pending_write_preview = None;
     }
 
     // Caller must set `input_mode` to `Normal` if it was `CellEdit` (SAB-136).
     pub fn exit_cell_to_scroll(&mut self) {
-        self.selection.reset();
-        self.cell_edit.clear();
-        self.staged_delete_rows.clear();
-        self.pending_write_preview = None;
+        self.clear_active_cell_state();
     }
 
     pub fn clear_operator_pending(&mut self, keep_delete: bool, keep_yank: bool) {
@@ -206,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn exit_cell_to_scroll_clears_selection_and_staging() {
+    fn exit_cell_to_scroll_clears_selection_and_preserves_staging() {
         let mut ri = ResultInteraction::default();
         ri.activate_cell(2, 4);
         ri.begin_cell_edit(2, 4, "val".to_string());
@@ -218,7 +219,7 @@ mod tests {
         assert_eq!(ri.selection().mode(), ResultNavMode::Scroll);
         assert!(!ri.cell_edit().is_active());
         assert!(ri.pending_write_preview().is_none());
-        assert!(ri.staged_delete_rows().is_empty());
+        assert!(ri.staged_delete_rows().contains(&0));
     }
 
     #[test]

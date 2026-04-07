@@ -124,6 +124,10 @@ impl Footer {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     let mut list =
                         vec![RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint()];
+                    if !state.result_interaction.staged_delete_rows().is_empty() {
+                        list.push(RESULT_ACTIVE_KEYS[idx::result_active::UNSTAGE_DELETE].as_hint());
+                        list.push(CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint());
+                    }
                     if state.can_request_csv_export() {
                         list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
@@ -167,6 +171,12 @@ impl Footer {
                     // Navigation
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());
+                        if !state.result_interaction.staged_delete_rows().is_empty() {
+                            list.push(
+                                RESULT_ACTIVE_KEYS[idx::result_active::UNSTAGE_DELETE].as_hint(),
+                            );
+                            list.push(CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint());
+                        }
                         if state.query.can_paginate_visible_result() {
                             list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
                         }
