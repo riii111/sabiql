@@ -1,4 +1,5 @@
 use std::time::Instant;
+use unicode_casefold::UnicodeCaseFold;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
@@ -295,15 +296,15 @@ fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
         return Vec::new();
     }
 
-    let query_lower = query.to_lowercase();
+    let query_folded = query.case_fold().collect::<String>();
     let mut matches = Vec::new();
     let mut offset = 0;
 
     for segment in content.split_inclusive('\n') {
         let line = segment.strip_suffix('\n').unwrap_or(segment);
-        let (lowered, offset_map) = lowercase_with_char_offsets(line);
-        if let Some(match_idx) = lowered.find(&query_lower) {
-            matches.push(offset + original_char_offset_for_lowered_byte(&offset_map, match_idx));
+        let (folded, offset_map) = casefold_with_char_offsets(line);
+        if let Some(match_idx) = folded.find(&query_folded) {
+            matches.push(offset + original_char_offset_for_folded_byte(&offset_map, match_idx));
         }
         offset += segment.chars().count();
     }
@@ -311,26 +312,26 @@ fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
     matches
 }
 
-fn lowercase_with_char_offsets(text: &str) -> (String, Vec<(usize, usize)>) {
-    let mut lowered = String::new();
+fn casefold_with_char_offsets(text: &str) -> (String, Vec<(usize, usize)>) {
+    let mut folded = String::new();
     let mut offset_map = Vec::new();
 
     for (original_char_offset, ch) in text.chars().enumerate() {
-        for lower in ch.to_lowercase() {
-            offset_map.push((lowered.len(), original_char_offset));
-            lowered.push(lower);
+        for folded_char in ch.case_fold() {
+            offset_map.push((folded.len(), original_char_offset));
+            folded.push(folded_char);
         }
     }
 
-    offset_map.push((lowered.len(), text.chars().count()));
-    (lowered, offset_map)
+    offset_map.push((folded.len(), text.chars().count()));
+    (folded, offset_map)
 }
 
-fn original_char_offset_for_lowered_byte(
+fn original_char_offset_for_folded_byte(
     offset_map: &[(usize, usize)],
-    lowered_byte_offset: usize,
+    folded_byte_offset: usize,
 ) -> usize {
-    let idx = offset_map.partition_point(|(byte_offset, _)| *byte_offset <= lowered_byte_offset);
+    let idx = offset_map.partition_point(|(byte_offset, _)| *byte_offset <= folded_byte_offset);
     offset_map[idx.saturating_sub(1)].1
 }
 
@@ -814,7 +815,7 @@ mod tests {
 
     mod search_helpers {
         use super::{
-            find_text_matches, lowercase_with_char_offsets, original_char_offset_for_lowered_byte,
+            casefold_with_char_offsets, find_text_matches, original_char_offset_for_folded_byte,
         };
 
         #[test]
@@ -842,14 +843,28 @@ mod tests {
         }
 
         #[test]
-        fn lowered_byte_offset_uses_original_char_positions() {
-            let (lowered, offset_map) = lowercase_with_char_offsets("İx");
-            let match_idx = lowered.find('x').expect("x should exist after lowercase");
+        fn folded_byte_offset_uses_original_char_positions() {
+            let (folded, offset_map) = casefold_with_char_offsets("İx");
+            let match_idx = folded.find('x').expect("x should exist after case fold");
 
             assert_eq!(
-                original_char_offset_for_lowered_byte(&offset_map, match_idx),
+                original_char_offset_for_folded_byte(&offset_map, match_idx),
                 1
             );
+        }
+
+        #[test]
+        fn casefold_matches_german_sharp_s() {
+            let matches = find_text_matches("Maße", "MASSE");
+
+            assert_eq!(matches, vec![0]);
+        }
+
+        #[test]
+        fn casefold_matches_greek_final_sigma() {
+            let matches = find_text_matches("ὈΔΥΣΣΕΎΣ", "ὀδυσσεύς");
+
+            assert_eq!(matches, vec![0]);
         }
     }
 }
