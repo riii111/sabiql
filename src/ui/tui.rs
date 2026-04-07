@@ -59,9 +59,9 @@ impl TuiRunner {
     pub fn exit(&mut self) -> Result<()> {
         self.stop_event_loop();
         if crossterm::terminal::is_raw_mode_enabled()? {
+            let _ = execute!(stdout(), SetCursorStyle::DefaultUserShape);
             execute!(
                 stdout(),
-                SetCursorStyle::DefaultUserShape,
                 LeaveAlternateScreen,
                 DisableMouseCapture,
                 DisableBracketedPaste
