@@ -339,6 +339,16 @@ mod tests {
     }
 
     #[test]
+    fn plain_enter_confirms_connection_error() {
+        let mut state = browse_state();
+        state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
+
+        let result = handle_normal_mode(KeyCombo::plain(Key::Enter), &state);
+
+        assert!(matches!(result, Action::ConfirmSelection));
+    }
+
+    #[test]
     fn enter_does_nothing_when_inspector_focused() {
         let mut state = browse_state();
         state.ui.focused_pane = FocusedPane::Inspector;
