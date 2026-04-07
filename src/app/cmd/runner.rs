@@ -269,6 +269,7 @@ impl EffectRunner {
                 }
                 if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
                     state.ui.jsonb_detail_editor_visible_rows = visible_rows;
+                    state.jsonb_detail.editor_mut().update_scroll(visible_rows);
                 }
                 state.confirm_dialog.preview_viewport_height =
                     output.confirm_preview_viewport_height;
@@ -408,9 +409,14 @@ mod tests {
 
     mod render {
         use super::*;
+        use crate::app::model::browse::jsonb_detail::JsonbDetailState;
 
         struct ExplorerWidthRenderer {
             explorer_content_width: usize,
+        }
+
+        struct JsonbVisibleRowsRenderer {
+            visible_rows: usize,
         }
 
         impl Renderer for ExplorerWidthRenderer {
@@ -422,6 +428,20 @@ mod tests {
             ) -> Result<RenderOutput> {
                 Ok(RenderOutput {
                     explorer_content_width: self.explorer_content_width,
+                    ..RenderOutput::default()
+                })
+            }
+        }
+
+        impl Renderer for JsonbVisibleRowsRenderer {
+            fn draw(
+                &mut self,
+                _state: &AppState,
+                _services: &AppServices,
+                _now: Instant,
+            ) -> Result<RenderOutput> {
+                Ok(RenderOutput {
+                    jsonb_detail_editor_visible_rows: Some(self.visible_rows),
                     ..RenderOutput::default()
                 })
             }
@@ -496,6 +516,49 @@ mod tests {
                 .unwrap();
 
             assert_eq!(state.ui.explorer_horizontal_offset, 9);
+        }
+
+        #[tokio::test]
+        async fn recomputes_jsonb_editor_scroll_when_visible_rows_change() {
+            let (tx, _rx) = mpsc::channel(8);
+            let runner = make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                tx,
+            );
+
+            let state = &mut AppState::new("test".to_string());
+            state.jsonb_detail = JsonbDetailState::open_pretty(
+                0,
+                0,
+                "settings".to_string(),
+                "{}".to_string(),
+                "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
+            );
+            state.jsonb_detail.editor_mut().set_content_with_cursor(
+                "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
+                29,
+            );
+
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = JsonbVisibleRowsRenderer { visible_rows: 2 };
+
+            runner
+                .run(
+                    vec![Effect::Render],
+                    &mut renderer,
+                    state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(state.ui.jsonb_detail_editor_visible_rows, 2);
+            assert_eq!(state.jsonb_detail.editor().cursor_to_position().0, 3);
+            assert_eq!(state.jsonb_detail.editor().scroll_row(), 2);
         }
     }
 
