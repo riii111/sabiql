@@ -332,15 +332,25 @@ fn visual_cursor_position(
         return None;
     }
 
-    let lines: Vec<&str> = content.split('\n').collect();
-    let current_line = *lines.get(cursor_row).unwrap_or(&"");
+    let mut wrapped_rows_before_cursor = 0;
+    let mut current_line = "";
 
-    let wrapped_rows_before_cursor = lines
-        .iter()
-        .skip(scroll_row)
-        .take(cursor_row.saturating_sub(scroll_row))
-        .map(|line| wrapped_visual_rows(line, available_width))
-        .sum::<usize>();
+    for (row, line) in content.split('\n').enumerate() {
+        if row < scroll_row {
+            continue;
+        }
+
+        match row.cmp(&cursor_row) {
+            Ordering::Less => {
+                wrapped_rows_before_cursor += wrapped_visual_rows(line, available_width);
+            }
+            Ordering::Equal => {
+                current_line = line;
+                break;
+            }
+            Ordering::Greater => return None,
+        }
+    }
 
     let cursor_display_width = display_width_up_to_char(current_line, cursor_col) as usize;
 
