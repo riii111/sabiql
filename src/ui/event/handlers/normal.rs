@@ -441,7 +441,7 @@ mod tests {
             }
 
             #[test]
-            fn shift_tab_switches_inspector_tab_prev_when_inspector_focused() {
+            fn shift_tab_prev_when_inspector_focused() {
                 let mut state = browse_state();
                 state.ui.focused_pane = FocusedPane::Inspector;
 
@@ -803,11 +803,13 @@ mod tests {
                 ));
             }
 
-            #[test]
-            fn ctrl_f_result_full_page_down() {
+            #[rstest]
+            #[case(combo_ctrl(Key::Char('f')))]
+            #[case(combo(Key::PageDown))]
+            fn full_page_down_result(#[case] input: KeyCombo) {
                 let state = result_focused_state();
 
-                let result = handle_normal_mode(combo_ctrl(Key::Char('f')), &state);
+                let result = handle_normal_mode(input, &state);
 
                 assert!(matches!(
                     result,
@@ -819,43 +821,13 @@ mod tests {
                 ));
             }
 
-            #[test]
-            fn ctrl_b_result_full_page_up() {
+            #[rstest]
+            #[case(combo_ctrl(Key::Char('b')))]
+            #[case(combo(Key::PageUp))]
+            fn full_page_up_result(#[case] input: KeyCombo) {
                 let state = result_focused_state();
 
-                let result = handle_normal_mode(combo_ctrl(Key::Char('b')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Up,
-                        amount: ScrollAmount::FullPage
-                    }
-                ));
-            }
-
-            #[test]
-            fn page_down_result_full_page_down() {
-                let state = result_focused_state();
-
-                let result = handle_normal_mode(combo(Key::PageDown), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Down,
-                        amount: ScrollAmount::FullPage
-                    }
-                ));
-            }
-
-            #[test]
-            fn page_up_result_full_page_up() {
-                let state = result_focused_state();
-
-                let result = handle_normal_mode(combo(Key::PageUp), &state);
+                let result = handle_normal_mode(input, &state);
 
                 assert!(matches!(
                     result,
@@ -1161,29 +1133,14 @@ mod tests {
                 assert!(matches!(result, Action::ResultEnterCellEdit));
             }
 
-            #[test]
-            fn d_noop_in_scroll_mode() {
+            #[rstest]
+            #[case(Key::Char('d'))]
+            #[case(Key::Char('y'))]
+            #[case(Key::Char('i'))]
+            fn operator_noop_without_active_cell(#[case] key: Key) {
                 let state = result_focused_state();
 
-                let result = handle_normal_mode(combo(Key::Char('d')), &state);
-
-                assert!(matches!(result, Action::None));
-            }
-
-            #[test]
-            fn y_noop_in_scroll_mode() {
-                let state = result_focused_state();
-
-                let result = handle_normal_mode(combo(Key::Char('y')), &state);
-
-                assert!(matches!(result, Action::None));
-            }
-
-            #[test]
-            fn i_noop_without_active_cell() {
-                let state = result_focused_state();
-
-                let result = handle_normal_mode(combo(Key::Char('i')), &state);
+                let result = handle_normal_mode(combo(key), &state);
 
                 assert!(matches!(result, Action::None));
             }
@@ -1228,7 +1185,7 @@ mod tests {
                 }
 
                 #[test]
-                fn ctrl_h_exits_history_when_in_history_mode() {
+                fn ctrl_h_exits_when_active() {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
 
@@ -1390,32 +1347,15 @@ mod tests {
             mod ctrl_keys {
                 use super::*;
 
-                #[test]
-                fn ctrl_o_is_blocked() {
+                #[rstest]
+                #[case(Key::Char('o'))]
+                #[case(Key::Char('k'))]
+                #[case(Key::Char('e'))]
+                fn ctrl_overlay_keys_are_blocked(#[case] key: Key) {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
 
-                    let result = handle_normal_mode(combo_ctrl(Key::Char('o')), &state);
-
-                    assert!(matches!(result, Action::None));
-                }
-
-                #[test]
-                fn ctrl_k_is_blocked() {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(1);
-
-                    let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
-
-                    assert!(matches!(result, Action::None));
-                }
-
-                #[test]
-                fn ctrl_e_is_blocked() {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(1);
-
-                    let result = handle_normal_mode(combo_ctrl(Key::Char('e')), &state);
+                    let result = handle_normal_mode(combo_ctrl(key), &state);
 
                     assert!(matches!(result, Action::None));
                 }
@@ -1469,51 +1409,22 @@ mod tests {
             mod explorer {
                 use super::*;
 
-                #[test]
-                fn zz_scrolls_cursor_to_center() {
+                #[rstest]
+                #[case(Key::Char('z'), CursorPosition::Center)]
+                #[case(Key::Char('t'), CursorPosition::Top)]
+                #[case(Key::Char('b'), CursorPosition::Bottom)]
+                fn z_prefix_scrolls_cursor(#[case] key: Key, #[case] position: CursorPosition) {
                     let mut state = browse_state();
                     state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-                    let result = handle_normal_mode(combo(Key::Char('z')), &state);
+                    let result = handle_normal_mode(combo(key), &state);
 
                     assert!(matches!(
                         result,
                         Action::ScrollToCursor {
                             target: ScrollToCursorTarget::Explorer,
-                            position: CursorPosition::Center
-                        }
-                    ));
-                }
-
-                #[test]
-                fn zt_scrolls_cursor_to_top() {
-                    let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
-
-                    let result = handle_normal_mode(combo(Key::Char('t')), &state);
-
-                    assert!(matches!(
-                        result,
-                        Action::ScrollToCursor {
-                            target: ScrollToCursorTarget::Explorer,
-                            position: CursorPosition::Top
-                        }
-                    ));
-                }
-
-                #[test]
-                fn zb_scrolls_cursor_to_bottom() {
-                    let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
-
-                    let result = handle_normal_mode(combo(Key::Char('b')), &state);
-
-                    assert!(matches!(
-                        result,
-                        Action::ScrollToCursor {
-                            target: ScrollToCursorTarget::Explorer,
-                            position: CursorPosition::Bottom
-                        }
+                            position: actual_position
+                        } if actual_position == position
                     ));
                 }
             }
@@ -1521,51 +1432,22 @@ mod tests {
             mod result {
                 use super::*;
 
-                #[test]
-                fn zz_scrolls_cursor_to_center() {
+                #[rstest]
+                #[case(Key::Char('z'), CursorPosition::Center)]
+                #[case(Key::Char('t'), CursorPosition::Top)]
+                #[case(Key::Char('b'), CursorPosition::Bottom)]
+                fn z_prefix_scrolls_cursor(#[case] key: Key, #[case] position: CursorPosition) {
                     let mut state = result_focused_state();
                     state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-                    let result = handle_normal_mode(combo(Key::Char('z')), &state);
+                    let result = handle_normal_mode(combo(key), &state);
 
                     assert!(matches!(
                         result,
                         Action::ScrollToCursor {
                             target: ScrollToCursorTarget::Result,
-                            position: CursorPosition::Center
-                        }
-                    ));
-                }
-
-                #[test]
-                fn zt_scrolls_cursor_to_top() {
-                    let mut state = result_focused_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
-
-                    let result = handle_normal_mode(combo(Key::Char('t')), &state);
-
-                    assert!(matches!(
-                        result,
-                        Action::ScrollToCursor {
-                            target: ScrollToCursorTarget::Result,
-                            position: CursorPosition::Top
-                        }
-                    ));
-                }
-
-                #[test]
-                fn zb_scrolls_cursor_to_bottom() {
-                    let mut state = result_focused_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
-
-                    let result = handle_normal_mode(combo(Key::Char('b')), &state);
-
-                    assert!(matches!(
-                        result,
-                        Action::ScrollToCursor {
-                            target: ScrollToCursorTarget::Result,
-                            position: CursorPosition::Bottom
-                        }
+                            position: actual_position
+                        } if actual_position == position
                     ));
                 }
             }
@@ -1743,7 +1625,7 @@ mod tests {
         }
 
         #[test]
-        fn shift_g_key_event_produces_select_last_via_translator() {
+        fn shift_g_event_translates_to_select_last() {
             let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
             let combo = translate(event);
             let state = explorer_ctx();
