@@ -11,10 +11,6 @@ pub use normal::*;
 pub use overlays::*;
 pub use types::{Key, KeyCombo, Modifiers};
 
-// =============================================================================
-// KeyBinding
-// =============================================================================
-
 #[derive(Clone)]
 pub struct KeyBinding {
     pub key_short: &'static str,
@@ -101,10 +97,6 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("JSONB_DETAIL", &JSONB_DETAIL),
     ("JSONB_EDIT", &JSONB_EDIT),
 ];
-
-// =============================================================================
-// Index Constants for Footer Lookup
-// =============================================================================
 
 pub mod idx {
     pub mod global {
@@ -365,10 +357,6 @@ pub const fn help_content_line_count() -> usize {
         + JSONB_EDIT_ROWS.len()
         + JSONB_SEARCH_KEYS.len()
 }
-
-// =============================================================================
-// Predicate functions for Normal mode routing
-// =============================================================================
 
 pub fn is_quit(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::QUIT].combos.contains(combo)
@@ -798,10 +786,6 @@ mod tests {
                 check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             }
 
-            // ------------------------------------------------------------------ //
-            // 2b. ModeRow exec entries have non-empty combos
-            // ------------------------------------------------------------------ //
-
             fn check_mode_rows_exec_valid(rows: &[ModeRow], name: &str) {
                 for (i, row) in rows.iter().enumerate() {
                     for (j, eb) in row.bindings.iter().enumerate() {
@@ -1066,7 +1050,6 @@ mod tests {
         mod catalog_coverage {
             use super::*;
 
-            // HELP, CONNECTION_ERROR, TABLE_PICKER, ER_PICKER, COMMAND_PALETTE, CONNECTION_SELECTOR
             #[test]
             fn all_mode_bindings_count() {
                 assert_eq!(ALL_MODE_BINDINGS.len(), 9);

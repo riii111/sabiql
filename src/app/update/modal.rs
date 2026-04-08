@@ -184,7 +184,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.ui.er_selected_tables.clear();
             Some(vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])])
         }
-        // Query History Picker
         Action::OpenQueryHistoryPicker => {
             if state.session.active_connection_id.is_none() {
                 return Some(vec![]);
@@ -307,7 +306,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
 
-        // Confirm Dialog
         Action::ConfirmDialogConfirm => {
             let intent = state.confirm_dialog.take_intent();
             state.modal.pop_mode();
