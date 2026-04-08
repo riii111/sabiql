@@ -485,73 +485,75 @@ mod tests {
         mod line_boundary {
             use super::*;
 
-            #[test]
-            fn home_returns_line_start() {
+            #[rstest]
+            #[case(CursorMove::Home)]
+            #[case(CursorMove::LineStart)]
+            fn returns_current_line_start(#[case] movement: CursorMove) {
                 // "abc\ndef" → cursor at 5 (on 'e'), col=1
                 // Home → start of line 1 → cursor=4
                 let mut s = ml("abc\ndef", 5);
-                s.move_cursor(CursorMove::Home);
+                s.move_cursor(movement);
                 assert_eq!(s.cursor(), 4);
             }
 
-            #[test]
-            fn end_returns_line_end() {
+            #[rstest]
+            #[case(CursorMove::End)]
+            #[case(CursorMove::LineEnd)]
+            fn returns_current_line_end(#[case] movement: CursorMove) {
                 // "abc\ndef" → cursor at 4 (on 'd'), col=0
                 // End → end of line 1 → cursor=7
                 let mut s = ml("abc\ndef", 4);
-                s.move_cursor(CursorMove::End);
+                s.move_cursor(movement);
                 assert_eq!(s.cursor(), 7);
             }
 
-            #[test]
-            fn home_on_first_line_returns_zero() {
+            #[rstest]
+            #[case(CursorMove::Home)]
+            #[case(CursorMove::LineStart)]
+            fn first_line_start_returns_zero(#[case] movement: CursorMove) {
                 let mut s = ml("abc\ndef", 2);
-                s.move_cursor(CursorMove::Home);
+                s.move_cursor(movement);
                 assert_eq!(s.cursor(), 0);
             }
 
-            #[test]
-            fn end_on_first_line_returns_line_length() {
+            #[rstest]
+            #[case(CursorMove::End)]
+            #[case(CursorMove::LineEnd)]
+            fn first_line_end_returns_line_length(#[case] movement: CursorMove) {
                 let mut s = ml("abc\ndef", 0);
-                s.move_cursor(CursorMove::End);
+                s.move_cursor(movement);
                 assert_eq!(s.cursor(), 3);
             }
 
-            #[test]
-            fn line_start_returns_current_line_start() {
-                let mut s = ml("abc\ndef", 5);
-                s.move_cursor(CursorMove::LineStart);
-                assert_eq!(s.cursor(), 4);
-            }
-
-            #[test]
-            fn line_end_returns_current_line_end() {
-                let mut s = ml("abc\ndef", 4);
-                s.move_cursor(CursorMove::LineEnd);
-                assert_eq!(s.cursor(), 7);
-            }
-
-            #[test]
-            fn home_end_on_empty_line_returns_same_position() {
+            #[rstest]
+            #[case(CursorMove::Home, 4)]
+            #[case(CursorMove::LineStart, 4)]
+            #[case(CursorMove::End, 4)]
+            #[case(CursorMove::LineEnd, 4)]
+            fn empty_line_returns_same_position(
+                #[case] movement: CursorMove,
+                #[case] expected: usize,
+            ) {
                 // "abc\n\ndef" → cursor at 4 (empty line 1)
                 let mut s = ml("abc\n\ndef", 4);
 
-                s.move_cursor(CursorMove::Home);
-                assert_eq!(s.cursor(), 4);
-
-                s.move_cursor(CursorMove::End);
-                assert_eq!(s.cursor(), 4);
+                s.move_cursor(movement);
+                assert_eq!(s.cursor(), expected);
             }
 
-            #[test]
-            fn multibyte_home_end_returns_line_boundaries() {
+            #[rstest]
+            #[case(CursorMove::Home, 4)]
+            #[case(CursorMove::LineStart, 4)]
+            #[case(CursorMove::End, 6)]
+            #[case(CursorMove::LineEnd, 6)]
+            fn multibyte_returns_line_boundaries(
+                #[case] movement: CursorMove,
+                #[case] expected: usize,
+            ) {
                 let mut s = ml("あいう\nかき", 5);
 
-                s.move_cursor(CursorMove::Home);
-                assert_eq!(s.cursor(), 4);
-
-                s.move_cursor(CursorMove::End);
-                assert_eq!(s.cursor(), 6);
+                s.move_cursor(movement);
+                assert_eq!(s.cursor(), expected);
             }
         }
 
@@ -559,14 +561,14 @@ mod tests {
             use super::*;
 
             #[test]
-            fn forward_returns_start_of_next_word() {
+            fn forward_moves_to_start_of_next_word() {
                 let mut s = ml("SELECT users", 0);
                 s.move_cursor(CursorMove::WordForward);
                 assert_eq!(s.cursor(), 7);
             }
 
             #[test]
-            fn backward_returns_start_of_current_word() {
+            fn backward_moves_to_start_of_current_word() {
                 let mut s = ml("SELECT users", 10);
                 s.move_cursor(CursorMove::WordBackward);
                 assert_eq!(s.cursor(), 7);
