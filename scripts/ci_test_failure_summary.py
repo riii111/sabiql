@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -25,22 +26,39 @@ def extract_summary(text: str | None) -> str:
         if line.startswith("note: run with `RUST_BACKTRACE"):
             continue
         relevant.append(line)
-        if len(relevant) == 2:
+        if len(relevant) == 6:
             break
 
     return " / ".join(relevant) if relevant else lines[0]
 
 
 def rerun_command(profile: str, test_name: str) -> str:
+    quoted_test_name = shlex.quote(test_name)
     if profile == "ci-all":
-        return f"cargo nextest run --profile ci-all --all-features {test_name}"
+        return (
+            "cargo nextest run --profile ci-all --all-features"
+            f" -- {quoted_test_name} --exact"
+        )
     if profile == "ci-no-default":
-        return f"cargo nextest run --profile ci-no-default --no-default-features {test_name}"
-    return f"cargo nextest run --profile {profile} {test_name}"
+        return (
+            "cargo nextest run --profile ci-no-default --no-default-features"
+            f" -- {quoted_test_name} --exact"
+        )
+    return f"cargo nextest run --profile {profile} -- {quoted_test_name} --exact"
 
 
 def collect_failures(report_path: Path) -> tuple[str, list[dict[str, str]]]:
-    root = ET.parse(report_path).getroot()
+    try:
+        root = ET.parse(report_path).getroot()
+    except ET.ParseError as exc:
+        return report_path.stem, [
+            {
+                "name": f"{report_path.stem} (invalid JUnit XML)",
+                "raw_test_name": "",
+                "summary": f"Failed to parse JUnit XML: {exc}",
+            }
+        ]
+
     report_name = root.attrib.get("name", report_path.stem)
     failures: list[dict[str, str]] = []
 
@@ -78,13 +96,25 @@ def profile_from_path(report_path: Path) -> str:
 def main() -> int:
     report_paths = [Path(arg) for arg in sys.argv[1:]]
     existing_reports = [path for path in report_paths if path.exists()]
-
-    if not existing_reports:
-        print("## Test Failure Summary\n")
-        print("No JUnit reports were found.")
-        return 0
+    missing_reports = [path for path in report_paths if not path.exists()]
 
     print("## Test Failure Summary\n")
+
+    if not existing_reports:
+        print("No JUnit reports were found.")
+        if missing_reports:
+            print("")
+            print("Missing JUnit report paths:")
+            for report_path in missing_reports:
+                print(f"- `{report_path}`")
+        return 0
+
+    if missing_reports:
+        print("Warning: some requested JUnit reports were not found.\n")
+        print("Missing JUnit report paths:")
+        for report_path in missing_reports:
+            print(f"- `{report_path}`")
+        print("")
 
     total_failures = 0
     for report_path in existing_reports:
@@ -102,7 +132,11 @@ def main() -> int:
         for failure in failures:
             test_name = failure["name"].replace("|", "\\|")
             summary = failure["summary"].replace("|", "\\|")
-            rerun = rerun_command(profile, failure["raw_test_name"])
+            rerun = (
+                rerun_command(profile, failure["name"])
+                if failure["raw_test_name"]
+                else "Unavailable"
+            )
             print(f"| `{test_name}` | {summary} | `{rerun}` |")
         print("")
 
