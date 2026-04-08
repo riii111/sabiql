@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                           ✓ table created (0.04s)  │       │
-│       ╰ ⌥Enter: Run │ Enter/i: Insert │ hjkl 0$wb ggGHML ────────────╯       │
+│       ╰ ⌥Enter: Run │ Enter/i: Insert │ Tab/⇧Tab: Switch │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

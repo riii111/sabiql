@@ -98,6 +98,13 @@ impl MultiLineInputState {
             CursorMove::BufferEnd => {
                 self.set_cursor_raw(self.char_count());
             }
+            CursorMove::LastLine => {
+                let (_, current_col) = self.current_line_col();
+                let lines = self.line_spans();
+                if let Some((start, len)) = lines.last() {
+                    self.set_cursor_raw(start + current_col.min(*len));
+                }
+            }
             CursorMove::ViewportTop | CursorMove::ViewportMiddle | CursorMove::ViewportBottom => {}
         }
     }
@@ -539,6 +546,20 @@ mod tests {
             let mut s = ml("abc\ndef", 1);
             s.move_cursor(CursorMove::BufferEnd);
             assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn last_line_preserves_column() {
+            let mut s = ml("abcd\nxy\nwxyz12", 2);
+            s.move_cursor(CursorMove::LastLine);
+            assert_eq!(s.cursor_to_position(), (2, 2));
+        }
+
+        #[test]
+        fn last_line_clamps_to_line_length() {
+            let mut s = ml("abcdef\nxy", 5);
+            s.move_cursor(CursorMove::LastLine);
+            assert_eq!(s.cursor_to_position(), (1, 2));
         }
     }
 

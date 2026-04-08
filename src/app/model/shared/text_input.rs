@@ -140,6 +140,7 @@ impl TextInputState {
             }
             CursorMove::Up
             | CursorMove::Down
+            | CursorMove::LastLine
             | CursorMove::ViewportTop
             | CursorMove::ViewportMiddle
             | CursorMove::ViewportBottom => {}

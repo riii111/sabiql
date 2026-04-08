@@ -711,7 +711,7 @@ mod tests {
     #[case(Key::Char('j'), Expected::SqlModalMoveCursor(CursorMove::Down))]
     #[case(Key::Char('k'), Expected::SqlModalMoveCursor(CursorMove::Up))]
     #[case(Key::Char('l'), Expected::SqlModalMoveCursor(CursorMove::Right))]
-    #[case(Key::Char('G'), Expected::SqlModalMoveCursor(CursorMove::BufferEnd))]
+    #[case(Key::Char('G'), Expected::SqlModalMoveCursor(CursorMove::LastLine))]
     #[case(Key::Char('0'), Expected::SqlModalMoveCursor(CursorMove::LineStart))]
     #[case(Key::Char('$'), Expected::SqlModalMoveCursor(CursorMove::LineEnd))]
     #[case(Key::Char('w'), Expected::SqlModalMoveCursor(CursorMove::WordForward))]

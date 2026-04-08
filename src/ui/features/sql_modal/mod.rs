@@ -15,7 +15,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::app::update::input::keybindings::{
-    SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
+    SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
 };
 use crate::ui::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::ui::primitives::molecules::render_modal_with_border_color;
@@ -242,8 +242,17 @@ impl SqlModal {
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE].as_hint(),
             ])
         });
-        static SQL: LazyLock<String> =
-            LazyLock::new(|| " ⌥Enter: Run │ Enter/i: Insert │ hjkl 0$wb ggGHML ".to_string());
+        static SQL: LazyLock<String> = LazyLock::new(|| {
+            SqlModal::join_hint_pairs(&[
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
+                (
+                    "Tab/⇧Tab",
+                    SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
+                ),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+            ])
+        });
         match tab {
             SqlModalTab::Plan => &PLAN,
             SqlModalTab::Compare if compare_can_yank => &COMPARE_WITH_YANK,

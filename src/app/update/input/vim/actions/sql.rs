@@ -39,7 +39,7 @@ fn query_navigation(navigation: VimNavigation) -> Option<Action> {
         VimNavigation::MoveUp => CursorMove::Up,
         VimNavigation::MoveDown => CursorMove::Down,
         VimNavigation::MoveToFirst => CursorMove::BufferStart,
-        VimNavigation::MoveToLast => CursorMove::BufferEnd,
+        VimNavigation::MoveToLast => CursorMove::LastLine,
         VimNavigation::MoveLineStart => CursorMove::LineStart,
         VimNavigation::MoveLineEnd => CursorMove::LineEnd,
         VimNavigation::MoveWordForward => CursorMove::WordForward,
@@ -110,7 +110,7 @@ mod tests {
     #[case(Key::Char('j'), CursorMove::Down)]
     #[case(Key::Char('k'), CursorMove::Up)]
     #[case(Key::Char('l'), CursorMove::Right)]
-    #[case(Key::Char('G'), CursorMove::BufferEnd)]
+    #[case(Key::Char('G'), CursorMove::LastLine)]
     #[case(Key::Char('0'), CursorMove::LineStart)]
     #[case(Key::Char('$'), CursorMove::LineEnd)]
     #[case(Key::Char('w'), CursorMove::WordForward)]
