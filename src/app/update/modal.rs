@@ -402,7 +402,7 @@ mod tests {
         AppState::new("test".to_string())
     }
 
-    mod confirm_dialog_confirm {
+    mod confirm_dialog {
         use super::*;
 
         pub(super) fn enter_confirm_dialog(state: &mut AppState, return_mode: InputMode) {
@@ -410,193 +410,368 @@ mod tests {
             state.modal.push_mode(InputMode::ConfirmDialog);
         }
 
-        #[test]
-        fn quit_no_connection_sets_should_quit() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::Normal);
-            state
-                .confirm_dialog
-                .open("", "", ConfirmIntent::QuitNoConnection);
+        mod confirm {
+            use super::*;
 
-            let effects =
-                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
+            #[test]
+            fn quit_no_connection_sets_should_quit() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                state
+                    .confirm_dialog
+                    .open("", "", ConfirmIntent::QuitNoConnection);
 
-            assert!(state.should_quit);
-            assert!(state.confirm_dialog.intent().is_none());
-            assert!(effects.is_empty());
-        }
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
+                        .unwrap();
 
-        #[test]
-        fn delete_connection_returns_delete_effect() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::ConnectionSelector);
-            let id = crate::domain::ConnectionId::new();
-            state
-                .confirm_dialog
-                .open("", "", ConfirmIntent::DeleteConnection(id));
+                assert!(state.should_quit);
+                assert!(state.confirm_dialog.intent().is_none());
+                assert!(effects.is_empty());
+            }
 
-            let effects =
-                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
+            #[test]
+            fn delete_connection_returns_delete_effect() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::ConnectionSelector);
+                let id = crate::domain::ConnectionId::new();
+                state
+                    .confirm_dialog
+                    .open("", "", ConfirmIntent::DeleteConnection(id));
 
-            assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::DeleteConnection { .. }));
-        }
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
+                        .unwrap();
 
-        #[test]
-        fn execute_write_sets_running_state_and_returns_effect() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::CellEdit);
-            state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.confirm_dialog.open(
-                "",
-                "",
-                ConfirmIntent::ExecuteWrite {
-                    sql: "UPDATE t SET x=1".to_string(),
-                    blocked: false,
-                },
-            );
+                assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(&effects[0], Effect::DeleteConnection { .. }));
+            }
 
-            let now = Instant::now();
-            let effects = reduce_modal(&mut state, &Action::ConfirmDialogConfirm, now).unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert!(state.query.is_running());
-            assert!(state.query.start_time().is_some());
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::ExecuteWrite { .. }));
-        }
-
-        #[test]
-        fn execute_write_no_dsn_sets_error() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::Normal);
-            state.session.dsn = None;
-            state.confirm_dialog.open(
-                "",
-                "",
-                ConfirmIntent::ExecuteWrite {
-                    sql: "UPDATE t SET x=1".to_string(),
-                    blocked: false,
-                },
-            );
-
-            let effects =
-                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
-
-            assert!(effects.is_empty());
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("No active connection")
-            );
-        }
-
-        #[test]
-        fn execute_write_blocked_returns_to_mode_with_no_effects() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::Normal);
-            state.confirm_dialog.open(
-                "",
-                "",
-                ConfirmIntent::ExecuteWrite {
-                    sql: "UPDATE t SET x=1".to_string(),
-                    blocked: true,
-                },
-            );
-
-            let effects =
-                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn execute_write_blocked_confirm_clears_preview_state() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::Normal);
-            state.result_interaction.set_write_preview(
-                crate::app::policy::write::write_guardrails::WritePreview {
-                    operation: crate::app::policy::write::write_guardrails::WriteOperation::Update,
-                    sql: "UPDATE t SET x=1".to_string(),
-                    target_summary: crate::app::policy::write::write_guardrails::TargetSummary {
-                        schema: "public".to_string(),
-                        table: "t".to_string(),
-                        key_values: vec![],
+            #[test]
+            fn execute_write_sets_running_state_and_returns_effect() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::CellEdit);
+                state.session.dsn = Some("postgres://localhost/test".to_string());
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::ExecuteWrite {
+                        sql: "UPDATE t SET x=1".to_string(),
+                        blocked: false,
                     },
-                    diff: vec![],
-                    guardrail: crate::app::policy::write::write_guardrails::GuardrailDecision {
-                        risk_level: crate::app::policy::write::write_guardrails::RiskLevel::High,
+                );
+
+                let now = Instant::now();
+                let effects = reduce_modal(&mut state, &Action::ConfirmDialogConfirm, now).unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::CellEdit);
+                assert!(state.query.is_running());
+                assert!(state.query.start_time().is_some());
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(&effects[0], Effect::ExecuteWrite { .. }));
+            }
+
+            #[test]
+            fn execute_write_no_dsn_sets_error() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                state.session.dsn = None;
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::ExecuteWrite {
+                        sql: "UPDATE t SET x=1".to_string(),
+                        blocked: false,
+                    },
+                );
+
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
+                        .unwrap();
+
+                assert!(effects.is_empty());
+                assert_eq!(
+                    state.messages.last_error.as_deref(),
+                    Some("No active connection")
+                );
+            }
+
+            #[test]
+            fn execute_write_blocked_returns_to_mode_with_no_effects() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::ExecuteWrite {
+                        sql: "UPDATE t SET x=1".to_string(),
                         blocked: true,
-                        reason: Some("too risky".to_string()),
-                        target_summary: None,
                     },
-                },
-            );
-            state.query.set_delete_refresh_target(0, None, 1);
-            state.confirm_dialog.open(
-                "",
-                "",
-                ConfirmIntent::ExecuteWrite {
-                    sql: "UPDATE t SET x=1".to_string(),
-                    blocked: true,
-                },
-            );
+                );
 
-            reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
+                        .unwrap();
 
-            assert!(state.result_interaction.pending_write_preview().is_none());
-            assert!(state.query.pending_delete_refresh_target().is_none());
-        }
+                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert!(effects.is_empty());
+            }
 
-        #[test]
-        fn csv_export_returns_export_effect() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::Normal);
-            state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.confirm_dialog.open(
-                "",
-                "",
-                ConfirmIntent::CsvExport {
-                    export_query: "SELECT 1".to_string(),
-                    file_name: "test.csv".to_string(),
-                    row_count: Some(200_000),
-                },
-            );
+            #[test]
+            fn execute_write_blocked_confirm_clears_preview_state() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                state.result_interaction.set_write_preview(
+                    crate::app::policy::write::write_guardrails::WritePreview {
+                        operation:
+                            crate::app::policy::write::write_guardrails::WriteOperation::Update,
+                        sql: "UPDATE t SET x=1".to_string(),
+                        target_summary:
+                            crate::app::policy::write::write_guardrails::TargetSummary {
+                                schema: "public".to_string(),
+                                table: "t".to_string(),
+                                key_values: vec![],
+                            },
+                        diff: vec![],
+                        guardrail: crate::app::policy::write::write_guardrails::GuardrailDecision {
+                            risk_level:
+                                crate::app::policy::write::write_guardrails::RiskLevel::High,
+                            blocked: true,
+                            reason: Some("too risky".to_string()),
+                            target_summary: None,
+                        },
+                    },
+                );
+                state.query.set_delete_refresh_target(0, None, 1);
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::ExecuteWrite {
+                        sql: "UPDATE t SET x=1".to_string(),
+                        blocked: true,
+                    },
+                );
 
-            let effects =
                 reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
+                assert!(state.result_interaction.pending_write_preview().is_none());
+                assert!(state.query.pending_delete_refresh_target().is_none());
+            }
+
+            #[test]
+            fn csv_export_returns_export_effect() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                state.session.dsn = Some("postgres://localhost/test".to_string());
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::CsvExport {
+                        export_query: "SELECT 1".to_string(),
+                        file_name: "test.csv".to_string(),
+                        row_count: Some(200_000),
+                    },
+                );
+
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
+                        .unwrap();
+
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
+            }
+
+            #[test]
+            fn disable_read_only_confirm_sets_read_only_false() {
+                let mut state = create_test_state();
+                state.session.read_only = true;
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                state
+                    .confirm_dialog
+                    .open("", "", ConfirmIntent::DisableReadOnly);
+
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
+                        .unwrap();
+
+                assert!(!state.session.read_only);
+                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert!(effects.is_empty());
+            }
+
+            #[test]
+            fn none_intent_confirm_does_not_panic() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
+                        .unwrap();
+
+                assert!(effects.is_empty());
+            }
         }
 
-        #[test]
-        fn disable_read_only_confirm_sets_read_only_false() {
-            let mut state = create_test_state();
-            state.session.read_only = true;
-            enter_confirm_dialog(&mut state, InputMode::Normal);
-            state
-                .confirm_dialog
-                .open("", "", ConfirmIntent::DisableReadOnly);
+        mod scroll {
+            use super::*;
 
-            let effects =
-                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
+            fn state_with_scrollable_preview() -> AppState {
+                let mut state = create_test_state();
+                state.modal.set_mode(InputMode::ConfirmDialog);
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::ExecuteWrite {
+                        sql: "UPDATE t SET x=1".to_string(),
+                        blocked: false,
+                    },
+                );
+                state.confirm_dialog.preview_viewport_height = Some(10);
+                state.confirm_dialog.preview_content_height = Some(25);
+                state
+            }
 
-            assert!(!state.session.read_only);
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects.is_empty());
+            #[test]
+            fn scroll_down_increments_offset() {
+                let mut state = state_with_scrollable_preview();
+
+                reduce_modal(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line,
+                    },
+                    Instant::now(),
+                );
+
+                assert_eq!(state.confirm_dialog.preview_scroll, 1);
+            }
+
+            #[test]
+            fn scroll_up_decrements_offset() {
+                let mut state = state_with_scrollable_preview();
+                state.confirm_dialog.preview_scroll = 5;
+
+                reduce_modal(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::Line,
+                    },
+                    Instant::now(),
+                );
+
+                assert_eq!(state.confirm_dialog.preview_scroll, 4);
+            }
+
+            #[test]
+            fn scroll_up_clamps_at_zero() {
+                let mut state = state_with_scrollable_preview();
+                state.confirm_dialog.preview_scroll = 0;
+
+                reduce_modal(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::Line,
+                    },
+                    Instant::now(),
+                );
+
+                assert_eq!(state.confirm_dialog.preview_scroll, 0);
+            }
+
+            #[test]
+            fn scroll_down_clamps_at_max() {
+                let mut state = state_with_scrollable_preview();
+                state.confirm_dialog.preview_scroll = 15;
+
+                reduce_modal(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line,
+                    },
+                    Instant::now(),
+                );
+
+                assert_eq!(state.confirm_dialog.preview_scroll, 15);
+            }
+
+            #[test]
+            fn open_resets_scroll_to_zero() {
+                let mut state = create_test_state();
+                state.confirm_dialog.preview_scroll = 10;
+
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::ExecuteWrite {
+                        sql: "test".to_string(),
+                        blocked: false,
+                    },
+                );
+
+                assert_eq!(state.confirm_dialog.preview_scroll, 0);
+                assert!(state.confirm_dialog.preview_viewport_height.is_none());
+                assert!(state.confirm_dialog.preview_content_height.is_none());
+            }
         }
 
-        #[test]
-        fn none_intent_confirm_does_not_panic() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::Normal);
+        mod cancel {
+            use super::*;
 
-            let effects =
-                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
+            #[test]
+            fn quit_no_connection_restores_connection_setup_synchronously() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                state
+                    .confirm_dialog
+                    .open("", "", ConfirmIntent::QuitNoConnection);
 
-            assert!(effects.is_empty());
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
+                assert!(effects.is_empty());
+            }
+
+            #[test]
+            fn other_intents_cancel_returns_empty_effects() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::CellEdit);
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::ExecuteWrite {
+                        sql: "UPDATE t SET x=1".to_string(),
+                        blocked: false,
+                    },
+                );
+
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::CellEdit);
+                assert!(effects.is_empty());
+                assert!(state.result_interaction.pending_write_preview().is_none());
+            }
+
+            #[test]
+            fn none_intent_cancel_does_not_panic() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+
+                let effects =
+                    reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
+
+                assert!(effects.is_empty());
+            }
         }
     }
 
@@ -637,12 +812,9 @@ mod tests {
                 let mut state = create_test_state();
                 state.session.active_connection_id = None;
 
-                let effects = reduce_modal(
-                    &mut state,
-                    &Action::OpenQueryHistoryPicker,
-                    Instant::now(),
-                )
-                .unwrap();
+                let effects =
+                    reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now())
+                        .unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert!(effects.is_empty());
@@ -653,32 +825,12 @@ mod tests {
                 let mut state = connected_state();
                 state.query.begin_running(Instant::now());
 
-                let effects = reduce_modal(
-                    &mut state,
-                    &Action::OpenQueryHistoryPicker,
-                    Instant::now(),
-                )
-                .unwrap();
+                let effects =
+                    reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now())
+                        .unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert!(effects.is_empty());
-            }
-
-            #[test]
-            fn open_from_normal_sets_mode_and_emits_load_effect() {
-                let mut state = connected_state();
-
-                let effects = reduce_modal(
-                    &mut state,
-                    &Action::OpenQueryHistoryPicker,
-                    Instant::now(),
-                )
-                .unwrap();
-
-                assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
-                assert_eq!(state.modal.return_destination(), InputMode::Normal);
-                assert_eq!(effects.len(), 1);
-                assert!(matches!(&effects[0], Effect::LoadQueryHistory { .. }));
             }
         }
 
@@ -686,17 +838,28 @@ mod tests {
             use super::*;
 
             #[test]
+            fn open_from_normal_sets_mode_and_emits_load_effect() {
+                let mut state = connected_state();
+
+                let effects =
+                    reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now())
+                        .unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
+                assert_eq!(state.modal.return_destination(), InputMode::Normal);
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(&effects[0], Effect::LoadQueryHistory { .. }));
+            }
+
+            #[test]
             fn close_restores_origin_mode() {
                 let mut state = connected_state();
                 state.modal.set_mode(InputMode::SqlModal);
                 state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-                let effects = reduce_modal(
-                    &mut state,
-                    &Action::CloseQueryHistoryPicker,
-                    Instant::now(),
-                )
-                .unwrap();
+                let effects =
+                    reduce_modal(&mut state, &Action::CloseQueryHistoryPicker, Instant::now())
+                        .unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
                 assert!(effects.is_empty());
@@ -1002,170 +1165,6 @@ mod tests {
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
             }
-        }
-    }
-
-    mod confirm_dialog_scroll {
-        use super::*;
-
-        fn state_with_scrollable_preview() -> AppState {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::ConfirmDialog);
-            state.confirm_dialog.open(
-                "",
-                "",
-                ConfirmIntent::ExecuteWrite {
-                    sql: "UPDATE t SET x=1".to_string(),
-                    blocked: false,
-                },
-            );
-            // Simulate render having recorded viewport < content
-            state.confirm_dialog.preview_viewport_height = Some(10);
-            state.confirm_dialog.preview_content_height = Some(25);
-            state
-        }
-
-        #[test]
-        fn scroll_down_increments_offset() {
-            let mut state = state_with_scrollable_preview();
-
-            reduce_modal(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::ConfirmDialog,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.confirm_dialog.preview_scroll, 1);
-        }
-
-        #[test]
-        fn scroll_up_decrements_offset() {
-            let mut state = state_with_scrollable_preview();
-            state.confirm_dialog.preview_scroll = 5;
-
-            reduce_modal(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::ConfirmDialog,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.confirm_dialog.preview_scroll, 4);
-        }
-
-        #[test]
-        fn scroll_up_clamps_at_zero() {
-            let mut state = state_with_scrollable_preview();
-            state.confirm_dialog.preview_scroll = 0;
-
-            reduce_modal(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::ConfirmDialog,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.confirm_dialog.preview_scroll, 0);
-        }
-
-        #[test]
-        fn scroll_down_clamps_at_max() {
-            let mut state = state_with_scrollable_preview();
-            // max_scroll = 25 - 10 = 15
-            state.confirm_dialog.preview_scroll = 15;
-
-            reduce_modal(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::ConfirmDialog,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                },
-                Instant::now(),
-            );
-
-            assert_eq!(state.confirm_dialog.preview_scroll, 15);
-        }
-
-        #[test]
-        fn open_resets_scroll_to_zero() {
-            let mut state = create_test_state();
-            state.confirm_dialog.preview_scroll = 10;
-
-            state.confirm_dialog.open(
-                "",
-                "",
-                ConfirmIntent::ExecuteWrite {
-                    sql: "test".to_string(),
-                    blocked: false,
-                },
-            );
-
-            assert_eq!(state.confirm_dialog.preview_scroll, 0);
-            assert!(state.confirm_dialog.preview_viewport_height.is_none());
-            assert!(state.confirm_dialog.preview_content_height.is_none());
-        }
-    }
-
-    mod confirm_dialog_cancel {
-        use super::confirm_dialog_confirm::enter_confirm_dialog;
-        use super::*;
-
-        #[test]
-        fn quit_no_connection_restores_connection_setup_synchronously() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::Normal);
-            state
-                .confirm_dialog
-                .open("", "", ConfirmIntent::QuitNoConnection);
-
-            let effects =
-                reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn other_intents_cancel_returns_empty_effects() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::CellEdit);
-            state.confirm_dialog.open(
-                "",
-                "",
-                ConfirmIntent::ExecuteWrite {
-                    sql: "UPDATE t SET x=1".to_string(),
-                    blocked: false,
-                },
-            );
-
-            let effects =
-                reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert!(effects.is_empty());
-            assert!(state.result_interaction.pending_write_preview().is_none());
-        }
-
-        #[test]
-        fn none_intent_cancel_does_not_panic() {
-            let mut state = create_test_state();
-            enter_confirm_dialog(&mut state, InputMode::Normal);
-
-            let effects =
-                reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
-
-            assert!(effects.is_empty());
         }
     }
 }

@@ -288,91 +288,77 @@ mod tests {
     mod page_scroll {
         use super::*;
 
-        #[test]
-        fn half_page_down_from_top() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible = 25 - 5 = 20, half = 10
-            let effects = reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+        mod scroll_mode {
+            use super::*;
 
-            assert!(effects.is_some());
-            assert_eq!(state.result_interaction.scroll_offset, 10);
-        }
+            #[test]
+            fn half_page_down_from_top() {
+                let mut state = state_with_result_rows(100, 25);
+                // visible = 25 - 5 = 20, half = 10
+                let effects = reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
 
-        #[test]
-        fn half_page_up_from_middle() {
-            let mut state = state_with_result_rows(100, 25);
-            state.result_interaction.scroll_offset = 50;
+                assert!(effects.is_some());
+                assert_eq!(state.result_interaction.scroll_offset, 10);
+            }
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+            #[test]
+            fn half_page_up_from_middle() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.scroll_offset = 50;
 
-            assert_eq!(state.result_interaction.scroll_offset, 40);
-        }
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
 
-        #[test]
-        fn full_page_down_clamped_at_max() {
-            let mut state = state_with_result_rows(30, 25);
-            // visible = 20, max_scroll = 30-20 = 10
-            state.result_interaction.scroll_offset = 5;
+                assert_eq!(state.result_interaction.scroll_offset, 40);
+            }
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::FullPage,
-                },
-            );
+            #[test]
+            fn full_page_down_clamped_at_max() {
+                let mut state = state_with_result_rows(30, 25);
+                // visible = 20, max_scroll = 30-20 = 10
+                state.result_interaction.scroll_offset = 5;
 
-            // delta=20, 5+20=25, clamped to 10
-            assert_eq!(state.result_interaction.scroll_offset, 10);
-        }
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::FullPage,
+                    },
+                );
 
-        #[test]
-        fn full_page_up_clamped_at_zero() {
-            let mut state = state_with_result_rows(100, 25);
-            state.result_interaction.scroll_offset = 5;
+                assert_eq!(state.result_interaction.scroll_offset, 10);
+            }
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::FullPage,
-                },
-            );
+            #[test]
+            fn full_page_up_clamped_at_zero() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.scroll_offset = 5;
 
-            // delta=20, saturating_sub(5,20) = 0
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-        }
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::FullPage,
+                    },
+                );
 
-        #[test]
-        fn zero_height_pane_scroll_mode_is_noop() {
-            let mut state = state_with_result_rows(100, 0);
-            // visible = 0 → no-op for all modes
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
-
-            assert_eq!(state.result_interaction.scroll_offset, 0);
+                assert_eq!(state.result_interaction.scroll_offset, 0);
+            }
         }
 
         mod viewport_position {
@@ -413,276 +399,280 @@ mod tests {
             }
         }
 
-        #[test]
-        fn half_page_down_cell_active_moves_both_cursor_and_viewport() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible=20, half=10
-            state.result_interaction.activate_cell(10, 0);
-            state.result_interaction.scroll_offset = 5;
+        mod cell_active {
+            use super::*;
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+            #[test]
+            fn half_page_down_moves_both_cursor_and_viewport() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(10, 0);
+                state.result_interaction.scroll_offset = 5;
 
-            assert_eq!(state.result_interaction.selection().row(), Some(20));
-            assert_eq!(state.result_interaction.scroll_offset, 15);
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
+
+                assert_eq!(state.result_interaction.selection().row(), Some(20));
+                assert_eq!(state.result_interaction.scroll_offset, 15);
+            }
+
+            #[test]
+            fn half_page_up_moves_both_cursor_and_viewport() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(30, 0);
+                state.result_interaction.scroll_offset = 25;
+
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
+
+                assert_eq!(state.result_interaction.selection().row(), Some(20));
+                assert_eq!(state.result_interaction.scroll_offset, 15);
+            }
+
+            #[test]
+            fn half_page_down_preserves_relative_position() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(15, 3);
+                state.result_interaction.scroll_offset = 10;
+
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
+
+                assert_eq!(state.result_interaction.selection().row(), Some(25));
+                assert_eq!(state.result_interaction.selection().cell(), Some(3));
+                assert_eq!(state.result_interaction.scroll_offset, 20);
+                let relative = state.result_interaction.selection().row().unwrap()
+                    - state.result_interaction.scroll_offset;
+                assert_eq!(relative, 5);
+            }
+
+            #[test]
+            fn half_page_down_preserves_column() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(10, 3);
+                state.result_interaction.scroll_offset = 5;
+
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
+
+                assert_eq!(state.result_interaction.selection().row(), Some(20));
+                assert_eq!(state.result_interaction.selection().cell(), Some(3));
+                assert_eq!(state.result_interaction.scroll_offset, 15);
+            }
+
+            #[test]
+            fn full_page_down_moves_both() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(10, 0);
+                state.result_interaction.scroll_offset = 5;
+
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::FullPage,
+                    },
+                );
+
+                assert_eq!(state.result_interaction.selection().row(), Some(30));
+                assert_eq!(state.result_interaction.scroll_offset, 25);
+            }
+
+            #[test]
+            fn full_page_up_moves_both() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(40, 0);
+                state.result_interaction.scroll_offset = 30;
+
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::FullPage,
+                    },
+                );
+
+                assert_eq!(state.result_interaction.selection().row(), Some(20));
+                assert_eq!(state.result_interaction.scroll_offset, 10);
+            }
         }
 
-        #[test]
-        fn half_page_up_cell_active_moves_both_cursor_and_viewport() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible=20, half=10
-            state.result_interaction.activate_cell(30, 0);
-            state.result_interaction.scroll_offset = 25;
+        mod boundary_conditions {
+            use super::*;
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+            #[test]
+            fn zero_height_scroll_mode_is_noop() {
+                let mut state = state_with_result_rows(100, 0);
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
 
-            assert_eq!(state.result_interaction.selection().row(), Some(20));
-            assert_eq!(state.result_interaction.scroll_offset, 15);
-        }
+                assert_eq!(state.result_interaction.scroll_offset, 0);
+            }
 
-        #[test]
-        fn half_page_down_cell_active_preserves_relative_position() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible=20, half=10
-            state.result_interaction.activate_cell(15, 3);
-            state.result_interaction.scroll_offset = 10;
-            // cursor is at relative position 5 within viewport
+            #[test]
+            fn half_page_down_clamps_near_bottom() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(95, 0);
+                state.result_interaction.scroll_offset = 75;
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
 
-            // both move by 10: cursor=25, offset=20 → relative position still 5
-            assert_eq!(state.result_interaction.selection().row(), Some(25));
-            assert_eq!(state.result_interaction.selection().cell(), Some(3));
-            assert_eq!(state.result_interaction.scroll_offset, 20);
-            let relative = state.result_interaction.selection().row().unwrap()
-                - state.result_interaction.scroll_offset;
-            assert_eq!(relative, 5);
-        }
+                assert_eq!(state.result_interaction.selection().row(), Some(99));
+                assert_eq!(state.result_interaction.scroll_offset, 80);
+            }
 
-        #[test]
-        fn half_page_down_cell_active_clamps_near_bottom() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible=20, half=10, max_row=99, max_scroll=80
-            state.result_interaction.activate_cell(95, 0);
-            state.result_interaction.scroll_offset = 75;
+            #[test]
+            fn half_page_up_clamps_near_top() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(5, 0);
+                state.result_interaction.scroll_offset = 3;
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
 
-            // cursor: 95+10=105 → clamped to 99
-            // scroll: 75+10=85 → clamped to 80
-            assert_eq!(state.result_interaction.selection().row(), Some(99));
-            assert_eq!(state.result_interaction.scroll_offset, 80);
-        }
+                assert_eq!(state.result_interaction.selection().row(), Some(0));
+                assert_eq!(state.result_interaction.scroll_offset, 0);
+            }
 
-        #[test]
-        fn half_page_up_cell_active_clamps_near_top() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible=20, half=10
-            state.result_interaction.activate_cell(5, 0);
-            state.result_interaction.scroll_offset = 3;
+            #[test]
+            fn visible_zero_cell_active_is_noop() {
+                let mut state = state_with_result_rows(100, 0);
+                state.result_interaction.activate_cell(5, 1);
+                state.result_interaction.scroll_offset = 3;
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
 
-            // cursor: 5-10 → 0
-            // scroll: 3-10 → 0
-            assert_eq!(state.result_interaction.selection().row(), Some(0));
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-        }
+                assert_eq!(state.result_interaction.selection().row(), Some(5));
+                assert_eq!(state.result_interaction.selection().cell(), Some(1));
+                assert_eq!(state.result_interaction.scroll_offset, 3);
+            }
 
-        #[test]
-        fn cell_active_half_page_down_preserves_column() {
-            let mut state = state_with_result_rows(100, 25);
-            state.result_interaction.activate_cell(10, 3);
-            state.result_interaction.scroll_offset = 5;
+            #[test]
+            fn data_fewer_than_viewport_scroll_stays_zero() {
+                let mut state = state_with_result_rows(10, 25);
+                state.result_interaction.activate_cell(3, 0);
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::HalfPage,
+                    },
+                );
 
-            assert_eq!(state.result_interaction.selection().row(), Some(20));
-            assert_eq!(state.result_interaction.selection().cell(), Some(3));
-            assert_eq!(state.result_interaction.scroll_offset, 15);
-        }
+                assert_eq!(state.result_interaction.selection().row(), Some(9));
+                assert_eq!(state.result_interaction.scroll_offset, 0);
+            }
 
-        #[test]
-        fn visible_zero_cell_active_is_noop() {
-            let mut state = state_with_result_rows(100, 0);
-            // visible=0
-            state.result_interaction.activate_cell(5, 1);
-            state.result_interaction.scroll_offset = 3;
+            #[test]
+            fn full_page_down_clamps_near_bottom() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(90, 0);
+                state.result_interaction.scroll_offset = 75;
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::FullPage,
+                    },
+                );
 
-            assert_eq!(state.result_interaction.selection().row(), Some(5));
-            assert_eq!(state.result_interaction.selection().cell(), Some(1));
-            assert_eq!(state.result_interaction.scroll_offset, 3);
-        }
+                assert_eq!(state.result_interaction.selection().row(), Some(99));
+                assert_eq!(state.result_interaction.scroll_offset, 80);
+            }
 
-        #[test]
-        fn data_fewer_than_viewport_scroll_stays_zero() {
-            let mut state = state_with_result_rows(10, 25);
-            // visible=20, 10 rows < 20 visible → max_scroll=0
-            state.result_interaction.activate_cell(3, 0);
+            #[test]
+            fn full_page_up_clamps_near_top() {
+                let mut state = state_with_result_rows(100, 25);
+                state.result_interaction.activate_cell(10, 0);
+                state.result_interaction.scroll_offset = 5;
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::FullPage,
+                    },
+                );
 
-            // cursor: 3+10=13 → clamped to 9
-            // scroll: 0+10=10 → clamped to max_scroll=0
-            assert_eq!(state.result_interaction.selection().row(), Some(9));
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-        }
+                assert_eq!(state.result_interaction.selection().row(), Some(0));
+                assert_eq!(state.result_interaction.scroll_offset, 0);
+            }
 
-        #[test]
-        fn full_page_down_cell_active_moves_both() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible=20, delta=20
-            state.result_interaction.activate_cell(10, 0);
-            state.result_interaction.scroll_offset = 5;
+            #[test]
+            fn visible_zero_cell_active_full_page_is_noop() {
+                let mut state = state_with_result_rows(100, 0);
+                state.result_interaction.activate_cell(5, 1);
+                state.result_interaction.scroll_offset = 3;
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::FullPage,
-                },
-            );
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::FullPage,
+                    },
+                );
 
-            assert_eq!(state.result_interaction.selection().row(), Some(30));
-            assert_eq!(state.result_interaction.scroll_offset, 25);
-        }
-
-        #[test]
-        fn full_page_up_cell_active_moves_both() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible=20, delta=20
-            state.result_interaction.activate_cell(40, 0);
-            state.result_interaction.scroll_offset = 30;
-
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::FullPage,
-                },
-            );
-
-            assert_eq!(state.result_interaction.selection().row(), Some(20));
-            assert_eq!(state.result_interaction.scroll_offset, 10);
-        }
-
-        #[test]
-        fn full_page_down_cell_active_clamps_near_bottom() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible=20, delta=20, max_row=99, max_scroll=80
-            state.result_interaction.activate_cell(90, 0);
-            state.result_interaction.scroll_offset = 75;
-
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::FullPage,
-                },
-            );
-
-            assert_eq!(state.result_interaction.selection().row(), Some(99));
-            assert_eq!(state.result_interaction.scroll_offset, 80);
-        }
-
-        #[test]
-        fn full_page_up_cell_active_clamps_near_top() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible=20, delta=20
-            state.result_interaction.activate_cell(10, 0);
-            state.result_interaction.scroll_offset = 5;
-
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::FullPage,
-                },
-            );
-
-            assert_eq!(state.result_interaction.selection().row(), Some(0));
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-        }
-
-        #[test]
-        fn visible_zero_cell_active_full_page_is_noop() {
-            let mut state = state_with_result_rows(100, 0);
-            state.result_interaction.activate_cell(5, 1);
-            state.result_interaction.scroll_offset = 3;
-
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::FullPage,
-                },
-            );
-
-            assert_eq!(state.result_interaction.selection().row(), Some(5));
-            assert_eq!(state.result_interaction.selection().cell(), Some(1));
-            assert_eq!(state.result_interaction.scroll_offset, 3);
+                assert_eq!(state.result_interaction.selection().row(), Some(5));
+                assert_eq!(state.result_interaction.selection().cell(), Some(1));
+                assert_eq!(state.result_interaction.scroll_offset, 3);
+            }
         }
     }
 

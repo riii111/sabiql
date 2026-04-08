@@ -671,422 +671,406 @@ mod tests {
             use super::*;
             use rstest::rstest;
 
-        // ------------------------------------------------------------------ //
-        // 1. idx-to-Action correctness
-        // ------------------------------------------------------------------ //
+            #[rstest]
+            #[case(idx::global::QUIT, Action::Quit)]
+            #[case(idx::global::HELP, Action::OpenHelp)]
+            #[case(idx::global::TABLE_PICKER, Action::OpenTablePicker)]
+            #[case(idx::global::PALETTE, Action::OpenCommandPalette)]
+            #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
+            #[case(idx::global::RELOAD, Action::ReloadMetadata)]
+            #[case(idx::global::SQL, Action::OpenSqlModal)]
+            #[case(idx::global::ER_DIAGRAM, Action::OpenErTablePicker)]
+            #[case(idx::global::CONNECTIONS, Action::OpenConnectionSelector)]
+            #[case(idx::global::CSV_EXPORT, Action::RequestCsvExport)]
+            #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
+            #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
+            #[case(idx::global::QUERY_HISTORY, Action::OpenQueryHistoryPicker)]
+            fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+                assert!(
+                    std::mem::discriminant(&GLOBAL_KEYS[i].action)
+                        == std::mem::discriminant(&expected),
+                    "GLOBAL_KEYS[{i}] has action {:?}, expected {expected:?}",
+                    GLOBAL_KEYS[i].action
+                );
+            }
 
-        #[rstest]
-        #[case(idx::global::QUIT, Action::Quit)]
-        #[case(idx::global::HELP, Action::OpenHelp)]
-        #[case(idx::global::TABLE_PICKER, Action::OpenTablePicker)]
-        #[case(idx::global::PALETTE, Action::OpenCommandPalette)]
-        #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
-        #[case(idx::global::RELOAD, Action::ReloadMetadata)]
-        #[case(idx::global::SQL, Action::OpenSqlModal)]
-        #[case(idx::global::ER_DIAGRAM, Action::OpenErTablePicker)]
-        #[case(idx::global::CONNECTIONS, Action::OpenConnectionSelector)]
-        #[case(idx::global::CSV_EXPORT, Action::RequestCsvExport)]
-        #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
-        #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
-        #[case(idx::global::QUERY_HISTORY, Action::OpenQueryHistoryPicker)]
-        fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),
-                "GLOBAL_KEYS[{i}] has action {:?}, expected {expected:?}",
-                GLOBAL_KEYS[i].action
-            );
-        }
+            #[test]
+            fn confirm_yes_action_matches() {
+                assert!(matches!(
+                    CONFIRM_DIALOG_KEYS[idx::confirm::YES].action,
+                    Action::ConfirmDialogConfirm
+                ));
+            }
 
-        #[test]
-        fn confirm_yes_action_matches() {
-            assert!(matches!(
-                CONFIRM_DIALOG_KEYS[idx::confirm::YES].action,
-                Action::ConfirmDialogConfirm
-            ));
-        }
+            #[test]
+            fn confirm_scroll_down_action_matches() {
+                assert!(matches!(
+                    CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_DOWN].action,
+                    Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line,
+                    }
+                ));
+            }
 
-        #[test]
-        fn confirm_scroll_down_action_matches() {
-            assert!(matches!(
-                CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_DOWN].action,
-                Action::Scroll {
-                    target: ScrollTarget::ConfirmDialog,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                }
-            ));
-        }
+            #[test]
+            fn confirm_scroll_up_action_matches() {
+                assert!(matches!(
+                    CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_UP].action,
+                    Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::Line,
+                    }
+                ));
+            }
 
-        #[test]
-        fn confirm_scroll_up_action_matches() {
-            assert!(matches!(
-                CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_UP].action,
-                Action::Scroll {
-                    target: ScrollTarget::ConfirmDialog,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                }
-            ));
-        }
+            #[test]
+            fn confirm_no_action_matches() {
+                assert!(matches!(
+                    CONFIRM_DIALOG_KEYS[idx::confirm::NO].action,
+                    Action::ConfirmDialogCancel
+                ));
+            }
 
-        #[test]
-        fn confirm_no_action_matches() {
-            assert!(matches!(
-                CONFIRM_DIALOG_KEYS[idx::confirm::NO].action,
-                Action::ConfirmDialogCancel
-            ));
-        }
+            #[rstest]
+            #[case(idx::sql_modal_plan::EXPLAIN, Action::ExplainRequest)]
+            #[case(idx::sql_modal_plan::ANALYZE, Action::ExplainAnalyzeRequest)]
+            #[case(idx::sql_modal_plan::YANK, Action::SqlModalYank)]
+            #[case(idx::sql_modal_plan::TAB, Action::SqlModalNextTab)]
+            #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
+            #[case(idx::sql_modal_plan::CLOSE, Action::CloseSqlModal)]
+            fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+                assert!(
+                    std::mem::discriminant(&SQL_MODAL_PLAN_KEYS[i].action)
+                        == std::mem::discriminant(&expected),
+                    "SQL_MODAL_PLAN_KEYS[{i}] has action {:?}, expected {expected:?}",
+                    SQL_MODAL_PLAN_KEYS[i].action
+                );
+            }
 
-        #[rstest]
-        #[case(idx::sql_modal_plan::EXPLAIN, Action::ExplainRequest)]
-        #[case(idx::sql_modal_plan::ANALYZE, Action::ExplainAnalyzeRequest)]
-        #[case(idx::sql_modal_plan::YANK, Action::SqlModalYank)]
-        #[case(idx::sql_modal_plan::TAB, Action::SqlModalNextTab)]
-        #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
-        #[case(idx::sql_modal_plan::CLOSE, Action::CloseSqlModal)]
-        fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&SQL_MODAL_PLAN_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "SQL_MODAL_PLAN_KEYS[{i}] has action {:?}, expected {expected:?}",
-                SQL_MODAL_PLAN_KEYS[i].action
-            );
-        }
-
-        #[rstest]
-        #[case(idx::sql_modal_compare::EXPLAIN, Action::ExplainRequest)]
-        #[case(idx::sql_modal_compare::ANALYZE, Action::ExplainAnalyzeRequest)]
-        #[case(idx::sql_modal_compare::EDIT_QUERY, Action::CompareEditQuery)]
-        #[case(idx::sql_modal_compare::YANK, Action::SqlModalYank)]
-        #[case(idx::sql_modal_compare::TAB, Action::SqlModalNextTab)]
-        #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
-        #[case(idx::sql_modal_compare::CLOSE, Action::CloseSqlModal)]
-        fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&SQL_MODAL_COMPARE_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "SQL_MODAL_COMPARE_KEYS[{i}] has action {:?}, expected {expected:?}",
-                SQL_MODAL_COMPARE_KEYS[i].action
-            );
-        }
-
+            #[rstest]
+            #[case(idx::sql_modal_compare::EXPLAIN, Action::ExplainRequest)]
+            #[case(idx::sql_modal_compare::ANALYZE, Action::ExplainAnalyzeRequest)]
+            #[case(idx::sql_modal_compare::EDIT_QUERY, Action::CompareEditQuery)]
+            #[case(idx::sql_modal_compare::YANK, Action::SqlModalYank)]
+            #[case(idx::sql_modal_compare::TAB, Action::SqlModalNextTab)]
+            #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
+            #[case(idx::sql_modal_compare::CLOSE, Action::CloseSqlModal)]
+            fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+                assert!(
+                    std::mem::discriminant(&SQL_MODAL_COMPARE_KEYS[i].action)
+                        == std::mem::discriminant(&expected),
+                    "SQL_MODAL_COMPARE_KEYS[{i}] has action {:?}, expected {expected:?}",
+                    SQL_MODAL_COMPARE_KEYS[i].action
+                );
+            }
         }
 
         mod binding_shape {
             use super::*;
 
-        // ------------------------------------------------------------------ //
-        // 2. Non-None bindings have at least one combo (KeyBinding arrays)
-        // ------------------------------------------------------------------ //
+            fn check_non_none_have_combos(bindings: &[KeyBinding], name: &str) {
+                for (i, kb) in bindings.iter().enumerate() {
+                    if !matches!(kb.action, Action::None) && kb.combos.is_empty() {
+                        if kb.key.starts_with(':') {
+                            continue;
+                        }
+                        if kb.key_short == ":w" || kb.desc_short == "Write" {
+                            continue;
+                        }
+                        panic!(
+                            "{name}[{i}] has action {:?} but no combos (key={:?})",
+                            kb.action, kb.key
+                        );
+                    }
+                }
+            }
 
-        fn check_non_none_have_combos(bindings: &[KeyBinding], name: &str) {
-            for (i, kb) in bindings.iter().enumerate() {
-                if !matches!(kb.action, Action::None) && kb.combos.is_empty() {
-                    if kb.key.starts_with(':') {
-                        continue;
+            #[test]
+            fn all_non_none_bindings_have_combos() {
+                check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
+                check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
+                check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+                check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
+                check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
+                check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+            }
+
+            // ------------------------------------------------------------------ //
+            // 2b. ModeRow exec entries have non-empty combos
+            // ------------------------------------------------------------------ //
+
+            fn check_mode_rows_exec_valid(rows: &[ModeRow], name: &str) {
+                for (i, row) in rows.iter().enumerate() {
+                    for (j, eb) in row.bindings.iter().enumerate() {
+                        assert!(
+                            !eb.combos.is_empty(),
+                            "{name}[{i}].bindings[{j}] has action {:?} but no combos",
+                            eb.action
+                        );
+                        assert!(
+                            !matches!(eb.action, Action::None),
+                            "{name}[{i}].bindings[{j}] has Action::None in exec binding",
+                        );
                     }
-                    if kb.key_short == ":w" || kb.desc_short == "Write" {
-                        continue;
-                    }
-                    panic!(
-                        "{name}[{i}] has action {:?} but no combos (key={:?})",
-                        kb.action, kb.key
+                }
+            }
+
+            #[test]
+            fn all_mode_row_exec_entries_are_valid() {
+                for (name, mb) in ALL_MODE_BINDINGS {
+                    check_mode_rows_exec_valid(mb.rows, name);
+                }
+            }
+
+            fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
+                for (i, kb) in bindings.iter().enumerate() {
+                    assert!(
+                        !matches!(kb.action, Action::None) || kb.combos.is_empty(),
+                        "{name}[{i}] has action Action::None but non-empty combos: {:?}",
+                        kb.combos
                     );
                 }
             }
-        }
 
-        #[test]
-        fn all_non_none_bindings_have_combos() {
-            check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
-            check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-            check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
-            check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
-            check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-        }
-
-        // ------------------------------------------------------------------ //
-        // 2b. ModeRow exec entries have non-empty combos
-        // ------------------------------------------------------------------ //
-
-        fn check_mode_rows_exec_valid(rows: &[ModeRow], name: &str) {
-            for (i, row) in rows.iter().enumerate() {
-                for (j, eb) in row.bindings.iter().enumerate() {
-                    assert!(
-                        !eb.combos.is_empty(),
-                        "{name}[{i}].bindings[{j}] has action {:?} but no combos",
-                        eb.action
-                    );
-                    assert!(
-                        !matches!(eb.action, Action::None),
-                        "{name}[{i}].bindings[{j}] has Action::None in exec binding",
-                    );
-                }
+            #[test]
+            fn none_action_entries_have_no_combos() {
+                check_none_action_entries_have_no_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
+                check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
+                check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
+                check_none_action_entries_have_no_combos(
+                    SQL_MODAL_NORMAL_KEYS,
+                    "SQL_MODAL_NORMAL_KEYS",
+                );
+                check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
+                check_none_action_entries_have_no_combos(
+                    SQL_MODAL_PLAN_KEYS,
+                    "SQL_MODAL_PLAN_KEYS",
+                );
+                check_none_action_entries_have_no_combos(
+                    SQL_MODAL_COMPARE_KEYS,
+                    "SQL_MODAL_COMPARE_KEYS",
+                );
+                check_none_action_entries_have_no_combos(
+                    SQL_MODAL_CONFIRMING_KEYS,
+                    "SQL_MODAL_CONFIRMING_KEYS",
+                );
+                check_none_action_entries_have_no_combos(OVERLAY_KEYS, "OVERLAY_KEYS");
+                check_none_action_entries_have_no_combos(
+                    CONNECTION_SETUP_KEYS,
+                    "CONNECTION_SETUP_KEYS",
+                );
+                check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
+                check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
+                check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             }
         }
 
-        #[test]
-        fn all_mode_row_exec_entries_are_valid() {
-            for (name, mb) in ALL_MODE_BINDINGS {
-                check_mode_rows_exec_valid(mb.rows, name);
-            }
-        }
-
-        }
-
-        mod conflict_safety {
+        mod uniqueness {
             use super::*;
 
-        // ------------------------------------------------------------------ //
-        // 3. No duplicate combos within simple (non-context-dependent) modes
-        // ------------------------------------------------------------------ //
-
-        fn check_no_duplicate_combos(bindings: &[KeyBinding], name: &str) {
-            let mut seen: Vec<KeyCombo> = Vec::new();
-            for kb in bindings
-                .iter()
-                .filter(|kb| !matches!(kb.action, Action::None))
-            {
-                for combo in kb.combos {
-                    assert!(
-                        !seen.contains(combo),
-                        "{name}: duplicate combo {combo:?} in binding {:?}",
-                        kb.action
-                    );
-                    seen.push(*combo);
-                }
-            }
-        }
-
-        fn check_no_duplicate_combos_rows(rows: &[ModeRow], name: &str) {
-            let mut seen: Vec<KeyCombo> = Vec::new();
-            for row in rows {
-                for eb in row.bindings {
-                    for combo in eb.combos {
+            fn check_no_duplicate_combos(bindings: &[KeyBinding], name: &str) {
+                let mut seen: Vec<KeyCombo> = Vec::new();
+                for kb in bindings
+                    .iter()
+                    .filter(|kb| !matches!(kb.action, Action::None))
+                {
+                    for combo in kb.combos {
                         assert!(
                             !seen.contains(combo),
                             "{name}: duplicate combo {combo:?} in binding {:?}",
-                            eb.action
+                            kb.action
                         );
                         seen.push(*combo);
                     }
                 }
             }
-        }
 
-        // GLOBAL_KEYS excluded: FOCUS/EXIT_FOCUS share a combo for footer label switching.
-        #[test]
-        fn no_duplicate_combos_in_simple_modes() {
-            check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-            check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-            for (name, mb) in ALL_MODE_BINDINGS {
-                check_no_duplicate_combos_rows(mb.rows, name);
-            }
-        }
-
-        // ------------------------------------------------------------------ //
-        // 4. keymap::resolve() round-trip
-        // ------------------------------------------------------------------ //
-
-        fn check_keymap_roundtrip(bindings: &[KeyBinding], name: &str) {
-            for kb in bindings
-                .iter()
-                .filter(|kb| !matches!(kb.action, Action::None))
-            {
-                for combo in kb.combos {
-                    let resolved = keymap::resolve(combo, bindings);
-                    match resolved {
-                        Some(ref action)
-                            if std::mem::discriminant(action)
-                                == std::mem::discriminant(&kb.action) => {}
-                        other => panic!(
-                            "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
-                            kb.action
-                        ),
+            fn check_no_duplicate_combos_rows(rows: &[ModeRow], name: &str) {
+                let mut seen: Vec<KeyCombo> = Vec::new();
+                for row in rows {
+                    for eb in row.bindings {
+                        for combo in eb.combos {
+                            assert!(
+                                !seen.contains(combo),
+                                "{name}: duplicate combo {combo:?} in binding {:?}",
+                                eb.action
+                            );
+                            seen.push(*combo);
+                        }
                     }
+                }
+            }
+
+            // GLOBAL_KEYS excluded: FOCUS/EXIT_FOCUS share a combo for footer label switching.
+            #[test]
+            fn no_duplicate_combos_in_simple_modes() {
+                check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
+                check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+                check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                for (name, mb) in ALL_MODE_BINDINGS {
+                    check_no_duplicate_combos_rows(mb.rows, name);
                 }
             }
         }
 
-        fn check_resolve_mode_roundtrip(rows: &[ModeRow], name: &str) {
-            for row in rows {
-                for eb in row.bindings {
-                    for combo in eb.combos {
-                        let resolved = keymap::resolve_mode(combo, rows);
+        mod resolver_contract {
+            use super::*;
+
+            fn check_keymap_roundtrip(bindings: &[KeyBinding], name: &str) {
+                for kb in bindings
+                    .iter()
+                    .filter(|kb| !matches!(kb.action, Action::None))
+                {
+                    for combo in kb.combos {
+                        let resolved = keymap::resolve(combo, bindings);
                         match resolved {
                             Some(ref action)
                                 if std::mem::discriminant(action)
-                                    == std::mem::discriminant(&eb.action) => {}
+                                    == std::mem::discriminant(&kb.action) => {}
                             other => panic!(
                                 "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
-                                eb.action
+                                kb.action
                             ),
                         }
                     }
                 }
             }
-        }
 
-        #[test]
-        fn keymap_resolve_roundtrip_for_simple_modes() {
-            check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-            check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-            for (name, mb) in ALL_MODE_BINDINGS {
-                check_resolve_mode_roundtrip(mb.rows, name);
-            }
-        }
-
-        // ------------------------------------------------------------------ //
-        // 5. Char fallback safety
-        // ------------------------------------------------------------------ //
-
-        fn check_no_plain_char_in_filter_mode(
-            bindings: &[KeyBinding],
-            name: &str,
-            allowed_chars: &[char],
-        ) {
-            let no_mods = Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            };
-            for kb in bindings
-                .iter()
-                .filter(|kb| !matches!(kb.action, Action::None))
-            {
-                for combo in kb.combos {
-                    if combo.modifiers == no_mods
-                        && let Key::Char(c) = combo.key
-                    {
-                        assert!(
-                            allowed_chars.contains(&c),
-                            "{name}: executable entry {:?} has plain Char({c:?}) combo \
-                             which would shadow filter input",
-                            kb.action
-                        );
+            fn check_resolve_mode_roundtrip(rows: &[ModeRow], name: &str) {
+                for row in rows {
+                    for eb in row.bindings {
+                        for combo in eb.combos {
+                            let resolved = keymap::resolve_mode(combo, rows);
+                            match resolved {
+                                Some(ref action)
+                                    if std::mem::discriminant(action)
+                                        == std::mem::discriminant(&eb.action) => {}
+                                other => panic!(
+                                    "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
+                                    eb.action
+                                ),
+                            }
+                        }
                     }
+                }
+            }
+
+            #[test]
+            fn keymap_resolve_roundtrip_for_simple_modes() {
+                check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
+                check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+                check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                for (name, mb) in ALL_MODE_BINDINGS {
+                    check_resolve_mode_roundtrip(mb.rows, name);
                 }
             }
         }
 
-        fn check_no_plain_char_in_filter_mode_rows(
-            rows: &[ModeRow],
-            name: &str,
-            allowed_chars: &[char],
-        ) {
-            let no_mods = Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            };
-            for row in rows {
-                for eb in row.bindings {
-                    for combo in eb.combos {
+        mod conflict_safety {
+            use super::*;
+
+            fn check_no_plain_char_in_filter_mode(
+                bindings: &[KeyBinding],
+                name: &str,
+                allowed_chars: &[char],
+            ) {
+                let no_mods = Modifiers {
+                    ctrl: false,
+                    alt: false,
+                    shift: false,
+                };
+                for kb in bindings
+                    .iter()
+                    .filter(|kb| !matches!(kb.action, Action::None))
+                {
+                    for combo in kb.combos {
                         if combo.modifiers == no_mods
                             && let Key::Char(c) = combo.key
                         {
                             assert!(
                                 allowed_chars.contains(&c),
                                 "{name}: executable entry {:?} has plain Char({c:?}) combo \
-                                 which would shadow filter input",
-                                eb.action
+                             which would shadow filter input",
+                                kb.action
                             );
                         }
                     }
                 }
             }
-        }
 
-        #[test]
-        fn table_picker_has_no_plain_char_combos() {
-            check_no_plain_char_in_filter_mode_rows(TABLE_PICKER_ROWS, "TABLE_PICKER_ROWS", &[]);
-        }
+            fn check_no_plain_char_in_filter_mode_rows(
+                rows: &[ModeRow],
+                name: &str,
+                allowed_chars: &[char],
+            ) {
+                let no_mods = Modifiers {
+                    ctrl: false,
+                    alt: false,
+                    shift: false,
+                };
+                for row in rows {
+                    for eb in row.bindings {
+                        for combo in eb.combos {
+                            if combo.modifiers == no_mods
+                                && let Key::Char(c) = combo.key
+                            {
+                                assert!(
+                                    allowed_chars.contains(&c),
+                                    "{name}: executable entry {:?} has plain Char({c:?}) combo \
+                                 which would shadow filter input",
+                                    eb.action
+                                );
+                            }
+                        }
+                    }
+                }
+            }
 
-        #[test]
-        fn er_picker_has_no_plain_char_combos() {
-            check_no_plain_char_in_filter_mode_rows(ER_PICKER_ROWS, "ER_PICKER_ROWS", &[' ']);
-        }
-
-        #[test]
-        fn query_history_picker_has_no_plain_char_combos() {
-            check_no_plain_char_in_filter_mode_rows(
-                QUERY_HISTORY_PICKER_ROWS,
-                "QUERY_HISTORY_PICKER_ROWS",
-                &[],
-            );
-        }
-
-        #[test]
-        fn command_line_has_no_problematic_plain_char_combos() {
-            check_no_plain_char_in_filter_mode(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS", &[]);
-        }
-
-        #[test]
-        fn cell_edit_plain_char_combos_are_intentional() {
-            check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
-        }
-
-        // ------------------------------------------------------------------ //
-        // 6. Action::None entries must have combos: &[] (KeyBinding arrays only)
-        // ------------------------------------------------------------------ //
-
-        fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
-            for (i, kb) in bindings.iter().enumerate() {
-                assert!(
-                    !matches!(kb.action, Action::None) || kb.combos.is_empty(),
-                    "{name}[{i}] has action Action::None but non-empty combos: {:?}",
-                    kb.combos
+            #[test]
+            fn table_picker_has_no_plain_char_combos() {
+                check_no_plain_char_in_filter_mode_rows(
+                    TABLE_PICKER_ROWS,
+                    "TABLE_PICKER_ROWS",
+                    &[],
                 );
             }
-        }
 
-        #[test]
-        fn none_action_entries_have_no_combos() {
-            check_none_action_entries_have_no_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
-            check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
-            check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
-            check_none_action_entries_have_no_combos(
-                SQL_MODAL_NORMAL_KEYS,
-                "SQL_MODAL_NORMAL_KEYS",
-            );
-            check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
-            check_none_action_entries_have_no_combos(SQL_MODAL_PLAN_KEYS, "SQL_MODAL_PLAN_KEYS");
-            check_none_action_entries_have_no_combos(
-                SQL_MODAL_COMPARE_KEYS,
-                "SQL_MODAL_COMPARE_KEYS",
-            );
-            check_none_action_entries_have_no_combos(
-                SQL_MODAL_CONFIRMING_KEYS,
-                "SQL_MODAL_CONFIRMING_KEYS",
-            );
-            check_none_action_entries_have_no_combos(OVERLAY_KEYS, "OVERLAY_KEYS");
-            check_none_action_entries_have_no_combos(
-                CONNECTION_SETUP_KEYS,
-                "CONNECTION_SETUP_KEYS",
-            );
-            check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
-            check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
-            check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-        }
+            #[test]
+            fn er_picker_has_no_plain_char_combos() {
+                check_no_plain_char_in_filter_mode_rows(ER_PICKER_ROWS, "ER_PICKER_ROWS", &[' ']);
+            }
 
+            #[test]
+            fn query_history_picker_has_no_plain_char_combos() {
+                check_no_plain_char_in_filter_mode_rows(
+                    QUERY_HISTORY_PICKER_ROWS,
+                    "QUERY_HISTORY_PICKER_ROWS",
+                    &[],
+                );
+            }
+
+            #[test]
+            fn command_line_has_no_problematic_plain_char_combos() {
+                check_no_plain_char_in_filter_mode(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS", &[]);
+            }
+
+            #[test]
+            fn cell_edit_plain_char_combos_are_intentional() {
+                check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
+            }
         }
 
         mod catalog_coverage {
             use super::*;
 
-        // ------------------------------------------------------------------ //
-        // 7. ALL_MODE_BINDINGS exhaustiveness
-        // ------------------------------------------------------------------ //
-
-        // HELP, CONNECTION_ERROR, TABLE_PICKER, ER_PICKER, COMMAND_PALETTE, CONNECTION_SELECTOR
-        #[test]
-        fn all_mode_bindings_count() {
-            assert_eq!(ALL_MODE_BINDINGS.len(), 9);
-        }
-
+            // HELP, CONNECTION_ERROR, TABLE_PICKER, ER_PICKER, COMMAND_PALETTE, CONNECTION_SELECTOR
+            #[test]
+            fn all_mode_bindings_count() {
+                assert_eq!(ALL_MODE_BINDINGS.len(), 9);
+            }
         }
     }
 }
