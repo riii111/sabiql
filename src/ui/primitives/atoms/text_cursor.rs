@@ -475,7 +475,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn viewport_offset_positive() {
+            fn offset_positive() {
                 let spans = text_cursor_spans("abcdef", 3, 2, 3, &DEFAULT_THEME);
 
                 let texts = spans_to_strings(&spans);
@@ -483,7 +483,7 @@ mod tests {
             }
 
             #[test]
-            fn viewport_offset_beyond_text_length() {
+            fn offset_beyond_text_length() {
                 let spans = text_cursor_spans("abc", 3, 10, 5, &DEFAULT_THEME);
 
                 let texts = spans_to_strings(&spans);
