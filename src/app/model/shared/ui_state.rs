@@ -74,6 +74,10 @@ pub struct ResultSelection {
 }
 
 impl ResultSelection {
+    fn is_consistent(&self) -> bool {
+        self.row.is_some() == self.cell.is_some()
+    }
+
     pub fn mode(&self) -> ResultNavMode {
         if self.row.is_some() && self.cell.is_some() {
             ResultNavMode::CellActive
@@ -83,28 +87,37 @@ impl ResultSelection {
     }
 
     pub fn row(&self) -> Option<usize> {
-        self.row
+        if self.is_consistent() { self.row } else { None }
     }
 
     pub fn cell(&self) -> Option<usize> {
-        self.cell
+        if self.is_consistent() {
+            self.cell
+        } else {
+            None
+        }
     }
 
     pub fn enter_cell(&mut self, row: usize, col: usize) {
         self.row = Some(row);
         self.cell = Some(col);
+        debug_assert!(self.is_consistent());
     }
 
     pub fn move_row(&mut self, row: usize) {
+        debug_assert!(self.is_consistent());
         if self.cell.is_some() {
             self.row = Some(row);
         }
+        debug_assert!(self.is_consistent());
     }
 
     pub fn move_cell(&mut self, col: usize) {
+        debug_assert!(self.is_consistent());
         if self.row.is_some() {
             self.cell = Some(col);
         }
+        debug_assert!(self.is_consistent());
     }
 
     pub fn reset(&mut self) {
@@ -714,6 +727,18 @@ mod tests {
 
             assert_eq!(sel.row(), Some(3));
             assert_eq!(sel.cell(), Some(2));
+        }
+
+        #[test]
+        fn accessors_hide_inconsistent_state() {
+            let sel = ResultSelection {
+                row: Some(1),
+                cell: None,
+            };
+
+            assert_eq!(sel.row(), None);
+            assert_eq!(sel.cell(), None);
+            assert_eq!(sel.mode(), ResultNavMode::Scroll);
         }
     }
 }

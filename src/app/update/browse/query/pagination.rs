@@ -204,11 +204,29 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{QueryResult, QuerySource};
     use std::sync::Arc;
 
     use crate::app::model::browse::query_execution::PaginationState;
     use crate::app::update::browse::query::reduce_query;
     use crate::app::update::browse::query::tests::*;
+
+    fn preview_result_with_two_columns(row_count: usize) -> Arc<QueryResult> {
+        let rows: Vec<Vec<String>> = (0..row_count)
+            .map(|i| vec![i.to_string(), format!("name_{i}")])
+            .collect();
+        Arc::new(QueryResult {
+            query: "SELECT * FROM users".to_string(),
+            columns: vec!["id".to_string(), "name".to_string()],
+            rows,
+            row_count,
+            execution_time_ms: 10,
+            executed_at: Instant::now(),
+            source: QuerySource::Preview,
+            error: None,
+            command_tag: None,
+        })
+    }
 
     mod next_page {
         use super::*;
@@ -308,9 +326,11 @@ mod tests {
         #[test]
         fn preserves_view_state_when_next_page_noops() {
             let mut state = create_test_state();
-            state.query.set_current_result(preview_result(100));
+            state
+                .query
+                .set_current_result(preview_result_with_two_columns(100));
             state.query.pagination.reached_end = true;
-            state.result_interaction.activate_cell(2, 0);
+            state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
             reduce_query(
@@ -321,6 +341,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
+            assert_eq!(state.result_interaction.selection().cell(), Some(1));
             assert!(state.result_interaction.staged_delete_rows().contains(&2));
         }
 
@@ -337,7 +358,7 @@ mod tests {
                 schema: "public".to_string(),
                 table: "users".to_string(),
             };
-            state.result_interaction.activate_cell(3, 0);
+            state.result_interaction.activate_cell(3, 1);
             state.result_interaction.stage_row(3);
 
             reduce_query(
@@ -348,6 +369,7 @@ mod tests {
             );
 
             assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.selection().cell().is_none());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
     }
@@ -417,9 +439,9 @@ mod tests {
             let mut state = create_test_state();
             state
                 .query
-                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
+                .set_current_result(preview_result_with_two_columns(PREVIEW_PAGE_SIZE));
             state.query.pagination.current_page = 0;
-            state.result_interaction.activate_cell(1, 0);
+            state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
             reduce_query(
@@ -430,6 +452,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
+            assert_eq!(state.result_interaction.selection().cell(), Some(1));
             assert!(state.result_interaction.staged_delete_rows().contains(&1));
         }
     }
