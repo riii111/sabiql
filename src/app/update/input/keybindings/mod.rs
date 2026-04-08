@@ -666,7 +666,10 @@ mod tests {
     mod catalog_semantics {
         use super::*;
         use crate::app::update::input::keymap;
-        use rstest::rstest;
+
+        mod action_mapping {
+            use super::*;
+            use rstest::rstest;
 
         // ------------------------------------------------------------------ //
         // 1. idx-to-Action correctness
@@ -767,6 +770,11 @@ mod tests {
             );
         }
 
+        }
+
+        mod binding_shape {
+            use super::*;
+
         // ------------------------------------------------------------------ //
         // 2. Non-None bindings have at least one combo (KeyBinding arrays)
         // ------------------------------------------------------------------ //
@@ -824,6 +832,11 @@ mod tests {
                 check_mode_rows_exec_valid(mb.rows, name);
             }
         }
+
+        }
+
+        mod conflict_safety {
+            use super::*;
 
         // ------------------------------------------------------------------ //
         // 3. No duplicate combos within simple (non-context-dependent) modes
@@ -1059,6 +1072,11 @@ mod tests {
             check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
         }
 
+        }
+
+        mod catalog_coverage {
+            use super::*;
+
         // ------------------------------------------------------------------ //
         // 7. ALL_MODE_BINDINGS exhaustiveness
         // ------------------------------------------------------------------ //
@@ -1067,6 +1085,8 @@ mod tests {
         #[test]
         fn all_mode_bindings_count() {
             assert_eq!(ALL_MODE_BINDINGS.len(), 9);
+        }
+
         }
     }
 }
