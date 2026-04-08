@@ -656,7 +656,7 @@ mod tests {
             state
                 .sql_modal
                 .editor
-                .set_content("0\n1\n2\n3\n4\n5\n6\n7".to_string());
+                .set_content_with_cursor("0\n1\n2\n3\n4\n5\n6\n7".to_string(), 0);
 
             for _ in 0..7 {
                 reduce_sql_modal(
@@ -681,7 +681,7 @@ mod tests {
             state
                 .sql_modal
                 .editor
-                .set_content("0\n1\n2\n3\n4\n5\n6\n7\n8".to_string());
+                .set_content_with_cursor("0\n1\n2\n3\n4\n5\n6\n7\n8".to_string(), 0);
 
             for _ in 0..8 {
                 reduce_sql_modal(
