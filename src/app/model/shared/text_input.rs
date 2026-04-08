@@ -126,13 +126,29 @@ impl TextInputState {
                     self.cursor += 1;
                 }
             }
-            CursorMove::Home => {
+            CursorMove::Home
+            | CursorMove::LineStart
+            | CursorMove::BufferStart
+            | CursorMove::FirstLine => {
                 self.cursor = 0;
             }
-            CursorMove::End => {
+            CursorMove::End
+            | CursorMove::LineEnd
+            | CursorMove::BufferEnd
+            | CursorMove::LastLine => {
                 self.cursor = self.char_count();
             }
-            CursorMove::Up | CursorMove::Down => {}
+            CursorMove::WordForward => {
+                self.cursor = next_word_start(&self.content, self.cursor);
+            }
+            CursorMove::WordBackward => {
+                self.cursor = previous_word_start(&self.content, self.cursor);
+            }
+            CursorMove::Up
+            | CursorMove::Down
+            | CursorMove::ViewportTop
+            | CursorMove::ViewportMiddle
+            | CursorMove::ViewportBottom => {}
         }
     }
 
@@ -195,9 +211,104 @@ fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
         .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WordKind {
+    Keyword,
+    Symbol,
+}
+
+fn classify_word_char(ch: char) -> Option<WordKind> {
+    if ch.is_whitespace() {
+        None
+    } else if ch.is_alphanumeric() || ch == '_' {
+        Some(WordKind::Keyword)
+    } else {
+        Some(WordKind::Symbol)
+    }
+}
+
+pub(super) fn next_word_start(content: &str, cursor: usize) -> usize {
+    let char_count = content.chars().count();
+    if cursor >= char_count {
+        return char_count;
+    }
+
+    let mut chars = content.chars().enumerate().skip(cursor);
+    let Some((_, ch)) = chars.next() else {
+        return char_count;
+    };
+    let mut idx = cursor;
+
+    if ch.is_whitespace() {
+        idx += 1;
+        for (_, ch) in chars {
+            if ch.is_whitespace() {
+                idx += 1;
+            } else {
+                break;
+            }
+        }
+        return idx;
+    }
+
+    let kind = classify_word_char(ch).expect("non-whitespace char has a kind");
+    idx += 1;
+    for (_, ch) in chars {
+        match classify_word_char(ch) {
+            Some(current) if current == kind => idx += 1,
+            Some(_) => break,
+            None => {
+                idx += 1;
+                for (_, ch) in content.chars().enumerate().skip(idx) {
+                    if ch.is_whitespace() {
+                        idx += 1;
+                    } else {
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    idx
+}
+
+pub(super) fn previous_word_start(content: &str, cursor: usize) -> usize {
+    if cursor == 0 || content.is_empty() {
+        return 0;
+    }
+
+    let target = cursor.saturating_sub(1);
+    let mut current_run_start = 0;
+    let mut current_run_kind = None;
+    let mut last_non_whitespace_run_start = None;
+
+    for (idx, ch) in content.chars().enumerate() {
+        if idx > target {
+            break;
+        }
+        if ch.is_whitespace() {
+            current_run_kind = None;
+            continue;
+        }
+
+        let kind = classify_word_char(ch).expect("non-whitespace char has a kind");
+        if current_run_kind != Some(kind) {
+            current_run_start = idx;
+            current_run_kind = Some(kind);
+        }
+
+        last_non_whitespace_run_start = Some(current_run_start);
+    }
+
+    last_non_whitespace_run_start.unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     fn state_with(content: &str, cursor: usize) -> TextInputState {
         TextInputState::new(content, cursor)
@@ -457,6 +568,15 @@ mod tests {
         }
 
         #[test]
+        fn move_last_line_moves_to_end() {
+            let mut s = state_with("abc", 0);
+
+            s.move_cursor(CursorMove::LastLine);
+
+            assert_eq!(s.cursor(), 3);
+        }
+
+        #[test]
         fn move_up_is_noop() {
             let mut s = state_with("abc", 1);
 
@@ -472,6 +592,44 @@ mod tests {
             s.move_cursor(CursorMove::Down);
 
             assert_eq!(s.cursor(), 1);
+        }
+
+        #[rstest]
+        #[case("foo bar", 0, CursorMove::WordForward, 4)]
+        #[case("foo.bar", 0, CursorMove::WordForward, 3)]
+        #[case("  foo", 0, CursorMove::WordForward, 2)]
+        #[case("foo  ", 0, CursorMove::WordForward, 5)]
+        #[case("あいう えお", 0, CursorMove::WordForward, 4)]
+        fn word_forward_boundaries(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] movement: CursorMove,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with(content, cursor);
+
+            s.move_cursor(movement);
+
+            assert_eq!(s.cursor(), expected);
+        }
+
+        #[rstest]
+        #[case("foo bar", 7, CursorMove::WordBackward, 4)]
+        #[case("foo.bar", 7, CursorMove::WordBackward, 4)]
+        #[case("  foo", 4, CursorMove::WordBackward, 2)]
+        #[case("foo  ", 5, CursorMove::WordBackward, 0)]
+        #[case("あいう えお", 6, CursorMove::WordBackward, 4)]
+        fn word_backward_boundaries(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] movement: CursorMove,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with(content, cursor);
+
+            s.move_cursor(movement);
+
+            assert_eq!(s.cursor(), expected);
         }
     }
 

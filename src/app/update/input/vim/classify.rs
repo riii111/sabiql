@@ -22,6 +22,7 @@ pub fn classify_command(combo: &KeyCombo) -> Option<VimCommand> {
             VimModeTransition::ConfirmOrEnter,
         )),
         Key::Char('i') => Some(VimCommand::ModeTransition(VimModeTransition::Insert)),
+        Key::Char('A') => Some(VimCommand::ModeTransition(VimModeTransition::Append)),
         Key::Char('n') => Some(VimCommand::SearchContinuation(SearchContinuation::Next)),
         Key::Char('N') => Some(VimCommand::SearchContinuation(SearchContinuation::Prev)),
         Key::Char('y') => Some(VimCommand::Operator(VimOperator::Yank)),
@@ -36,6 +37,10 @@ pub fn classify_sequence(prefix: Prefix, combo: &KeyCombo) -> Option<VimCommand>
     }
 
     match prefix {
+        Prefix::G => match combo.key {
+            Key::Char('g') => Some(VimCommand::Navigation(VimNavigation::MoveToFirst)),
+            _ => None,
+        },
         Prefix::Z => match combo.key {
             Key::Char('z') => Some(VimCommand::Navigation(VimNavigation::ScrollCursorCenter)),
             Key::Char('t') => Some(VimCommand::Navigation(VimNavigation::ScrollCursorTop)),
@@ -67,6 +72,10 @@ fn navigation(combo: &KeyCombo) -> Option<VimNavigation> {
         Key::Char('k') | Key::Up => Some(VimNavigation::MoveUp),
         Key::Char('g') | Key::Home => Some(VimNavigation::MoveToFirst),
         Key::Char('G') | Key::End => Some(VimNavigation::MoveToLast),
+        Key::Char('0') => Some(VimNavigation::MoveLineStart),
+        Key::Char('$') => Some(VimNavigation::MoveLineEnd),
+        Key::Char('w') => Some(VimNavigation::MoveWordForward),
+        Key::Char('b') => Some(VimNavigation::MoveWordBackward),
         Key::Char('H') => Some(VimNavigation::ViewportTop),
         Key::Char('M') => Some(VimNavigation::ViewportMiddle),
         Key::Char('L') => Some(VimNavigation::ViewportBottom),
@@ -94,6 +103,7 @@ mod tests {
 
     #[rstest]
     #[case(Key::Char('i'), VimModeTransition::Insert)]
+    #[case(Key::Char('A'), VimModeTransition::Append)]
     #[case(Key::Enter, VimModeTransition::ConfirmOrEnter)]
     #[case(Key::Esc, VimModeTransition::Escape)]
     fn mode_transition_keys(#[case] key: Key, #[case] expected: VimModeTransition) {
@@ -160,10 +170,22 @@ mod tests {
     #[case(Key::Home, VimNavigation::MoveToFirst)]
     #[case(Key::Char('G'), VimNavigation::MoveToLast)]
     #[case(Key::End, VimNavigation::MoveToLast)]
+    #[case(Key::Char('0'), VimNavigation::MoveLineStart)]
+    #[case(Key::Char('$'), VimNavigation::MoveLineEnd)]
     #[case(Key::Char('H'), VimNavigation::ViewportTop)]
     #[case(Key::Char('M'), VimNavigation::ViewportMiddle)]
     #[case(Key::Char('L'), VimNavigation::ViewportBottom)]
     fn boundary_navigation_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
+        assert_eq!(
+            classify_command(&combo(key)),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('w'), VimNavigation::MoveWordForward)]
+    #[case(Key::Char('b'), VimNavigation::MoveWordBackward)]
+    fn word_navigation_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
         assert_eq!(
             classify_command(&combo(key)),
             Some(VimCommand::Navigation(expected))
@@ -198,6 +220,14 @@ mod tests {
         assert_eq!(
             classify_sequence(Prefix::Z, &combo(key)),
             Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[test]
+    fn gg_sequence_navigation() {
+        assert_eq!(
+            classify_sequence(Prefix::G, &combo(Key::Char('g'))),
+            Some(VimCommand::Navigation(VimNavigation::MoveToFirst))
         );
     }
 }

@@ -17,6 +17,10 @@ pub enum VimNavigation {
     MoveUp,
     MoveToFirst,
     MoveToLast,
+    MoveLineStart,
+    MoveLineEnd,
+    MoveWordForward,
+    MoveWordBackward,
     ViewportTop,
     ViewportMiddle,
     ViewportBottom,
@@ -35,6 +39,7 @@ pub enum VimNavigation {
 pub enum VimModeTransition {
     Escape,
     Insert,
+    Append,
     ConfirmOrEnter,
 }
 

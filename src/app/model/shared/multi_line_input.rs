@@ -1,11 +1,12 @@
 use crate::app::update::action::CursorMove;
 
-use super::text_input::{TextInputLike, TextInputState};
+use super::text_input::{TextInputLike, TextInputState, next_word_start, previous_word_start};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MultiLineInputState {
     inner: TextInputState,
     scroll_row: usize,
+    preferred_col: Option<usize>,
 }
 
 impl MultiLineInputState {
@@ -13,6 +14,7 @@ impl MultiLineInputState {
         Self {
             inner: TextInputState::new(content, cursor),
             scroll_row: 0,
+            preferred_col: None,
         }
     }
 
@@ -21,11 +23,11 @@ impl MultiLineInputState {
     }
 
     pub fn insert_newline(&mut self) {
-        self.inner.insert_char('\n');
+        self.insert_char('\n');
     }
 
     pub fn insert_tab(&mut self) {
-        self.inner.insert_str("    ");
+        self.insert_str("    ");
     }
 
     // ── Content management ──────────────────────────────────────────
@@ -33,6 +35,7 @@ impl MultiLineInputState {
     pub fn set_content(&mut self, s: String) {
         self.inner.set_content(s);
         self.scroll_row = 0;
+        self.preferred_col = None;
     }
 
     pub fn set_content_with_cursor(&mut self, s: String, cursor: usize) {
@@ -40,11 +43,13 @@ impl MultiLineInputState {
         self.inner.set_content(s);
         self.inner.set_cursor(cursor.min(len));
         self.scroll_row = 0;
+        self.preferred_col = None;
     }
 
     pub fn clear(&mut self) {
         self.inner.clear();
         self.scroll_row = 0;
+        self.preferred_col = None;
     }
 
     // ── Cursor movement (multi-line aware) ──────────────────────────
@@ -53,38 +58,107 @@ impl MultiLineInputState {
         match movement {
             CursorMove::Left | CursorMove::Right => {
                 self.inner.move_cursor(movement);
+                self.preferred_col = None;
             }
             CursorMove::Up => {
                 let (current_line, current_col) = self.current_line_col();
+                let preferred_col = self.preferred_col.unwrap_or(current_col);
                 if current_line > 0 {
                     let lines = self.line_spans();
                     let (prev_start, prev_len) = lines[current_line - 1];
-                    self.set_cursor_raw(prev_start + current_col.min(prev_len));
+                    self.set_cursor_raw(prev_start + preferred_col.min(prev_len));
                 }
+                self.preferred_col = Some(preferred_col);
             }
             CursorMove::Down => {
                 let (current_line, current_col) = self.current_line_col();
+                let preferred_col = self.preferred_col.unwrap_or(current_col);
                 let lines = self.line_spans();
                 if current_line + 1 < lines.len() {
                     let (next_start, next_len) = lines[current_line + 1];
-                    self.set_cursor_raw(next_start + current_col.min(next_len));
+                    self.set_cursor_raw(next_start + preferred_col.min(next_len));
                 }
+                self.preferred_col = Some(preferred_col);
             }
-            CursorMove::Home => {
+            CursorMove::Home | CursorMove::LineStart => {
                 let (current_line, _) = self.current_line_col();
                 let lines = self.line_spans();
                 if let Some((start, _)) = lines.get(current_line) {
                     self.set_cursor_raw(*start);
                 }
+                self.preferred_col = None;
             }
-            CursorMove::End => {
+            CursorMove::End | CursorMove::LineEnd => {
                 let (current_line, _) = self.current_line_col();
                 let lines = self.line_spans();
                 if let Some((start, len)) = lines.get(current_line) {
                     self.set_cursor_raw(start + len);
                 }
+                self.preferred_col = None;
             }
+            CursorMove::WordForward => {
+                let next = next_word_start(self.content(), self.cursor());
+                self.set_cursor_raw(next);
+                self.preferred_col = None;
+            }
+            CursorMove::WordBackward => {
+                let previous = previous_word_start(self.content(), self.cursor());
+                self.set_cursor_raw(previous);
+                self.preferred_col = None;
+            }
+            CursorMove::BufferStart => {
+                self.set_cursor_raw(0);
+                self.preferred_col = None;
+            }
+            CursorMove::BufferEnd => {
+                self.set_cursor_raw(self.char_count());
+                self.preferred_col = None;
+            }
+            CursorMove::FirstLine => {
+                let (_, current_col) = self.current_line_col();
+                let preferred_col = self.preferred_col.unwrap_or(current_col);
+                let lines = self.line_spans();
+                if let Some((start, len)) = lines.first() {
+                    self.set_cursor_raw(start + preferred_col.min(*len));
+                }
+                self.preferred_col = Some(preferred_col);
+            }
+            CursorMove::LastLine => {
+                let (_, current_col) = self.current_line_col();
+                let preferred_col = self.preferred_col.unwrap_or(current_col);
+                let lines = self.line_spans();
+                if let Some((start, len)) = lines.last() {
+                    self.set_cursor_raw(start + preferred_col.min(*len));
+                }
+                self.preferred_col = Some(preferred_col);
+            }
+            CursorMove::ViewportTop | CursorMove::ViewportMiddle | CursorMove::ViewportBottom => {}
         }
+    }
+
+    pub fn move_cursor_to_viewport_position(&mut self, movement: CursorMove, visible_rows: usize) {
+        if visible_rows == 0 {
+            return;
+        }
+
+        let lines = self.line_spans();
+        if lines.is_empty() {
+            return;
+        }
+
+        let (_, current_col) = self.current_line_col();
+        let preferred_col = self.preferred_col.unwrap_or(current_col);
+        let target_row = match movement {
+            CursorMove::ViewportTop => self.scroll_row,
+            CursorMove::ViewportMiddle => self.scroll_row + visible_rows.saturating_sub(1) / 2,
+            CursorMove::ViewportBottom => self.scroll_row + visible_rows.saturating_sub(1),
+            _ => return,
+        }
+        .min(lines.len().saturating_sub(1));
+
+        let (start, len) = lines[target_row];
+        self.set_cursor_raw(start + preferred_col.min(len));
+        self.preferred_col = Some(preferred_col);
     }
 
     // ── Coordinate conversion ───────────────────────────────────────
@@ -152,6 +226,26 @@ impl TextInputLike for MultiLineInputState {
 
     fn text_input_mut(&mut self) -> &mut TextInputState {
         &mut self.inner
+    }
+
+    fn insert_char(&mut self, c: char) {
+        self.inner.insert_char(c);
+        self.preferred_col = None;
+    }
+
+    fn insert_str(&mut self, text: &str) {
+        self.inner.insert_str(text);
+        self.preferred_col = None;
+    }
+
+    fn backspace(&mut self) {
+        self.inner.backspace();
+        self.preferred_col = None;
+    }
+
+    fn delete(&mut self) {
+        self.inner.delete();
+        self.preferred_col = None;
     }
 }
 
@@ -337,6 +431,159 @@ mod tests {
             s.move_cursor(CursorMove::End);
             assert_eq!(s.cursor(), 3);
         }
+
+        #[test]
+        fn line_start_returns_current_line_start() {
+            let mut s = ml("abc\ndef", 5);
+            s.move_cursor(CursorMove::LineStart);
+            assert_eq!(s.cursor(), 4);
+        }
+
+        #[test]
+        fn line_end_returns_current_line_end() {
+            let mut s = ml("abc\ndef", 4);
+            s.move_cursor(CursorMove::LineEnd);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn word_forward_moves_within_line() {
+            let mut s = ml("SELECT users", 0);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn word_backward_moves_to_start_of_current_word() {
+            let mut s = ml("SELECT users", 10);
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn word_forward_crosses_punctuation_boundary() {
+            let mut s = ml("foo(bar)", 0);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 3);
+
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 4);
+        }
+
+        #[test]
+        fn word_backward_crosses_punctuation_boundary() {
+            let mut s = ml("foo(bar)", 7);
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 4);
+
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 3);
+        }
+
+        #[test]
+        fn word_forward_crosses_whitespace_and_newline() {
+            let mut s = ml("foo \n  bar", 0);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn word_forward_treats_cjk_as_keyword_word() {
+            let mut s = ml("SELECT あいう", 0);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 7);
+
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 10);
+        }
+
+        #[test]
+        fn word_backward_crosses_whitespace_and_newline() {
+            let mut s = ml("foo \n  bar", 10);
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 7);
+
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 0);
+        }
+
+        #[test]
+        fn word_forward_at_end_returns_unchanged() {
+            let mut s = ml("foo", 3);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 3);
+        }
+
+        #[test]
+        fn word_backward_at_start_returns_unchanged() {
+            let mut s = ml("foo", 0);
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 0);
+        }
+
+        #[test]
+        fn buffer_start_moves_to_start_of_buffer() {
+            let mut s = ml("abc\ndef", 5);
+            s.move_cursor(CursorMove::BufferStart);
+            assert_eq!(s.cursor(), 0);
+        }
+
+        #[test]
+        fn buffer_end_moves_to_end_of_buffer() {
+            let mut s = ml("abc\ndef", 1);
+            s.move_cursor(CursorMove::BufferEnd);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn first_line_preserves_column() {
+            let mut s = ml("abcd\nxy\nwxyz12", 10);
+            s.move_cursor(CursorMove::FirstLine);
+            assert_eq!(s.cursor_to_position(), (0, 2));
+        }
+
+        #[test]
+        fn first_line_clamps_to_line_length() {
+            let mut s = ml("xy\nabcdef", 8);
+            s.move_cursor(CursorMove::FirstLine);
+            assert_eq!(s.cursor_to_position(), (0, 2));
+        }
+
+        #[test]
+        fn last_line_preserves_column() {
+            let mut s = ml("abcd\nxy\nwxyz12", 2);
+            s.move_cursor(CursorMove::LastLine);
+            assert_eq!(s.cursor_to_position(), (2, 2));
+        }
+
+        #[test]
+        fn last_line_clamps_to_line_length() {
+            let mut s = ml("abcdef\nxy", 5);
+            s.move_cursor(CursorMove::LastLine);
+            assert_eq!(s.cursor_to_position(), (1, 2));
+        }
+
+        #[test]
+        fn preferred_column_restored_long_to_short_line() {
+            let mut s = ml("abcdefghij\nxy", 5);
+
+            s.move_cursor(CursorMove::LastLine);
+            assert_eq!(s.cursor_to_position(), (1, 2));
+
+            s.move_cursor(CursorMove::FirstLine);
+            assert_eq!(s.cursor_to_position(), (0, 5));
+        }
+
+        #[test]
+        fn preferred_column_restored_short_to_long_line() {
+            let mut s = ml("xy\nabcdefghij", 8);
+
+            s.move_cursor(CursorMove::FirstLine);
+            assert_eq!(s.cursor_to_position(), (0, 2));
+
+            s.move_cursor(CursorMove::LastLine);
+            assert_eq!(s.cursor_to_position(), (1, 5));
+        }
     }
 
     // ── Edge cases: trailing newline, empty lines, consecutive newlines ──
@@ -379,7 +626,7 @@ mod tests {
         }
 
         #[test]
-        fn up_down_through_empty_line_clamps_col() {
+        fn up_through_empty_line_restores_preferred_column() {
             // "abc\n\ndef" → lines: (0,3), (4,0), (5,3)
             // Start at cursor=6 (line 2, col 1 → 'e')
             let mut s = ml("abc\n\ndef", 6);
@@ -390,9 +637,10 @@ mod tests {
             assert_eq!(s.cursor(), 4);
             assert_eq!(s.cursor_to_position(), (1, 0));
 
-            // Up again → line 0, col 0.min(3) = 0 → cursor=0
+            // Up again → line 0, restore preferred col 1 → cursor=1
             s.move_cursor(CursorMove::Up);
-            assert_eq!(s.cursor(), 0);
+            assert_eq!(s.cursor(), 1);
+            assert_eq!(s.cursor_to_position(), (0, 1));
         }
 
         #[test]
@@ -462,6 +710,19 @@ mod tests {
             assert_eq!(s.content(), "abcdef");
             assert_eq!(s.cursor(), 3);
         }
+
+        #[test]
+        fn operations_clear_preferred_column() {
+            let mut s = ml("abcdefghij\nxy\nabcdefghij", 8);
+
+            s.move_cursor(CursorMove::Down);
+            assert_eq!(s.cursor_to_position(), (1, 2));
+
+            s.insert_char('z');
+            s.move_cursor(CursorMove::Down);
+
+            assert_eq!(s.cursor_to_position(), (2, 3));
+        }
     }
 
     // ── scroll ──────────────────────────────────────────────────────
@@ -498,6 +759,30 @@ mod tests {
             s.scroll_row = 1;
             s.update_scroll(0);
             assert_eq!(s.scroll_row(), 1); // unchanged
+        }
+
+        #[test]
+        fn viewport_top_preserves_column() {
+            let mut s = ml("aa\nbb\ncc\ndd", 10);
+            s.scroll_row = 1;
+            s.move_cursor_to_viewport_position(CursorMove::ViewportTop, 3);
+            assert_eq!(s.cursor(), 4);
+        }
+
+        #[test]
+        fn viewport_middle_moves_cursor_to_middle_visible_row_preserving_column() {
+            let mut s = ml("aa\nbb\ncc\ndd\nee", 13);
+            s.scroll_row = 1;
+            s.move_cursor_to_viewport_position(CursorMove::ViewportMiddle, 3);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn viewport_bottom_moves_cursor_to_bottom_visible_row_preserving_column() {
+            let mut s = ml("aa\nbb\ncc\ndd\nee", 1);
+            s.scroll_row = 1;
+            s.move_cursor_to_viewport_position(CursorMove::ViewportBottom, 3);
+            assert_eq!(s.cursor(), 10);
         }
     }
 

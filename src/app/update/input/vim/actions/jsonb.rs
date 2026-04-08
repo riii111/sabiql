@@ -14,7 +14,9 @@ pub(in crate::app::update::input::vim) fn command(
             VimCommand::Navigation(navigation) => navigation_action(navigation),
             VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseJsonbDetail),
             VimCommand::ModeTransition(
-                VimModeTransition::Insert | VimModeTransition::ConfirmOrEnter,
+                VimModeTransition::Insert
+                | VimModeTransition::Append
+                | VimModeTransition::ConfirmOrEnter,
             ) => Some(Action::JsonbEnterEdit),
             VimCommand::SearchContinuation(SearchContinuation::Next) => {
                 Some(Action::JsonbSearchNext)
@@ -65,6 +67,15 @@ mod tests {
         let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
 
         let action = action_for_key(&combo(Key::Enter), ctx);
+
+        assert!(matches!(action, Some(Action::JsonbEnterEdit)));
+    }
+
+    #[test]
+    fn append_opens_edit_mode() {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
+        let action = action_for_key(&combo(Key::Char('A')), ctx);
 
         assert!(matches!(action, Some(Action::JsonbEnterEdit)));
     }

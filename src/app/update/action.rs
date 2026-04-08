@@ -49,6 +49,17 @@ pub enum CursorMove {
     Down,
     Home,
     End,
+    LineStart,
+    LineEnd,
+    WordForward,
+    WordBackward,
+    BufferStart,
+    BufferEnd,
+    FirstLine,
+    LastLine,
+    ViewportTop,
+    ViewportMiddle,
+    ViewportBottom,
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +390,7 @@ pub enum Action {
     // SQL Modal
     OpenSqlModal,
     CloseSqlModal,
+    SqlModalAppendInsert,
     SqlModalEnterInsert,
     SqlModalEnterNormal,
     SqlModalYank,

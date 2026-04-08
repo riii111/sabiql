@@ -48,11 +48,12 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::SqlModal => {
             let completion_visible = state.sql_modal.completion.visible
                 && !state.sql_modal.completion.candidates.is_empty();
-            sql_modal::handle_sql_modal_keys(
+            sql_modal::handle_sql_modal_keys_with_prefix(
                 combo,
                 completion_visible,
                 state.sql_modal.status(),
                 state.sql_modal.active_tab,
+                state.ui.key_sequence.pending_prefix(),
             )
         }
         InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),

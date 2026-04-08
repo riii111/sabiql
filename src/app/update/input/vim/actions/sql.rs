@@ -1,4 +1,6 @@
-use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::app::update::action::{
+    Action, CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+};
 
 use super::scroll;
 use crate::app::update::input::vim::types::{
@@ -11,10 +13,14 @@ pub(in crate::app::update::input::vim) fn command(
 ) -> Option<Action> {
     match ctx {
         SqlModalVimContext::QueryNormal => match command {
+            VimCommand::Navigation(navigation) => query_navigation(navigation),
             VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseSqlModal),
-            VimCommand::ModeTransition(
-                VimModeTransition::Insert | VimModeTransition::ConfirmOrEnter,
-            ) => Some(Action::SqlModalEnterInsert),
+            VimCommand::ModeTransition(VimModeTransition::Append) => {
+                Some(Action::SqlModalAppendInsert)
+            }
+            VimCommand::ModeTransition(VimModeTransition::Insert) => {
+                Some(Action::SqlModalEnterInsert)
+            }
             VimCommand::Operator(VimOperator::Yank) => Some(Action::SqlModalYank),
             _ => None,
         },
@@ -27,6 +33,30 @@ pub(in crate::app::update::input::vim) fn command(
         SqlModalVimContext::PlanViewer => viewer(command, ScrollTarget::ExplainPlan),
         SqlModalVimContext::CompareViewer => viewer(command, ScrollTarget::ExplainCompare),
     }
+}
+
+fn query_navigation(navigation: VimNavigation) -> Option<Action> {
+    let direction = match navigation {
+        VimNavigation::MoveLeft => CursorMove::Left,
+        VimNavigation::MoveRight => CursorMove::Right,
+        VimNavigation::MoveUp => CursorMove::Up,
+        VimNavigation::MoveDown => CursorMove::Down,
+        VimNavigation::MoveToFirst => CursorMove::FirstLine,
+        VimNavigation::MoveToLast => CursorMove::LastLine,
+        VimNavigation::MoveLineStart => CursorMove::LineStart,
+        VimNavigation::MoveLineEnd => CursorMove::LineEnd,
+        VimNavigation::MoveWordForward => CursorMove::WordForward,
+        VimNavigation::MoveWordBackward => CursorMove::WordBackward,
+        VimNavigation::ViewportTop => CursorMove::ViewportTop,
+        VimNavigation::ViewportMiddle => CursorMove::ViewportMiddle,
+        VimNavigation::ViewportBottom => CursorMove::ViewportBottom,
+        _ => return None,
+    };
+
+    Some(Action::TextMoveCursor {
+        target: InputTarget::SqlModal,
+        direction,
+    })
 }
 
 fn viewer(command: VimCommand, target: ScrollTarget) -> Option<Action> {
@@ -59,14 +89,18 @@ mod tests {
     }
 
     #[rstest]
-    #[case(Key::Char('i'))]
-    #[case(Key::Enter)]
-    fn insert_and_confirm_enter_insert(#[case] key: Key) {
+    #[case(Key::Char('i'), false)]
+    #[case(Key::Char('A'), true)]
+    fn insert_and_confirm_enter_insert(#[case] key: Key, #[case] append: bool) {
         let ctx = VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal);
 
         let action = action_for_key(&combo(key), ctx);
 
-        assert!(matches!(action, Some(Action::SqlModalEnterInsert)));
+        if append {
+            assert!(matches!(action, Some(Action::SqlModalAppendInsert)));
+        } else {
+            assert!(matches!(action, Some(Action::SqlModalEnterInsert)));
+        }
     }
 
     #[test]
@@ -76,6 +110,51 @@ mod tests {
         let action = action_for_key(&combo(Key::Char('y')), ctx);
 
         assert!(matches!(action, Some(Action::SqlModalYank)));
+    }
+
+    #[rstest]
+    #[case(Key::Char('h'), CursorMove::Left)]
+    #[case(Key::Char('j'), CursorMove::Down)]
+    #[case(Key::Char('k'), CursorMove::Up)]
+    #[case(Key::Char('l'), CursorMove::Right)]
+    #[case(Key::Char('G'), CursorMove::LastLine)]
+    #[case(Key::Char('0'), CursorMove::LineStart)]
+    #[case(Key::Char('$'), CursorMove::LineEnd)]
+    #[case(Key::Char('w'), CursorMove::WordForward)]
+    #[case(Key::Char('b'), CursorMove::WordBackward)]
+    #[case(Key::Char('H'), CursorMove::ViewportTop)]
+    #[case(Key::Char('M'), CursorMove::ViewportMiddle)]
+    #[case(Key::Char('L'), CursorMove::ViewportBottom)]
+    fn normal_navigation_moves_sql_cursor(#[case] key: Key, #[case] expected: CursorMove) {
+        let action = action_for_key(
+            &combo(key),
+            VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),
+        );
+
+        assert!(matches!(
+            action,
+            Some(Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction,
+            }) if direction == expected
+        ));
+    }
+
+    #[test]
+    fn gg_moves_to_first_line() {
+        let action = crate::app::update::input::vim::action_for_input(
+            &combo(Key::Char('g')),
+            Some(crate::app::model::shared::key_sequence::Prefix::G),
+            VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),
+        );
+
+        assert!(matches!(
+            action,
+            Some(Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::FirstLine,
+            })
+        ));
     }
 
     #[rstest]

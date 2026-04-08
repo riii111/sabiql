@@ -139,11 +139,13 @@ pub mod idx {
         pub const RUN: usize = 0;
         pub const YANK: usize = 1;
         pub const ENTER_INSERT: usize = 2;
-        pub const MOVE: usize = 3;
-        pub const HOME_END: usize = 4;
-        pub const CLOSE: usize = 5;
-        pub const CLEAR: usize = 6;
-        pub const QUERY_HISTORY: usize = 7;
+        pub const APPEND: usize = 3;
+        pub const MOVE: usize = 4;
+        pub const HOME_END: usize = 5;
+        pub const VIEWPORT: usize = 6;
+        pub const CLOSE: usize = 7;
+        pub const CLEAR: usize = 8;
+        pub const QUERY_HISTORY: usize = 9;
     }
 
     pub mod sql_modal {
@@ -459,8 +461,10 @@ mod tests {
         assert!(idx::sql_modal_normal::RUN < SQL_MODAL_NORMAL_KEYS.len());
         assert!(idx::sql_modal_normal::YANK < SQL_MODAL_NORMAL_KEYS.len());
         assert!(idx::sql_modal_normal::ENTER_INSERT < SQL_MODAL_NORMAL_KEYS.len());
+        assert!(idx::sql_modal_normal::APPEND < SQL_MODAL_NORMAL_KEYS.len());
         assert!(idx::sql_modal_normal::MOVE < SQL_MODAL_NORMAL_KEYS.len());
         assert!(idx::sql_modal_normal::HOME_END < SQL_MODAL_NORMAL_KEYS.len());
+        assert!(idx::sql_modal_normal::VIEWPORT < SQL_MODAL_NORMAL_KEYS.len());
         assert!(idx::sql_modal_normal::CLOSE < SQL_MODAL_NORMAL_KEYS.len());
         assert!(idx::sql_modal_normal::CLEAR < SQL_MODAL_NORMAL_KEYS.len());
         assert!(idx::sql_modal_normal::QUERY_HISTORY < SQL_MODAL_NORMAL_KEYS.len());

@@ -4,9 +4,10 @@ use std::time::{Duration, Instant};
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::app::model::sql_editor::modal::{
-    HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab,
+    HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab, sql_modal_visible_rows,
 };
 use crate::app::policy::sql::statement_classifier::{self, StatementKind};
 use crate::app::policy::write::sql_risk::{
@@ -15,13 +16,8 @@ use crate::app::policy::write::sql_risk::{
 use crate::app::policy::write::write_guardrails::{
     AdhocRiskDecision, RiskLevel, evaluate_sql_risk,
 };
-use crate::app::update::action::{Action, InputTarget};
+use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
-
-// Conservative estimate for visible editor rows. The actual height depends on terminal size
-// and modal layout (60% height - status bar - separator). This ensures scroll tracking stays
-// reasonably close even without exact dimensions.
-const EDITOR_VISIBLE_ROWS: usize = 8;
 
 pub fn reduce_sql_modal(
     state: &mut AppState,
@@ -67,7 +63,10 @@ pub fn reduce_sql_modal(
             }
             let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
             state.sql_modal.editor.insert_str(&normalized);
-            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
+            state
+                .sql_modal
+                .editor
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             state.sql_modal.set_status(SqlModalStatus::Editing);
@@ -81,7 +80,10 @@ pub fn reduce_sql_modal(
         } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.insert_char(*c);
-            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
+            state
+                .sql_modal
+                .editor
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
@@ -90,7 +92,10 @@ pub fn reduce_sql_modal(
         } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.backspace();
-            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
+            state
+                .sql_modal
+                .editor
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
@@ -99,21 +104,30 @@ pub fn reduce_sql_modal(
         } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.delete();
-            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
+            state
+                .sql_modal
+                .editor
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
         Action::SqlModalNewLine => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.insert_newline();
-            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
+            state
+                .sql_modal
+                .editor
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
         Action::SqlModalTab => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.insert_tab();
-            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
+            state
+                .sql_modal
+                .editor
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
@@ -121,14 +135,29 @@ pub fn reduce_sql_modal(
             target: InputTarget::SqlModal,
             direction: movement,
         } => {
-            state.sql_modal.editor.move_cursor(*movement);
-            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
+            match movement {
+                CursorMove::ViewportTop
+                | CursorMove::ViewportMiddle
+                | CursorMove::ViewportBottom => {
+                    state.sql_modal.editor.move_cursor_to_viewport_position(
+                        *movement,
+                        sql_modal_visible_rows(state.ui.terminal_height),
+                    );
+                }
+                _ => state.sql_modal.editor.move_cursor(*movement),
+            }
+            state
+                .sql_modal
+                .editor
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+            state.ui.key_sequence = KeySequenceState::Idle;
             Some(vec![])
         }
         Action::SqlModalClear => {
             state.sql_modal.editor.clear();
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion.candidates.clear();
+            state.ui.key_sequence = KeySequenceState::Idle;
             Some(vec![])
         }
 
@@ -207,6 +236,7 @@ pub fn reduce_sql_modal(
                 SqlModalStatus::ConfirmingHigh { .. }
             ) {
                 state.sql_modal.set_status(SqlModalStatus::Normal);
+                state.ui.key_sequence = KeySequenceState::Idle;
                 Some(vec![])
             } else {
                 None
@@ -325,7 +355,10 @@ pub fn reduce_sql_modal(
                         .sql_modal
                         .editor
                         .set_content_with_cursor(content, new_cursor);
-                    state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
+                    state
+                        .sql_modal
+                        .editor
+                        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
                 }
                 state.sql_modal.completion.visible = false;
                 state.sql_modal.completion_debounce = None;
@@ -347,6 +380,15 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
 
+        Action::SqlModalAppendInsert => {
+            state.sql_modal.editor.move_cursor(CursorMove::LineEnd);
+            state
+                .sql_modal
+                .editor
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+            state.sql_modal.set_status(SqlModalStatus::Editing);
+            Some(vec![])
+        }
         Action::SqlModalEnterInsert => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             Some(vec![])
@@ -582,6 +624,61 @@ mod tests {
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh { .. }
             ));
+        }
+    }
+
+    mod scrolling {
+        use super::*;
+        use crate::app::update::action::CursorMove;
+
+        #[test]
+        fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
+            let mut state = sql_modal_state();
+            state.ui.terminal_height = 20;
+            state.sql_modal.set_status(SqlModalStatus::Normal);
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("0\n1\n2\n3\n4\n5\n6\n7".to_string(), 0);
+
+            for _ in 0..7 {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::TextMoveCursor {
+                        target: InputTarget::SqlModal,
+                        direction: CursorMove::Down,
+                    },
+                    Instant::now(),
+                );
+            }
+
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (7, 0));
+            assert_eq!(state.sql_modal.editor.scroll_row(), 0);
+        }
+
+        #[test]
+        fn scrolls_once_cursor_moves_past_visible_rows() {
+            let mut state = sql_modal_state();
+            state.ui.terminal_height = 20;
+            state.sql_modal.set_status(SqlModalStatus::Normal);
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("0\n1\n2\n3\n4\n5\n6\n7\n8".to_string(), 0);
+
+            for _ in 0..8 {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::TextMoveCursor {
+                        target: InputTarget::SqlModal,
+                        direction: CursorMove::Down,
+                    },
+                    Instant::now(),
+                );
+            }
+
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (8, 0));
+            assert_eq!(state.sql_modal.editor.scroll_row(), 1);
         }
     }
 
@@ -1064,6 +1161,21 @@ mod tests {
         use super::*;
 
         #[test]
+        fn append_insert_moves_to_line_end_and_transitions_to_editing() {
+            let mut state = sql_modal_state();
+            state.sql_modal.set_status(SqlModalStatus::Normal);
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("abc\ndef".to_string(), 1);
+
+            reduce_sql_modal(&mut state, &Action::SqlModalAppendInsert, Instant::now());
+
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (0, 3));
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Editing);
+        }
+
+        #[test]
         fn enter_insert_transitions_to_editing() {
             let mut state = sql_modal_state();
 
@@ -1082,6 +1194,47 @@ mod tests {
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert!(!state.sql_modal.completion.visible);
+        }
+
+        #[test]
+        fn vertical_move_after_edit_uses_current_column() {
+            let mut state = sql_modal_state();
+            state.sql_modal.set_status(SqlModalStatus::Normal);
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("abcdefghij\nxy\nabcdefghij".to_string(), 8);
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::SqlModal,
+                    direction: CursorMove::Down,
+                },
+                Instant::now(),
+            );
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (1, 2));
+
+            reduce_sql_modal(&mut state, &Action::SqlModalEnterInsert, Instant::now());
+            reduce_sql_modal(
+                &mut state,
+                &Action::TextInput {
+                    target: InputTarget::SqlModal,
+                    ch: 'z',
+                },
+                Instant::now(),
+            );
+            reduce_sql_modal(&mut state, &Action::SqlModalEnterNormal, Instant::now());
+            reduce_sql_modal(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::SqlModal,
+                    direction: CursorMove::Down,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (2, 3));
         }
 
         #[test]

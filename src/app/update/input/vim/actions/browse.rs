@@ -55,7 +55,7 @@ pub(in crate::app::update::input::vim) fn mode_transition(
             Action::ResultEnterCellEdit
         }
         (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Inspector(_))
-        | (VimModeTransition::Insert, _) => Action::None,
+        | (VimModeTransition::Insert | VimModeTransition::Append, _) => Action::None,
     }
 }
 
@@ -96,6 +96,10 @@ fn explorer_navigation(navigation: VimNavigation) -> Action {
         VimNavigation::MoveUp => Action::Select(SelectMotion::Previous),
         VimNavigation::MoveToFirst => Action::Select(SelectMotion::First),
         VimNavigation::MoveToLast => Action::Select(SelectMotion::Last),
+        VimNavigation::MoveLineStart
+        | VimNavigation::MoveLineEnd
+        | VimNavigation::MoveWordForward
+        | VimNavigation::MoveWordBackward => Action::None,
         VimNavigation::ViewportTop => Action::Select(SelectMotion::ViewportTop),
         VimNavigation::ViewportMiddle => Action::Select(SelectMotion::ViewportMiddle),
         VimNavigation::ViewportBottom => Action::Select(SelectMotion::ViewportBottom),
@@ -147,6 +151,16 @@ fn inspector_navigation(navigation: VimNavigation) -> Action {
             ScrollDirection::Down,
             ScrollAmount::ToEnd,
         ),
+        VimNavigation::MoveLineStart
+        | VimNavigation::MoveLineEnd
+        | VimNavigation::MoveWordForward
+        | VimNavigation::MoveWordBackward
+        | VimNavigation::ViewportTop
+        | VimNavigation::ViewportMiddle
+        | VimNavigation::ViewportBottom
+        | VimNavigation::ScrollCursorCenter
+        | VimNavigation::ScrollCursorTop
+        | VimNavigation::ScrollCursorBottom => Action::None,
         VimNavigation::MoveLeft => scroll(
             ScrollTarget::Inspector,
             ScrollDirection::Left,
@@ -177,12 +191,6 @@ fn inspector_navigation(navigation: VimNavigation) -> Action {
             ScrollDirection::Up,
             ScrollAmount::FullPage,
         ),
-        VimNavigation::ViewportTop
-        | VimNavigation::ViewportMiddle
-        | VimNavigation::ViewportBottom
-        | VimNavigation::ScrollCursorCenter
-        | VimNavigation::ScrollCursorTop
-        | VimNavigation::ScrollCursorBottom => Action::None,
     }
 }
 
@@ -208,6 +216,10 @@ fn result_navigation(navigation: VimNavigation, ctx: ResultVimContext) -> Action
             ScrollDirection::Down,
             ScrollAmount::ToEnd,
         ),
+        VimNavigation::MoveLineStart
+        | VimNavigation::MoveLineEnd
+        | VimNavigation::MoveWordForward
+        | VimNavigation::MoveWordBackward => Action::None,
         VimNavigation::ViewportTop => scroll(
             ScrollTarget::Result,
             ScrollDirection::Up,

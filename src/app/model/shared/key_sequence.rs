@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Prefix {
+    G,
     Z,
 }
 
@@ -33,6 +34,12 @@ mod tests {
     fn pending_prefix_returns_some_for_waiting() {
         let state = KeySequenceState::WaitingSecondKey(Prefix::Z);
         assert_eq!(state.pending_prefix(), Some(Prefix::Z));
+    }
+
+    #[test]
+    fn g_prefix_is_reported_as_pending() {
+        let state = KeySequenceState::WaitingSecondKey(Prefix::G);
+        assert_eq!(state.pending_prefix(), Some(Prefix::G));
     }
 
     #[test]
