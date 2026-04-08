@@ -624,348 +624,384 @@ mod tests {
             state
         }
 
-        #[test]
-        fn open_when_not_connected_is_noop() {
-            let mut state = create_test_state();
-            state.session.active_connection_id = None;
-
-            let effects =
-                reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn open_when_running_is_noop() {
-            let mut state = connected_state();
-            state.query.begin_running(Instant::now());
-
-            let effects =
-                reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn open_from_normal_sets_mode_and_emits_load_effect() {
-            let mut state = connected_state();
-
-            let effects =
-                reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
-            assert_eq!(state.modal.return_destination(), InputMode::Normal);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::LoadQueryHistory { .. }));
-        }
-
-        #[test]
-        fn close_restores_origin_mode() {
-            let mut state = connected_state();
-            state.modal.set_mode(InputMode::SqlModal);
-            state.modal.push_mode(InputMode::QueryHistoryPicker);
-
-            let effects =
-                reduce_modal(&mut state, &Action::CloseQueryHistoryPicker, Instant::now()).unwrap();
-
-            assert_eq!(state.input_mode(), InputMode::SqlModal);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn loaded_stores_entries() {
-            let mut state = connected_state();
-            state.modal.set_mode(InputMode::QueryHistoryPicker);
-            let conn_id = ConnectionId::from_string("test-conn");
-            let entries = vec![make_entry("SELECT 1", &conn_id)];
-
-            let effects = reduce_modal(
-                &mut state,
-                &Action::QueryHistoryLoaded(conn_id, entries),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(state.query_history_picker.entries.len(), 1);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn loaded_ignores_stale_connection() {
-            let mut state = connected_state();
-            state.modal.set_mode(InputMode::QueryHistoryPicker);
-            let stale_conn = ConnectionId::from_string("old-conn");
-            let entries = vec![make_entry("SELECT 1", &stale_conn)];
-
-            reduce_modal(
-                &mut state,
-                &Action::QueryHistoryLoaded(stale_conn, entries),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.query_history_picker.entries.is_empty());
-        }
-
-        #[test]
-        fn loaded_ignores_when_picker_closed() {
-            let mut state = connected_state();
-            let conn_id = ConnectionId::from_string("test-conn");
-            let entries = vec![make_entry("SELECT 1", &conn_id)];
-
-            reduce_modal(
-                &mut state,
-                &Action::QueryHistoryLoaded(conn_id, entries),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.query_history_picker.entries.is_empty());
-        }
-
-        #[test]
-        fn load_failed_sets_error_with_expiry() {
-            let mut state = connected_state();
-            state.modal.set_mode(InputMode::QueryHistoryPicker);
-            let now = Instant::now();
-
-            reduce_modal(
-                &mut state,
-                &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(
-                    "disk error".to_string(),
-                )),
-                now,
-            )
-            .unwrap();
-
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("IO error: disk error")
-            );
-            assert!(state.messages.expires_at.is_some());
-        }
-
-        #[test]
-        fn load_failed_ignored_when_picker_not_active() {
-            let mut state = connected_state();
-            let now = Instant::now();
-
-            reduce_modal(
-                &mut state,
-                &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(
-                    "stale error".to_string(),
-                )),
-                now,
-            )
-            .unwrap();
-
-            assert!(state.messages.last_error.is_none());
-        }
-
-        #[test]
-        fn append_failed_does_not_set_error() {
-            let mut state = connected_state();
-            let now = Instant::now();
-
-            let effects = reduce_modal(
-                &mut state,
-                &Action::QueryHistoryAppendFailed(QueryHistoryError::IoError(
-                    "write error".to_string(),
-                )),
-                now,
-            )
-            .unwrap();
-
-            assert!(state.messages.last_error.is_none());
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn filter_input_resets_selection() {
-            let mut state = connected_state();
-            state.query_history_picker.selected = 5;
-
-            let effects = reduce_modal(
-                &mut state,
-                &Action::TextInput {
-                    target: InputTarget::QueryHistoryFilter,
-                    ch: 'a',
-                },
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert_eq!(state.query_history_picker.selected, 0);
-            assert_eq!(state.query_history_picker.filter_input.content(), "a");
-            assert!(effects.is_empty());
-        }
-
         fn enter_query_history(state: &mut AppState, origin: InputMode) {
             state.modal.set_mode(origin);
             state.modal.push_mode(InputMode::QueryHistoryPicker);
         }
 
-        #[test]
-        fn confirm_sets_cursor_to_char_count_not_byte_len() {
-            let mut state = connected_state();
-            enter_query_history(&mut state, InputMode::Normal);
-            // 「SELECT 'あいう'」: 13 chars but 19 bytes
-            let query = "SELECT '\u{3042}\u{3044}\u{3046}'".to_string();
-            let expected_chars = query.chars().count(); // 13
-            assert_ne!(query.len(), expected_chars); // sanity: bytes != chars
-            let test_conn = ConnectionId::from_string("test-conn");
-            state.query_history_picker.entries = vec![make_entry(&query, &test_conn)];
+        mod open_guards {
+            use super::*;
 
-            reduce_modal(
-                &mut state,
-                &Action::QueryHistoryConfirmSelection,
-                Instant::now(),
-            )
-            .unwrap();
+            #[test]
+            fn open_when_not_connected_is_noop() {
+                let mut state = create_test_state();
+                state.session.active_connection_id = None;
 
-            assert_eq!(state.sql_modal.editor.cursor(), expected_chars);
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::OpenQueryHistoryPicker,
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert!(effects.is_empty());
+            }
+
+            #[test]
+            fn open_when_running_is_noop() {
+                let mut state = connected_state();
+                state.query.begin_running(Instant::now());
+
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::OpenQueryHistoryPicker,
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert!(effects.is_empty());
+            }
+
+            #[test]
+            fn open_from_normal_sets_mode_and_emits_load_effect() {
+                let mut state = connected_state();
+
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::OpenQueryHistoryPicker,
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
+                assert_eq!(state.modal.return_destination(), InputMode::Normal);
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(&effects[0], Effect::LoadQueryHistory { .. }));
+            }
         }
 
-        #[test]
-        fn confirm_from_normal_opens_sql_modal_with_query() {
-            let mut state = connected_state();
-            enter_query_history(&mut state, InputMode::Normal);
-            let test_conn = ConnectionId::from_string("test-conn");
-            state.query_history_picker.entries =
-                vec![make_entry("SELECT * FROM users", &test_conn)];
-            state.query_history_picker.selected = 0;
+        mod lifecycle {
+            use super::*;
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::QueryHistoryConfirmSelection,
-                Instant::now(),
-            )
-            .unwrap();
+            #[test]
+            fn close_restores_origin_mode() {
+                let mut state = connected_state();
+                state.modal.set_mode(InputMode::SqlModal);
+                state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-            assert_eq!(state.input_mode(), InputMode::SqlModal);
-            assert_eq!(state.sql_modal.editor.content(), "SELECT * FROM users");
-            assert!(matches!(
-                state.sql_modal.status(),
-                crate::app::model::sql_editor::modal::SqlModalStatus::Normal
-            ));
-            assert!(effects.is_empty());
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::CloseQueryHistoryPicker,
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::SqlModal);
+                assert!(effects.is_empty());
+            }
         }
 
-        #[test]
-        fn confirm_from_sql_modal_overwrites_editor_content() {
-            let mut state = connected_state();
-            enter_query_history(&mut state, InputMode::SqlModal);
-            state.sql_modal.editor.set_content("old query".to_string());
-            state
-                .sql_modal
-                .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
-            state.sql_modal.completion.visible = true;
-            state.sql_modal.completion.candidates = vec![
-                crate::app::model::sql_editor::completion::CompletionCandidate {
-                    text: "stale".to_string(),
-                    kind: crate::app::model::sql_editor::completion::CompletionKind::Keyword,
-                    score: 1,
-                },
-            ];
-            state.sql_modal.completion.selected_index = 3;
-            let test_conn = ConnectionId::from_string("test-conn");
-            state.query_history_picker.entries = vec![make_entry("new query", &test_conn)];
-            state.query_history_picker.selected = 0;
+        mod loading {
+            use super::*;
 
-            reduce_modal(
-                &mut state,
-                &Action::QueryHistoryConfirmSelection,
-                Instant::now(),
-            )
-            .unwrap();
+            #[test]
+            fn loaded_stores_entries() {
+                let mut state = connected_state();
+                state.modal.set_mode(InputMode::QueryHistoryPicker);
+                let conn_id = ConnectionId::from_string("test-conn");
+                let entries = vec![make_entry("SELECT 1", &conn_id)];
 
-            assert_eq!(state.input_mode(), InputMode::SqlModal);
-            assert_eq!(state.sql_modal.editor.content(), "new query");
-            assert!(matches!(
-                state.sql_modal.status(),
-                crate::app::model::sql_editor::modal::SqlModalStatus::Normal
-            ));
-            assert!(!state.sql_modal.completion.visible);
-            assert!(state.sql_modal.completion.candidates.is_empty());
-            assert_eq!(state.sql_modal.completion.selected_index, 0);
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryLoaded(conn_id, entries),
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.query_history_picker.entries.len(), 1);
+                assert!(effects.is_empty());
+            }
+
+            #[test]
+            fn loaded_ignores_stale_connection() {
+                let mut state = connected_state();
+                state.modal.set_mode(InputMode::QueryHistoryPicker);
+                let stale_conn = ConnectionId::from_string("old-conn");
+                let entries = vec![make_entry("SELECT 1", &stale_conn)];
+
+                reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryLoaded(stale_conn, entries),
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert!(state.query_history_picker.entries.is_empty());
+            }
+
+            #[test]
+            fn loaded_ignores_when_picker_closed() {
+                let mut state = connected_state();
+                let conn_id = ConnectionId::from_string("test-conn");
+                let entries = vec![make_entry("SELECT 1", &conn_id)];
+
+                reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryLoaded(conn_id, entries),
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert!(state.query_history_picker.entries.is_empty());
+            }
+
+            #[test]
+            fn load_failed_sets_error_with_expiry() {
+                let mut state = connected_state();
+                state.modal.set_mode(InputMode::QueryHistoryPicker);
+                let now = Instant::now();
+
+                reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(
+                        "disk error".to_string(),
+                    )),
+                    now,
+                )
+                .unwrap();
+
+                assert_eq!(
+                    state.messages.last_error.as_deref(),
+                    Some("IO error: disk error")
+                );
+                assert!(state.messages.expires_at.is_some());
+            }
+
+            #[test]
+            fn load_failed_ignored_when_picker_not_active() {
+                let mut state = connected_state();
+                let now = Instant::now();
+
+                reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(
+                        "stale error".to_string(),
+                    )),
+                    now,
+                )
+                .unwrap();
+
+                assert!(state.messages.last_error.is_none());
+            }
+
+            #[test]
+            fn append_failed_does_not_set_error() {
+                let mut state = connected_state();
+                let now = Instant::now();
+
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryAppendFailed(QueryHistoryError::IoError(
+                        "write error".to_string(),
+                    )),
+                    now,
+                )
+                .unwrap();
+
+                assert!(state.messages.last_error.is_none());
+                assert!(effects.is_empty());
+            }
         }
 
-        #[test]
-        fn confirm_with_empty_entries_is_noop() {
-            let mut state = connected_state();
-            enter_query_history(&mut state, InputMode::Normal);
+        mod filter_and_selection {
+            use super::*;
 
-            reduce_modal(
-                &mut state,
-                &Action::QueryHistoryConfirmSelection,
-                Instant::now(),
-            )
-            .unwrap();
+            #[test]
+            fn filter_input_resets_selection() {
+                let mut state = connected_state();
+                state.query_history_picker.selected = 5;
 
-            assert_eq!(state.input_mode(), InputMode::Normal);
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::QueryHistoryFilter,
+                        ch: 'a',
+                    },
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.query_history_picker.selected, 0);
+                assert_eq!(state.query_history_picker.filter_input.content(), "a");
+                assert!(effects.is_empty());
+            }
+
+            #[test]
+            fn select_next_increments() {
+                let mut state = connected_state();
+                let test_conn = ConnectionId::from_string("test-conn");
+                state.query_history_picker.entries = vec![
+                    make_entry("SELECT 1", &test_conn),
+                    make_entry("SELECT 2", &test_conn),
+                ];
+                state.query_history_picker.selected = 0;
+
+                reduce_modal(
+                    &mut state,
+                    &Action::ListSelect {
+                        target: ListTarget::QueryHistory,
+                        motion: ListMotion::Next,
+                    },
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.query_history_picker.selected, 1);
+            }
+
+            #[test]
+            fn select_next_clamps_at_end() {
+                let mut state = connected_state();
+                let test_conn = ConnectionId::from_string("test-conn");
+                state.query_history_picker.entries = vec![make_entry("SELECT 1", &test_conn)];
+                state.query_history_picker.selected = 0;
+
+                reduce_modal(
+                    &mut state,
+                    &Action::ListSelect {
+                        target: ListTarget::QueryHistory,
+                        motion: ListMotion::Next,
+                    },
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.query_history_picker.selected, 0);
+            }
+
+            #[test]
+            fn select_previous_decrements() {
+                let mut state = connected_state();
+                state.query_history_picker.selected = 1;
+
+                reduce_modal(
+                    &mut state,
+                    &Action::ListSelect {
+                        target: ListTarget::QueryHistory,
+                        motion: ListMotion::Previous,
+                    },
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.query_history_picker.selected, 0);
+            }
         }
 
-        #[test]
-        fn select_next_increments() {
-            let mut state = connected_state();
-            let test_conn = ConnectionId::from_string("test-conn");
-            state.query_history_picker.entries = vec![
-                make_entry("SELECT 1", &test_conn),
-                make_entry("SELECT 2", &test_conn),
-            ];
-            state.query_history_picker.selected = 0;
+        mod confirm_selection {
+            use super::*;
 
-            reduce_modal(
-                &mut state,
-                &Action::ListSelect {
-                    target: ListTarget::QueryHistory,
-                    motion: ListMotion::Next,
-                },
-                Instant::now(),
-            )
-            .unwrap();
+            #[test]
+            fn confirm_sets_cursor_to_char_count_not_byte_len() {
+                let mut state = connected_state();
+                enter_query_history(&mut state, InputMode::Normal);
+                // 「SELECT 'あいう'」: 13 chars but 19 bytes
+                let query = "SELECT '\u{3042}\u{3044}\u{3046}'".to_string();
+                let expected_chars = query.chars().count(); // 13
+                assert_ne!(query.len(), expected_chars); // sanity: bytes != chars
+                let test_conn = ConnectionId::from_string("test-conn");
+                state.query_history_picker.entries = vec![make_entry(&query, &test_conn)];
 
-            assert_eq!(state.query_history_picker.selected, 1);
-        }
+                reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryConfirmSelection,
+                    Instant::now(),
+                )
+                .unwrap();
 
-        #[test]
-        fn select_next_clamps_at_end() {
-            let mut state = connected_state();
-            let test_conn = ConnectionId::from_string("test-conn");
-            state.query_history_picker.entries = vec![make_entry("SELECT 1", &test_conn)];
-            state.query_history_picker.selected = 0;
+                assert_eq!(state.sql_modal.editor.cursor(), expected_chars);
+            }
 
-            reduce_modal(
-                &mut state,
-                &Action::ListSelect {
-                    target: ListTarget::QueryHistory,
-                    motion: ListMotion::Next,
-                },
-                Instant::now(),
-            )
-            .unwrap();
+            #[test]
+            fn confirm_from_normal_opens_sql_modal_with_query() {
+                let mut state = connected_state();
+                enter_query_history(&mut state, InputMode::Normal);
+                let test_conn = ConnectionId::from_string("test-conn");
+                state.query_history_picker.entries =
+                    vec![make_entry("SELECT * FROM users", &test_conn)];
+                state.query_history_picker.selected = 0;
 
-            assert_eq!(state.query_history_picker.selected, 0);
-        }
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryConfirmSelection,
+                    Instant::now(),
+                )
+                .unwrap();
 
-        #[test]
-        fn select_previous_decrements() {
-            let mut state = connected_state();
-            state.query_history_picker.selected = 1;
+                assert_eq!(state.input_mode(), InputMode::SqlModal);
+                assert_eq!(state.sql_modal.editor.content(), "SELECT * FROM users");
+                assert!(matches!(
+                    state.sql_modal.status(),
+                    crate::app::model::sql_editor::modal::SqlModalStatus::Normal
+                ));
+                assert!(effects.is_empty());
+            }
 
-            reduce_modal(
-                &mut state,
-                &Action::ListSelect {
-                    target: ListTarget::QueryHistory,
-                    motion: ListMotion::Previous,
-                },
-                Instant::now(),
-            )
-            .unwrap();
+            #[test]
+            fn confirm_from_sql_modal_overwrites_editor_content() {
+                let mut state = connected_state();
+                enter_query_history(&mut state, InputMode::SqlModal);
+                state.sql_modal.editor.set_content("old query".to_string());
+                state
+                    .sql_modal
+                    .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
+                state.sql_modal.completion.visible = true;
+                state.sql_modal.completion.candidates = vec![
+                    crate::app::model::sql_editor::completion::CompletionCandidate {
+                        text: "stale".to_string(),
+                        kind: crate::app::model::sql_editor::completion::CompletionKind::Keyword,
+                        score: 1,
+                    },
+                ];
+                state.sql_modal.completion.selected_index = 3;
+                let test_conn = ConnectionId::from_string("test-conn");
+                state.query_history_picker.entries = vec![make_entry("new query", &test_conn)];
+                state.query_history_picker.selected = 0;
 
-            assert_eq!(state.query_history_picker.selected, 0);
+                reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryConfirmSelection,
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::SqlModal);
+                assert_eq!(state.sql_modal.editor.content(), "new query");
+                assert!(matches!(
+                    state.sql_modal.status(),
+                    crate::app::model::sql_editor::modal::SqlModalStatus::Normal
+                ));
+                assert!(!state.sql_modal.completion.visible);
+                assert!(state.sql_modal.completion.candidates.is_empty());
+                assert_eq!(state.sql_modal.completion.selected_index, 0);
+            }
+
+            #[test]
+            fn confirm_with_empty_entries_is_noop() {
+                let mut state = connected_state();
+                enter_query_history(&mut state, InputMode::Normal);
+
+                reduce_modal(
+                    &mut state,
+                    &Action::QueryHistoryConfirmSelection,
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::Normal);
+            }
         }
     }
 
