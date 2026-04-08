@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
+  RUST_BACKTRACE: short
 
 jobs:
   fmt:
@@ -41,8 +41,22 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - run: cargo test --all-features
-      - run: cargo test --no-default-features
+      - uses: taiki-e/install-action@9146e85986ba7fa6573f40c3e63a9f1c23ba9e77 # cargo-nextest
+      - id: test_all_features
+        continue-on-error: true
+        run: cargo nextest run --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
+      - id: test_no_default_features
+        continue-on-error: true
+        run: cargo nextest run --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
+      - name: Summarize failed tests
+        if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
+        run: |
+          python3 scripts/ci_test_failure_summary.py \
+            target/nextest/ci-all/junit-all-features.xml \
+            target/nextest/ci-no-default/junit-no-default-features.xml >> "$GITHUB_STEP_SUMMARY"
+      - name: Fail job if tests failed
+        if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
+        run: exit 1
 
   build:
     name: Build
