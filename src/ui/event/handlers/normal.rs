@@ -187,6 +187,25 @@ mod tests {
         AppState::new("test".to_string())
     }
 
+    fn focus_mode_state() -> AppState {
+        let mut state = browse_state();
+        state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+        state.ui.focused_pane = FocusedPane::Result;
+        state
+    }
+
+    fn result_focused_state() -> AppState {
+        let mut state = browse_state();
+        state.ui.focused_pane = FocusedPane::Result;
+        state
+    }
+
+    fn inspector_focused_state() -> AppState {
+        let mut state = browse_state();
+        state.ui.focused_pane = FocusedPane::Inspector;
+        state
+    }
+
     mod dispatch_stage {
         use super::*;
         use rstest::rstest;
@@ -447,727 +466,712 @@ mod tests {
         }
     }
 
-    fn focus_mode_state() -> AppState {
-        let mut state = browse_state();
-        state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-        state.ui.focused_pane = FocusedPane::Result;
-        state
+    mod pane_contracts {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case(Key::Char('j'))]
+        #[case(Key::Down)]
+        fn focus_mode_j_scrolls_down(#[case] code: Key) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(combo(code), &state);
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('k'))]
+        #[case(Key::Up)]
+        fn focus_mode_k_scrolls_up(#[case] code: Key) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(combo(code), &state);
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('g'))]
+        #[case(Key::Home)]
+        fn focus_mode_g_scrolls_top(#[case] code: Key) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(combo(code), &state);
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart
+                }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('G'))]
+        #[case(Key::End)]
+        fn focus_mode_shift_g_scrolls_bottom(#[case] code: Key) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(combo(code), &state);
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd
+                }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('h'))]
+        #[case(Key::Left)]
+        fn focus_mode_h_scrolls_left(#[case] code: Key) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(combo(code), &state);
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Left,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('l'))]
+        #[case(Key::Right)]
+        fn focus_mode_l_scrolls_right(#[case] code: Key) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(combo(code), &state);
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[test]
+        fn result_focused_navigation_scrolls_result() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('j')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[test]
+        fn result_focused_h_scrolls_left() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('h')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Left,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[test]
+        fn result_focused_l_scrolls_right() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('l')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[test]
+        fn d_sets_delete_op_pending_in_cell_active() {
+            let mut state = result_focused_state();
+            state.result_interaction.activate_cell(0, 0);
+
+            let result = handle_normal_mode(combo(Key::Char('d')), &state);
+
+            assert!(matches!(result, Action::ResultDeleteOperatorPending));
+        }
+
+        #[test]
+        fn dd_stages_row_for_delete_in_cell_active() {
+            let mut state = result_focused_state();
+            state.result_interaction.activate_cell(0, 0);
+            state.result_interaction.delete_op_pending = true;
+
+            let result = handle_normal_mode(combo(Key::Char('d')), &state);
+
+            assert!(matches!(result, Action::StageRowForDelete));
+        }
+
+        #[test]
+        fn d_in_scroll_mode_is_noop() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('d')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn y_in_cell_active_sets_row_yank_pending() {
+            let mut state = result_focused_state();
+            state.result_interaction.activate_cell(0, 0);
+
+            let result = handle_normal_mode(combo(Key::Char('y')), &state);
+
+            assert!(matches!(result, Action::ResultRowYankOperatorPending));
+        }
+
+        #[test]
+        fn yy_triggers_row_yank_in_cell_active() {
+            let mut state = result_focused_state();
+            state.result_interaction.activate_cell(0, 0);
+            state.result_interaction.yank_op_pending = true;
+
+            let result = handle_normal_mode(combo(Key::Char('y')), &state);
+
+            assert!(matches!(result, Action::ResultRowYank));
+        }
+
+        #[test]
+        fn y_in_scroll_mode_ignored() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('y')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn capital_y_in_cell_active_yanks_cell() {
+            let mut state = result_focused_state();
+            state.result_interaction.activate_cell(0, 0);
+
+            let result = handle_normal_mode(combo(Key::Char('Y')), &state);
+
+            assert!(matches!(result, Action::ResultCellYank));
+        }
+
+        #[test]
+        fn h_key_scrolls_left_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo(Key::Char('h')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Explorer,
+                    direction: ScrollDirection::Left,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[test]
+        fn l_key_scrolls_right_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo(Key::Char('l')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Explorer,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_o_opens_query_history_picker() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('o')), &state);
+
+            assert!(matches!(result, Action::OpenQueryHistoryPicker));
+        }
+
+        #[test]
+        fn ctrl_r_toggles_read_only() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('r')), &state);
+
+            assert!(matches!(result, Action::ToggleReadOnly));
+        }
+
+        #[test]
+        fn e_key_opens_er_table_picker() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo(Key::Char('e')), &state);
+
+            assert!(matches!(result, Action::OpenErTablePicker));
+        }
+
+        #[test]
+        fn esc_in_cell_active_with_draft_returns_discard() {
+            let mut state = result_focused_state();
+            state.result_interaction.activate_cell(0, 1);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "original".to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content("modified".to_string());
+
+            let result = handle_normal_mode(combo(Key::Esc), &state);
+
+            assert!(matches!(result, Action::ResultDiscardCellEdit));
+        }
+
+        #[test]
+        fn esc_in_cell_active_without_draft_returns_exit_to_scroll() {
+            let mut state = result_focused_state();
+            state.result_interaction.activate_cell(0, 1);
+
+            let result = handle_normal_mode(combo(Key::Esc), &state);
+
+            assert!(matches!(result, Action::ResultExitToScroll));
+        }
+
+        #[test]
+        fn i_key_enters_cell_edit_when_cell_active() {
+            let mut state = result_focused_state();
+            state.result_interaction.activate_cell(0, 1);
+
+            let result = handle_normal_mode(combo(Key::Char('i')), &state);
+
+            assert!(matches!(result, Action::ResultEnterCellEdit));
+        }
+
+        #[test]
+        fn i_key_is_noop_without_cell_active() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('i')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn h_key_returns_select_viewport_top_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo(Key::Char('H')), &state);
+
+            assert!(matches!(result, Action::Select(SelectMotion::ViewportTop)));
+        }
+
+        #[test]
+        fn m_key_returns_select_middle_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo(Key::Char('M')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Select(SelectMotion::ViewportMiddle)
+            ));
+        }
+
+        #[test]
+        fn l_key_returns_select_viewport_bottom_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo(Key::Char('L')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Select(SelectMotion::ViewportBottom)
+            ));
+        }
+
+        #[test]
+        fn h_key_returns_result_scroll_viewport_top_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('H')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ViewportTop
+                }
+            ));
+        }
+
+        #[test]
+        fn m_key_returns_result_scroll_middle_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('M')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ViewportMiddle
+                }
+            ));
+        }
+
+        #[test]
+        fn l_key_returns_result_scroll_viewport_bottom_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('L')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ViewportBottom
+                }
+            ));
+        }
+
+        #[test]
+        fn m_key_returns_result_scroll_middle_in_focus_mode() {
+            let state = focus_mode_state();
+
+            let result = handle_normal_mode(combo(Key::Char('M')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ViewportMiddle
+                }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('g'))]
+        #[case(Key::Home)]
+        fn g_scrolls_inspector_top(#[case] code: Key) {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(combo(code), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_p_scrolls_inspector_up() {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line
+                }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('G'))]
+        #[case(Key::End)]
+        fn shift_g_scrolls_inspector_bottom(#[case] code: Key) {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(combo(code), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd
+                }
+            ));
+        }
+
+        #[rstest]
+        #[case(Key::Char('H'))]
+        #[case(Key::Char('M'))]
+        #[case(Key::Char('L'))]
+        fn hml_noop_when_inspector_focused(#[case] key: Key) {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(combo(key), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn c_key_opens_connection_selector() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo(Key::Char('c')), &state);
+
+            assert!(matches!(result, Action::OpenConnectionSelector));
+        }
+
+        #[test]
+        fn c_key_noop_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('c')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn c_key_noop_when_inspector_focused() {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('c')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn bracket_right_returns_next_page_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char(']')), &state);
+
+            assert!(matches!(result, Action::ResultNextPage));
+        }
+
+        #[test]
+        fn bracket_left_returns_prev_page_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('[')), &state);
+
+            assert!(matches!(result, Action::ResultPrevPage));
+        }
+
+        #[test]
+        fn brackets_return_none_when_explorer_focused() {
+            let state = browse_state();
+
+            let right = handle_normal_mode(combo(Key::Char(']')), &state);
+            let left = handle_normal_mode(combo(Key::Char('[')), &state);
+
+            assert!(matches!(right, Action::None));
+            assert!(matches!(left, Action::None));
+        }
+
+        #[test]
+        fn bracket_right_returns_next_page_in_focus_mode() {
+            let state = focus_mode_state();
+
+            let result = handle_normal_mode(combo(Key::Char(']')), &state);
+
+            assert!(matches!(result, Action::ResultNextPage));
+        }
+
+        #[test]
+        fn bracket_left_returns_prev_page_in_focus_mode() {
+            let state = focus_mode_state();
+
+            let result = handle_normal_mode(combo(Key::Char('[')), &state);
+
+            assert!(matches!(result, Action::ResultPrevPage));
+        }
+
+        #[test]
+        fn ctrl_d_scrolls_result_half_page_down() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::HalfPage
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_u_scrolls_result_half_page_up() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('u')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::HalfPage
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_f_scrolls_result_full_page_down() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('f')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_b_scrolls_result_full_page_up() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('b')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::FullPage
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_d_scrolls_inspector_half_page_down() {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::HalfPage
+                }
+            ));
+        }
+
+        #[test]
+        fn ctrl_d_scrolls_explorer_half_page_down() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
+
+            assert!(matches!(result, Action::Select(SelectMotion::HalfPageDown)));
+        }
+
+        #[test]
+        fn pagedown_scrolls_result_full_page_down() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::PageDown), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage
+                }
+            ));
+        }
+
+        #[test]
+        fn pageup_scrolls_result_full_page_up() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::PageUp), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::FullPage
+                }
+            ));
+        }
+
+        #[test]
+        fn pagedown_scrolls_inspector_full_page_down() {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(combo(Key::PageDown), &state);
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage
+                }
+            ));
+        }
+
+        #[test]
+        fn pagedown_scrolls_explorer_full_page_down() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo(Key::PageDown), &state);
+
+            assert!(matches!(result, Action::Select(SelectMotion::FullPageDown)));
+        }
     }
 
-    fn result_focused_state() -> AppState {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Result;
-        state
-    }
-
-    #[rstest]
-    #[case(Key::Char('j'))]
-    #[case(Key::Down)]
-    fn focus_mode_j_scrolls_down(#[case] code: Key) {
-        let state = focus_mode_state();
-        let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[rstest]
-    #[case(Key::Char('k'))]
-    #[case(Key::Up)]
-    fn focus_mode_k_scrolls_up(#[case] code: Key) {
-        let state = focus_mode_state();
-        let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[rstest]
-    #[case(Key::Char('g'))]
-    #[case(Key::Home)]
-    fn focus_mode_g_scrolls_top(#[case] code: Key) {
-        let state = focus_mode_state();
-        let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::ToStart
-            }
-        ));
-    }
-
-    #[rstest]
-    #[case(Key::Char('G'))]
-    #[case(Key::End)]
-    fn focus_mode_shift_g_scrolls_bottom(#[case] code: Key) {
-        let state = focus_mode_state();
-        let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::ToEnd
-            }
-        ));
-    }
-
-    #[rstest]
-    #[case(Key::Char('h'))]
-    #[case(Key::Left)]
-    fn focus_mode_h_scrolls_left(#[case] code: Key) {
-        let state = focus_mode_state();
-        let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Left,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[rstest]
-    #[case(Key::Char('l'))]
-    #[case(Key::Right)]
-    fn focus_mode_l_scrolls_right(#[case] code: Key) {
-        let state = focus_mode_state();
-        let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Right,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[test]
-    fn result_focused_navigation_scrolls_result() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('j')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[test]
-    fn result_focused_h_scrolls_left() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('h')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Left,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[test]
-    fn result_focused_l_scrolls_right() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('l')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Right,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[test]
-    fn d_sets_delete_op_pending_in_cell_active() {
-        let mut state = result_focused_state();
-        state.result_interaction.activate_cell(0, 0);
-
-        let result = handle_normal_mode(combo(Key::Char('d')), &state);
-
-        assert!(matches!(result, Action::ResultDeleteOperatorPending));
-    }
-
-    #[test]
-    fn dd_stages_row_for_delete_in_cell_active() {
-        let mut state = result_focused_state();
-        state.result_interaction.activate_cell(0, 0);
-        state.result_interaction.delete_op_pending = true;
-
-        let result = handle_normal_mode(combo(Key::Char('d')), &state);
-
-        assert!(matches!(result, Action::StageRowForDelete));
-    }
-
-    #[test]
-    fn d_in_scroll_mode_is_noop() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('d')), &state);
-
-        assert!(matches!(result, Action::None));
-    }
-
-    #[test]
-    fn y_in_cell_active_sets_row_yank_pending() {
-        let mut state = result_focused_state();
-        state.result_interaction.activate_cell(0, 0);
-
-        let result = handle_normal_mode(combo(Key::Char('y')), &state);
-
-        assert!(matches!(result, Action::ResultRowYankOperatorPending));
-    }
-
-    #[test]
-    fn yy_triggers_row_yank_in_cell_active() {
-        let mut state = result_focused_state();
-        state.result_interaction.activate_cell(0, 0);
-        state.result_interaction.yank_op_pending = true;
-
-        let result = handle_normal_mode(combo(Key::Char('y')), &state);
-
-        assert!(matches!(result, Action::ResultRowYank));
-    }
-
-    #[test]
-    fn y_in_scroll_mode_ignored() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('y')), &state);
-
-        assert!(matches!(result, Action::None));
-    }
-
-    #[test]
-    fn capital_y_in_cell_active_yanks_cell() {
-        let mut state = result_focused_state();
-        state.result_interaction.activate_cell(0, 0);
-
-        let result = handle_normal_mode(combo(Key::Char('Y')), &state);
-
-        assert!(matches!(result, Action::ResultCellYank));
-    }
-
-    #[test]
-    fn h_key_scrolls_left_when_explorer_focused() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo(Key::Char('h')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Explorer,
-                direction: ScrollDirection::Left,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[test]
-    fn l_key_scrolls_right_when_explorer_focused() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo(Key::Char('l')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Explorer,
-                direction: ScrollDirection::Right,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[test]
-    fn ctrl_o_opens_query_history_picker() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo_ctrl(Key::Char('o')), &state);
-
-        assert!(matches!(result, Action::OpenQueryHistoryPicker));
-    }
-
-    #[test]
-    fn ctrl_r_toggles_read_only() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo_ctrl(Key::Char('r')), &state);
-
-        assert!(matches!(result, Action::ToggleReadOnly));
-    }
-
-    #[test]
-    fn e_key_opens_er_table_picker() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo(Key::Char('e')), &state);
-
-        assert!(matches!(result, Action::OpenErTablePicker));
-    }
-
-    #[test]
-    fn esc_in_cell_active_with_draft_returns_discard() {
-        let mut state = result_focused_state();
-        state.result_interaction.activate_cell(0, 1);
-        state
-            .result_interaction
-            .begin_cell_edit(0, 1, "original".to_string());
-        state
-            .result_interaction
-            .cell_edit_input_mut()
-            .set_content("modified".to_string());
-
-        let result = handle_normal_mode(combo(Key::Esc), &state);
-
-        assert!(matches!(result, Action::ResultDiscardCellEdit));
-    }
-
-    #[test]
-    fn esc_in_cell_active_without_draft_returns_exit_to_scroll() {
-        let mut state = result_focused_state();
-        state.result_interaction.activate_cell(0, 1);
-
-        let result = handle_normal_mode(combo(Key::Esc), &state);
-
-        assert!(matches!(result, Action::ResultExitToScroll));
-    }
-
-    #[test]
-    fn i_key_enters_cell_edit_when_cell_active() {
-        let mut state = result_focused_state();
-        state.result_interaction.activate_cell(0, 1);
-
-        let result = handle_normal_mode(combo(Key::Char('i')), &state);
-
-        assert!(matches!(result, Action::ResultEnterCellEdit));
-    }
-
-    #[test]
-    fn i_key_is_noop_without_cell_active() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('i')), &state);
-
-        assert!(matches!(result, Action::None));
-    }
-
-    #[test]
-    fn h_key_returns_select_viewport_top_when_explorer_focused() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo(Key::Char('H')), &state);
-
-        assert!(matches!(result, Action::Select(SelectMotion::ViewportTop)));
-    }
-
-    #[test]
-    fn m_key_returns_select_middle_when_explorer_focused() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo(Key::Char('M')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Select(SelectMotion::ViewportMiddle)
-        ));
-    }
-
-    #[test]
-    fn l_key_returns_select_viewport_bottom_when_explorer_focused() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo(Key::Char('L')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Select(SelectMotion::ViewportBottom)
-        ));
-    }
-
-    #[test]
-    fn h_key_returns_result_scroll_viewport_top_when_result_focused() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('H')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::ViewportTop
-            }
-        ));
-    }
-
-    #[test]
-    fn m_key_returns_result_scroll_middle_when_result_focused() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('M')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::ViewportMiddle
-            }
-        ));
-    }
-
-    #[test]
-    fn l_key_returns_result_scroll_viewport_bottom_when_result_focused() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('L')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::ViewportBottom
-            }
-        ));
-    }
-
-    #[test]
-    fn m_key_returns_result_scroll_middle_in_focus_mode() {
-        let state = focus_mode_state();
-
-        let result = handle_normal_mode(combo(Key::Char('M')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::ViewportMiddle
-            }
-        ));
-    }
-
-    fn inspector_focused_state() -> AppState {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Inspector;
-        state
-    }
-
-    #[rstest]
-    #[case(Key::Char('g'))]
-    #[case(Key::Home)]
-    fn g_scrolls_inspector_top(#[case] code: Key) {
-        let state = inspector_focused_state();
-
-        let result = handle_normal_mode(combo(code), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Inspector,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::ToStart
-            }
-        ));
-    }
-
-    #[test]
-    fn ctrl_p_scrolls_inspector_up() {
-        let state = inspector_focused_state();
-
-        let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Inspector,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::Line
-            }
-        ));
-    }
-
-    #[rstest]
-    #[case(Key::Char('G'))]
-    #[case(Key::End)]
-    fn shift_g_scrolls_inspector_bottom(#[case] code: Key) {
-        let state = inspector_focused_state();
-
-        let result = handle_normal_mode(combo(code), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Inspector,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::ToEnd
-            }
-        ));
-    }
-
-    #[rstest]
-    #[case(Key::Char('H'))]
-    #[case(Key::Char('M'))]
-    #[case(Key::Char('L'))]
-    fn hml_noop_when_inspector_focused(#[case] key: Key) {
-        let state = inspector_focused_state();
-
-        let result = handle_normal_mode(combo(key), &state);
-
-        assert!(matches!(result, Action::None));
-    }
-
-    #[test]
-    fn c_key_opens_connection_selector() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo(Key::Char('c')), &state);
-
-        assert!(matches!(result, Action::OpenConnectionSelector));
-    }
-
-    #[test]
-    fn c_key_noop_when_result_focused() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('c')), &state);
-
-        assert!(matches!(result, Action::None));
-    }
-
-    #[test]
-    fn c_key_noop_when_inspector_focused() {
-        let state = inspector_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('c')), &state);
-
-        assert!(matches!(result, Action::None));
-    }
-
-    #[test]
-    fn bracket_right_returns_next_page_when_result_focused() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char(']')), &state);
-
-        assert!(matches!(result, Action::ResultNextPage));
-    }
-
-    #[test]
-    fn bracket_left_returns_prev_page_when_result_focused() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('[')), &state);
-
-        assert!(matches!(result, Action::ResultPrevPage));
-    }
-
-    #[test]
-    fn brackets_return_none_when_explorer_focused() {
-        let state = browse_state();
-
-        let right = handle_normal_mode(combo(Key::Char(']')), &state);
-        let left = handle_normal_mode(combo(Key::Char('[')), &state);
-
-        assert!(matches!(right, Action::None));
-        assert!(matches!(left, Action::None));
-    }
-
-    #[test]
-    fn bracket_right_returns_next_page_in_focus_mode() {
-        let state = focus_mode_state();
-
-        let result = handle_normal_mode(combo(Key::Char(']')), &state);
-
-        assert!(matches!(result, Action::ResultNextPage));
-    }
-
-    #[test]
-    fn bracket_left_returns_prev_page_in_focus_mode() {
-        let state = focus_mode_state();
-
-        let result = handle_normal_mode(combo(Key::Char('[')), &state);
-
-        assert!(matches!(result, Action::ResultPrevPage));
-    }
-
-    // Page scroll: Ctrl-D/U/F/B and PageDown/PageUp
-    #[test]
-    fn ctrl_d_scrolls_result_half_page_down() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::HalfPage
-            }
-        ));
-    }
-
-    #[test]
-    fn ctrl_u_scrolls_result_half_page_up() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo_ctrl(Key::Char('u')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::HalfPage
-            }
-        ));
-    }
-
-    #[test]
-    fn ctrl_f_scrolls_result_full_page_down() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo_ctrl(Key::Char('f')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::FullPage
-            }
-        ));
-    }
-
-    #[test]
-    fn ctrl_b_scrolls_result_full_page_up() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo_ctrl(Key::Char('b')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::FullPage
-            }
-        ));
-    }
-
-    #[test]
-    fn ctrl_d_scrolls_inspector_half_page_down() {
-        let state = inspector_focused_state();
-
-        let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Inspector,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::HalfPage
-            }
-        ));
-    }
-
-    #[test]
-    fn ctrl_d_scrolls_explorer_half_page_down() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
-
-        assert!(matches!(result, Action::Select(SelectMotion::HalfPageDown)));
-    }
-
-    #[test]
-    fn pagedown_scrolls_result_full_page_down() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::PageDown), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::FullPage
-            }
-        ));
-    }
-
-    #[test]
-    fn pageup_scrolls_result_full_page_up() {
-        let state = result_focused_state();
-
-        let result = handle_normal_mode(combo(Key::PageUp), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Result,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::FullPage
-            }
-        ));
-    }
-
-    #[test]
-    fn pagedown_scrolls_inspector_full_page_down() {
-        let state = inspector_focused_state();
-
-        let result = handle_normal_mode(combo(Key::PageDown), &state);
-
-        assert!(matches!(
-            result,
-            Action::Scroll {
-                target: ScrollTarget::Inspector,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::FullPage
-            }
-        ));
-    }
-
-    #[test]
-    fn pagedown_scrolls_explorer_full_page_down() {
-        let state = browse_state();
-
-        let result = handle_normal_mode(combo(Key::PageDown), &state);
-
-        assert!(matches!(result, Action::Select(SelectMotion::FullPageDown)));
-    }
-
-    mod result_history {
+    mod history_mode {
         use super::*;
         use crate::domain::{QueryResult, QuerySource};
         use std::sync::Arc;
@@ -1445,24 +1449,6 @@ mod tests {
         }
     }
 
-    mod shift_uppercase_regression {
-        use super::*;
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
-        use crate::ui::event::key_translator::translate;
-
-        #[test]
-        fn shift_g_key_event_produces_select_last_via_translator() {
-            let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
-            let combo = translate(event);
-            let state = browse_state();
-
-            let result = handle_normal_mode(combo, &state);
-
-            assert!(matches!(result, Action::Select(SelectMotion::Last)));
-        }
-    }
-
     mod key_sequence {
         use super::*;
 
@@ -1701,6 +1687,8 @@ mod tests {
     mod navigation_matrix {
         use super::*;
         use crate::domain::{QueryResult, QuerySource};
+        use crate::ui::event::key_translator::translate;
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::sync::Arc;
 
         fn assert_action(actual: Action, expected: Action, ctx: &str, key: &str) {
@@ -1752,6 +1740,17 @@ mod tests {
 
         fn focus_mode_ctx() -> AppState {
             focus_mode_state()
+        }
+
+        #[test]
+        fn shift_g_key_event_produces_select_last_via_translator() {
+            let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
+            let combo = translate(event);
+            let state = explorer_ctx();
+
+            let result = handle_normal_mode(combo, &state);
+
+            assert!(matches!(result, Action::Select(SelectMotion::Last)));
         }
 
         #[rstest]
