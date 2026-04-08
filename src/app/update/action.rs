@@ -49,6 +49,10 @@ pub enum CursorMove {
     Down,
     Home,
     End,
+    LineStart,
+    LineEnd,
+    WordForward,
+    WordBackward,
 }
 
 // ---------------------------------------------------------------------------

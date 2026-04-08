@@ -67,6 +67,10 @@ fn navigation(combo: &KeyCombo) -> Option<VimNavigation> {
         Key::Char('k') | Key::Up => Some(VimNavigation::MoveUp),
         Key::Char('g') | Key::Home => Some(VimNavigation::MoveToFirst),
         Key::Char('G') | Key::End => Some(VimNavigation::MoveToLast),
+        Key::Char('0') => Some(VimNavigation::MoveLineStart),
+        Key::Char('$') => Some(VimNavigation::MoveLineEnd),
+        Key::Char('w') => Some(VimNavigation::MoveWordForward),
+        Key::Char('b') => Some(VimNavigation::MoveWordBackward),
         Key::Char('H') => Some(VimNavigation::ViewportTop),
         Key::Char('M') => Some(VimNavigation::ViewportMiddle),
         Key::Char('L') => Some(VimNavigation::ViewportBottom),
@@ -160,10 +164,22 @@ mod tests {
     #[case(Key::Home, VimNavigation::MoveToFirst)]
     #[case(Key::Char('G'), VimNavigation::MoveToLast)]
     #[case(Key::End, VimNavigation::MoveToLast)]
+    #[case(Key::Char('0'), VimNavigation::MoveLineStart)]
+    #[case(Key::Char('$'), VimNavigation::MoveLineEnd)]
     #[case(Key::Char('H'), VimNavigation::ViewportTop)]
     #[case(Key::Char('M'), VimNavigation::ViewportMiddle)]
     #[case(Key::Char('L'), VimNavigation::ViewportBottom)]
     fn boundary_navigation_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
+        assert_eq!(
+            classify_command(&combo(key)),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('w'), VimNavigation::MoveWordForward)]
+    #[case(Key::Char('b'), VimNavigation::MoveWordBackward)]
+    fn word_navigation_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
         assert_eq!(
             classify_command(&combo(key)),
             Some(VimCommand::Navigation(expected))

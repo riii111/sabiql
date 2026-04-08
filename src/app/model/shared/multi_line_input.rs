@@ -70,19 +70,27 @@ impl MultiLineInputState {
                     self.set_cursor_raw(next_start + current_col.min(next_len));
                 }
             }
-            CursorMove::Home => {
+            CursorMove::Home | CursorMove::LineStart => {
                 let (current_line, _) = self.current_line_col();
                 let lines = self.line_spans();
                 if let Some((start, _)) = lines.get(current_line) {
                     self.set_cursor_raw(*start);
                 }
             }
-            CursorMove::End => {
+            CursorMove::End | CursorMove::LineEnd => {
                 let (current_line, _) = self.current_line_col();
                 let lines = self.line_spans();
                 if let Some((start, len)) = lines.get(current_line) {
                     self.set_cursor_raw(start + len);
                 }
+            }
+            CursorMove::WordForward => {
+                let next = next_word_start(self.content(), self.cursor());
+                self.set_cursor_raw(next);
+            }
+            CursorMove::WordBackward => {
+                let previous = previous_word_start(self.content(), self.cursor());
+                self.set_cursor_raw(previous);
             }
         }
     }
@@ -178,6 +186,78 @@ fn char_to_byte_index_impl(s: &str, char_idx: usize) -> usize {
     s.char_indices()
         .nth(char_idx)
         .map_or(s.len(), |(byte_idx, _)| byte_idx)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WordKind {
+    Keyword,
+    Symbol,
+}
+
+fn classify_word_char(ch: char) -> Option<WordKind> {
+    if ch.is_whitespace() {
+        None
+    } else if ch.is_alphanumeric() || ch == '_' {
+        Some(WordKind::Keyword)
+    } else {
+        Some(WordKind::Symbol)
+    }
+}
+
+fn next_word_start(content: &str, cursor: usize) -> usize {
+    let chars: Vec<char> = content.chars().collect();
+    let len = chars.len();
+    if cursor >= len {
+        return len;
+    }
+
+    let mut idx = cursor;
+
+    if chars[idx].is_whitespace() {
+        while idx < len && chars[idx].is_whitespace() {
+            idx += 1;
+        }
+        return idx;
+    }
+
+    let kind = classify_word_char(chars[idx]).expect("non-whitespace char has a kind");
+    while idx < len {
+        match classify_word_char(chars[idx]) {
+            Some(current) if current == kind => idx += 1,
+            _ => break,
+        }
+    }
+    while idx < len && chars[idx].is_whitespace() {
+        idx += 1;
+    }
+
+    idx
+}
+
+fn previous_word_start(content: &str, cursor: usize) -> usize {
+    let chars: Vec<char> = content.chars().collect();
+    if cursor == 0 || chars.is_empty() {
+        return 0;
+    }
+
+    let mut idx = cursor.saturating_sub(1);
+    while idx > 0 && chars[idx].is_whitespace() {
+        idx -= 1;
+    }
+    if idx == 0 && chars[idx].is_whitespace() {
+        return 0;
+    }
+
+    let kind = classify_word_char(chars[idx]).expect("non-whitespace char has a kind");
+    while idx > 0 {
+        let prev = idx - 1;
+        match classify_word_char(chars[prev]) {
+            Some(previous) if previous == kind => idx = prev,
+            _ => break,
+        }
+    }
+
+    idx
 }
 
 #[cfg(test)]
@@ -336,6 +416,85 @@ mod tests {
             let mut s = ml("abc\ndef", 0);
             s.move_cursor(CursorMove::End);
             assert_eq!(s.cursor(), 3);
+        }
+
+        #[test]
+        fn line_start_returns_current_line_start() {
+            let mut s = ml("abc\ndef", 5);
+            s.move_cursor(CursorMove::LineStart);
+            assert_eq!(s.cursor(), 4);
+        }
+
+        #[test]
+        fn line_end_returns_current_line_end() {
+            let mut s = ml("abc\ndef", 4);
+            s.move_cursor(CursorMove::LineEnd);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn word_forward_moves_within_line() {
+            let mut s = ml("SELECT users", 0);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn word_backward_moves_to_start_of_current_word() {
+            let mut s = ml("SELECT users", 10);
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn word_forward_crosses_punctuation_boundary() {
+            let mut s = ml("foo(bar)", 0);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 3);
+
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 4);
+        }
+
+        #[test]
+        fn word_backward_crosses_punctuation_boundary() {
+            let mut s = ml("foo(bar)", 7);
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 4);
+
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 3);
+        }
+
+        #[test]
+        fn word_forward_crosses_whitespace_and_newline() {
+            let mut s = ml("foo \n  bar", 0);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn word_backward_crosses_whitespace_and_newline() {
+            let mut s = ml("foo \n  bar", 10);
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 7);
+
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 0);
+        }
+
+        #[test]
+        fn word_forward_at_end_returns_unchanged() {
+            let mut s = ml("foo", 3);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 3);
+        }
+
+        #[test]
+        fn word_backward_at_start_returns_unchanged() {
+            let mut s = ml("foo", 0);
+            s.move_cursor(CursorMove::WordBackward);
+            assert_eq!(s.cursor(), 0);
         }
     }
 
