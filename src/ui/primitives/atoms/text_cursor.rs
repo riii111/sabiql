@@ -410,139 +410,151 @@ mod tests {
         }
     }
 
-    #[test]
-    fn cursor_at_beginning() {
-        let spans = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
+    mod text_cursor_spans {
+        use super::*;
 
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", "a", "bc"]);
-    }
+        mod block_cursor {
+            use super::*;
 
-    #[test]
-    fn cursor_at_middle() {
-        let spans = text_cursor_spans("abc", 1, 0, usize::MAX, &DEFAULT_THEME);
+            #[test]
+            fn cursor_at_beginning() {
+                let spans = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
 
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["a", "b", "c"]);
-    }
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["", "a", "bc"]);
+            }
 
-    #[test]
-    fn cursor_at_end() {
-        let spans = text_cursor_spans("abc", 3, 0, usize::MAX, &DEFAULT_THEME);
+            #[test]
+            fn cursor_at_middle() {
+                let spans = text_cursor_spans("abc", 1, 0, usize::MAX, &DEFAULT_THEME);
 
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["abc", " "]);
-    }
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["a", "b", "c"]);
+            }
 
-    #[test]
-    fn empty_string() {
-        let spans = text_cursor_spans("", 0, 0, usize::MAX, &DEFAULT_THEME);
+            #[test]
+            fn cursor_at_end() {
+                let spans = text_cursor_spans("abc", 3, 0, usize::MAX, &DEFAULT_THEME);
 
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", " "]);
-    }
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["abc", " "]);
+            }
 
-    #[test]
-    fn multibyte_characters() {
-        let spans = text_cursor_spans("あいう", 1, 0, usize::MAX, &DEFAULT_THEME);
+            #[test]
+            fn empty_string() {
+                let spans = text_cursor_spans("", 0, 0, usize::MAX, &DEFAULT_THEME);
 
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["あ", "い", "う"]);
-    }
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["", " "]);
+            }
 
-    #[test]
-    fn viewport_offset_positive() {
-        let spans = text_cursor_spans("abcdef", 3, 2, 3, &DEFAULT_THEME);
+            #[test]
+            fn multibyte_characters() {
+                let spans = text_cursor_spans("あいう", 1, 0, usize::MAX, &DEFAULT_THEME);
 
-        // visible: "cde" (offset=2, width=3), cursor_in_view = 3-2 = 1
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["c", "d", "e"]);
-    }
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["あ", "い", "う"]);
+            }
 
-    #[test]
-    fn viewport_offset_beyond_text_length() {
-        let spans = text_cursor_spans("abc", 3, 10, 5, &DEFAULT_THEME);
+            #[test]
+            fn all_positions_return_consistent_cursor_style() {
+                let at_start = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
+                let at_middle = text_cursor_spans("abc", 1, 0, usize::MAX, &DEFAULT_THEME);
+                let at_end = text_cursor_spans("abc", 3, 0, usize::MAX, &DEFAULT_THEME);
 
-        // vp clamped to 3 (total), visible is empty, cursor at end
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", " "]);
-    }
+                let cursor_start = &at_start[1];
+                let cursor_middle = &at_middle[1];
+                let cursor_end = at_end.last().unwrap();
 
-    #[test]
-    fn visible_width_one() {
-        let spans = text_cursor_spans("abc", 1, 1, 1, &DEFAULT_THEME);
+                assert_eq!(cursor_start.style, cursor_middle.style);
+                assert_eq!(cursor_middle.style, cursor_end.style);
+            }
+        }
 
-        // visible: "b", cursor_in_view = 0
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", "b", ""]);
-    }
+        mod viewport {
+            use super::*;
 
-    #[test]
-    fn visible_width_zero() {
-        let spans = text_cursor_spans("abc", 1, 0, 0, &DEFAULT_THEME);
+            #[test]
+            fn viewport_offset_positive() {
+                let spans = text_cursor_spans("abcdef", 3, 2, 3, &DEFAULT_THEME);
 
-        assert!(spans.is_empty());
-    }
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["c", "d", "e"]);
+            }
 
-    #[test]
-    fn visible_width_usize_max_sentinel() {
-        let spans = text_cursor_spans("hello", 2, 0, usize::MAX, &DEFAULT_THEME);
+            #[test]
+            fn viewport_offset_beyond_text_length() {
+                let spans = text_cursor_spans("abc", 3, 10, 5, &DEFAULT_THEME);
 
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["he", "l", "lo"]);
-    }
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["", " "]);
+            }
 
-    #[test]
-    fn cursor_left_of_viewport_returns_text_only() {
-        // cursor=0, viewport starts at 2 -> cursor is off-screen to the left
-        let spans = text_cursor_spans("abcdef", 0, 2, 3, &DEFAULT_THEME);
+            #[test]
+            fn visible_width_one() {
+                let spans = text_cursor_spans("abc", 1, 1, 1, &DEFAULT_THEME);
 
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["cde"]);
-    }
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["", "b", ""]);
+            }
 
-    #[test]
-    fn all_positions_return_consistent_cursor_style() {
-        let at_start = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
-        let at_middle = text_cursor_spans("abc", 1, 0, usize::MAX, &DEFAULT_THEME);
-        let at_end = text_cursor_spans("abc", 3, 0, usize::MAX, &DEFAULT_THEME);
+            #[test]
+            fn visible_width_zero() {
+                let spans = text_cursor_spans("abc", 1, 0, 0, &DEFAULT_THEME);
 
-        let cursor_start = &at_start[1];
-        let cursor_middle = &at_middle[1];
-        let cursor_end = at_end.last().unwrap();
+                assert!(spans.is_empty());
+            }
 
-        assert_eq!(cursor_start.style, cursor_middle.style);
-        assert_eq!(cursor_middle.style, cursor_end.style);
-    }
+            #[test]
+            fn cursor_left_of_viewport_returns_text_only() {
+                let spans = text_cursor_spans("abcdef", 0, 2, 3, &DEFAULT_THEME);
 
-    #[test]
-    fn insert_mode_cursor_preserves_text_without_glyph() {
-        let spans = text_cursor_spans_with_kind(
-            "abc",
-            1,
-            0,
-            usize::MAX,
-            CursorKind::Insert,
-            &DEFAULT_THEME,
-        );
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["cde"]);
+            }
+        }
 
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["abc"]);
-    }
+        mod insert_mode {
+            use super::*;
 
-    #[test]
-    fn insert_mode_cursor_at_end_keeps_text_width() {
-        let spans = text_cursor_spans_with_kind(
-            "abc",
-            3,
-            0,
-            usize::MAX,
-            CursorKind::Insert,
-            &DEFAULT_THEME,
-        );
+            #[test]
+            fn visible_width_usize_max_sentinel() {
+                let spans = text_cursor_spans("hello", 2, 0, usize::MAX, &DEFAULT_THEME);
 
-        let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["abc"]);
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["he", "l", "lo"]);
+            }
+
+            #[test]
+            fn preserves_text_without_glyph() {
+                let spans = text_cursor_spans_with_kind(
+                    "abc",
+                    1,
+                    0,
+                    usize::MAX,
+                    CursorKind::Insert,
+                    &DEFAULT_THEME,
+                );
+
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["abc"]);
+            }
+
+            #[test]
+            fn cursor_at_end_keeps_text_width() {
+                let spans = text_cursor_spans_with_kind(
+                    "abc",
+                    3,
+                    0,
+                    usize::MAX,
+                    CursorKind::Insert,
+                    &DEFAULT_THEME,
+                );
+
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["abc"]);
+            }
+        }
     }
 
     #[test]
