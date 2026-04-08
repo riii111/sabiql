@@ -92,7 +92,37 @@ impl MultiLineInputState {
                 let previous = previous_word_start(self.content(), self.cursor());
                 self.set_cursor_raw(previous);
             }
+            CursorMove::BufferStart => {
+                self.set_cursor_raw(0);
+            }
+            CursorMove::BufferEnd => {
+                self.set_cursor_raw(self.char_count());
+            }
+            CursorMove::ViewportTop | CursorMove::ViewportMiddle | CursorMove::ViewportBottom => {}
         }
+    }
+
+    pub fn move_cursor_to_viewport_position(&mut self, movement: CursorMove, visible_rows: usize) {
+        if visible_rows == 0 {
+            return;
+        }
+
+        let lines = self.line_spans();
+        if lines.is_empty() {
+            return;
+        }
+
+        let (_, current_col) = self.current_line_col();
+        let target_row = match movement {
+            CursorMove::ViewportTop => self.scroll_row,
+            CursorMove::ViewportMiddle => self.scroll_row + visible_rows.saturating_sub(1) / 2,
+            CursorMove::ViewportBottom => self.scroll_row + visible_rows.saturating_sub(1),
+            _ => return,
+        }
+        .min(lines.len().saturating_sub(1));
+
+        let (start, len) = lines[target_row];
+        self.set_cursor_raw(start + current_col.min(len));
     }
 
     // ── Coordinate conversion ───────────────────────────────────────
@@ -496,6 +526,20 @@ mod tests {
             s.move_cursor(CursorMove::WordBackward);
             assert_eq!(s.cursor(), 0);
         }
+
+        #[test]
+        fn buffer_start_moves_to_start_of_buffer() {
+            let mut s = ml("abc\ndef", 5);
+            s.move_cursor(CursorMove::BufferStart);
+            assert_eq!(s.cursor(), 0);
+        }
+
+        #[test]
+        fn buffer_end_moves_to_end_of_buffer() {
+            let mut s = ml("abc\ndef", 1);
+            s.move_cursor(CursorMove::BufferEnd);
+            assert_eq!(s.cursor(), 7);
+        }
     }
 
     // ── Edge cases: trailing newline, empty lines, consecutive newlines ──
@@ -657,6 +701,30 @@ mod tests {
             s.scroll_row = 1;
             s.update_scroll(0);
             assert_eq!(s.scroll_row(), 1); // unchanged
+        }
+
+        #[test]
+        fn viewport_top_moves_cursor_to_top_visible_row_preserving_column() {
+            let mut s = ml("aa\nbb\ncc\ndd", 10);
+            s.scroll_row = 1;
+            s.move_cursor_to_viewport_position(CursorMove::ViewportTop, 3);
+            assert_eq!(s.cursor(), 4);
+        }
+
+        #[test]
+        fn viewport_middle_moves_cursor_to_middle_visible_row_preserving_column() {
+            let mut s = ml("aa\nbb\ncc\ndd\nee", 13);
+            s.scroll_row = 1;
+            s.move_cursor_to_viewport_position(CursorMove::ViewportMiddle, 3);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn viewport_bottom_moves_cursor_to_bottom_visible_row_preserving_column() {
+            let mut s = ml("aa\nbb\ncc\ndd\nee", 1);
+            s.scroll_row = 1;
+            s.move_cursor_to_viewport_position(CursorMove::ViewportBottom, 3);
+            assert_eq!(s.cursor(), 10);
         }
     }
 

@@ -38,10 +38,15 @@ fn query_navigation(navigation: VimNavigation) -> Option<Action> {
         VimNavigation::MoveRight => CursorMove::Right,
         VimNavigation::MoveUp => CursorMove::Up,
         VimNavigation::MoveDown => CursorMove::Down,
+        VimNavigation::MoveToFirst => CursorMove::BufferStart,
+        VimNavigation::MoveToLast => CursorMove::BufferEnd,
         VimNavigation::MoveLineStart => CursorMove::LineStart,
         VimNavigation::MoveLineEnd => CursorMove::LineEnd,
         VimNavigation::MoveWordForward => CursorMove::WordForward,
         VimNavigation::MoveWordBackward => CursorMove::WordBackward,
+        VimNavigation::ViewportTop => CursorMove::ViewportTop,
+        VimNavigation::ViewportMiddle => CursorMove::ViewportMiddle,
+        VimNavigation::ViewportBottom => CursorMove::ViewportBottom,
         _ => return None,
     };
 
@@ -105,10 +110,14 @@ mod tests {
     #[case(Key::Char('j'), CursorMove::Down)]
     #[case(Key::Char('k'), CursorMove::Up)]
     #[case(Key::Char('l'), CursorMove::Right)]
+    #[case(Key::Char('G'), CursorMove::BufferEnd)]
     #[case(Key::Char('0'), CursorMove::LineStart)]
     #[case(Key::Char('$'), CursorMove::LineEnd)]
     #[case(Key::Char('w'), CursorMove::WordForward)]
     #[case(Key::Char('b'), CursorMove::WordBackward)]
+    #[case(Key::Char('H'), CursorMove::ViewportTop)]
+    #[case(Key::Char('M'), CursorMove::ViewportMiddle)]
+    #[case(Key::Char('L'), CursorMove::ViewportBottom)]
     fn normal_navigation_moves_sql_cursor(#[case] key: Key, #[case] expected: CursorMove) {
         let action = action_for_key(
             &combo(key),
@@ -121,6 +130,23 @@ mod tests {
                 target: InputTarget::SqlModal,
                 direction,
             }) if direction == expected
+        ));
+    }
+
+    #[test]
+    fn gg_moves_to_buffer_start() {
+        let action = crate::app::update::input::vim::action_for_input(
+            &combo(Key::Char('g')),
+            Some(crate::app::model::shared::key_sequence::Prefix::G),
+            VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),
+        );
+
+        assert!(matches!(
+            action,
+            Some(Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::BufferStart,
+            })
         ));
     }
 

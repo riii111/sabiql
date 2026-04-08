@@ -48,6 +48,14 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
         combos: &[],
     },
     KeyBinding {
+        key_short: "ggGHML",
+        key: "gg / G / H / M / L",
+        desc_short: "View",
+        description: "Jump by buffer or viewport",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Close",

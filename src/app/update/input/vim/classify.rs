@@ -36,6 +36,10 @@ pub fn classify_sequence(prefix: Prefix, combo: &KeyCombo) -> Option<VimCommand>
     }
 
     match prefix {
+        Prefix::G => match combo.key {
+            Key::Char('g') => Some(VimCommand::Navigation(VimNavigation::MoveToFirst)),
+            _ => None,
+        },
         Prefix::Z => match combo.key {
             Key::Char('z') => Some(VimCommand::Navigation(VimNavigation::ScrollCursorCenter)),
             Key::Char('t') => Some(VimCommand::Navigation(VimNavigation::ScrollCursorTop)),
@@ -214,6 +218,14 @@ mod tests {
         assert_eq!(
             classify_sequence(Prefix::Z, &combo(key)),
             Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[test]
+    fn gg_sequence_navigation() {
+        assert_eq!(
+            classify_sequence(Prefix::G, &combo(Key::Char('g'))),
+            Some(VimCommand::Navigation(VimNavigation::MoveToFirst))
         );
     }
 }

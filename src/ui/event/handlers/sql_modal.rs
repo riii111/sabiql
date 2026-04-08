@@ -1,15 +1,29 @@
+use crate::app::model::shared::key_sequence::Prefix;
 use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::app::update::action::{
     Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 use crate::app::update::input::keybindings::{Key, KeyCombo};
-use crate::app::update::input::vim::{SqlModalVimContext, VimSurfaceContext, action_for_key};
+use crate::app::update::input::vim::{
+    SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
+};
 
+#[cfg(test)]
 pub fn handle_sql_modal_keys(
     combo: KeyCombo,
     completion_visible: bool,
     status: &SqlModalStatus,
     active_tab: SqlModalTab,
+) -> Action {
+    handle_sql_modal_keys_with_prefix(combo, completion_visible, status, active_tab, None)
+}
+
+pub fn handle_sql_modal_keys_with_prefix(
+    combo: KeyCombo,
+    completion_visible: bool,
+    status: &SqlModalStatus,
+    active_tab: SqlModalTab,
+    pending_prefix: Option<Prefix>,
 ) -> Action {
     use crate::app::update::action::CursorMove;
 
@@ -29,6 +43,23 @@ pub fn handle_sql_modal_keys(
 
         if ctrl && combo.key == Key::Char('e') {
             return Action::ExplainRequest;
+        }
+
+        if let Some(prefix) = pending_prefix {
+            if ctrl || alt {
+                return Action::CancelKeySequence;
+            }
+            if active_tab != SqlModalTab::Sql {
+                return Action::CancelKeySequence;
+            }
+            return match action_for_input(
+                &combo,
+                Some(prefix),
+                VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),
+            ) {
+                Some(Action::None) | None => Action::CancelKeySequence,
+                Some(action) => action,
+            };
         }
 
         // Tab switching
@@ -78,6 +109,21 @@ pub fn handle_sql_modal_keys(
         }
         if ctrl && combo.key == Key::Char('l') {
             return Action::SqlModalClear;
+        }
+        if plain && combo.key == Key::Char('g') {
+            return Action::BeginKeySequence(Prefix::G);
+        }
+        if plain && combo.key == Key::Home {
+            return Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::Home,
+            };
+        }
+        if plain && combo.key == Key::End {
+            return Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::End,
+            };
         }
 
         if let Some(action) = action_for_key(
@@ -665,10 +711,20 @@ mod tests {
     #[case(Key::Char('j'), Expected::SqlModalMoveCursor(CursorMove::Down))]
     #[case(Key::Char('k'), Expected::SqlModalMoveCursor(CursorMove::Up))]
     #[case(Key::Char('l'), Expected::SqlModalMoveCursor(CursorMove::Right))]
+    #[case(Key::Char('G'), Expected::SqlModalMoveCursor(CursorMove::BufferEnd))]
     #[case(Key::Char('0'), Expected::SqlModalMoveCursor(CursorMove::LineStart))]
     #[case(Key::Char('$'), Expected::SqlModalMoveCursor(CursorMove::LineEnd))]
     #[case(Key::Char('w'), Expected::SqlModalMoveCursor(CursorMove::WordForward))]
     #[case(Key::Char('b'), Expected::SqlModalMoveCursor(CursorMove::WordBackward))]
+    #[case(Key::Char('H'), Expected::SqlModalMoveCursor(CursorMove::ViewportTop))]
+    #[case(
+        Key::Char('M'),
+        Expected::SqlModalMoveCursor(CursorMove::ViewportMiddle)
+    )]
+    #[case(
+        Key::Char('L'),
+        Expected::SqlModalMoveCursor(CursorMove::ViewportBottom)
+    )]
     fn normal_mode_vim_keys_move_cursor(#[case] code: Key, #[case] expected: Expected) {
         let result = handle_sql_modal_keys(
             combo(code),
@@ -678,6 +734,47 @@ mod tests {
         );
 
         assert_action(result, expected);
+    }
+
+    #[test]
+    fn normal_mode_g_begins_key_sequence() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('g')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+        );
+
+        assert!(matches!(result, Action::BeginKeySequence(Prefix::G)));
+    }
+
+    #[test]
+    fn normal_mode_gg_moves_to_buffer_start() {
+        let result = handle_sql_modal_keys_with_prefix(
+            combo(Key::Char('g')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+            Some(Prefix::G),
+        );
+
+        assert_action(
+            result,
+            Expected::SqlModalMoveCursor(CursorMove::BufferStart),
+        );
+    }
+
+    #[test]
+    fn prefixed_unknown_key_cancels_sequence() {
+        let result = handle_sql_modal_keys_with_prefix(
+            combo(Key::Char('x')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+            Some(Prefix::G),
+        );
+
+        assert!(matches!(result, Action::CancelKeySequence));
     }
 
     #[rstest]

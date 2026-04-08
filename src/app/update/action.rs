@@ -53,6 +53,11 @@ pub enum CursorMove {
     LineEnd,
     WordForward,
     WordBackward,
+    BufferStart,
+    BufferEnd,
+    ViewportTop,
+    ViewportMiddle,
+    ViewportBottom,
 }
 
 // ---------------------------------------------------------------------------

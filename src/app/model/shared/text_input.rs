@@ -126,10 +126,10 @@ impl TextInputState {
                     self.cursor += 1;
                 }
             }
-            CursorMove::Home | CursorMove::LineStart => {
+            CursorMove::Home | CursorMove::LineStart | CursorMove::BufferStart => {
                 self.cursor = 0;
             }
-            CursorMove::End | CursorMove::LineEnd => {
+            CursorMove::End | CursorMove::LineEnd | CursorMove::BufferEnd => {
                 self.cursor = self.char_count();
             }
             CursorMove::WordForward => {
@@ -138,7 +138,11 @@ impl TextInputState {
             CursorMove::WordBackward => {
                 self.cursor = previous_word_start(&self.content, self.cursor);
             }
-            CursorMove::Up | CursorMove::Down => {}
+            CursorMove::Up
+            | CursorMove::Down
+            | CursorMove::ViewportTop
+            | CursorMove::ViewportMiddle
+            | CursorMove::ViewportBottom => {}
         }
     }
 
