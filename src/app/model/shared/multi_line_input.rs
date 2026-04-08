@@ -1,6 +1,6 @@
 use crate::app::update::action::CursorMove;
 
-use super::text_input::{TextInputLike, TextInputState};
+use super::text_input::{TextInputLike, TextInputState, next_word_start, previous_word_start};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MultiLineInputState {
@@ -252,78 +252,6 @@ fn char_to_byte_index_impl(s: &str, char_idx: usize) -> usize {
     s.char_indices()
         .nth(char_idx)
         .map_or(s.len(), |(byte_idx, _)| byte_idx)
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum WordKind {
-    Keyword,
-    Symbol,
-}
-
-fn classify_word_char(ch: char) -> Option<WordKind> {
-    if ch.is_whitespace() {
-        None
-    } else if ch.is_alphanumeric() || ch == '_' {
-        Some(WordKind::Keyword)
-    } else {
-        Some(WordKind::Symbol)
-    }
-}
-
-fn next_word_start(content: &str, cursor: usize) -> usize {
-    let chars: Vec<char> = content.chars().collect();
-    let len = chars.len();
-    if cursor >= len {
-        return len;
-    }
-
-    let mut idx = cursor;
-
-    if chars[idx].is_whitespace() {
-        while idx < len && chars[idx].is_whitespace() {
-            idx += 1;
-        }
-        return idx;
-    }
-
-    let kind = classify_word_char(chars[idx]).expect("non-whitespace char has a kind");
-    while idx < len {
-        match classify_word_char(chars[idx]) {
-            Some(current) if current == kind => idx += 1,
-            _ => break,
-        }
-    }
-    while idx < len && chars[idx].is_whitespace() {
-        idx += 1;
-    }
-
-    idx
-}
-
-fn previous_word_start(content: &str, cursor: usize) -> usize {
-    let chars: Vec<char> = content.chars().collect();
-    if cursor == 0 || chars.is_empty() {
-        return 0;
-    }
-
-    let mut idx = cursor.saturating_sub(1);
-    while idx > 0 && chars[idx].is_whitespace() {
-        idx -= 1;
-    }
-    if idx == 0 && chars[idx].is_whitespace() {
-        return 0;
-    }
-
-    let kind = classify_word_char(chars[idx]).expect("non-whitespace char has a kind");
-    while idx > 0 {
-        let prev = idx - 1;
-        match classify_word_char(chars[prev]) {
-            Some(previous) if previous == kind => idx = prev,
-            _ => break,
-        }
-    }
-
-    idx
 }
 
 #[cfg(test)]

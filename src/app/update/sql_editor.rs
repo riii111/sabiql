@@ -7,7 +7,8 @@ use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::app::model::sql_editor::modal::{
-    HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab,
+    HIGH_RISK_INPUT_VISIBLE_WIDTH, SQL_MODAL_CHROME_LINES, SQL_MODAL_HEIGHT_PERCENT,
+    SqlModalStatus, SqlModalTab,
 };
 use crate::app::policy::sql::statement_classifier::{self, StatementKind};
 use crate::app::policy::write::sql_risk::{
@@ -478,10 +479,8 @@ fn sql_modal_visible_rows(terminal_height: u16) -> usize {
         return EDITOR_VISIBLE_ROWS;
     }
 
-    const MODAL_HEIGHT_PERCENT: usize = 60;
-    // area(60%) - border(2) - separator(1) - status(1)
-    const SQL_MODAL_CHROME_LINES: usize = 4;
-    (terminal_height as usize * MODAL_HEIGHT_PERCENT / 100).saturating_sub(SQL_MODAL_CHROME_LINES)
+    (terminal_height as usize * SQL_MODAL_HEIGHT_PERCENT as usize / 100)
+        .saturating_sub(SQL_MODAL_CHROME_LINES)
 }
 
 fn multi_statement_label(sql: &str) -> &'static str {

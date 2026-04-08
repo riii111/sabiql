@@ -151,14 +151,6 @@ pub fn handle_sql_modal_keys_with_prefix(
                 target: InputTarget::SqlModal,
                 direction: CursorMove::Right,
             },
-            Key::Home => Action::TextMoveCursor {
-                target: InputTarget::SqlModal,
-                direction: CursorMove::Home,
-            },
-            Key::End => Action::TextMoveCursor {
-                target: InputTarget::SqlModal,
-                direction: CursorMove::End,
-            },
             _ => Action::None,
         };
     }

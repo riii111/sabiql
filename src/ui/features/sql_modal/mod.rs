@@ -13,7 +13,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
 use crate::app::update::input::keybindings::{
     SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
 };
@@ -61,7 +61,7 @@ impl SqlModal {
                     render_modal_with_border_color(
                         frame,
                         Constraint::Percentage(80),
-                        Constraint::Percentage(60),
+                        Constraint::Percentage(SQL_MODAL_HEIGHT_PERCENT),
                         &title,
                         footer,
                         theme.status_error,
@@ -160,7 +160,7 @@ impl SqlModal {
         let area = centered_rect(
             frame.area(),
             Constraint::Percentage(80),
-            Constraint::Percentage(60),
+            Constraint::Percentage(SQL_MODAL_HEIGHT_PERCENT),
         );
         render_scrim(frame, theme);
         frame.render_widget(Clear, area);

@@ -225,7 +225,7 @@ fn classify_word_char(ch: char) -> Option<WordKind> {
     }
 }
 
-fn next_word_start(content: &str, cursor: usize) -> usize {
+pub(crate) fn next_word_start(content: &str, cursor: usize) -> usize {
     let chars: Vec<char> = content.chars().collect();
     let len = chars.len();
     if cursor >= len {
@@ -255,7 +255,7 @@ fn next_word_start(content: &str, cursor: usize) -> usize {
     idx
 }
 
-fn previous_word_start(content: &str, cursor: usize) -> usize {
+pub(crate) fn previous_word_start(content: &str, cursor: usize) -> usize {
     let chars: Vec<char> = content.chars().collect();
     if cursor == 0 || chars.is_empty() {
         return 0;

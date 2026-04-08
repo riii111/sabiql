@@ -10,6 +10,8 @@ use super::completion::CompletionState;
 
 // Sized so that prompt + input + checkmark fits within the 80-col modal inner width (~62 cols).
 pub const HIGH_RISK_INPUT_VISIBLE_WIDTH: usize = 30;
+pub const SQL_MODAL_HEIGHT_PERCENT: u16 = 60;
+pub const SQL_MODAL_CHROME_LINES: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SqlModalTab {

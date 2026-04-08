@@ -68,7 +68,7 @@ pub(super) fn render_editor(
             scroll_row: state.sql_modal.editor.scroll_row(),
             cursor_kind,
             empty_placeholder: if is_normal {
-                " Press Enter to edit..."
+                " Press i to edit..."
             } else {
                 " Enter SQL query..."
             },
@@ -95,7 +95,7 @@ pub(super) fn render_editor(
             scroll_row: state.sql_modal.editor.scroll_row(),
             cursor_kind,
             empty_placeholder: if is_normal {
-                " Press Enter to edit..."
+                " Press i to edit..."
             } else {
                 " Enter SQL query..."
             },
