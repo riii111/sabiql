@@ -388,6 +388,7 @@ mod tests {
     use super::*;
     use crate::ui::theme::DEFAULT_THEME;
     use ratatui::style::Modifier;
+    use rstest::rstest;
 
     fn spans_to_strings(spans: &[Span<'_>]) -> Vec<String> {
         spans.iter().map(|s| s.content.to_string()).collect()
@@ -506,6 +507,14 @@ mod tests {
             }
 
             #[test]
+            fn visible_width_usize_max_sentinel() {
+                let spans = text_cursor_spans("hello", 2, 0, usize::MAX, &DEFAULT_THEME);
+
+                let texts = spans_to_strings(&spans);
+                assert_eq!(texts, vec!["he", "l", "lo"]);
+            }
+
+            #[test]
             fn cursor_left_of_viewport_returns_text_only() {
                 let spans = text_cursor_spans("abcdef", 0, 2, 3, &DEFAULT_THEME);
 
@@ -517,34 +526,13 @@ mod tests {
         mod insert_mode {
             use super::*;
 
-            #[test]
-            fn visible_width_usize_max_sentinel() {
-                let spans = text_cursor_spans("hello", 2, 0, usize::MAX, &DEFAULT_THEME);
-
-                let texts = spans_to_strings(&spans);
-                assert_eq!(texts, vec!["he", "l", "lo"]);
-            }
-
-            #[test]
-            fn preserves_text_without_glyph() {
+            #[rstest]
+            #[case(1)]
+            #[case(3)]
+            fn preserves_text_without_glyph(#[case] cursor: usize) {
                 let spans = text_cursor_spans_with_kind(
                     "abc",
-                    1,
-                    0,
-                    usize::MAX,
-                    CursorKind::Insert,
-                    &DEFAULT_THEME,
-                );
-
-                let texts = spans_to_strings(&spans);
-                assert_eq!(texts, vec!["abc"]);
-            }
-
-            #[test]
-            fn cursor_at_end_keeps_text_width() {
-                let spans = text_cursor_spans_with_kind(
-                    "abc",
-                    3,
+                    cursor,
                     0,
                     usize::MAX,
                     CursorKind::Insert,
