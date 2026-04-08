@@ -362,319 +362,360 @@ mod tests {
 
     // ── move_cursor ─────────────────────────────────────────────────
 
-    mod move_cursor_tests {
+    mod move_cursor {
         use super::*;
 
-        #[test]
-        fn left_right_moves_cursor_by_one() {
-            let mut s = ml("abc", 1);
-            s.move_cursor(CursorMove::Left);
-            assert_eq!(s.cursor(), 0);
-            s.move_cursor(CursorMove::Right);
-            assert_eq!(s.cursor(), 1);
+        mod horizontal {
+            use super::*;
+
+            #[test]
+            fn left_right_moves_cursor_by_one() {
+                let mut s = ml("abc", 1);
+                s.move_cursor(CursorMove::Left);
+                assert_eq!(s.cursor(), 0);
+                s.move_cursor(CursorMove::Right);
+                assert_eq!(s.cursor(), 1);
+            }
+
+            #[test]
+            fn left_at_start_returns_zero() {
+                let mut s = ml("abc", 0);
+                s.move_cursor(CursorMove::Left);
+                assert_eq!(s.cursor(), 0);
+            }
+
+            #[test]
+            fn right_at_end_returns_unchanged() {
+                let mut s = ml("abc", 3);
+                s.move_cursor(CursorMove::Right);
+                assert_eq!(s.cursor(), 3);
+            }
         }
 
-        #[test]
-        fn left_at_start_returns_zero() {
-            let mut s = ml("abc", 0);
-            s.move_cursor(CursorMove::Left);
-            assert_eq!(s.cursor(), 0);
+        mod vertical {
+            use super::*;
+
+            #[test]
+            fn up_from_second_line_returns_same_col_in_first() {
+                // "abc\ndef" → cursor at 5 (d=4, e=5) → col=1
+                // Up → line 0, col 1 → cursor=1
+                let mut s = ml("abc\ndef", 5);
+                s.move_cursor(CursorMove::Up);
+                assert_eq!(s.cursor(), 1);
+            }
+
+            #[test]
+            fn up_from_first_line_returns_unchanged() {
+                let mut s = ml("abc\ndef", 1);
+                s.move_cursor(CursorMove::Up);
+                assert_eq!(s.cursor(), 1);
+            }
+
+            #[test]
+            fn down_from_first_line_returns_same_col_in_second() {
+                // "abc\ndef" → cursor at 1 → col=1
+                // Down → line 1, col 1 → cursor=5
+                let mut s = ml("abc\ndef", 1);
+                s.move_cursor(CursorMove::Down);
+                assert_eq!(s.cursor(), 5);
+            }
+
+            #[test]
+            fn down_from_last_line_returns_unchanged() {
+                let mut s = ml("abc\ndef", 5);
+                s.move_cursor(CursorMove::Down);
+                assert_eq!(s.cursor(), 5);
+            }
+
+            #[test]
+            fn up_clamps_col_to_shorter_line_length() {
+                // "ab\ncdef" → cursor at 7 (end of "cdef"), col=4
+                // Up → line 0 has len 2, so col clamped to 2 → cursor=2
+                let mut s = ml("ab\ncdef", 7);
+                s.move_cursor(CursorMove::Up);
+                assert_eq!(s.cursor(), 2);
+            }
+
+            #[test]
+            fn down_clamps_col_to_shorter_line_length() {
+                // "cdef\nab" → cursor at 4 (end of "cdef"), col=4
+                // Down → line 1 has len 2, so col clamped to 2 → cursor=7
+                let mut s = ml("cdef\nab", 4);
+                s.move_cursor(CursorMove::Down);
+                assert_eq!(s.cursor(), 7);
+            }
+
+            #[test]
+            fn up_from_empty_trailing_line_returns_prev_line_origin() {
+                // "abc\n" → cursor at 4 (empty line 1)
+                // Up → line 0, col 0.min(3) = 0 → cursor=0
+                let mut s = ml("abc\n", 4);
+                s.move_cursor(CursorMove::Up);
+                assert_eq!(s.cursor(), 0);
+            }
+
+            #[test]
+            fn down_to_empty_trailing_line_returns_next_row_origin() {
+                // "abc\n" → cursor at 2 (col=2)
+                // Down → line 1, col 2.min(0) = 0 → cursor=4
+                let mut s = ml("abc\n", 2);
+                s.move_cursor(CursorMove::Down);
+                assert_eq!(s.cursor(), 4);
+            }
+
+            #[test]
+            fn up_through_empty_line_restores_preferred_column() {
+                // "abc\n\ndef" → lines: (0,3), (4,0), (5,3)
+                // Start at cursor=6 (line 2, col 1 → 'e')
+                let mut s = ml("abc\n\ndef", 6);
+                assert_eq!(s.cursor_to_position(), (2, 1));
+
+                // Up → line 1 (empty), col 1.min(0) = 0 → cursor=4
+                s.move_cursor(CursorMove::Up);
+                assert_eq!(s.cursor(), 4);
+                assert_eq!(s.cursor_to_position(), (1, 0));
+
+                // Up again → line 0, restore preferred col 1 → cursor=1
+                s.move_cursor(CursorMove::Up);
+                assert_eq!(s.cursor(), 1);
+                assert_eq!(s.cursor_to_position(), (0, 1));
+            }
+
+            #[test]
+            fn multibyte_up_down_preserves_col() {
+                // "あいう\nかき" → lines: (0,3), (4,2)
+                // cursor at 5 (line 1, col 1 → 'き')
+                let mut s = ml("あいう\nかき", 5);
+                assert_eq!(s.cursor_to_position(), (1, 1));
+
+                // Up → line 0, col 1.min(3) = 1 → cursor=1
+                s.move_cursor(CursorMove::Up);
+                assert_eq!(s.cursor(), 1);
+
+                // Down → line 1, col 1.min(2) = 1 → cursor=5
+                s.move_cursor(CursorMove::Down);
+                assert_eq!(s.cursor(), 5);
+            }
         }
 
-        #[test]
-        fn right_at_end_returns_unchanged() {
-            let mut s = ml("abc", 3);
-            s.move_cursor(CursorMove::Right);
-            assert_eq!(s.cursor(), 3);
+        mod line_boundary {
+            use super::*;
+
+            #[test]
+            fn home_returns_line_start() {
+                // "abc\ndef" → cursor at 5 (on 'e'), col=1
+                // Home → start of line 1 → cursor=4
+                let mut s = ml("abc\ndef", 5);
+                s.move_cursor(CursorMove::Home);
+                assert_eq!(s.cursor(), 4);
+            }
+
+            #[test]
+            fn end_returns_line_end() {
+                // "abc\ndef" → cursor at 4 (on 'd'), col=0
+                // End → end of line 1 → cursor=7
+                let mut s = ml("abc\ndef", 4);
+                s.move_cursor(CursorMove::End);
+                assert_eq!(s.cursor(), 7);
+            }
+
+            #[test]
+            fn home_on_first_line_returns_zero() {
+                let mut s = ml("abc\ndef", 2);
+                s.move_cursor(CursorMove::Home);
+                assert_eq!(s.cursor(), 0);
+            }
+
+            #[test]
+            fn end_on_first_line_returns_line_length() {
+                let mut s = ml("abc\ndef", 0);
+                s.move_cursor(CursorMove::End);
+                assert_eq!(s.cursor(), 3);
+            }
+
+            #[test]
+            fn line_start_returns_current_line_start() {
+                let mut s = ml("abc\ndef", 5);
+                s.move_cursor(CursorMove::LineStart);
+                assert_eq!(s.cursor(), 4);
+            }
+
+            #[test]
+            fn line_end_returns_current_line_end() {
+                let mut s = ml("abc\ndef", 4);
+                s.move_cursor(CursorMove::LineEnd);
+                assert_eq!(s.cursor(), 7);
+            }
+
+            #[test]
+            fn home_end_on_empty_line_returns_same_position() {
+                // "abc\n\ndef" → cursor at 4 (empty line 1)
+                let mut s = ml("abc\n\ndef", 4);
+
+                s.move_cursor(CursorMove::Home);
+                assert_eq!(s.cursor(), 4);
+
+                s.move_cursor(CursorMove::End);
+                assert_eq!(s.cursor(), 4);
+            }
+
+            #[test]
+            fn multibyte_home_end_returns_line_boundaries() {
+                let mut s = ml("あいう\nかき", 5);
+
+                s.move_cursor(CursorMove::Home);
+                assert_eq!(s.cursor(), 4);
+
+                s.move_cursor(CursorMove::End);
+                assert_eq!(s.cursor(), 6);
+            }
         }
 
-        #[test]
-        fn up_from_second_line_returns_same_col_in_first() {
-            // "abc\ndef" → cursor at 5 (d=4, e=5) → col=1
-            // Up → line 0, col 1 → cursor=1
-            let mut s = ml("abc\ndef", 5);
-            s.move_cursor(CursorMove::Up);
-            assert_eq!(s.cursor(), 1);
+        mod word {
+            use super::*;
+
+            #[test]
+            fn forward_moves_within_line() {
+                let mut s = ml("SELECT users", 0);
+                s.move_cursor(CursorMove::WordForward);
+                assert_eq!(s.cursor(), 7);
+            }
+
+            #[test]
+            fn backward_moves_to_start_of_current_word() {
+                let mut s = ml("SELECT users", 10);
+                s.move_cursor(CursorMove::WordBackward);
+                assert_eq!(s.cursor(), 7);
+            }
+
+            #[test]
+            fn forward_crosses_punctuation_boundary() {
+                let mut s = ml("foo(bar)", 0);
+                s.move_cursor(CursorMove::WordForward);
+                assert_eq!(s.cursor(), 3);
+
+                s.move_cursor(CursorMove::WordForward);
+                assert_eq!(s.cursor(), 4);
+            }
+
+            #[test]
+            fn backward_crosses_punctuation_boundary() {
+                let mut s = ml("foo(bar)", 7);
+                s.move_cursor(CursorMove::WordBackward);
+                assert_eq!(s.cursor(), 4);
+
+                s.move_cursor(CursorMove::WordBackward);
+                assert_eq!(s.cursor(), 3);
+            }
+
+            #[test]
+            fn forward_crosses_whitespace_and_newline() {
+                let mut s = ml("foo \n  bar", 0);
+                s.move_cursor(CursorMove::WordForward);
+                assert_eq!(s.cursor(), 7);
+            }
+
+            #[test]
+            fn forward_treats_cjk_as_keyword_word() {
+                let mut s = ml("SELECT あいう", 0);
+                s.move_cursor(CursorMove::WordForward);
+                assert_eq!(s.cursor(), 7);
+
+                s.move_cursor(CursorMove::WordForward);
+                assert_eq!(s.cursor(), 10);
+            }
+
+            #[test]
+            fn backward_crosses_whitespace_and_newline() {
+                let mut s = ml("foo \n  bar", 10);
+                s.move_cursor(CursorMove::WordBackward);
+                assert_eq!(s.cursor(), 7);
+
+                s.move_cursor(CursorMove::WordBackward);
+                assert_eq!(s.cursor(), 0);
+            }
+
+            #[test]
+            fn forward_at_end_returns_unchanged() {
+                let mut s = ml("foo", 3);
+                s.move_cursor(CursorMove::WordForward);
+                assert_eq!(s.cursor(), 3);
+            }
+
+            #[test]
+            fn backward_at_start_returns_unchanged() {
+                let mut s = ml("foo", 0);
+                s.move_cursor(CursorMove::WordBackward);
+                assert_eq!(s.cursor(), 0);
+            }
         }
 
-        #[test]
-        fn up_from_first_line_returns_unchanged() {
-            let mut s = ml("abc\ndef", 1);
-            s.move_cursor(CursorMove::Up);
-            assert_eq!(s.cursor(), 1);
-        }
+        mod buffer_navigation {
+            use super::*;
 
-        #[test]
-        fn down_from_first_line_returns_same_col_in_second() {
-            // "abc\ndef" → cursor at 1 → col=1
-            // Down → line 1, col 1 → cursor=5
-            let mut s = ml("abc\ndef", 1);
-            s.move_cursor(CursorMove::Down);
-            assert_eq!(s.cursor(), 5);
-        }
+            #[test]
+            fn buffer_start_moves_to_start_of_buffer() {
+                let mut s = ml("abc\ndef", 5);
+                s.move_cursor(CursorMove::BufferStart);
+                assert_eq!(s.cursor(), 0);
+            }
 
-        #[test]
-        fn down_from_last_line_returns_unchanged() {
-            let mut s = ml("abc\ndef", 5);
-            s.move_cursor(CursorMove::Down);
-            assert_eq!(s.cursor(), 5);
-        }
+            #[test]
+            fn buffer_end_moves_to_end_of_buffer() {
+                let mut s = ml("abc\ndef", 1);
+                s.move_cursor(CursorMove::BufferEnd);
+                assert_eq!(s.cursor(), 7);
+            }
 
-        #[test]
-        fn up_clamps_col_to_shorter_line_length() {
-            // "ab\ncdef" → cursor at 7 (end of "cdef"), col=4
-            // Up → line 0 has len 2, so col clamped to 2 → cursor=2
-            let mut s = ml("ab\ncdef", 7);
-            s.move_cursor(CursorMove::Up);
-            assert_eq!(s.cursor(), 2);
-        }
+            #[test]
+            fn first_line_preserves_column() {
+                let mut s = ml("abcd\nxy\nwxyz12", 10);
+                s.move_cursor(CursorMove::FirstLine);
+                assert_eq!(s.cursor_to_position(), (0, 2));
+            }
 
-        #[test]
-        fn down_clamps_col_to_shorter_line_length() {
-            // "cdef\nab" → cursor at 4 (end of "cdef"), col=4
-            // Down → line 1 has len 2, so col clamped to 2 → cursor=7
-            let mut s = ml("cdef\nab", 4);
-            s.move_cursor(CursorMove::Down);
-            assert_eq!(s.cursor(), 7);
-        }
+            #[test]
+            fn first_line_clamps_to_line_length() {
+                let mut s = ml("xy\nabcdef", 8);
+                s.move_cursor(CursorMove::FirstLine);
+                assert_eq!(s.cursor_to_position(), (0, 2));
+            }
 
-        #[test]
-        fn home_returns_line_start() {
-            // "abc\ndef" → cursor at 5 (on 'e'), col=1
-            // Home → start of line 1 → cursor=4
-            let mut s = ml("abc\ndef", 5);
-            s.move_cursor(CursorMove::Home);
-            assert_eq!(s.cursor(), 4);
-        }
+            #[test]
+            fn last_line_preserves_column() {
+                let mut s = ml("abcd\nxy\nwxyz12", 2);
+                s.move_cursor(CursorMove::LastLine);
+                assert_eq!(s.cursor_to_position(), (2, 2));
+            }
 
-        #[test]
-        fn end_returns_line_end() {
-            // "abc\ndef" → cursor at 4 (on 'd'), col=0
-            // End → end of line 1 → cursor=7
-            let mut s = ml("abc\ndef", 4);
-            s.move_cursor(CursorMove::End);
-            assert_eq!(s.cursor(), 7);
-        }
+            #[test]
+            fn last_line_clamps_to_line_length() {
+                let mut s = ml("abcdef\nxy", 5);
+                s.move_cursor(CursorMove::LastLine);
+                assert_eq!(s.cursor_to_position(), (1, 2));
+            }
 
-        #[test]
-        fn home_on_first_line_returns_zero() {
-            let mut s = ml("abc\ndef", 2);
-            s.move_cursor(CursorMove::Home);
-            assert_eq!(s.cursor(), 0);
-        }
+            #[test]
+            fn preferred_column_restored_long_to_short_line() {
+                let mut s = ml("abcdefghij\nxy", 5);
 
-        #[test]
-        fn end_on_first_line_returns_line_length() {
-            let mut s = ml("abc\ndef", 0);
-            s.move_cursor(CursorMove::End);
-            assert_eq!(s.cursor(), 3);
-        }
+                s.move_cursor(CursorMove::LastLine);
+                assert_eq!(s.cursor_to_position(), (1, 2));
 
-        #[test]
-        fn line_start_returns_current_line_start() {
-            let mut s = ml("abc\ndef", 5);
-            s.move_cursor(CursorMove::LineStart);
-            assert_eq!(s.cursor(), 4);
-        }
+                s.move_cursor(CursorMove::FirstLine);
+                assert_eq!(s.cursor_to_position(), (0, 5));
+            }
 
-        #[test]
-        fn line_end_returns_current_line_end() {
-            let mut s = ml("abc\ndef", 4);
-            s.move_cursor(CursorMove::LineEnd);
-            assert_eq!(s.cursor(), 7);
-        }
+            #[test]
+            fn preferred_column_restored_short_to_long_line() {
+                let mut s = ml("xy\nabcdefghij", 8);
 
-        #[test]
-        fn word_forward_moves_within_line() {
-            let mut s = ml("SELECT users", 0);
-            s.move_cursor(CursorMove::WordForward);
-            assert_eq!(s.cursor(), 7);
-        }
+                s.move_cursor(CursorMove::FirstLine);
+                assert_eq!(s.cursor_to_position(), (0, 2));
 
-        #[test]
-        fn word_backward_moves_to_start_of_current_word() {
-            let mut s = ml("SELECT users", 10);
-            s.move_cursor(CursorMove::WordBackward);
-            assert_eq!(s.cursor(), 7);
-        }
-
-        #[test]
-        fn word_forward_crosses_punctuation_boundary() {
-            let mut s = ml("foo(bar)", 0);
-            s.move_cursor(CursorMove::WordForward);
-            assert_eq!(s.cursor(), 3);
-
-            s.move_cursor(CursorMove::WordForward);
-            assert_eq!(s.cursor(), 4);
-        }
-
-        #[test]
-        fn word_backward_crosses_punctuation_boundary() {
-            let mut s = ml("foo(bar)", 7);
-            s.move_cursor(CursorMove::WordBackward);
-            assert_eq!(s.cursor(), 4);
-
-            s.move_cursor(CursorMove::WordBackward);
-            assert_eq!(s.cursor(), 3);
-        }
-
-        #[test]
-        fn word_forward_crosses_whitespace_and_newline() {
-            let mut s = ml("foo \n  bar", 0);
-            s.move_cursor(CursorMove::WordForward);
-            assert_eq!(s.cursor(), 7);
-        }
-
-        #[test]
-        fn word_forward_treats_cjk_as_keyword_word() {
-            let mut s = ml("SELECT あいう", 0);
-            s.move_cursor(CursorMove::WordForward);
-            assert_eq!(s.cursor(), 7);
-
-            s.move_cursor(CursorMove::WordForward);
-            assert_eq!(s.cursor(), 10);
-        }
-
-        #[test]
-        fn word_backward_crosses_whitespace_and_newline() {
-            let mut s = ml("foo \n  bar", 10);
-            s.move_cursor(CursorMove::WordBackward);
-            assert_eq!(s.cursor(), 7);
-
-            s.move_cursor(CursorMove::WordBackward);
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn word_forward_at_end_returns_unchanged() {
-            let mut s = ml("foo", 3);
-            s.move_cursor(CursorMove::WordForward);
-            assert_eq!(s.cursor(), 3);
-        }
-
-        #[test]
-        fn word_backward_at_start_returns_unchanged() {
-            let mut s = ml("foo", 0);
-            s.move_cursor(CursorMove::WordBackward);
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn buffer_start_moves_to_start_of_buffer() {
-            let mut s = ml("abc\ndef", 5);
-            s.move_cursor(CursorMove::BufferStart);
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn buffer_end_moves_to_end_of_buffer() {
-            let mut s = ml("abc\ndef", 1);
-            s.move_cursor(CursorMove::BufferEnd);
-            assert_eq!(s.cursor(), 7);
-        }
-
-        #[test]
-        fn first_line_preserves_column() {
-            let mut s = ml("abcd\nxy\nwxyz12", 10);
-            s.move_cursor(CursorMove::FirstLine);
-            assert_eq!(s.cursor_to_position(), (0, 2));
-        }
-
-        #[test]
-        fn first_line_clamps_to_line_length() {
-            let mut s = ml("xy\nabcdef", 8);
-            s.move_cursor(CursorMove::FirstLine);
-            assert_eq!(s.cursor_to_position(), (0, 2));
-        }
-
-        #[test]
-        fn last_line_preserves_column() {
-            let mut s = ml("abcd\nxy\nwxyz12", 2);
-            s.move_cursor(CursorMove::LastLine);
-            assert_eq!(s.cursor_to_position(), (2, 2));
-        }
-
-        #[test]
-        fn last_line_clamps_to_line_length() {
-            let mut s = ml("abcdef\nxy", 5);
-            s.move_cursor(CursorMove::LastLine);
-            assert_eq!(s.cursor_to_position(), (1, 2));
-        }
-
-        #[test]
-        fn preferred_column_restored_long_to_short_line() {
-            let mut s = ml("abcdefghij\nxy", 5);
-
-            s.move_cursor(CursorMove::LastLine);
-            assert_eq!(s.cursor_to_position(), (1, 2));
-
-            s.move_cursor(CursorMove::FirstLine);
-            assert_eq!(s.cursor_to_position(), (0, 5));
-        }
-
-        #[test]
-        fn preferred_column_restored_short_to_long_line() {
-            let mut s = ml("xy\nabcdefghij", 8);
-
-            s.move_cursor(CursorMove::FirstLine);
-            assert_eq!(s.cursor_to_position(), (0, 2));
-
-            s.move_cursor(CursorMove::LastLine);
-            assert_eq!(s.cursor_to_position(), (1, 5));
-        }
-    }
-
-    // ── Edge cases: trailing newline, empty lines, consecutive newlines ──
-
-    mod edge_case_tests {
-        use super::*;
-
-        #[test]
-        fn up_from_empty_trailing_line_returns_prev_line_origin() {
-            // "abc\n" → cursor at 4 (empty line 1)
-            // Up → line 0, col 0.min(3) = 0 → cursor=0
-            let mut s = ml("abc\n", 4);
-            s.move_cursor(CursorMove::Up);
-            assert_eq!(s.cursor(), 0);
-        }
-
-        #[test]
-        fn down_to_empty_trailing_line_returns_next_row_origin() {
-            // "abc\n" → cursor at 2 (col=2)
-            // Down → line 1, col 2.min(0) = 0 → cursor=4
-            let mut s = ml("abc\n", 2);
-            s.move_cursor(CursorMove::Down);
-            assert_eq!(s.cursor(), 4);
-        }
-
-        #[test]
-        fn up_through_empty_line_restores_preferred_column() {
-            // "abc\n\ndef" → lines: (0,3), (4,0), (5,3)
-            // Start at cursor=6 (line 2, col 1 → 'e')
-            let mut s = ml("abc\n\ndef", 6);
-            assert_eq!(s.cursor_to_position(), (2, 1));
-
-            // Up → line 1 (empty), col 1.min(0) = 0 → cursor=4
-            s.move_cursor(CursorMove::Up);
-            assert_eq!(s.cursor(), 4);
-            assert_eq!(s.cursor_to_position(), (1, 0));
-
-            // Up again → line 0, restore preferred col 1 → cursor=1
-            s.move_cursor(CursorMove::Up);
-            assert_eq!(s.cursor(), 1);
-            assert_eq!(s.cursor_to_position(), (0, 1));
-        }
-
-        #[test]
-        fn home_end_on_empty_line_returns_same_position() {
-            // "abc\n\ndef" → cursor at 4 (empty line 1)
-            let mut s = ml("abc\n\ndef", 4);
-
-            s.move_cursor(CursorMove::Home);
-            assert_eq!(s.cursor(), 4);
-
-            s.move_cursor(CursorMove::End);
-            assert_eq!(s.cursor(), 4);
+                s.move_cursor(CursorMove::LastLine);
+                assert_eq!(s.cursor_to_position(), (1, 5));
+            }
         }
     }
 
@@ -872,39 +913,6 @@ mod tests {
         fn past_end_returns_content_byte_len() {
             let s = ml("abc", 0);
             assert_eq!(s.char_to_byte_index(100), 3);
-        }
-    }
-
-    // ── multibyte multi-line ────────────────────────────────────────
-
-    mod multibyte_multiline_tests {
-        use super::*;
-
-        #[test]
-        fn multibyte_up_down_preserves_col() {
-            // "あいう\nかき" → lines: (0,3), (4,2)
-            // cursor at 5 (line 1, col 1 → 'き')
-            let mut s = ml("あいう\nかき", 5);
-            assert_eq!(s.cursor_to_position(), (1, 1));
-
-            // Up → line 0, col 1.min(3) = 1 → cursor=1
-            s.move_cursor(CursorMove::Up);
-            assert_eq!(s.cursor(), 1);
-
-            // Down → line 1, col 1.min(2) = 1 → cursor=5
-            s.move_cursor(CursorMove::Down);
-            assert_eq!(s.cursor(), 5);
-        }
-
-        #[test]
-        fn multibyte_home_end_returns_line_boundaries() {
-            let mut s = ml("あいう\nかき", 5);
-
-            s.move_cursor(CursorMove::Home);
-            assert_eq!(s.cursor(), 4);
-
-            s.move_cursor(CursorMove::End);
-            assert_eq!(s.cursor(), 6);
         }
     }
 }
