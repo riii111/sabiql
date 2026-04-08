@@ -45,7 +45,7 @@ fn reduce_inner(
 ) -> Vec<Effect> {
     state.result_interaction.clear_operator_pending(
         matches!(action, Action::ResultDeleteOperatorPending),
-        matches!(action, Action::ResultCellYankAndArmRowYank),
+        matches!(action, Action::ResultRowYankOperatorPending),
     );
 
     // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
@@ -2615,7 +2615,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::ResultCellYankAndArmRowYank,
+                Action::ResultRowYankOperatorPending,
                 now,
                 &AppServices::stub(),
             );

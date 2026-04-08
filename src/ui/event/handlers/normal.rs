@@ -146,6 +146,11 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         {
             Action::UnstageLastStagedRow
         }
+        Key::Char('Y')
+            if result_navigation && state.result_interaction.selection().cell().is_some() =>
+        {
+            Action::ResultCellYank
+        }
         Key::Char('p') => Action::OpenTablePicker,
         Key::Char('s') => Action::OpenSqlModal,
         Key::Char('e') => Action::OpenErTablePicker,
@@ -628,13 +633,13 @@ mod tests {
     }
 
     #[test]
-    fn y_in_cell_active_yanks_cell_and_arms_row_yank() {
+    fn y_in_cell_active_sets_row_yank_pending() {
         let mut state = result_focused_state();
         state.result_interaction.activate_cell(0, 0);
 
         let result = handle_normal_mode(combo(Key::Char('y')), &state);
 
-        assert!(matches!(result, Action::ResultCellYankAndArmRowYank));
+        assert!(matches!(result, Action::ResultRowYankOperatorPending));
     }
 
     #[test]
@@ -658,13 +663,13 @@ mod tests {
     }
 
     #[test]
-    fn y_in_cell_active_still_cell_yank() {
+    fn capital_y_in_cell_active_yanks_cell() {
         let mut state = result_focused_state();
         state.result_interaction.activate_cell(0, 0);
 
-        let result = handle_normal_mode(combo(Key::Char('y')), &state);
+        let result = handle_normal_mode(combo(Key::Char('Y')), &state);
 
-        assert!(matches!(result, Action::ResultCellYankAndArmRowYank));
+        assert!(matches!(result, Action::ResultCellYank));
     }
 
     #[test]

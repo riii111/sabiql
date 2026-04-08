@@ -309,12 +309,12 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Enter)],
     },
     KeyBinding {
-        key_short: "y",
-        key: "y",
+        key_short: "Y",
+        key: "Y",
         desc_short: "Yank",
         description: "Copy the active cell value to clipboard",
         action: Action::ResultCellYank,
-        combos: &[KeyCombo::plain(Key::Char('y'))],
+        combos: &[KeyCombo::plain(Key::Char('Y'))],
     },
     KeyBinding {
         key_short: "dd",

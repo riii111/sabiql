@@ -73,7 +73,7 @@ pub(in crate::app::update::input::vim) fn operator(
                 if result_ctx.yank_pending {
                     Action::ResultRowYank
                 } else {
-                    Action::ResultCellYankAndArmRowYank
+                    Action::ResultRowYankOperatorPending
                 }
             }
         }),
@@ -379,7 +379,7 @@ mod tests {
             browse_result(result_ctx(ResultNavMode::CellActive)),
         );
 
-        assert!(matches!(action, Some(Action::ResultCellYankAndArmRowYank)));
+        assert!(matches!(action, Some(Action::ResultRowYankOperatorPending)));
     }
 
     #[test]
@@ -419,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn result_cell_yank_resolves_to_cell_yank() {
+    fn result_cell_yank_is_not_triggered_by_y_operator() {
         let action = action_for_command(
             VimCommand::Operator(VimOperator::Yank),
             browse_result(ResultVimContext {
@@ -428,7 +428,7 @@ mod tests {
             }),
         );
 
-        assert!(matches!(action, Some(Action::ResultCellYankAndArmRowYank)));
+        assert!(matches!(action, Some(Action::ResultRowYankOperatorPending)));
     }
 
     #[test]

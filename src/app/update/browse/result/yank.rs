@@ -15,10 +15,7 @@ pub fn reduce(
     now: Instant,
 ) -> Option<Vec<Effect>> {
     match action {
-        Action::ResultCellYank | Action::ResultCellYankAndArmRowYank => {
-            if matches!(action, Action::ResultCellYankAndArmRowYank) {
-                state.result_interaction.yank_op_pending = true;
-            }
+        Action::ResultCellYank => {
             if let (Some(row_idx), Some(col_idx)) = (
                 state.result_interaction.selection().row(),
                 state.result_interaction.selection().cell(),
@@ -49,6 +46,10 @@ pub fn reduce(
             } else {
                 Some(vec![])
             }
+        }
+        Action::ResultRowYankOperatorPending => {
+            state.result_interaction.yank_op_pending = true;
+            Some(vec![])
         }
         Action::DdlYank => {
             if state.ui.inspector_tab == InspectorTab::Ddl
@@ -210,6 +211,23 @@ mod tests {
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
+        }
+
+        #[test]
+        fn row_yank_pending_does_not_copy_cell() {
+            let mut state = state_with_grid(3, 3);
+            state.result_interaction.activate_cell(1, 2);
+
+            let effects = reduce(
+                &mut state,
+                &Action::ResultRowYankOperatorPending,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.result_interaction.yank_op_pending);
         }
 
         #[test]

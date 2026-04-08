@@ -444,7 +444,7 @@ pub enum Action {
     ResultCellLeft,
     ResultCellRight,
     ResultCellYank,
-    ResultCellYankAndArmRowYank,
+    ResultRowYankOperatorPending,
     ResultRowYank,
     DdlYank,
     ResultDeleteOperatorPending,
