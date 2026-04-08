@@ -285,7 +285,7 @@ mod tests {
         state
     }
 
-    mod result_page_scroll {
+    mod page_scroll {
         use super::*;
 
         #[test]
@@ -375,38 +375,42 @@ mod tests {
             assert_eq!(state.result_interaction.scroll_offset, 0);
         }
 
-        #[test]
-        fn scroll_middle_is_noop_in_scroll_mode() {
-            let mut state = state_with_result_rows(100, 25);
+        mod viewport_position {
+            use super::*;
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::ViewportMiddle,
-                },
-            );
+            #[test]
+            fn scroll_middle_moves_row_to_viewport_center_in_cell_active() {
+                let mut state = state_with_result_rows(100, 25);
+                // visible = 20, mid_viewport = 10, target = 0 + 10 = 10
+                state.result_interaction.activate_cell(0, 0);
 
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-        }
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::ViewportMiddle,
+                    },
+                );
 
-        #[test]
-        fn scroll_middle_moves_row_to_viewport_center_in_cell_active() {
-            let mut state = state_with_result_rows(100, 25);
-            // visible = 20, mid_viewport = 10, target = 0 + 10 = 10
-            state.result_interaction.activate_cell(0, 0);
+                assert_eq!(state.result_interaction.selection().row(), Some(10));
+            }
 
-            reduce(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::ViewportMiddle,
-                },
-            );
+            #[test]
+            fn scroll_middle_is_noop_in_scroll_mode() {
+                let mut state = state_with_result_rows(100, 25);
 
-            assert_eq!(state.result_interaction.selection().row(), Some(10));
+                reduce(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::ViewportMiddle,
+                    },
+                );
+
+                assert_eq!(state.result_interaction.scroll_offset, 0);
+            }
         }
 
         #[test]
