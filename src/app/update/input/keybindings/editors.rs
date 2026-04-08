@@ -24,12 +24,12 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Char('y'))],
     },
     KeyBinding {
-        key_short: "Enter/i",
-        key: "Enter / i",
+        key_short: "i",
+        key: "i",
         desc_short: "Insert",
         description: "Enter Insert mode",
         action: Action::SqlModalEnterInsert,
-        combos: &[KeyCombo::plain(Key::Enter), KeyCombo::plain(Key::Char('i'))],
+        combos: &[KeyCombo::plain(Key::Char('i'))],
     },
     KeyBinding {
         key_short: "hjkl",

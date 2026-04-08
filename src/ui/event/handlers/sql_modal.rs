@@ -515,18 +515,28 @@ mod tests {
         assert_action(result, expected);
     }
 
-    #[rstest]
-    #[case(Key::Enter)]
-    #[case(Key::Char('i'))]
-    fn normal_sql_tab_accepts_shared_insert_keys(#[case] code: Key) {
+    #[test]
+    fn normal_sql_tab_i_enters_insert() {
         let result = handle_sql_modal_keys(
-            combo(code),
+            combo(Key::Char('i')),
             false,
             &SqlModalStatus::Normal,
             SqlModalTab::Sql,
         );
 
         assert_action(result, Expected::SqlModalEnterInsert);
+    }
+
+    #[test]
+    fn normal_sql_tab_enter_is_unbound() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Enter),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::None);
     }
 
     #[test]
@@ -883,7 +893,7 @@ mod tests {
     }
 
     #[test]
-    fn normal_mode_enter_enters_insert() {
+    fn normal_mode_enter_is_unbound() {
         let result = handle_sql_modal_keys(
             combo(Key::Enter),
             false,
@@ -891,7 +901,7 @@ mod tests {
             SqlModalTab::Sql,
         );
 
-        assert_action(result, Expected::SqlModalEnterInsert);
+        assert_action(result, Expected::None);
     }
 
     #[test]
@@ -963,7 +973,7 @@ mod tests {
         let close = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Sql);
 
         assert_action(yank, Expected::SqlModalYank);
-        assert_action(enter, Expected::SqlModalEnterInsert);
+        assert_action(enter, Expected::None);
         assert_action(close, Expected::CloseSqlModal);
     }
 

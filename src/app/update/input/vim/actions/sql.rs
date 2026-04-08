@@ -18,9 +18,9 @@ pub(in crate::app::update::input::vim) fn command(
             VimCommand::ModeTransition(VimModeTransition::Append) => {
                 Some(Action::SqlModalAppendInsert)
             }
-            VimCommand::ModeTransition(
-                VimModeTransition::Insert | VimModeTransition::ConfirmOrEnter,
-            ) => Some(Action::SqlModalEnterInsert),
+            VimCommand::ModeTransition(VimModeTransition::Insert) => {
+                Some(Action::SqlModalEnterInsert)
+            }
             VimCommand::Operator(VimOperator::Yank) => Some(Action::SqlModalYank),
             _ => None,
         },
@@ -91,7 +91,6 @@ mod tests {
     #[rstest]
     #[case(Key::Char('i'), false)]
     #[case(Key::Char('A'), true)]
-    #[case(Key::Enter, false)]
     fn insert_and_confirm_enter_insert(#[case] key: Key, #[case] append: bool) {
         let ctx = VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal);
 
