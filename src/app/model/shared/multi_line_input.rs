@@ -559,14 +559,14 @@ mod tests {
             use super::*;
 
             #[test]
-            fn forward_moves_within_line() {
+            fn forward_returns_start_of_next_word() {
                 let mut s = ml("SELECT users", 0);
                 s.move_cursor(CursorMove::WordForward);
                 assert_eq!(s.cursor(), 7);
             }
 
             #[test]
-            fn backward_moves_to_start_of_current_word() {
+            fn backward_returns_start_of_current_word() {
                 let mut s = ml("SELECT users", 10);
                 s.move_cursor(CursorMove::WordBackward);
                 assert_eq!(s.cursor(), 7);
@@ -743,7 +743,7 @@ mod tests {
         }
 
         #[test]
-        fn operations_clear_preferred_column() {
+        fn clears_preferred_column() {
             let mut s = ml("abcdefghij\nxy\nabcdefghij", 8);
 
             s.move_cursor(CursorMove::Down);
@@ -788,14 +788,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn cursor_within_viewport_returns_unchanged_scroll() {
+        fn within_viewport_returns_unchanged() {
             let mut s = ml("line1\nline2\nline3", 0);
             s.update_scroll(3);
             assert_eq!(s.scroll_row(), 0);
         }
 
         #[test]
-        fn cursor_below_viewport_advances_scroll() {
+        fn below_viewport_advances() {
             // cursor on line 2 (index 2), visible_rows=2, scroll should advance
             let mut s = ml("line1\nline2\nline3", 12); // "line3" start
             s.update_scroll(2);
@@ -803,7 +803,7 @@ mod tests {
         }
 
         #[test]
-        fn cursor_above_viewport_retreats_scroll() {
+        fn above_viewport_retreats() {
             let mut s = ml("line1\nline2\nline3", 0);
             s.scroll_row = 2;
             s.update_scroll(2);
@@ -811,7 +811,7 @@ mod tests {
         }
 
         #[test]
-        fn zero_visible_rows_returns_unchanged_scroll() {
+        fn zero_visible_rows_returns_unchanged() {
             let mut s = ml("line1\nline2", 6);
             s.scroll_row = 1;
             s.update_scroll(0);
