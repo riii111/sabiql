@@ -219,68 +219,19 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-
-    use super::*;
-    use crate::app::model::shared::focused_pane::FocusedPane;
-    use crate::domain::DatabaseMetadata;
-    use crate::domain::QuerySource;
-    use rstest::rstest;
     use std::time::Instant;
 
-    #[test]
-    fn default_result_pane_height_returns_zero_visible_rows() {
-        let state = AppState::new("test".to_string());
-
-        let visible = state.result_visible_rows();
-
-        assert_eq!(visible, 0);
-    }
-
-    #[rstest]
-    #[case(10, 5)]
-    #[case(15, 10)]
-    #[case(20, 15)]
-    #[case(30, 25)]
-    fn result_pane_height_calculates_correct_visible_rows(
-        #[case] pane_height: u16,
-        #[case] expected: usize,
-    ) {
-        let mut state = AppState::new("test".to_string());
-        state.ui.result_pane_height = pane_height;
-
-        let visible = state.result_visible_rows();
-
-        assert_eq!(visible, expected);
-    }
-
-    #[test]
-    fn small_result_pane_height_does_not_underflow() {
-        let mut state = AppState::new("test".to_string());
-        state.ui.result_pane_height = 2;
-
-        let visible = state.result_visible_rows();
-
-        assert_eq!(visible, 0);
-    }
-
-    #[test]
-    fn very_small_result_pane_returns_zero_rows() {
-        let mut state = AppState::new("test".to_string());
-        state.ui.result_pane_height = 1;
-
-        let visible = state.result_visible_rows();
-
-        assert_eq!(visible, 0);
-    }
-
-    #[test]
-    fn large_result_pane_height_returns_proportional_rows() {
-        let mut state = AppState::new("test".to_string());
-        state.ui.result_pane_height = 50;
-
-        let visible = state.result_visible_rows();
-
-        assert_eq!(visible, 45);
+    use super::*;
+    use crate::app::model::er_state::ErStatus;
+    use crate::app::model::shared::focused_pane::FocusedPane;
+    use crate::app::update::action::Action;
+    use crate::app::update::reduce_metadata;
+    use crate::domain::DatabaseMetadata;
+    use crate::domain::QuerySource;
+    use crate::domain::Table;
+    use rstest::rstest;
+    fn make_state() -> AppState {
+        AppState::new("test".to_string())
     }
 
     fn make_query_result(source: QuerySource) -> Arc<crate::domain::QueryResult> {
@@ -293,274 +244,302 @@ mod tests {
         ))
     }
 
-    #[test]
-    fn can_request_csv_export_returns_true_for_live_non_error_result() {
-        let mut state = AppState::new("test".to_string());
-        state
-            .query
-            .set_current_result(make_query_result(QuerySource::Preview));
-
-        assert!(state.can_request_csv_export());
-    }
-
-    #[test]
-    fn can_request_csv_export_returns_false_in_history_mode() {
-        let mut state = AppState::new("test".to_string());
-        state
-            .query
-            .push_history(make_query_result(QuerySource::Adhoc));
-        state.query.enter_history(0);
-
-        assert!(!state.can_request_csv_export());
-    }
-
-    #[test]
-    fn filtered_tables_with_empty_filter_returns_all() {
-        let mut state = AppState::new("test".to_string());
-        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+    fn make_metadata(table_summaries: Vec<TableSummary>) -> Arc<DatabaseMetadata> {
+        Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
-            table_summaries: vec![
+            table_summaries,
+            fetched_at: Instant::now(),
+        })
+    }
+
+    fn make_table_detail() -> Table {
+        Table {
+            schema: "public".to_string(),
+            name: "users".to_string(),
+            owner: None,
+            columns: Vec::new(),
+            primary_key: None,
+            foreign_keys: Vec::new(),
+            indexes: Vec::new(),
+            rls: None,
+            triggers: Vec::new(),
+            row_count_estimate: None,
+            comment: None,
+        }
+    }
+
+    mod pane_geometry {
+        use super::*;
+
+        #[test]
+        fn result_rows_default_to_zero() {
+            let state = make_state();
+
+            let visible = state.result_visible_rows();
+
+            assert_eq!(visible, 0);
+        }
+
+        #[rstest]
+        #[case(10, 5)]
+        #[case(15, 10)]
+        #[case(20, 15)]
+        #[case(30, 25)]
+        fn result_rows_follow_pane_height(#[case] pane_height: u16, #[case] expected: usize) {
+            let mut state = make_state();
+            state.ui.result_pane_height = pane_height;
+
+            let visible = state.result_visible_rows();
+
+            assert_eq!(visible, expected);
+        }
+
+        #[test]
+        fn result_rows_clamp_small_heights() {
+            let mut state = make_state();
+            state.ui.result_pane_height = 2;
+
+            let visible = state.result_visible_rows();
+
+            assert_eq!(visible, 0);
+        }
+
+        #[test]
+        fn result_rows_stay_zero_at_minimum() {
+            let mut state = make_state();
+            state.ui.result_pane_height = 1;
+
+            let visible = state.result_visible_rows();
+
+            assert_eq!(visible, 0);
+        }
+
+        #[test]
+        fn result_rows_scale_with_height() {
+            let mut state = make_state();
+            state.ui.result_pane_height = 50;
+
+            let visible = state.result_visible_rows();
+
+            assert_eq!(visible, 45);
+        }
+
+        #[test]
+        fn inspector_ddl_rows_exceed_standard_rows() {
+            let mut state = make_state();
+            state.ui.inspector_pane_height = 20;
+
+            let standard = state.inspector_visible_rows();
+            let ddl = state.inspector_ddl_visible_rows();
+
+            // DDL omits the standard header rows, so it exposes two more rows.
+            assert_eq!(ddl - standard, 2);
+        }
+
+        #[rstest]
+        #[case(10, 7)]
+        #[case(15, 12)]
+        #[case(20, 17)]
+        fn inspector_ddl_rows_subtract_three(#[case] pane_height: u16, #[case] expected: usize) {
+            let mut state = make_state();
+            state.ui.inspector_pane_height = pane_height;
+
+            let visible = state.inspector_ddl_visible_rows();
+
+            assert_eq!(visible, expected);
+        }
+
+        #[test]
+        fn inspector_ddl_rows_clamp_small_heights() {
+            let mut state = make_state();
+            state.ui.inspector_pane_height = 2;
+
+            let visible = state.inspector_ddl_visible_rows();
+
+            assert_eq!(visible, 0);
+        }
+    }
+
+    mod table_selection {
+        use super::*;
+
+        #[test]
+        fn empty_filter_returns_all() {
+            let mut state = make_state();
+            state.session.set_metadata(Some(make_metadata(vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-            ],
-            fetched_at: Instant::now(),
-        })));
-        state
-            .ui
-            .table_picker
-            .filter_input
-            .set_content(String::new());
+            ])));
+            state
+                .ui
+                .table_picker
+                .filter_input
+                .set_content(String::new());
 
-        let filtered = state.filtered_tables();
+            let filtered = state.filtered_tables();
 
-        assert_eq!(filtered.len(), 2);
-    }
+            assert_eq!(filtered.len(), 2);
+        }
 
-    #[test]
-    fn filtered_tables_with_matching_filter_returns_subset() {
-        let mut state = AppState::new("test".to_string());
-        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-            database_name: "test".to_string(),
-            schemas: vec![],
-            table_summaries: vec![
+        #[test]
+        fn substring_filter_matches() {
+            let mut state = make_state();
+            state.session.set_metadata(Some(make_metadata(vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-            ],
-            fetched_at: Instant::now(),
-        })));
-        state
-            .ui
-            .table_picker
-            .filter_input
-            .set_content("user".to_string());
+            ])));
+            state
+                .ui
+                .table_picker
+                .filter_input
+                .set_content("user".to_string());
 
-        let filtered = state.filtered_tables();
+            let filtered = state.filtered_tables();
 
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].name, "users");
-    }
+            assert_eq!(filtered.len(), 1);
+            assert_eq!(filtered[0].name, "users");
+        }
 
-    #[test]
-    fn filtered_tables_is_case_insensitive() {
-        let mut state = AppState::new("test".to_string());
-        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-            database_name: "test".to_string(),
-            schemas: vec![],
-            table_summaries: vec![TableSummary::new(
-                "public".to_string(),
-                "Users".to_string(),
-                Some(100),
-                false,
-            )],
-            fetched_at: Instant::now(),
-        })));
-        state
-            .ui
-            .table_picker
-            .filter_input
-            .set_content("user".to_string());
-
-        let filtered = state.filtered_tables();
-
-        assert_eq!(filtered.len(), 1);
-    }
-
-    #[test]
-    fn selection_generation_starts_at_zero() {
-        let state = AppState::new("test".to_string());
-
-        assert_eq!(state.session.selection_generation(), 0);
-    }
-
-    #[test]
-    fn selection_generation_increments_prevent_race_conditions() {
-        let mut state = AppState::new("test".to_string());
-
-        let gen1 = state.session.selection_generation();
-        let gen2 = state
-            .session
-            .select_table("public", "t1", &mut state.query.pagination);
-        let gen3 = state
-            .session
-            .select_table("public", "t2", &mut state.query.pagination);
-
-        assert_eq!(gen1, 0);
-        assert_eq!(gen2, 1);
-        assert_eq!(gen3, 2);
-    }
-
-    #[test]
-    fn selection_generation_can_detect_stale_responses() {
-        let mut state = AppState::new("test".to_string());
-
-        let initial_gen = state.session.selection_generation();
-        let current_gen =
+        #[test]
+        fn filter_ignores_case() {
+            let mut state = make_state();
             state
                 .session
-                .select_table("public", "users", &mut state.query.pagination);
+                .set_metadata(Some(make_metadata(vec![TableSummary::new(
+                    "public".to_string(),
+                    "Users".to_string(),
+                    Some(100),
+                    false,
+                )])));
+            state
+                .ui
+                .table_picker
+                .filter_input
+                .set_content("user".to_string());
 
-        assert!(initial_gen < current_gen);
+            let filtered = state.filtered_tables();
+
+            assert_eq!(filtered.len(), 1);
+        }
+
+        #[test]
+        fn selection_generation_starts_at_zero() {
+            let state = make_state();
+
+            assert_eq!(state.session.selection_generation(), 0);
+        }
+
+        #[test]
+        fn selection_generation_increments_on_selection() {
+            let mut state = make_state();
+
+            let gen1 = state.session.selection_generation();
+            let gen2 = state
+                .session
+                .select_table("public", "t1", &mut state.query.pagination);
+            let gen3 = state
+                .session
+                .select_table("public", "t2", &mut state.query.pagination);
+
+            assert_eq!(gen1, 0);
+            assert_eq!(gen2, 1);
+            assert_eq!(gen3, 2);
+        }
+
+        #[test]
+        fn selection_generation_advances_after_reselection() {
+            let mut state = make_state();
+
+            let initial_gen = state.session.selection_generation();
+            let current_gen =
+                state
+                    .session
+                    .select_table("public", "users", &mut state.query.pagination);
+
+            assert!(initial_gen < current_gen);
+        }
     }
 
-    // Focus mode tests
+    mod sql_modal_lifecycle {
+        use super::*;
 
-    #[test]
-    fn toggle_focus_enters_focus_mode() {
-        let mut state = AppState::new("test".to_string());
-        state.ui.focused_pane = FocusedPane::Explorer;
+        #[test]
+        fn prefetch_queue_starts_empty() {
+            let state = make_state();
 
-        let result = state.toggle_focus();
+            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(!state.sql_modal.is_prefetch_started());
+        }
 
-        assert!(result);
-        assert!(state.ui.is_focus_mode());
-        assert_eq!(state.ui.focused_pane, FocusedPane::Result);
-        assert_eq!(
-            state.ui.focus_mode.previous_pane(),
-            Some(FocusedPane::Explorer)
-        );
-    }
-
-    #[test]
-    fn toggle_focus_exits_focus_mode_and_restores_pane() {
-        let mut state = AppState::new("test".to_string());
-        state.ui.focused_pane = FocusedPane::Inspector;
-        state.toggle_focus();
-
-        let result = state.toggle_focus();
-
-        assert!(result);
-        assert!(!state.ui.is_focus_mode());
-        assert_eq!(state.ui.focused_pane, FocusedPane::Inspector);
-    }
-
-    // Prefetch state tests
-
-    #[test]
-    fn prefetch_queue_starts_empty() {
-        let state = AppState::new("test".to_string());
-
-        assert!(state.sql_modal.prefetch_queue.is_empty());
-        assert!(!state.sql_modal.is_prefetch_started());
-    }
-
-    #[test]
-    fn prefetch_queue_pop_returns_fifo_order() {
-        let mut state = AppState::new("test".to_string());
-        state
-            .sql_modal
-            .prefetch_queue
-            .push_back("public.users".to_string());
-        state
-            .sql_modal
-            .prefetch_queue
-            .push_back("public.orders".to_string());
-
-        let first = state.sql_modal.prefetch_queue.pop_front();
-        let second = state.sql_modal.prefetch_queue.pop_front();
-
-        assert_eq!(first, Some("public.users".to_string()));
-        assert_eq!(second, Some("public.orders".to_string()));
-    }
-
-    #[test]
-    fn prefetching_tables_tracks_in_flight() {
-        let mut state = AppState::new("test".to_string());
-
-        state
-            .sql_modal
-            .prefetching_tables
-            .insert("public.users".to_string());
-
-        assert!(state.sql_modal.prefetching_tables.contains("public.users"));
-        assert!(!state.sql_modal.prefetching_tables.contains("public.orders"));
-    }
-
-    #[test]
-    fn failed_prefetch_tables_tracks_failure_time_and_error() {
-        let mut state = AppState::new("test".to_string());
-        let now = Instant::now();
-
-        state.sql_modal.failed_prefetch_tables.insert(
-            "public.users".to_string(),
-            crate::app::model::sql_editor::modal::FailedPrefetchEntry {
-                failed_at: now,
-                error: "connection timeout".to_string(),
-                retry_count: 0,
-            },
-        );
-
-        assert!(
+        #[test]
+        fn prefetch_queue_is_fifo() {
+            let mut state = make_state();
             state
                 .sql_modal
+                .prefetch_queue
+                .push_back("public.users".to_string());
+            state
+                .sql_modal
+                .prefetch_queue
+                .push_back("public.orders".to_string());
+
+            let first = state.sql_modal.prefetch_queue.pop_front();
+            let second = state.sql_modal.prefetch_queue.pop_front();
+
+            assert_eq!(first, Some("public.users".to_string()));
+            assert_eq!(second, Some("public.orders".to_string()));
+        }
+
+        #[test]
+        fn prefetching_tables_track_in_flight() {
+            let mut state = make_state();
+
+            state
+                .sql_modal
+                .prefetching_tables
+                .insert("public.users".to_string());
+
+            assert!(state.sql_modal.prefetching_tables.contains("public.users"));
+            assert!(!state.sql_modal.prefetching_tables.contains("public.orders"));
+        }
+
+        #[test]
+        fn failed_prefetch_tables_store_error_and_time() {
+            let mut state = make_state();
+            let now = Instant::now();
+
+            state.sql_modal.failed_prefetch_tables.insert(
+                "public.users".to_string(),
+                crate::app::model::sql_editor::modal::FailedPrefetchEntry {
+                    failed_at: now,
+                    error: "connection timeout".to_string(),
+                    retry_count: 0,
+                },
+            );
+
+            assert!(
+                state
+                    .sql_modal
+                    .failed_prefetch_tables
+                    .contains_key("public.users")
+            );
+            let entry = state
+                .sql_modal
                 .failed_prefetch_tables
-                .contains_key("public.users")
-        );
-        let entry = state
-            .sql_modal
-            .failed_prefetch_tables
-            .get("public.users")
-            .unwrap();
-        assert!(entry.failed_at.elapsed().as_secs() < 1);
-        assert_eq!(entry.error, "connection timeout");
-    }
-
-    mod er_preparation {
-        use super::*;
-        use crate::app::model::er_state::ErStatus;
-
-        #[test]
-        fn new_state_defaults_to_idle() {
-            let state = AppState::new("test".to_string());
-
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
-        }
-
-        #[test]
-        fn status_can_be_set_to_waiting() {
-            let mut state = AppState::new("test".to_string());
-
-            state.er_preparation.status = ErStatus::Waiting;
-
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-        }
-
-        #[test]
-        fn status_can_be_set_to_rendering() {
-            let mut state = AppState::new("test".to_string());
-
-            state.er_preparation.status = ErStatus::Rendering;
-
-            assert_eq!(state.er_preparation.status, ErStatus::Rendering);
+                .get("public.users")
+                .unwrap();
+            assert_eq!(entry.failed_at, now);
+            assert_eq!(entry.error, "connection timeout");
         }
     }
 
     mod reload_metadata_reset {
         use super::*;
 
-        #[test]
-        fn clears_prefetch_state() {
-            let mut state = AppState::new("test".to_string());
+        fn prepare_state_for_reload() -> AppState {
+            let mut state = make_state();
+            state.session.begin_connecting("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
             state
                 .sql_modal
@@ -578,9 +557,14 @@ mod tests {
                     retry_count: 0,
                 },
             );
+            state
+        }
 
-            // Simulate ReloadMetadata reset using reset_prefetch()
-            state.sql_modal.reset_prefetch();
+        #[test]
+        fn resets_prefetch_state() {
+            let mut state = prepare_state_for_reload();
+
+            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(!state.sql_modal.is_prefetch_started());
             assert!(state.sql_modal.prefetch_queue.is_empty());
@@ -590,23 +574,26 @@ mod tests {
 
         #[test]
         fn resets_er_preparation() {
-            use crate::app::model::er_state::ErStatus;
-
-            let mut state = AppState::new("test".to_string());
+            let mut state = prepare_state_for_reload();
             state.er_preparation.status = ErStatus::Waiting;
 
-            state.er_preparation.reset();
+            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert_eq!(state.er_preparation.status, ErStatus::Idle);
         }
 
         #[test]
         fn clears_stale_messages() {
-            let mut state = AppState::new("test".to_string());
-            state.set_error("Old error".to_string());
+            let mut state = prepare_state_for_reload();
+            state.messages.last_error = Some("Old error".to_string());
+            state.messages.last_success = Some("Old success".to_string());
+            state.messages.expires_at = Some(Instant::now());
 
-            // Simulate ReloadMetadata reset
-            state.messages.clear();
+            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_success.is_some());
+            assert!(state.messages.expires_at.is_some());
+
+            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(state.messages.last_error.is_none());
             assert!(state.messages.last_success.is_none());
@@ -614,72 +601,117 @@ mod tests {
         }
     }
 
-    mod inspector_scroll_reset {
+    mod ui_facade {
         use super::*;
 
         #[test]
-        fn scroll_offset_resets_to_zero_on_table_switch() {
-            let mut state = AppState::new("test".to_string());
-            state.ui.inspector_scroll_offset = 42;
+        fn toggle_focus_enters_focus_mode() {
+            let mut state = make_state();
+            state.ui.focused_pane = FocusedPane::Explorer;
 
-            // Simulate table switch (TableDetailLoaded action)
-            state.ui.inspector_scroll_offset = 0;
+            let result = state.toggle_focus();
 
-            assert_eq!(state.ui.inspector_scroll_offset, 0);
+            assert!(result);
+            assert!(state.ui.is_focus_mode());
+            assert_eq!(state.ui.focused_pane, FocusedPane::Result);
+            assert_eq!(
+                state.ui.focus_mode.previous_pane(),
+                Some(FocusedPane::Explorer)
+            );
         }
 
         #[test]
-        fn scroll_offset_stays_zero_when_no_table_detail() {
-            let state = AppState::new("test".to_string());
+        fn toggle_focus_restores_previous_pane() {
+            let mut state = make_state();
+            state.ui.focused_pane = FocusedPane::Inspector;
+            state.toggle_focus();
 
-            assert_eq!(state.ui.inspector_scroll_offset, 0);
-            assert!(state.session.table_detail().is_none());
+            let result = state.toggle_focus();
+
+            assert!(result);
+            assert!(!state.ui.is_focus_mode());
+            assert_eq!(state.ui.focused_pane, FocusedPane::Inspector);
+        }
+
+        #[test]
+        fn csv_export_allowed_for_live_result() {
+            let mut state = make_state();
+            state
+                .query
+                .set_current_result(make_query_result(QuerySource::Preview));
+
+            assert!(state.can_request_csv_export());
+        }
+
+        #[test]
+        fn csv_export_blocked_in_history_mode() {
+            let mut state = make_state();
+            state
+                .query
+                .push_history(make_query_result(QuerySource::Adhoc));
+            state.query.enter_history(0);
+
+            assert!(!state.can_request_csv_export());
         }
     }
 
-    mod inspector_visible_rows {
+    mod local_state_regressions {
         use super::*;
 
-        #[test]
-        fn ddl_visible_rows_is_greater_than_standard() {
-            let mut state = AppState::new("test".to_string());
-            state.ui.inspector_pane_height = 20;
+        mod er_preparation {
+            use super::*;
 
-            let standard = state.inspector_visible_rows();
-            let ddl = state.inspector_ddl_visible_rows();
+            #[test]
+            fn defaults_to_idle() {
+                let state = make_state();
 
-            // DDL has no header row, so it should have 2 more visible rows
-            assert_eq!(ddl - standard, 2);
+                assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            }
+
+            #[rstest]
+            #[case(ErStatus::Waiting)]
+            #[case(ErStatus::Rendering)]
+            fn accepts_status(#[case] status: ErStatus) {
+                let mut state = make_state();
+
+                state.er_preparation.status = status;
+
+                assert_eq!(state.er_preparation.status, status);
+            }
         }
 
-        #[rstest]
-        #[case(10, 7)]
-        #[case(15, 12)]
-        #[case(20, 17)]
-        fn ddl_visible_rows_equals_height_minus_three(
-            #[case] pane_height: u16,
-            #[case] expected: usize,
-        ) {
-            let mut state = AppState::new("test".to_string());
-            state.ui.inspector_pane_height = pane_height;
+        mod inspector_scroll_reset {
+            use super::*;
 
-            let visible = state.inspector_ddl_visible_rows();
+            #[test]
+            fn resets_to_zero_on_table_detail_loaded() {
+                let mut state = make_state();
+                let _ = state
+                    .session
+                    .select_table("public", "users", &mut state.query.pagination);
+                let generation = state.session.selection_generation();
+                state.ui.inspector_scroll_offset = 42;
 
-            assert_eq!(visible, expected);
-        }
+                reduce_metadata(
+                    &mut state,
+                    &Action::TableDetailLoaded(Box::new(make_table_detail()), generation),
+                    Instant::now(),
+                );
 
-        #[test]
-        fn small_pane_height_does_not_underflow() {
-            let mut state = AppState::new("test".to_string());
-            state.ui.inspector_pane_height = 2;
+                assert_eq!(state.ui.inspector_scroll_offset, 0);
+            }
 
-            let visible = state.inspector_ddl_visible_rows();
+            #[test]
+            fn offset_defaults_to_zero() {
+                let state = make_state();
 
-            assert_eq!(visible, 0);
+                assert_eq!(state.ui.inspector_scroll_offset, 0);
+                assert!(state.session.table_detail().is_none());
+            }
         }
     }
 
-    mod connection_setters {
+    mod connection_catalog {
         use super::*;
         use crate::app::model::connection::list::ConnectionListItem;
         use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
@@ -709,7 +741,7 @@ mod tests {
 
         #[test]
         fn set_connections_rebuilds_list() {
-            let mut state = AppState::new("test".to_string());
+            let mut state = make_state();
 
             state.set_connections(vec![make_profile("a"), make_profile("b")]);
 
@@ -725,7 +757,7 @@ mod tests {
 
         #[test]
         fn set_service_entries_rebuilds_list() {
-            let mut state = AppState::new("test".to_string());
+            let mut state = make_state();
 
             state.set_service_entries(vec![make_service("s1"), make_service("s2")]);
 
@@ -741,7 +773,7 @@ mod tests {
 
         #[test]
         fn set_connections_and_services_rebuilds_combined_list() {
-            let mut state = AppState::new("test".to_string());
+            let mut state = make_state();
 
             state.set_connections_and_services(
                 vec![make_profile("p1")],
@@ -762,8 +794,8 @@ mod tests {
         }
 
         #[test]
-        fn retain_connections_filters_and_rebuilds() {
-            let mut state = AppState::new("test".to_string());
+        fn retain_rebuilds_list() {
+            let mut state = make_state();
             let keep = make_profile("keep");
             let drop = make_profile("drop");
             let keep_id = keep.id.clone();
@@ -782,8 +814,8 @@ mod tests {
         }
 
         #[test]
-        fn set_connections_with_empty_vec_clears_list() {
-            let mut state = AppState::new("test".to_string());
+        fn clear_connections_empties_list() {
+            let mut state = make_state();
             state.set_connections(vec![make_profile("a")]);
             assert_eq!(state.connections().len(), 1);
 
@@ -794,8 +826,8 @@ mod tests {
         }
 
         #[test]
-        fn set_service_entries_with_empty_vec_clears_list() {
-            let mut state = AppState::new("test".to_string());
+        fn clear_service_entries_empties_list() {
+            let mut state = make_state();
             state.set_service_entries(vec![make_service("s1")]);
             assert_eq!(state.service_entries().len(), 1);
 
