@@ -127,7 +127,7 @@ mod tests {
 
         cache.clear();
 
-        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.len(), 0);
         assert!(!cache.contains(&"a"));
     }
 
