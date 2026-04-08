@@ -510,30 +510,6 @@ mod tests {
             assert_action(result, expected);
         }
 
-        #[test]
-        fn i_enters_insert() {
-            let result = handle_sql_modal_keys(
-                combo(Key::Char('i')),
-                false,
-                &SqlModalStatus::Normal,
-                SqlModalTab::Sql,
-            );
-
-            assert_action(result, Expected::SqlModalEnterInsert);
-        }
-
-        #[test]
-        fn a_appends_at_line_end() {
-            let result = handle_sql_modal_keys(
-                combo(Key::Char('A')),
-                false,
-                &SqlModalStatus::Normal,
-                SqlModalTab::Sql,
-            );
-
-            assert_action(result, Expected::SqlModalAppendInsert);
-        }
-
         #[rstest]
         #[case(Key::Char('p'), Expected::CompletionPrev)]
         #[case(Key::Char('n'), Expected::CompletionNext)]
@@ -661,6 +637,30 @@ mod tests {
 
     mod normal {
         use super::*;
+
+        #[test]
+        fn i_enters_insert() {
+            let result = handle_sql_modal_keys(
+                combo(Key::Char('i')),
+                false,
+                &SqlModalStatus::Normal,
+                SqlModalTab::Sql,
+            );
+
+            assert_action(result, Expected::SqlModalEnterInsert);
+        }
+
+        #[test]
+        fn a_appends_at_line_end() {
+            let result = handle_sql_modal_keys(
+                combo(Key::Char('A')),
+                false,
+                &SqlModalStatus::Normal,
+                SqlModalTab::Sql,
+            );
+
+            assert_action(result, Expected::SqlModalAppendInsert);
+        }
 
         #[rstest]
         #[case(Key::Up, Expected::SqlModalMoveCursor(CursorMove::Up))]
