@@ -187,262 +187,264 @@ mod tests {
         AppState::new("test".to_string())
     }
 
-    // Important keys with special handling: keep individual tests
-    #[test]
-    fn p_opens_table_picker() {
-        let state = browse_state();
+    mod dispatch_stage {
+        use super::*;
+        use rstest::rstest;
 
-        let result = handle_normal_mode(combo(Key::Char('p')), &state);
+        #[test]
+        fn p_opens_table_picker() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::OpenTablePicker));
-    }
+            let result = handle_normal_mode(combo(Key::Char('p')), &state);
 
-    #[test]
-    fn ctrl_k_opens_command_palette() {
-        let state = browse_state();
+            assert!(matches!(result, Action::OpenTablePicker));
+        }
 
-        let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
+        #[test]
+        fn ctrl_k_opens_command_palette() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::OpenCommandPalette));
-    }
+            let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
 
-    #[test]
-    fn q_returns_quit() {
-        let state = browse_state();
+            assert!(matches!(result, Action::OpenCommandPalette));
+        }
 
-        let result = handle_normal_mode(combo(Key::Char('q')), &state);
+        #[test]
+        fn q_returns_quit() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::Quit));
-    }
+            let result = handle_normal_mode(combo(Key::Char('q')), &state);
 
-    #[test]
-    fn question_mark_opens_help() {
-        let state = browse_state();
+            assert!(matches!(result, Action::Quit));
+        }
 
-        let result = handle_normal_mode(combo(Key::Char('?')), &state);
+        #[test]
+        fn question_mark_opens_help() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::OpenHelp));
-    }
+            let result = handle_normal_mode(combo(Key::Char('?')), &state);
 
-    #[test]
-    fn colon_enters_command_line() {
-        let state = browse_state();
+            assert!(matches!(result, Action::OpenHelp));
+        }
 
-        let result = handle_normal_mode(combo(Key::Char(':')), &state);
+        #[test]
+        fn colon_enters_command_line() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::EnterCommandLine));
-    }
+            let result = handle_normal_mode(combo(Key::Char(':')), &state);
 
-    #[test]
-    fn r_reloads_metadata() {
-        let state = browse_state();
+            assert!(matches!(result, Action::EnterCommandLine));
+        }
 
-        let result = handle_normal_mode(combo(Key::Char('r')), &state);
+        #[test]
+        fn r_reloads_metadata() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::ReloadMetadata));
-    }
+            let result = handle_normal_mode(combo(Key::Char('r')), &state);
 
-    #[test]
-    fn f_toggles_focus() {
-        let state = browse_state();
+            assert!(matches!(result, Action::ReloadMetadata));
+        }
 
-        let result = handle_normal_mode(combo(Key::Char('f')), &state);
+        #[test]
+        fn f_toggles_focus() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::ToggleFocus));
-    }
+            let result = handle_normal_mode(combo(Key::Char('f')), &state);
 
-    #[test]
-    fn esc_returns_escape() {
-        let state = browse_state();
+            assert!(matches!(result, Action::ToggleFocus));
+        }
 
-        let result = handle_normal_mode(combo(Key::Esc), &state);
+        #[test]
+        fn esc_returns_escape() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::Escape));
-    }
+            let result = handle_normal_mode(combo(Key::Esc), &state);
 
-    // Navigation keys: equivalent actions
-    #[rstest]
-    #[case(Key::Up, "up arrow")]
-    #[case(Key::Char('k'), "k")]
-    fn navigation_selects_previous(#[case] code: Key, #[case] _desc: &str) {
-        let state = browse_state();
+            assert!(matches!(result, Action::Escape));
+        }
 
-        let result = handle_normal_mode(combo(code), &state);
+        #[rstest]
+        #[case(Key::Up, "up arrow")]
+        #[case(Key::Char('k'), "k")]
+        fn navigation_selects_previous(#[case] code: Key, #[case] _desc: &str) {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::Select(SelectMotion::Previous)));
-    }
+            let result = handle_normal_mode(combo(code), &state);
 
-    #[rstest]
-    #[case(Key::Down, "down arrow")]
-    #[case(Key::Char('j'), "j")]
-    fn navigation_selects_next(#[case] code: Key, #[case] _desc: &str) {
-        let state = browse_state();
+            assert!(matches!(result, Action::Select(SelectMotion::Previous)));
+        }
 
-        let result = handle_normal_mode(combo(code), &state);
+        #[rstest]
+        #[case(Key::Down, "down arrow")]
+        #[case(Key::Char('j'), "j")]
+        fn navigation_selects_next(#[case] code: Key, #[case] _desc: &str) {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::Select(SelectMotion::Next)));
-    }
+            let result = handle_normal_mode(combo(code), &state);
 
-    #[test]
-    fn ctrl_n_selects_next_when_explorer_focused() {
-        let state = browse_state();
+            assert!(matches!(result, Action::Select(SelectMotion::Next)));
+        }
 
-        let result = handle_normal_mode(combo_ctrl(Key::Char('n')), &state);
+        #[test]
+        fn ctrl_n_selects_next_when_explorer_focused() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::Select(SelectMotion::Next)));
-    }
+            let result = handle_normal_mode(combo_ctrl(Key::Char('n')), &state);
 
-    #[test]
-    fn ctrl_p_selects_previous_when_explorer_focused() {
-        let state = browse_state();
+            assert!(matches!(result, Action::Select(SelectMotion::Next)));
+        }
 
-        let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
+        #[test]
+        fn ctrl_p_selects_previous_when_explorer_focused() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::Select(SelectMotion::Previous)));
-    }
+            let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
 
-    #[rstest]
-    #[case(Key::Char('g'), "g")]
-    #[case(Key::Home, "home")]
-    fn navigation_selects_first(#[case] code: Key, #[case] _desc: &str) {
-        let state = browse_state();
+            assert!(matches!(result, Action::Select(SelectMotion::Previous)));
+        }
 
-        let result = handle_normal_mode(combo(code), &state);
+        #[rstest]
+        #[case(Key::Char('g'), "g")]
+        #[case(Key::Home, "home")]
+        fn navigation_selects_first(#[case] code: Key, #[case] _desc: &str) {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::Select(SelectMotion::First)));
-    }
+            let result = handle_normal_mode(combo(code), &state);
 
-    #[rstest]
-    #[case(Key::Char('G'), "capital G")]
-    #[case(Key::End, "end")]
-    fn navigation_selects_last(#[case] code: Key, #[case] _desc: &str) {
-        let state = browse_state();
+            assert!(matches!(result, Action::Select(SelectMotion::First)));
+        }
 
-        let result = handle_normal_mode(combo(code), &state);
+        #[rstest]
+        #[case(Key::Char('G'), "capital G")]
+        #[case(Key::End, "end")]
+        fn navigation_selects_last(#[case] code: Key, #[case] _desc: &str) {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::Select(SelectMotion::Last)));
-    }
+            let result = handle_normal_mode(combo(code), &state);
 
-    #[test]
-    fn enter_confirms_selection_when_explorer_focused() {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Explorer;
+            assert!(matches!(result, Action::Select(SelectMotion::Last)));
+        }
 
-        let result = handle_normal_mode(combo(Key::Enter), &state);
+        #[test]
+        fn enter_confirms_selection_when_explorer_focused() {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Explorer;
 
-        assert!(matches!(result, Action::ConfirmSelection));
-    }
+            let result = handle_normal_mode(combo(Key::Enter), &state);
 
-    #[test]
-    fn alt_enter_does_not_confirm_connection_error() {
-        let mut state = browse_state();
-        state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
+            assert!(matches!(result, Action::ConfirmSelection));
+        }
 
-        let result = handle_normal_mode(KeyCombo::alt(Key::Enter), &state);
+        #[test]
+        fn alt_enter_does_not_confirm_connection_error() {
+            let mut state = browse_state();
+            state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
 
-        assert!(matches!(result, Action::None));
-    }
+            let result = handle_normal_mode(KeyCombo::alt(Key::Enter), &state);
 
-    #[test]
-    fn plain_enter_confirms_connection_error() {
-        let mut state = browse_state();
-        state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
+            assert!(matches!(result, Action::None));
+        }
 
-        let result = handle_normal_mode(KeyCombo::plain(Key::Enter), &state);
+        #[test]
+        fn plain_enter_confirms_connection_error() {
+            let mut state = browse_state();
+            state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
 
-        assert!(matches!(result, Action::ConfirmSelection));
-    }
+            let result = handle_normal_mode(KeyCombo::plain(Key::Enter), &state);
 
-    #[test]
-    fn enter_does_nothing_when_inspector_focused() {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Inspector;
+            assert!(matches!(result, Action::ConfirmSelection));
+        }
 
-        let result = handle_normal_mode(combo(Key::Enter), &state);
+        #[test]
+        fn enter_does_nothing_when_inspector_focused() {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Inspector;
 
-        assert!(matches!(result, Action::None));
-    }
+            let result = handle_normal_mode(combo(Key::Enter), &state);
 
-    #[test]
-    fn enter_activates_cell_when_result_focused() {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Result;
+            assert!(matches!(result, Action::None));
+        }
 
-        let result = handle_normal_mode(combo(Key::Enter), &state);
+        #[test]
+        fn enter_activates_cell_when_result_focused() {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Result;
 
-        assert!(matches!(result, Action::ResultActivateCell));
-    }
+            let result = handle_normal_mode(combo(Key::Enter), &state);
 
-    // Pane focus switching in Browse mode (1/2/3 keys)
-    #[rstest]
-    #[case('1', FocusedPane::Explorer)]
-    #[case('2', FocusedPane::Inspector)]
-    #[case('3', FocusedPane::Result)]
-    fn browse_mode_pane_focus(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
-        let state = browse_state();
+            assert!(matches!(result, Action::ResultActivateCell));
+        }
 
-        let result = handle_normal_mode(combo(Key::Char(key_char)), &state);
+        #[rstest]
+        #[case('1', FocusedPane::Explorer)]
+        #[case('2', FocusedPane::Inspector)]
+        #[case('3', FocusedPane::Result)]
+        fn browse_mode_pane_focus(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
-    }
+            let result = handle_normal_mode(combo(Key::Char(key_char)), &state);
 
-    #[test]
-    fn tab_switches_inspector_tab_when_inspector_focused() {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Inspector;
+            assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
+        }
 
-        let result = handle_normal_mode(combo(Key::Tab), &state);
+        #[test]
+        fn tab_switches_inspector_tab_when_inspector_focused() {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Inspector;
 
-        assert!(matches!(result, Action::InspectorNextTab));
-    }
+            let result = handle_normal_mode(combo(Key::Tab), &state);
 
-    #[test]
-    fn shift_tab_switches_inspector_tab_prev_when_inspector_focused() {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Inspector;
+            assert!(matches!(result, Action::InspectorNextTab));
+        }
 
-        let result = handle_normal_mode(combo(Key::BackTab), &state);
+        #[test]
+        fn shift_tab_switches_inspector_tab_prev_when_inspector_focused() {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Inspector;
 
-        assert!(matches!(result, Action::InspectorPrevTab));
-    }
+            let result = handle_normal_mode(combo(Key::BackTab), &state);
 
-    #[test]
-    fn tab_does_nothing_when_explorer_focused() {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Explorer;
+            assert!(matches!(result, Action::InspectorPrevTab));
+        }
 
-        let result = handle_normal_mode(combo(Key::Tab), &state);
+        #[test]
+        fn tab_does_nothing_when_explorer_focused() {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Explorer;
 
-        assert!(matches!(result, Action::None));
-    }
+            let result = handle_normal_mode(combo(Key::Tab), &state);
 
-    #[test]
-    fn tab_does_nothing_when_result_focused() {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Result;
+            assert!(matches!(result, Action::None));
+        }
 
-        let result = handle_normal_mode(combo(Key::Tab), &state);
+        #[test]
+        fn tab_does_nothing_when_result_focused() {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Result;
 
-        assert!(matches!(result, Action::None));
-    }
+            let result = handle_normal_mode(combo(Key::Tab), &state);
 
-    #[test]
-    fn backtab_does_nothing_when_explorer_focused() {
-        let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Explorer;
+            assert!(matches!(result, Action::None));
+        }
 
-        let result = handle_normal_mode(combo(Key::BackTab), &state);
+        #[test]
+        fn backtab_does_nothing_when_explorer_focused() {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Explorer;
 
-        assert!(matches!(result, Action::None));
-    }
+            let result = handle_normal_mode(combo(Key::BackTab), &state);
 
-    #[test]
-    fn unknown_key_returns_none() {
-        let state = browse_state();
+            assert!(matches!(result, Action::None));
+        }
 
-        let result = handle_normal_mode(combo(Key::Char('x')), &state);
+        #[test]
+        fn unknown_key_returns_none() {
+            let state = browse_state();
 
-        assert!(matches!(result, Action::None));
+            let result = handle_normal_mode(combo(Key::Char('x')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
     }
 
     fn focus_mode_state() -> AppState {
