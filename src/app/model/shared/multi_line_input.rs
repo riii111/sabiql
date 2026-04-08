@@ -30,8 +30,6 @@ impl MultiLineInputState {
         self.insert_str("    ");
     }
 
-    // ── Content management ──────────────────────────────────────────
-
     pub fn set_content(&mut self, s: String) {
         self.inner.set_content(s);
         self.scroll_row = 0;
@@ -51,8 +49,6 @@ impl MultiLineInputState {
         self.scroll_row = 0;
         self.preferred_col = None;
     }
-
-    // ── Cursor movement (multi-line aware) ──────────────────────────
 
     pub fn move_cursor(&mut self, movement: CursorMove) {
         match movement {
@@ -161,13 +157,9 @@ impl MultiLineInputState {
         self.preferred_col = Some(preferred_col);
     }
 
-    // ── Coordinate conversion ───────────────────────────────────────
-
     pub fn cursor_to_position(&self) -> (usize, usize) {
         cursor_to_position_impl(self.content(), self.cursor())
     }
-
-    // ── Scroll management ───────────────────────────────────────────
 
     pub fn update_scroll(&mut self, visible_rows: usize) {
         if visible_rows == 0 {
@@ -181,13 +173,9 @@ impl MultiLineInputState {
         }
     }
 
-    // ── Byte conversion (for CompletionAccept etc.) ─────────────────
-
     pub fn char_to_byte_index(&self, char_idx: usize) -> usize {
         char_to_byte_index_impl(self.content(), char_idx)
     }
-
-    // ── Internal helpers ────────────────────────────────────────────
 
     fn line_spans(&self) -> Vec<(usize, usize)> {
         let content = self.content();
@@ -283,8 +271,6 @@ mod tests {
         MultiLineInputState::new(content, cursor)
     }
 
-    // ── cursor_to_position ──────────────────────────────────────────
-
     mod cursor_to_position {
         use super::*;
 
@@ -359,8 +345,6 @@ mod tests {
             }
         }
     }
-
-    // ── move_cursor ─────────────────────────────────────────────────
 
     mod move_cursor {
         use super::*;
@@ -719,8 +703,6 @@ mod tests {
         }
     }
 
-    // ── insert/edit operations ──────────────────────────────────────
-
     mod edit_tests {
         use super::*;
 
@@ -773,8 +755,6 @@ mod tests {
             assert_eq!(s.cursor_to_position(), (2, 3));
         }
     }
-
-    // ── scroll ──────────────────────────────────────────────────────
 
     mod viewport_position_tests {
         use super::*;
@@ -839,8 +819,6 @@ mod tests {
         }
     }
 
-    // ── set_content / clear ─────────────────────────────────────────
-
     mod content_management_tests {
         use super::*;
 
@@ -889,8 +867,6 @@ mod tests {
             assert_eq!(s.scroll_row(), 0);
         }
     }
-
-    // ── char_to_byte_index ──────────────────────────────────────────
 
     mod byte_index_tests {
         use super::*;
