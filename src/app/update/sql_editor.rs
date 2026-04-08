@@ -7,8 +7,7 @@ use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::app::model::sql_editor::modal::{
-    HIGH_RISK_INPUT_VISIBLE_WIDTH, SQL_MODAL_CHROME_LINES, SQL_MODAL_HEIGHT_PERCENT,
-    SqlModalStatus, SqlModalTab,
+    HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab, sql_modal_visible_rows,
 };
 use crate::app::policy::sql::statement_classifier::{self, StatementKind};
 use crate::app::policy::write::sql_risk::{
@@ -19,9 +18,6 @@ use crate::app::policy::write::write_guardrails::{
 };
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
-
-// Fallback used before the renderer provides a real terminal height.
-const EDITOR_VISIBLE_ROWS: usize = 8;
 
 pub fn reduce_sql_modal(
     state: &mut AppState,
@@ -471,16 +467,6 @@ pub fn reduce_sql_modal(
     }
 }
 
-fn sql_modal_visible_rows(terminal_height: u16) -> usize {
-    if terminal_height == 0 {
-        return EDITOR_VISIBLE_ROWS;
-    }
-
-    (terminal_height as usize * SQL_MODAL_HEIGHT_PERCENT as usize / 100)
-        .saturating_sub(SQL_MODAL_CHROME_LINES)
-        .max(1)
-}
-
 fn multi_statement_label(sql: &str) -> &'static str {
     use crate::app::policy::write::sql_risk::split_statements;
     let mut worst_level = RiskLevel::Low;
@@ -644,12 +630,6 @@ mod tests {
     mod scrolling {
         use super::*;
         use crate::app::update::action::CursorMove;
-
-        #[test]
-        fn visible_rows_clamps_to_one_for_small_terminal() {
-            assert_eq!(sql_modal_visible_rows(1), 1);
-            assert_eq!(sql_modal_visible_rows(8), 1);
-        }
 
         #[test]
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {

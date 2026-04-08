@@ -227,7 +227,7 @@ fn classify_word_char(ch: char) -> Option<WordKind> {
     }
 }
 
-pub(crate) fn next_word_start(content: &str, cursor: usize) -> usize {
+pub(super) fn next_word_start(content: &str, cursor: usize) -> usize {
     let char_count = content.chars().count();
     if cursor >= char_count {
         return char_count;
@@ -274,7 +274,7 @@ pub(crate) fn next_word_start(content: &str, cursor: usize) -> usize {
     idx
 }
 
-pub(crate) fn previous_word_start(content: &str, cursor: usize) -> usize {
+pub(super) fn previous_word_start(content: &str, cursor: usize) -> usize {
     if cursor == 0 || content.is_empty() {
         return 0;
     }

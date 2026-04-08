@@ -13,6 +13,17 @@ pub const HIGH_RISK_INPUT_VISIBLE_WIDTH: usize = 30;
 pub const SQL_MODAL_HEIGHT_PERCENT: u16 = 60;
 // border top/bottom (2) + separator (1) + status row (1)
 pub const SQL_MODAL_CHROME_LINES: usize = 4;
+pub const SQL_MODAL_VISIBLE_ROWS_FALLBACK: usize = 8;
+
+pub fn sql_modal_visible_rows(terminal_height: u16) -> usize {
+    if terminal_height == 0 {
+        return SQL_MODAL_VISIBLE_ROWS_FALLBACK;
+    }
+
+    (terminal_height as usize * SQL_MODAL_HEIGHT_PERCENT as usize / 100)
+        .saturating_sub(SQL_MODAL_CHROME_LINES)
+        .max(1)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SqlModalTab {
@@ -265,5 +276,16 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn visible_rows_uses_fallback_when_terminal_height_is_zero() {
+        assert_eq!(sql_modal_visible_rows(0), SQL_MODAL_VISIBLE_ROWS_FALLBACK);
+    }
+
+    #[test]
+    fn visible_rows_clamps_to_one_for_small_terminal() {
+        assert_eq!(sql_modal_visible_rows(1), 1);
+        assert_eq!(sql_modal_visible_rows(8), 1);
     }
 }
