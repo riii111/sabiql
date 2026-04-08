@@ -222,9 +222,13 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+    use crate::app::model::er_state::ErStatus;
     use crate::app::model::shared::focused_pane::FocusedPane;
+    use crate::app::update::action::Action;
+    use crate::app::update::reduce_metadata;
     use crate::domain::DatabaseMetadata;
     use crate::domain::QuerySource;
+    use crate::domain::Table;
     use rstest::rstest;
     fn make_state() -> AppState {
         AppState::new("test".to_string())
@@ -247,6 +251,22 @@ mod tests {
             table_summaries,
             fetched_at: Instant::now(),
         })
+    }
+
+    fn make_table_detail() -> Table {
+        Table {
+            schema: "public".to_string(),
+            name: "users".to_string(),
+            owner: None,
+            columns: Vec::new(),
+            primary_key: None,
+            foreign_keys: Vec::new(),
+            indexes: Vec::new(),
+            rls: None,
+            triggers: Vec::new(),
+            row_count_estimate: None,
+            comment: None,
+        }
     }
 
     mod pane_geometry {
@@ -313,6 +333,7 @@ mod tests {
             let standard = state.inspector_visible_rows();
             let ddl = state.inspector_ddl_visible_rows();
 
+            // DDL omits the standard header rows, so it exposes two more rows.
             assert_eq!(ddl - standard, 2);
         }
 
@@ -344,7 +365,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn filtered_tables_return_all_for_empty_filter() {
+        fn empty_filter_returns_all() {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
@@ -362,7 +383,7 @@ mod tests {
         }
 
         #[test]
-        fn filtered_tables_match_substring() {
+        fn substring_filter_matches() {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
@@ -381,7 +402,7 @@ mod tests {
         }
 
         #[test]
-        fn filtered_tables_ignore_case() {
+        fn filter_ignores_case() {
             let mut state = make_state();
             state
                 .session
@@ -511,50 +532,66 @@ mod tests {
             assert!(entry.failed_at.elapsed().as_secs() < 1);
             assert_eq!(entry.error, "connection timeout");
         }
+    }
 
-        mod reload_metadata_reset {
-            use super::*;
+    mod reload_metadata_reset {
+        use super::*;
 
-            #[test]
-            fn reset_prefetch_clears_state() {
-                let mut state = make_state();
-                state.sql_modal.begin_prefetch();
-                state
-                    .sql_modal
-                    .prefetch_queue
-                    .push_back("public.users".to_string());
-                state
-                    .sql_modal
-                    .prefetching_tables
-                    .insert("public.orders".to_string());
-                state.sql_modal.failed_prefetch_tables.insert(
-                    "public.failed".to_string(),
-                    crate::app::model::sql_editor::modal::FailedPrefetchEntry {
-                        failed_at: Instant::now(),
-                        error: "timeout".to_string(),
-                        retry_count: 0,
-                    },
-                );
+        fn prepare_state_for_reload() -> AppState {
+            let mut state = make_state();
+            state.session.begin_connecting("postgres://localhost/test");
+            state.sql_modal.begin_prefetch();
+            state
+                .sql_modal
+                .prefetch_queue
+                .push_back("public.users".to_string());
+            state
+                .sql_modal
+                .prefetching_tables
+                .insert("public.orders".to_string());
+            state.sql_modal.failed_prefetch_tables.insert(
+                "public.failed".to_string(),
+                crate::app::model::sql_editor::modal::FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: 0,
+                },
+            );
+            state
+        }
 
-                state.sql_modal.reset_prefetch();
+        #[test]
+        fn resets_prefetch_state() {
+            let mut state = prepare_state_for_reload();
 
-                assert!(!state.sql_modal.is_prefetch_started());
-                assert!(state.sql_modal.prefetch_queue.is_empty());
-                assert!(state.sql_modal.prefetching_tables.is_empty());
-                assert!(state.sql_modal.failed_prefetch_tables.is_empty());
-            }
+            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
-            #[test]
-            fn reset_messages_clears_stale_errors() {
-                let mut state = make_state();
-                state.set_error("Old error".to_string());
+            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(state.sql_modal.prefetching_tables.is_empty());
+            assert!(state.sql_modal.failed_prefetch_tables.is_empty());
+        }
 
-                state.messages.clear();
+        #[test]
+        fn resets_er_preparation() {
+            let mut state = prepare_state_for_reload();
+            state.er_preparation.status = ErStatus::Waiting;
 
-                assert!(state.messages.last_error.is_none());
-                assert!(state.messages.last_success.is_none());
-                assert!(state.messages.expires_at.is_none());
-            }
+            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn clears_stale_messages() {
+            let mut state = prepare_state_for_reload();
+            state.set_error("Old error".to_string());
+
+            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+
+            assert!(state.messages.last_error.is_none());
+            assert!(state.messages.last_success.is_none());
+            assert!(state.messages.expires_at.is_none());
         }
     }
 
@@ -614,7 +651,6 @@ mod tests {
 
     mod local_state_regressions {
         use super::*;
-        use crate::app::model::er_state::ErStatus;
 
         mod er_preparation {
             use super::*;
@@ -649,17 +685,25 @@ mod tests {
             use super::*;
 
             #[test]
-            fn is_zero_on_switch() {
+            fn resets_to_zero_on_table_detail_loaded() {
                 let mut state = make_state();
+                let _ = state
+                    .session
+                    .select_table("public", "users", &mut state.query.pagination);
+                let generation = state.session.selection_generation();
                 state.ui.inspector_scroll_offset = 42;
 
-                state.ui.inspector_scroll_offset = 0;
+                reduce_metadata(
+                    &mut state,
+                    &Action::TableDetailLoaded(Box::new(make_table_detail()), generation),
+                    Instant::now(),
+                );
 
                 assert_eq!(state.ui.inspector_scroll_offset, 0);
             }
 
             #[test]
-            fn inspector_scroll_offset_defaults_to_zero() {
+            fn offset_defaults_to_zero() {
                 let state = make_state();
 
                 assert_eq!(state.ui.inspector_scroll_offset, 0);
@@ -697,7 +741,7 @@ mod tests {
         }
 
         #[test]
-        fn connections_rebuild_list() {
+        fn set_rebuilds_list() {
             let mut state = make_state();
 
             state.set_connections(vec![make_profile("a"), make_profile("b")]);
@@ -713,7 +757,7 @@ mod tests {
         }
 
         #[test]
-        fn service_entries_rebuild_list() {
+        fn set_service_entries_rebuilds_list() {
             let mut state = make_state();
 
             state.set_service_entries(vec![make_service("s1"), make_service("s2")]);
@@ -729,7 +773,7 @@ mod tests {
         }
 
         #[test]
-        fn connections_and_services_rebuild_combined_list() {
+        fn set_connections_and_services_rebuilds_combined_list() {
             let mut state = make_state();
 
             state.set_connections_and_services(
@@ -751,7 +795,7 @@ mod tests {
         }
 
         #[test]
-        fn retain_connections_rebuilds_list() {
+        fn retain_rebuilds_list() {
             let mut state = make_state();
             let keep = make_profile("keep");
             let drop = make_profile("drop");
@@ -771,7 +815,7 @@ mod tests {
         }
 
         #[test]
-        fn clearing_connections_clears_list() {
+        fn clear_connections_empties_list() {
             let mut state = make_state();
             state.set_connections(vec![make_profile("a")]);
             assert_eq!(state.connections().len(), 1);
@@ -783,7 +827,7 @@ mod tests {
         }
 
         #[test]
-        fn clearing_service_entries_clears_list() {
+        fn clear_service_entries_empties_list() {
             let mut state = make_state();
             state.set_service_entries(vec![make_service("s1")]);
             assert_eq!(state.service_entries().len(), 1);
