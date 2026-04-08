@@ -38,7 +38,7 @@ fn query_navigation(navigation: VimNavigation) -> Option<Action> {
         VimNavigation::MoveRight => CursorMove::Right,
         VimNavigation::MoveUp => CursorMove::Up,
         VimNavigation::MoveDown => CursorMove::Down,
-        VimNavigation::MoveToFirst => CursorMove::BufferStart,
+        VimNavigation::MoveToFirst => CursorMove::FirstLine,
         VimNavigation::MoveToLast => CursorMove::LastLine,
         VimNavigation::MoveLineStart => CursorMove::LineStart,
         VimNavigation::MoveLineEnd => CursorMove::LineEnd,
@@ -134,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn gg_moves_to_buffer_start() {
+    fn gg_moves_to_first_line() {
         let action = crate::app::update::input::vim::action_for_input(
             &combo(Key::Char('g')),
             Some(crate::app::model::shared::key_sequence::Prefix::G),
@@ -145,7 +145,7 @@ mod tests {
             action,
             Some(Action::TextMoveCursor {
                 target: InputTarget::SqlModal,
-                direction: CursorMove::BufferStart,
+                direction: CursorMove::FirstLine,
             })
         ));
     }

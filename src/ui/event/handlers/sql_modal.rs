@@ -749,7 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn normal_mode_gg_moves_to_buffer_start() {
+    fn normal_mode_gg_moves_to_first_line() {
         let result = handle_sql_modal_keys_with_prefix(
             combo(Key::Char('g')),
             false,
@@ -758,10 +758,7 @@ mod tests {
             Some(Prefix::G),
         );
 
-        assert_action(
-            result,
-            Expected::SqlModalMoveCursor(CursorMove::BufferStart),
-        );
+        assert_action(result, Expected::SqlModalMoveCursor(CursorMove::FirstLine));
     }
 
     #[test]

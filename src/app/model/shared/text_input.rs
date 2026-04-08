@@ -126,7 +126,10 @@ impl TextInputState {
                     self.cursor += 1;
                 }
             }
-            CursorMove::Home | CursorMove::LineStart | CursorMove::BufferStart => {
+            CursorMove::Home
+            | CursorMove::LineStart
+            | CursorMove::BufferStart
+            | CursorMove::FirstLine => {
                 self.cursor = 0;
             }
             CursorMove::End | CursorMove::LineEnd | CursorMove::BufferEnd => {

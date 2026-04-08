@@ -98,6 +98,13 @@ impl MultiLineInputState {
             CursorMove::BufferEnd => {
                 self.set_cursor_raw(self.char_count());
             }
+            CursorMove::FirstLine => {
+                let (_, current_col) = self.current_line_col();
+                let lines = self.line_spans();
+                if let Some((start, len)) = lines.first() {
+                    self.set_cursor_raw(start + current_col.min(*len));
+                }
+            }
             CursorMove::LastLine => {
                 let (_, current_col) = self.current_line_col();
                 let lines = self.line_spans();
@@ -546,6 +553,20 @@ mod tests {
             let mut s = ml("abc\ndef", 1);
             s.move_cursor(CursorMove::BufferEnd);
             assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn first_line_preserves_column() {
+            let mut s = ml("abcd\nxy\nwxyz12", 10);
+            s.move_cursor(CursorMove::FirstLine);
+            assert_eq!(s.cursor_to_position(), (0, 2));
+        }
+
+        #[test]
+        fn first_line_clamps_to_line_length() {
+            let mut s = ml("xy\nabcdef", 8);
+            s.move_cursor(CursorMove::FirstLine);
+            assert_eq!(s.cursor_to_position(), (0, 2));
         }
 
         #[test]
