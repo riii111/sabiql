@@ -534,7 +534,7 @@ mod tests {
         }
 
         #[test]
-        fn first_and_last_line_jumps_restore_preferred_column_from_long_to_short() {
+        fn preferred_column_restored_long_to_short_line() {
             let mut s = ml("abcdefghij\nxy", 5);
 
             s.move_cursor(CursorMove::LastLine);
@@ -545,7 +545,7 @@ mod tests {
         }
 
         #[test]
-        fn first_and_last_line_jumps_restore_preferred_column_from_short_to_long() {
+        fn preferred_column_restored_short_to_long_line() {
             let mut s = ml("xy\nabcdefghij", 8);
 
             s.move_cursor(CursorMove::FirstLine);
@@ -719,7 +719,7 @@ mod tests {
         }
 
         #[test]
-        fn viewport_top_moves_cursor_to_top_visible_row_preserving_column() {
+        fn viewport_top_preserves_column() {
             let mut s = ml("aa\nbb\ncc\ndd", 10);
             s.scroll_row = 1;
             s.move_cursor_to_viewport_position(CursorMove::ViewportTop, 3);
