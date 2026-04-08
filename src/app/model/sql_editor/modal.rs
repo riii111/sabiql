@@ -146,6 +146,12 @@ impl SqlModalContext {
             None
         }
     }
+
+    pub fn reset_completion(&mut self) {
+        self.completion.visible = false;
+        self.completion.candidates.clear();
+        self.completion.selected_index = 0;
+    }
 }
 
 #[cfg(test)]

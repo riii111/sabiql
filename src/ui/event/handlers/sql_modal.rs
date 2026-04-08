@@ -41,10 +41,6 @@ pub fn handle_sql_modal_keys_with_prefix(
         let alt = combo.modifiers.alt;
         let plain = !ctrl && !alt;
 
-        if ctrl && combo.key == Key::Char('e') {
-            return Action::ExplainRequest;
-        }
-
         if let Some(prefix) = pending_prefix {
             if ctrl || alt {
                 return Action::CancelKeySequence;
@@ -60,6 +56,10 @@ pub fn handle_sql_modal_keys_with_prefix(
                 Some(Action::None) | None => Action::CancelKeySequence,
                 Some(action) => action,
             };
+        }
+
+        if ctrl && combo.key == Key::Char('e') {
+            return Action::ExplainRequest;
         }
 
         // Tab switching
@@ -772,6 +772,19 @@ mod tests {
             assert!(matches!(result, Action::CancelKeySequence));
         }
 
+        #[test]
+        fn prefixed_ctrl_e_cancels_sequence() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_ctrl(Key::Char('e')),
+                false,
+                &SqlModalStatus::Normal,
+                SqlModalTab::Sql,
+                Some(Prefix::G),
+            );
+
+            assert!(matches!(result, Action::CancelKeySequence));
+        }
+
         #[rstest]
         #[case(Key::Char('a'))]
         #[case(Key::Char('e'))]
@@ -1235,16 +1248,76 @@ mod tests {
                 }
                 for c in kb.combos {
                     let result = handle_sql_modal_keys(*c, false, &SqlModalStatus::Normal, tab);
-                    assert_eq!(
-                        std::mem::discriminant(&result),
-                        std::mem::discriminant(&kb.action),
-                        "{label}: combo {:?} returned {:?}, expected {:?}",
-                        c,
-                        result,
-                        kb.action,
-                    );
+                    assert_action_matches(&result, &kb.action, label, c);
                 }
             }
+        }
+
+        fn assert_action_matches(
+            result: &Action,
+            expected: &Action,
+            label: &str,
+            combo: &KeyCombo,
+        ) {
+            let same = match (result, expected) {
+                (
+                    Action::Scroll {
+                        target: rt,
+                        direction: rd,
+                        amount: ra,
+                    },
+                    Action::Scroll {
+                        target: et,
+                        direction: ed,
+                        amount: ea,
+                    },
+                ) => rt == et && rd == ed && ra == ea,
+                (
+                    Action::ScrollToCursor {
+                        target: rt,
+                        position: rp,
+                    },
+                    Action::ScrollToCursor {
+                        target: et,
+                        position: ep,
+                    },
+                ) => rt == et && rp == ep,
+                (
+                    Action::TextInput { target: rt, ch: rc },
+                    Action::TextInput { target: et, ch: ec },
+                ) => rt == et && rc == ec,
+                (Action::TextBackspace { target: rt }, Action::TextBackspace { target: et }) => {
+                    rt == et
+                }
+                (Action::TextDelete { target: rt }, Action::TextDelete { target: et }) => rt == et,
+                (
+                    Action::TextMoveCursor {
+                        target: rt,
+                        direction: rd,
+                    },
+                    Action::TextMoveCursor {
+                        target: et,
+                        direction: ed,
+                    },
+                ) => rt == et && rd == ed,
+                (Action::Select(rm), Action::Select(em)) => rm == em,
+                (
+                    Action::ListSelect {
+                        target: rt,
+                        motion: rm,
+                    },
+                    Action::ListSelect {
+                        target: et,
+                        motion: em,
+                    },
+                ) => rt == et && rm == em,
+                _ => std::mem::discriminant(result) == std::mem::discriminant(expected),
+            };
+
+            assert!(
+                same,
+                "{label}: combo {combo:?} returned {result:?}, expected {expected:?}",
+            );
         }
 
         #[test]

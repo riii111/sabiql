@@ -291,18 +291,14 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         .sql_modal
                         .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Normal);
                     state.sql_modal.editor.set_content(query);
-                    state.sql_modal.completion.visible = false;
-                    state.sql_modal.completion.candidates.clear();
-                    state.sql_modal.completion.selected_index = 0;
+                    state.sql_modal.reset_completion();
                 }
                 InputMode::SqlModal => {
                     state.sql_modal.editor.set_content(query);
                     state
                         .sql_modal
                         .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Normal);
-                    state.sql_modal.completion.visible = false;
-                    state.sql_modal.completion.candidates.clear();
-                    state.sql_modal.completion.selected_index = 0;
+                    state.sql_modal.reset_completion();
                 }
                 _ => {}
             }

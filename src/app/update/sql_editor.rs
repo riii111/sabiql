@@ -478,6 +478,7 @@ fn sql_modal_visible_rows(terminal_height: u16) -> usize {
 
     (terminal_height as usize * SQL_MODAL_HEIGHT_PERCENT as usize / 100)
         .saturating_sub(SQL_MODAL_CHROME_LINES)
+        .max(1)
 }
 
 fn multi_statement_label(sql: &str) -> &'static str {
@@ -643,6 +644,12 @@ mod tests {
     mod scrolling {
         use super::*;
         use crate::app::update::action::CursorMove;
+
+        #[test]
+        fn visible_rows_clamps_to_one_for_small_terminal() {
+            assert_eq!(sql_modal_visible_rows(1), 1);
+            assert_eq!(sql_modal_visible_rows(8), 1);
+        }
 
         #[test]
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {

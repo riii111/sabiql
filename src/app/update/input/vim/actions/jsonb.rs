@@ -72,6 +72,15 @@ mod tests {
     }
 
     #[test]
+    fn append_opens_edit_mode() {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
+        let action = action_for_key(&combo(Key::Char('A')), ctx);
+
+        assert!(matches!(action, Some(Action::JsonbEnterEdit)));
+    }
+
+    #[test]
     fn search_next_moves_to_match() {
         let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
 

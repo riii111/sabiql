@@ -228,59 +228,81 @@ fn classify_word_char(ch: char) -> Option<WordKind> {
 }
 
 pub(crate) fn next_word_start(content: &str, cursor: usize) -> usize {
-    let chars: Vec<char> = content.chars().collect();
-    let len = chars.len();
-    if cursor >= len {
-        return len;
+    let char_count = content.chars().count();
+    if cursor >= char_count {
+        return char_count;
     }
 
+    let mut chars = content.chars().enumerate().skip(cursor);
+    let Some((_, ch)) = chars.next() else {
+        return char_count;
+    };
     let mut idx = cursor;
 
-    if chars[idx].is_whitespace() {
-        while idx < len && chars[idx].is_whitespace() {
-            idx += 1;
+    if ch.is_whitespace() {
+        idx += 1;
+        for (_, ch) in chars {
+            if ch.is_whitespace() {
+                idx += 1;
+            } else {
+                break;
+            }
         }
         return idx;
     }
 
-    let kind = classify_word_char(chars[idx]).expect("non-whitespace char has a kind");
-    while idx < len {
-        match classify_word_char(chars[idx]) {
+    let kind = classify_word_char(ch).expect("non-whitespace char has a kind");
+    idx += 1;
+    for (_, ch) in chars {
+        match classify_word_char(ch) {
             Some(current) if current == kind => idx += 1,
-            _ => break,
+            Some(_) => break,
+            None => {
+                idx += 1;
+                for (_, ch) in content.chars().enumerate().skip(idx) {
+                    if ch.is_whitespace() {
+                        idx += 1;
+                    } else {
+                        break;
+                    }
+                }
+                break;
+            }
         }
-    }
-    while idx < len && chars[idx].is_whitespace() {
-        idx += 1;
     }
 
     idx
 }
 
 pub(crate) fn previous_word_start(content: &str, cursor: usize) -> usize {
-    let chars: Vec<char> = content.chars().collect();
-    if cursor == 0 || chars.is_empty() {
+    if cursor == 0 || content.is_empty() {
         return 0;
     }
 
-    let mut idx = cursor.saturating_sub(1);
-    while idx > 0 && chars[idx].is_whitespace() {
-        idx -= 1;
-    }
-    if idx == 0 && chars[idx].is_whitespace() {
-        return 0;
-    }
+    let target = cursor.saturating_sub(1);
+    let mut current_run_start = 0;
+    let mut current_run_kind = None;
+    let mut last_non_whitespace_run_start = None;
 
-    let kind = classify_word_char(chars[idx]).expect("non-whitespace char has a kind");
-    while idx > 0 {
-        let prev = idx - 1;
-        match classify_word_char(chars[prev]) {
-            Some(previous) if previous == kind => idx = prev,
-            _ => break,
+    for (idx, ch) in content.chars().enumerate() {
+        if idx > target {
+            break;
         }
+        if ch.is_whitespace() {
+            current_run_kind = None;
+            continue;
+        }
+
+        let kind = classify_word_char(ch).expect("non-whitespace char has a kind");
+        if current_run_kind != Some(kind) {
+            current_run_start = idx;
+            current_run_kind = Some(kind);
+        }
+
+        last_non_whitespace_run_start = Some(current_run_start);
     }
 
-    idx
+    last_non_whitespace_run_start.unwrap_or(0)
 }
 
 #[cfg(test)]

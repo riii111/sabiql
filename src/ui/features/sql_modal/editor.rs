@@ -59,25 +59,22 @@ pub(super) fn render_editor(
     } else {
         CursorKind::Insert
     };
-    let line_spans = highlight_sql_spans(content, theme);
-    let mut lines = build_modal_text_surface_lines(
-        ModalTextSurface {
-            content,
-            cursor_row,
-            cursor_col,
-            scroll_row: state.sql_modal.editor.scroll_row(),
-            cursor_kind,
-            empty_placeholder: if is_normal {
-                " Press i to edit..."
-            } else {
-                " Enter SQL query..."
-            },
-            base_style: Style::default(),
-            current_line_style: Style::default().bg(theme.editor_current_line_bg),
+    let surface = ModalTextSurface {
+        content,
+        cursor_row,
+        cursor_col,
+        scroll_row: state.sql_modal.editor.scroll_row(),
+        cursor_kind,
+        empty_placeholder: if is_normal {
+            " Press i to edit..."
+        } else {
+            " Enter SQL query..."
         },
-        line_spans,
-        theme,
-    );
+        base_style: Style::default(),
+        current_line_style: Style::default().bg(theme.editor_current_line_bg),
+    };
+    let line_spans = highlight_sql_spans(content, theme);
+    let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
     let flash_active = state.flash_timers.is_active(
         crate::app::model::shared::flash_timer::FlashId::SqlModal,
@@ -85,23 +82,5 @@ pub(super) fn render_editor(
     );
     crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
 
-    render_modal_text_surface(
-        frame,
-        area,
-        ModalTextSurface {
-            content,
-            cursor_row,
-            cursor_col,
-            scroll_row: state.sql_modal.editor.scroll_row(),
-            cursor_kind,
-            empty_placeholder: if is_normal {
-                " Press i to edit..."
-            } else {
-                " Enter SQL query..."
-            },
-            base_style: Style::default(),
-            current_line_style: Style::default().bg(theme.editor_current_line_bg),
-        },
-        lines,
-    );
+    render_modal_text_surface(frame, area, surface, lines);
 }
