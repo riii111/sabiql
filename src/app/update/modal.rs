@@ -631,7 +631,7 @@ mod tests {
             }
 
             #[test]
-            fn scroll_down_increments_offset() {
+            fn down_increments_offset() {
                 let mut state = state_with_scrollable_preview();
 
                 reduce_modal(
@@ -648,7 +648,7 @@ mod tests {
             }
 
             #[test]
-            fn scroll_up_decrements_offset() {
+            fn up_decrements_offset() {
                 let mut state = state_with_scrollable_preview();
                 state.confirm_dialog.preview_scroll = 5;
 
@@ -666,7 +666,7 @@ mod tests {
             }
 
             #[test]
-            fn scroll_up_clamps_at_zero() {
+            fn up_clamps_at_zero() {
                 let mut state = state_with_scrollable_preview();
                 state.confirm_dialog.preview_scroll = 0;
 
@@ -684,7 +684,7 @@ mod tests {
             }
 
             #[test]
-            fn scroll_down_clamps_at_max() {
+            fn down_clamps_at_max() {
                 let mut state = state_with_scrollable_preview();
                 state.confirm_dialog.preview_scroll = 15;
 
