@@ -22,6 +22,7 @@ pub fn classify_command(combo: &KeyCombo) -> Option<VimCommand> {
             VimModeTransition::ConfirmOrEnter,
         )),
         Key::Char('i') => Some(VimCommand::ModeTransition(VimModeTransition::Insert)),
+        Key::Char('A') => Some(VimCommand::ModeTransition(VimModeTransition::Append)),
         Key::Char('n') => Some(VimCommand::SearchContinuation(SearchContinuation::Next)),
         Key::Char('N') => Some(VimCommand::SearchContinuation(SearchContinuation::Prev)),
         Key::Char('y') => Some(VimCommand::Operator(VimOperator::Yank)),
@@ -102,6 +103,7 @@ mod tests {
 
     #[rstest]
     #[case(Key::Char('i'), VimModeTransition::Insert)]
+    #[case(Key::Char('A'), VimModeTransition::Append)]
     #[case(Key::Enter, VimModeTransition::ConfirmOrEnter)]
     #[case(Key::Esc, VimModeTransition::Escape)]
     fn mode_transition_keys(#[case] key: Key, #[case] expected: VimModeTransition) {

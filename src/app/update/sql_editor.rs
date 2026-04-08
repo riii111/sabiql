@@ -383,6 +383,18 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
 
+        Action::SqlModalAppendInsert => {
+            state
+                .sql_modal
+                .editor
+                .move_cursor(crate::app::update::action::CursorMove::LineEnd);
+            state
+                .sql_modal
+                .editor
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+            state.sql_modal.set_status(SqlModalStatus::Editing);
+            Some(vec![])
+        }
         Action::SqlModalEnterInsert => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             Some(vec![])
@@ -1164,6 +1176,21 @@ mod tests {
 
     mod normal_insert_mode {
         use super::*;
+
+        #[test]
+        fn append_insert_moves_to_line_end_and_transitions_to_editing() {
+            let mut state = sql_modal_state();
+            state.sql_modal.set_status(SqlModalStatus::Normal);
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("abc\ndef".to_string(), 1);
+
+            reduce_sql_modal(&mut state, &Action::SqlModalAppendInsert, Instant::now());
+
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (0, 3));
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Editing);
+        }
 
         #[test]
         fn enter_insert_transitions_to_editing() {

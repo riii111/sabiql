@@ -390,6 +390,7 @@ pub enum Action {
     // SQL Modal
     OpenSqlModal,
     CloseSqlModal,
+    SqlModalAppendInsert,
     SqlModalEnterInsert,
     SqlModalEnterNormal,
     SqlModalYank,

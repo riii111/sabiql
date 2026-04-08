@@ -55,7 +55,7 @@ pub(in crate::app::update::input::vim) fn mode_transition(
             Action::ResultEnterCellEdit
         }
         (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Inspector(_))
-        | (VimModeTransition::Insert, _) => Action::None,
+        | (VimModeTransition::Insert | VimModeTransition::Append, _) => Action::None,
     }
 }
 

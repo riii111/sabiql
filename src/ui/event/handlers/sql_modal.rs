@@ -356,6 +356,7 @@ mod tests {
         SqlModalInput(char),
         SqlModalMoveCursor(CursorMove),
         CloseSqlModal,
+        SqlModalAppendInsert,
         SqlModalEnterInsert,
         SqlModalEnterNormal,
         SqlModalYank,
@@ -406,6 +407,9 @@ mod tests {
                 );
             }
             Expected::CloseSqlModal => assert!(matches!(result, Action::CloseSqlModal)),
+            Expected::SqlModalAppendInsert => {
+                assert!(matches!(result, Action::SqlModalAppendInsert));
+            }
             Expected::SqlModalEnterInsert => {
                 assert!(matches!(result, Action::SqlModalEnterInsert));
             }
@@ -523,6 +527,18 @@ mod tests {
         );
 
         assert_action(result, Expected::SqlModalEnterInsert);
+    }
+
+    #[test]
+    fn normal_sql_tab_a_appends_at_line_end() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('A')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::SqlModalAppendInsert);
     }
 
     #[rstest]
@@ -777,7 +793,6 @@ mod tests {
     #[rstest]
     #[case(Key::Char('a'))]
     #[case(Key::Char('e'))]
-    #[case(Key::Char('A'))]
     fn unsupported_normal_mode_keys_remain_unbound(#[case] code: Key) {
         let result = handle_sql_modal_keys(
             combo(code),

@@ -39,6 +39,7 @@ pub enum VimNavigation {
 pub enum VimModeTransition {
     Escape,
     Insert,
+    Append,
     ConfirmOrEnter,
 }
 

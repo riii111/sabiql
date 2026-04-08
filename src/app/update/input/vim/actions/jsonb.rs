@@ -14,7 +14,9 @@ pub(in crate::app::update::input::vim) fn command(
             VimCommand::Navigation(navigation) => navigation_action(navigation),
             VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseJsonbDetail),
             VimCommand::ModeTransition(
-                VimModeTransition::Insert | VimModeTransition::ConfirmOrEnter,
+                VimModeTransition::Insert
+                | VimModeTransition::Append
+                | VimModeTransition::ConfirmOrEnter,
             ) => Some(Action::JsonbEnterEdit),
             VimCommand::SearchContinuation(SearchContinuation::Next) => {
                 Some(Action::JsonbSearchNext)
