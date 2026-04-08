@@ -542,7 +542,7 @@ mod tests {
             state
                 .query
                 .set_post_delete_selection(PostDeleteRowSelection::Select(1));
-            state.result_interaction.horizontal_offset = 2;
+            state.result_interaction.horizontal_offset = 1;
             state.result_interaction.activate_cell(3, 2);
             state.query.set_current_result(Arc::clone(&result));
 
@@ -559,7 +559,7 @@ mod tests {
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(2));
-            assert_eq!(state.result_interaction.horizontal_offset, 2);
+            assert_eq!(state.result_interaction.horizontal_offset, 1);
         }
 
         #[test]
