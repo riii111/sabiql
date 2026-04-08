@@ -521,37 +521,16 @@ mod tests {
                 ));
             }
 
-            #[test]
-            fn h_selects_viewport_top() {
+            #[rstest]
+            #[case(Key::Char('H'), SelectMotion::ViewportTop)]
+            #[case(Key::Char('M'), SelectMotion::ViewportMiddle)]
+            #[case(Key::Char('L'), SelectMotion::ViewportBottom)]
+            fn hml_selects_viewport(#[case] key: Key, #[case] motion: SelectMotion) {
                 let state = browse_state();
 
-                let result = handle_normal_mode(combo(Key::Char('H')), &state);
+                let result = handle_normal_mode(combo(key), &state);
 
-                assert!(matches!(result, Action::Select(SelectMotion::ViewportTop)));
-            }
-
-            #[test]
-            fn m_selects_viewport_middle() {
-                let state = browse_state();
-
-                let result = handle_normal_mode(combo(Key::Char('M')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Select(SelectMotion::ViewportMiddle)
-                ));
-            }
-
-            #[test]
-            fn l_selects_viewport_bottom() {
-                let state = browse_state();
-
-                let result = handle_normal_mode(combo(Key::Char('L')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Select(SelectMotion::ViewportBottom)
-                ));
+                assert!(matches!(result, Action::Select(actual_motion) if actual_motion == motion));
             }
 
             #[test]
@@ -692,51 +671,26 @@ mod tests {
                 ));
             }
 
-            #[test]
-            fn h_scrolls_to_viewport_top() {
+            #[rstest]
+            #[case(Key::Char('H'), ScrollDirection::Up, ScrollAmount::ViewportTop)]
+            #[case(Key::Char('M'), ScrollDirection::Up, ScrollAmount::ViewportMiddle)]
+            #[case(Key::Char('L'), ScrollDirection::Down, ScrollAmount::ViewportBottom)]
+            fn hml_scrolls_to_viewport(
+                #[case] key: Key,
+                #[case] direction: ScrollDirection,
+                #[case] amount: ScrollAmount,
+            ) {
                 let state = result_focused_state();
 
-                let result = handle_normal_mode(combo(Key::Char('H')), &state);
+                let result = handle_normal_mode(combo(key), &state);
 
                 assert!(matches!(
                     result,
                     Action::Scroll {
                         target: ScrollTarget::Result,
-                        direction: ScrollDirection::Up,
-                        amount: ScrollAmount::ViewportTop
-                    }
-                ));
-            }
-
-            #[test]
-            fn m_scrolls_to_viewport_middle() {
-                let state = result_focused_state();
-
-                let result = handle_normal_mode(combo(Key::Char('M')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Up,
-                        amount: ScrollAmount::ViewportMiddle
-                    }
-                ));
-            }
-
-            #[test]
-            fn l_scrolls_to_viewport_bottom() {
-                let state = result_focused_state();
-
-                let result = handle_normal_mode(combo(Key::Char('L')), &state);
-
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Down,
-                        amount: ScrollAmount::ViewportBottom
-                    }
+                        direction: actual_direction,
+                        amount: actual_amount
+                    } if actual_direction == direction && actual_amount == amount
                 ));
             }
 
