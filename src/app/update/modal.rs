@@ -285,9 +285,11 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             match origin {
                 InputMode::Normal => {
                     state.modal.set_mode(InputMode::SqlModal);
+                    state.sql_modal.active_tab =
+                        crate::app::model::sql_editor::modal::SqlModalTab::Sql;
                     state
                         .sql_modal
-                        .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
+                        .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Normal);
                     state.sql_modal.editor.set_content(query);
                     state.sql_modal.completion.visible = false;
                     state.sql_modal.completion.candidates.clear();
@@ -297,7 +299,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     state.sql_modal.editor.set_content(query);
                     state
                         .sql_modal
-                        .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
+                        .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Normal);
                 }
                 _ => {}
             }
@@ -843,6 +845,10 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::SqlModal);
             assert_eq!(state.sql_modal.editor.content(), "SELECT * FROM users");
+            assert!(matches!(
+                state.sql_modal.status(),
+                crate::app::model::sql_editor::modal::SqlModalStatus::Normal
+            ));
             assert!(effects.is_empty());
         }
 
@@ -851,6 +857,9 @@ mod tests {
             let mut state = connected_state();
             enter_query_history(&mut state, InputMode::SqlModal);
             state.sql_modal.editor.set_content("old query".to_string());
+            state
+                .sql_modal
+                .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
             let test_conn = ConnectionId::from_string("test-conn");
             state.query_history_picker.entries = vec![make_entry("new query", &test_conn)];
             state.query_history_picker.selected = 0;
@@ -864,6 +873,10 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::SqlModal);
             assert_eq!(state.sql_modal.editor.content(), "new query");
+            assert!(matches!(
+                state.sql_modal.status(),
+                crate::app::model::sql_editor::modal::SqlModalStatus::Normal
+            ));
         }
 
         #[test]

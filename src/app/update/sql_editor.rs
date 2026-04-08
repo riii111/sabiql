@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::model::explain_context::ExplainContext;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
@@ -20,9 +19,7 @@ use crate::app::policy::write::write_guardrails::{
 use crate::app::update::action::{Action, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 
-// Conservative estimate for visible editor rows. The actual height depends on terminal size
-// and modal layout (60% height - status bar - separator). This ensures scroll tracking stays
-// reasonably close even without exact dimensions.
+// Fallback used before the renderer provides a real terminal height.
 const EDITOR_VISIBLE_ROWS: usize = 8;
 
 pub fn reduce_sql_modal(
@@ -465,7 +462,14 @@ pub fn reduce_sql_modal(
 }
 
 fn sql_modal_visible_rows(terminal_height: u16) -> usize {
-    ExplainContext::modal_inner_height(terminal_height).max(EDITOR_VISIBLE_ROWS)
+    if terminal_height == 0 {
+        return EDITOR_VISIBLE_ROWS;
+    }
+
+    const MODAL_HEIGHT_PERCENT: usize = 60;
+    // area(60%) - border(2) - separator(1) - status(1)
+    const SQL_MODAL_CHROME_LINES: usize = 4;
+    (terminal_height as usize * MODAL_HEIGHT_PERCENT / 100).saturating_sub(SQL_MODAL_CHROME_LINES)
 }
 
 fn multi_statement_label(sql: &str) -> &'static str {
@@ -625,6 +629,61 @@ mod tests {
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh { .. }
             ));
+        }
+    }
+
+    mod scrolling {
+        use super::*;
+        use crate::app::update::action::CursorMove;
+
+        #[test]
+        fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
+            let mut state = sql_modal_state();
+            state.ui.terminal_height = 20;
+            state.sql_modal.set_status(SqlModalStatus::Normal);
+            state
+                .sql_modal
+                .editor
+                .set_content("0\n1\n2\n3\n4\n5\n6\n7".to_string());
+
+            for _ in 0..7 {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::TextMoveCursor {
+                        target: InputTarget::SqlModal,
+                        direction: CursorMove::Down,
+                    },
+                    Instant::now(),
+                );
+            }
+
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (7, 0));
+            assert_eq!(state.sql_modal.editor.scroll_row(), 0);
+        }
+
+        #[test]
+        fn scrolls_once_cursor_moves_past_visible_rows() {
+            let mut state = sql_modal_state();
+            state.ui.terminal_height = 20;
+            state.sql_modal.set_status(SqlModalStatus::Normal);
+            state
+                .sql_modal
+                .editor
+                .set_content("0\n1\n2\n3\n4\n5\n6\n7\n8".to_string());
+
+            for _ in 0..8 {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::TextMoveCursor {
+                        target: InputTarget::SqlModal,
+                        direction: CursorMove::Down,
+                    },
+                    Instant::now(),
+                );
+            }
+
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (8, 0));
+            assert_eq!(state.sql_modal.editor.scroll_row(), 1);
         }
     }
 
