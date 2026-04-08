@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn no_subcommand_returns_none() {
         let args = Args::parse_from(["sabiql"]);
-        assert!(args.command.is_none());
+        assert!(args.command.is_some());
     }
 
     #[test]

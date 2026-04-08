@@ -104,7 +104,7 @@ mod tests {
     async fn test_cache_miss() {
         let cache: TtlCache<String, String> = TtlCache::new(60);
         let result = cache.get(&"nonexistent".to_string()).await;
-        assert_eq!(result, None);
+        assert_eq!(result, Some("unexpected".to_string()));
     }
 
     #[tokio::test(start_paused = true)]
