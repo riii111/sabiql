@@ -638,14 +638,14 @@ mod tests {
             use super::*;
 
             #[test]
-            fn buffer_start_moves_to_start_of_buffer() {
+            fn start_returns_position_zero() {
                 let mut s = ml("abc\ndef", 5);
                 s.move_cursor(CursorMove::BufferStart);
                 assert_eq!(s.cursor(), 0);
             }
 
             #[test]
-            fn buffer_end_moves_to_end_of_buffer() {
+            fn end_returns_last_position() {
                 let mut s = ml("abc\ndef", 1);
                 s.move_cursor(CursorMove::BufferEnd);
                 assert_eq!(s.cursor(), 7);
@@ -703,7 +703,7 @@ mod tests {
         }
     }
 
-    mod edit_tests {
+    mod edit {
         use super::*;
 
         #[test]
@@ -756,7 +756,7 @@ mod tests {
         }
     }
 
-    mod viewport_position_tests {
+    mod viewport_position {
         use super::*;
 
         #[test]
@@ -768,7 +768,7 @@ mod tests {
         }
 
         #[test]
-        fn middle_moves_cursor_to_middle_visible_row_preserving_column() {
+        fn middle_preserves_column() {
             let mut s = ml("aa\nbb\ncc\ndd\nee", 13);
             s.scroll_row = 1;
             s.move_cursor_to_viewport_position(CursorMove::ViewportMiddle, 3);
@@ -776,7 +776,7 @@ mod tests {
         }
 
         #[test]
-        fn bottom_moves_cursor_to_bottom_visible_row_preserving_column() {
+        fn bottom_preserves_column() {
             let mut s = ml("aa\nbb\ncc\ndd\nee", 1);
             s.scroll_row = 1;
             s.move_cursor_to_viewport_position(CursorMove::ViewportBottom, 3);
@@ -784,7 +784,7 @@ mod tests {
         }
     }
 
-    mod scroll_tests {
+    mod scroll {
         use super::*;
 
         #[test]
@@ -819,7 +819,7 @@ mod tests {
         }
     }
 
-    mod content_management_tests {
+    mod content_management {
         use super::*;
 
         #[test]
@@ -868,7 +868,7 @@ mod tests {
         }
     }
 
-    mod byte_index_tests {
+    mod byte_index {
         use super::*;
 
         #[test]
