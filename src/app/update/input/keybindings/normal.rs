@@ -311,7 +311,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "Y",
         key: "Y",
-        desc_short: "Yank",
+        desc_short: "Yank Cell",
         description: "Copy the active cell value to clipboard",
         action: Action::ResultCellYank,
         combos: &[KeyCombo::plain(Key::Char('Y'))],

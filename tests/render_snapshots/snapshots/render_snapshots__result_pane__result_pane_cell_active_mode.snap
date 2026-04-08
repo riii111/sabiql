@@ -25,4 +25,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-i:Edit  Y:Yank  yy:Yank Row  dd:Stage Del  ?:Help  Esc:Back  q:Quit
+i:Edit  Y:Yank Cell  yy:Yank Row  dd:Stage Del  ?:Help  Esc:Back  q:Quit
