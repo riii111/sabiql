@@ -1,0 +1,9 @@
+[profile.ci-all.junit]
+path = "junit-all-features.xml"
+store-success-output = false
+store-failure-output = true
+
+[profile.ci-no-default.junit]
+path = "junit-no-default-features.xml"
+store-success-output = false
+store-failure-output = true
