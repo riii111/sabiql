@@ -11,10 +11,6 @@ pub use normal::*;
 pub use overlays::*;
 pub use types::{Key, KeyCombo, Modifiers};
 
-// =============================================================================
-// KeyBinding
-// =============================================================================
-
 #[derive(Clone)]
 pub struct KeyBinding {
     pub key_short: &'static str,
@@ -101,10 +97,6 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("JSONB_DETAIL", &JSONB_DETAIL),
     ("JSONB_EDIT", &JSONB_EDIT),
 ];
-
-// =============================================================================
-// Index Constants for Footer Lookup
-// =============================================================================
 
 pub mod idx {
     pub mod global {
@@ -366,10 +358,6 @@ pub const fn help_content_line_count() -> usize {
         + JSONB_SEARCH_KEYS.len()
 }
 
-// =============================================================================
-// Predicate functions for Normal mode routing
-// =============================================================================
-
 pub fn is_quit(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::QUIT].combos.contains(combo)
 }
@@ -429,640 +417,643 @@ mod tests {
     use super::*;
     use crate::app::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
 
-    #[test]
-    fn idx_constants_are_within_bounds() {
-        // GLOBAL_KEYS
-        assert!(idx::global::QUIT < GLOBAL_KEYS.len());
-        assert!(idx::global::HELP < GLOBAL_KEYS.len());
-        assert!(idx::global::TABLE_PICKER < GLOBAL_KEYS.len());
-        assert!(idx::global::PALETTE < GLOBAL_KEYS.len());
-        assert!(idx::global::COMMAND_LINE < GLOBAL_KEYS.len());
-        assert!(idx::global::FOCUS < GLOBAL_KEYS.len());
-        assert!(idx::global::EXIT_FOCUS < GLOBAL_KEYS.len());
-        assert!(idx::global::PANE_SWITCH < GLOBAL_KEYS.len());
-        assert!(idx::global::INSPECTOR_TABS < GLOBAL_KEYS.len());
-        assert!(idx::global::RELOAD < GLOBAL_KEYS.len());
-        assert!(idx::global::SQL < GLOBAL_KEYS.len());
-        assert!(idx::global::ER_DIAGRAM < GLOBAL_KEYS.len());
-        assert!(idx::global::CONNECTIONS < GLOBAL_KEYS.len());
-        assert!(idx::global::CSV_EXPORT < GLOBAL_KEYS.len());
-        assert!(idx::global::READ_ONLY < GLOBAL_KEYS.len());
-        assert!(idx::global::EXIT_READ_ONLY < GLOBAL_KEYS.len());
-        assert!(idx::global::QUERY_HISTORY < GLOBAL_KEYS.len());
+    mod structure {
+        use super::*;
 
-        // FOOTER_NAV_KEYS
-        assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());
-        assert!(idx::footer_nav::SCROLL_SHORT < FOOTER_NAV_KEYS.len());
-        assert!(idx::footer_nav::TOP_BOTTOM < FOOTER_NAV_KEYS.len());
-        assert!(idx::footer_nav::H_SCROLL < FOOTER_NAV_KEYS.len());
-        assert!(idx::footer_nav::PAGE_NAV < FOOTER_NAV_KEYS.len());
+        #[test]
+        fn idx_constants_are_within_bounds() {
+            // GLOBAL_KEYS
+            assert!(idx::global::QUIT < GLOBAL_KEYS.len());
+            assert!(idx::global::HELP < GLOBAL_KEYS.len());
+            assert!(idx::global::TABLE_PICKER < GLOBAL_KEYS.len());
+            assert!(idx::global::PALETTE < GLOBAL_KEYS.len());
+            assert!(idx::global::COMMAND_LINE < GLOBAL_KEYS.len());
+            assert!(idx::global::FOCUS < GLOBAL_KEYS.len());
+            assert!(idx::global::EXIT_FOCUS < GLOBAL_KEYS.len());
+            assert!(idx::global::PANE_SWITCH < GLOBAL_KEYS.len());
+            assert!(idx::global::INSPECTOR_TABS < GLOBAL_KEYS.len());
+            assert!(idx::global::RELOAD < GLOBAL_KEYS.len());
+            assert!(idx::global::SQL < GLOBAL_KEYS.len());
+            assert!(idx::global::ER_DIAGRAM < GLOBAL_KEYS.len());
+            assert!(idx::global::CONNECTIONS < GLOBAL_KEYS.len());
+            assert!(idx::global::CSV_EXPORT < GLOBAL_KEYS.len());
+            assert!(idx::global::READ_ONLY < GLOBAL_KEYS.len());
+            assert!(idx::global::EXIT_READ_ONLY < GLOBAL_KEYS.len());
+            assert!(idx::global::QUERY_HISTORY < GLOBAL_KEYS.len());
 
-        // SQL_MODAL_NORMAL_KEYS
-        assert!(idx::sql_modal_normal::RUN < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::YANK < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::ENTER_INSERT < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::APPEND < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::MOVE < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::HOME_END < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::VIEWPORT < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::CLOSE < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::CLEAR < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::QUERY_HISTORY < SQL_MODAL_NORMAL_KEYS.len());
+            // FOOTER_NAV_KEYS
+            assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());
+            assert!(idx::footer_nav::SCROLL_SHORT < FOOTER_NAV_KEYS.len());
+            assert!(idx::footer_nav::TOP_BOTTOM < FOOTER_NAV_KEYS.len());
+            assert!(idx::footer_nav::H_SCROLL < FOOTER_NAV_KEYS.len());
+            assert!(idx::footer_nav::PAGE_NAV < FOOTER_NAV_KEYS.len());
 
-        // SQL_MODAL_KEYS
-        assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::ESC_NORMAL < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::MOVE < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::HOME_END < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::TAB < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::COMPLETION_TRIGGER < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::CLEAR < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::QUERY_HISTORY < SQL_MODAL_KEYS.len());
+            // SQL_MODAL_NORMAL_KEYS
+            assert!(idx::sql_modal_normal::RUN < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::YANK < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::ENTER_INSERT < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::APPEND < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::MOVE < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::HOME_END < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::VIEWPORT < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::CLOSE < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::CLEAR < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::QUERY_HISTORY < SQL_MODAL_NORMAL_KEYS.len());
 
-        // SQL_MODAL_PLAN_KEYS
-        assert!(idx::sql_modal_plan::EXPLAIN < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::ANALYZE < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::YANK < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::SCROLL < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::TAB < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::BACKTAB < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::CLOSE < SQL_MODAL_PLAN_KEYS.len());
+            // SQL_MODAL_KEYS
+            assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::ESC_NORMAL < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::MOVE < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::HOME_END < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::TAB < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::COMPLETION_TRIGGER < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::CLEAR < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::QUERY_HISTORY < SQL_MODAL_KEYS.len());
 
-        // SQL_MODAL_COMPARE_KEYS
-        assert!(idx::sql_modal_compare::EXPLAIN < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::ANALYZE < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::EDIT_QUERY < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::YANK < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::SCROLL < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::TAB < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::BACKTAB < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::CLOSE < SQL_MODAL_COMPARE_KEYS.len());
+            // SQL_MODAL_PLAN_KEYS
+            assert!(idx::sql_modal_plan::EXPLAIN < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::ANALYZE < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::YANK < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::SCROLL < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::TAB < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::BACKTAB < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::CLOSE < SQL_MODAL_PLAN_KEYS.len());
 
-        // SQL_MODAL_CONFIRMING_KEYS
-        assert!(idx::sql_modal_confirming::CANCEL_CONFIRM < SQL_MODAL_CONFIRMING_KEYS.len());
+            // SQL_MODAL_COMPARE_KEYS
+            assert!(idx::sql_modal_compare::EXPLAIN < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::ANALYZE < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::EDIT_QUERY < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::YANK < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::SCROLL < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::TAB < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::BACKTAB < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::CLOSE < SQL_MODAL_COMPARE_KEYS.len());
 
-        // OVERLAY_KEYS
-        assert!(idx::overlay::ESC_CANCEL < OVERLAY_KEYS.len());
-        assert!(idx::overlay::ESC_CLOSE < OVERLAY_KEYS.len());
-        assert!(idx::overlay::ENTER_EXECUTE < OVERLAY_KEYS.len());
-        assert!(idx::overlay::ENTER_SELECT < OVERLAY_KEYS.len());
-        assert!(idx::overlay::NAVIGATE_JK < OVERLAY_KEYS.len());
-        assert!(idx::overlay::TYPE_FILTER < OVERLAY_KEYS.len());
-        assert!(idx::overlay::ERROR_OPEN < OVERLAY_KEYS.len());
+            // SQL_MODAL_CONFIRMING_KEYS
+            assert!(idx::sql_modal_confirming::CANCEL_CONFIRM < SQL_MODAL_CONFIRMING_KEYS.len());
 
-        // CONNECTION_SETUP_KEYS
-        assert!(idx::conn_setup::TAB_NAV < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::TAB_NEXT < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::TAB_PREV < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::SAVE < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::ESC_CANCEL < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::ENTER_DROPDOWN < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::DROPDOWN_NAV < CONNECTION_SETUP_KEYS.len());
+            // OVERLAY_KEYS
+            assert!(idx::overlay::ESC_CANCEL < OVERLAY_KEYS.len());
+            assert!(idx::overlay::ESC_CLOSE < OVERLAY_KEYS.len());
+            assert!(idx::overlay::ENTER_EXECUTE < OVERLAY_KEYS.len());
+            assert!(idx::overlay::ENTER_SELECT < OVERLAY_KEYS.len());
+            assert!(idx::overlay::NAVIGATE_JK < OVERLAY_KEYS.len());
+            assert!(idx::overlay::TYPE_FILTER < OVERLAY_KEYS.len());
+            assert!(idx::overlay::ERROR_OPEN < OVERLAY_KEYS.len());
 
-        // CONNECTION_ERROR_ROWS
-        assert!(idx::conn_error::EDIT < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::SWITCH < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::DETAILS < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::COPY < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::SCROLL < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::ESC_CLOSE < CONNECTION_ERROR_ROWS.len());
+            // CONNECTION_SETUP_KEYS
+            assert!(idx::conn_setup::TAB_NAV < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::TAB_NEXT < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::TAB_PREV < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::SAVE < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::ESC_CANCEL < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::ENTER_DROPDOWN < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::DROPDOWN_NAV < CONNECTION_SETUP_KEYS.len());
 
-        // CONFIRM_DIALOG_KEYS
-        assert!(idx::confirm::YES < CONFIRM_DIALOG_KEYS.len());
-        assert!(idx::confirm::SCROLL_DOWN < CONFIRM_DIALOG_KEYS.len());
-        assert!(idx::confirm::SCROLL_UP < CONFIRM_DIALOG_KEYS.len());
-        assert!(idx::confirm::NO < CONFIRM_DIALOG_KEYS.len());
+            // CONNECTION_ERROR_ROWS
+            assert!(idx::conn_error::EDIT < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::SWITCH < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::DETAILS < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::COPY < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::SCROLL < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::ESC_CLOSE < CONNECTION_ERROR_ROWS.len());
 
-        // TABLE_PICKER_ROWS
-        assert!(idx::table_picker::ENTER_SELECT < TABLE_PICKER_ROWS.len());
-        assert!(idx::table_picker::NAVIGATE < TABLE_PICKER_ROWS.len());
-        assert!(idx::table_picker::TYPE_FILTER < TABLE_PICKER_ROWS.len());
-        assert!(idx::table_picker::ESC_CLOSE < TABLE_PICKER_ROWS.len());
+            // CONFIRM_DIALOG_KEYS
+            assert!(idx::confirm::YES < CONFIRM_DIALOG_KEYS.len());
+            assert!(idx::confirm::SCROLL_DOWN < CONFIRM_DIALOG_KEYS.len());
+            assert!(idx::confirm::SCROLL_UP < CONFIRM_DIALOG_KEYS.len());
+            assert!(idx::confirm::NO < CONFIRM_DIALOG_KEYS.len());
 
-        // ER_PICKER_ROWS
-        assert!(idx::er_picker::ENTER_GENERATE < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::SELECT < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::SELECT_ALL < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::NAVIGATE < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_ROWS.len());
+            // TABLE_PICKER_ROWS
+            assert!(idx::table_picker::ENTER_SELECT < TABLE_PICKER_ROWS.len());
+            assert!(idx::table_picker::NAVIGATE < TABLE_PICKER_ROWS.len());
+            assert!(idx::table_picker::TYPE_FILTER < TABLE_PICKER_ROWS.len());
+            assert!(idx::table_picker::ESC_CLOSE < TABLE_PICKER_ROWS.len());
 
-        // QUERY_HISTORY_PICKER_ROWS
-        assert!(idx::qh_picker::ENTER_SELECT < QUERY_HISTORY_PICKER_ROWS.len());
-        assert!(idx::qh_picker::NAVIGATE < QUERY_HISTORY_PICKER_ROWS.len());
-        assert!(idx::qh_picker::TYPE_FILTER < QUERY_HISTORY_PICKER_ROWS.len());
-        assert!(idx::qh_picker::ESC_CLOSE < QUERY_HISTORY_PICKER_ROWS.len());
+            // ER_PICKER_ROWS
+            assert!(idx::er_picker::ENTER_GENERATE < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::SELECT < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::SELECT_ALL < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::NAVIGATE < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_ROWS.len());
 
-        // COMMAND_PALETTE_ROWS
-        assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_ROWS.len());
-        assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_ROWS.len());
-        assert!(idx::cmd_palette::ESC_CLOSE < COMMAND_PALETTE_ROWS.len());
+            // QUERY_HISTORY_PICKER_ROWS
+            assert!(idx::qh_picker::ENTER_SELECT < QUERY_HISTORY_PICKER_ROWS.len());
+            assert!(idx::qh_picker::NAVIGATE < QUERY_HISTORY_PICKER_ROWS.len());
+            assert!(idx::qh_picker::TYPE_FILTER < QUERY_HISTORY_PICKER_ROWS.len());
+            assert!(idx::qh_picker::ESC_CLOSE < QUERY_HISTORY_PICKER_ROWS.len());
 
-        // HELP_ROWS
-        assert!(idx::help::SCROLL < HELP_ROWS.len());
-        assert!(idx::help::TOP_BOTTOM < HELP_ROWS.len());
-        assert!(idx::help::HALF_PAGE < HELP_ROWS.len());
-        assert!(idx::help::FULL_PAGE < HELP_ROWS.len());
-        assert!(idx::help::CLOSE < HELP_ROWS.len());
+            // COMMAND_PALETTE_ROWS
+            assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_ROWS.len());
+            assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_ROWS.len());
+            assert!(idx::cmd_palette::ESC_CLOSE < COMMAND_PALETTE_ROWS.len());
 
-        // RESULT_ACTIVE_KEYS
-        assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::YANK < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::STAGE_DELETE < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::UNSTAGE_DELETE < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::CELL_NAV < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::ROW_NAV < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::ESC_BACK < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::DRAFT_DISCARD < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::ROW_YANK < RESULT_ACTIVE_KEYS.len());
+            // HELP_ROWS
+            assert!(idx::help::SCROLL < HELP_ROWS.len());
+            assert!(idx::help::TOP_BOTTOM < HELP_ROWS.len());
+            assert!(idx::help::HALF_PAGE < HELP_ROWS.len());
+            assert!(idx::help::FULL_PAGE < HELP_ROWS.len());
+            assert!(idx::help::CLOSE < HELP_ROWS.len());
 
-        // HISTORY_KEYS
-        assert!(idx::history::OPEN < HISTORY_KEYS.len());
-        assert!(idx::history::NAV < HISTORY_KEYS.len());
-        assert!(idx::history::EXIT < HISTORY_KEYS.len());
+            // RESULT_ACTIVE_KEYS
+            assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::YANK < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::STAGE_DELETE < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::UNSTAGE_DELETE < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::CELL_NAV < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::ROW_NAV < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::ESC_BACK < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::DRAFT_DISCARD < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::ROW_YANK < RESULT_ACTIVE_KEYS.len());
 
-        // INSPECTOR_DDL_KEYS
-        assert!(idx::inspector_ddl::YANK < INSPECTOR_DDL_KEYS.len());
+            // HISTORY_KEYS
+            assert!(idx::history::OPEN < HISTORY_KEYS.len());
+            assert!(idx::history::NAV < HISTORY_KEYS.len());
+            assert!(idx::history::EXIT < HISTORY_KEYS.len());
 
-        // CELL_EDIT_KEYS
-        assert!(idx::cell_edit::WRITE < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::TYPE < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::MOVE < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::HOME_END < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::COMMAND < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::ESC_CANCEL < CELL_EDIT_KEYS.len());
+            // INSPECTOR_DDL_KEYS
+            assert!(idx::inspector_ddl::YANK < INSPECTOR_DDL_KEYS.len());
 
-        // CONNECTION_SELECTOR_ROWS
-        assert!(idx::connection_selector::CONFIRM < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::SELECT < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::NEW < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::CLOSE < CONNECTION_SELECTOR_ROWS.len());
+            // CELL_EDIT_KEYS
+            assert!(idx::cell_edit::WRITE < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::TYPE < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::MOVE < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::HOME_END < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::COMMAND < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::ESC_CANCEL < CELL_EDIT_KEYS.len());
 
-        // JSONB_DETAIL_ROWS
-        assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::INSERT < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::NEXT_PREV < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::MOVE < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::HOME_END < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_ROWS.len());
+            // CONNECTION_SELECTOR_ROWS
+            assert!(idx::connection_selector::CONFIRM < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::SELECT < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::NEW < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::CLOSE < CONNECTION_SELECTOR_ROWS.len());
 
-        // JSONB_SEARCH_KEYS
-        assert!(idx::jsonb_search::TYPE_SEARCH < JSONB_SEARCH_KEYS.len());
-        assert!(idx::jsonb_search::CONFIRM < JSONB_SEARCH_KEYS.len());
-        assert!(idx::jsonb_search::CANCEL < JSONB_SEARCH_KEYS.len());
+            // JSONB_DETAIL_ROWS
+            assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::INSERT < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::NEXT_PREV < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::MOVE < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::HOME_END < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_ROWS.len());
 
-        // JSONB_EDIT_ROWS
-        assert!(idx::jsonb_edit::ESC_NORMAL < JSONB_EDIT_ROWS.len());
-        assert!(idx::jsonb_edit::MOVE < JSONB_EDIT_ROWS.len());
-        assert!(idx::jsonb_edit::HOME_END < JSONB_EDIT_ROWS.len());
+            // JSONB_SEARCH_KEYS
+            assert!(idx::jsonb_search::TYPE_SEARCH < JSONB_SEARCH_KEYS.len());
+            assert!(idx::jsonb_search::CONFIRM < JSONB_SEARCH_KEYS.len());
+            assert!(idx::jsonb_search::CANCEL < JSONB_SEARCH_KEYS.len());
+
+            // JSONB_EDIT_ROWS
+            assert!(idx::jsonb_edit::ESC_NORMAL < JSONB_EDIT_ROWS.len());
+            assert!(idx::jsonb_edit::MOVE < JSONB_EDIT_ROWS.len());
+            assert!(idx::jsonb_edit::HOME_END < JSONB_EDIT_ROWS.len());
+        }
+
+        #[test]
+        fn help_content_line_count_matches_section_structure() {
+            let sections: &[usize] = &[
+                GLOBAL_KEYS.len(),
+                NAVIGATION_KEYS.len(),
+                HISTORY_KEYS.len(),
+                RESULT_ACTIVE_KEYS.len(),
+                INSPECTOR_DDL_KEYS.len(),
+                CELL_EDIT_KEYS.len(),
+                SQL_MODAL_NORMAL_KEYS.len(),
+                SQL_MODAL_KEYS.len(),
+                SQL_MODAL_PLAN_KEYS.len(),
+                SQL_MODAL_COMPARE_KEYS.len(),
+                SQL_MODAL_CONFIRMING_KEYS.len(),
+                OVERLAY_KEYS.len(),
+                COMMAND_LINE_KEYS.len(),
+                CONNECTION_SETUP_KEYS.len(),
+                CONNECTION_ERROR_ROWS.len(),
+                CONNECTION_SELECTOR_ROWS.len(),
+                ER_PICKER_ROWS.len(),
+                QUERY_HISTORY_PICKER_ROWS.len(),
+                TABLE_PICKER_ROWS.len(),
+                COMMAND_PALETTE_ROWS.len(),
+                HELP_ROWS.len(),
+                CONFIRM_DIALOG_KEYS.len(),
+                JSONB_DETAIL_ROWS.len(),
+                JSONB_EDIT_ROWS.len(),
+                JSONB_SEARCH_KEYS.len(),
+            ];
+            let section_count = sections.len();
+            let dedup_pairs = 3; // Focus, ReadOnly, History
+            let expected: usize =
+                section_count + sections.iter().sum::<usize>() + (section_count - 1) - dedup_pairs;
+
+            assert_eq!(help_content_line_count(), expected);
+        }
     }
 
-    #[test]
-    fn help_content_line_count_matches_section_structure() {
-        let sections: &[usize] = &[
-            GLOBAL_KEYS.len(),
-            NAVIGATION_KEYS.len(),
-            HISTORY_KEYS.len(),
-            RESULT_ACTIVE_KEYS.len(),
-            INSPECTOR_DDL_KEYS.len(),
-            CELL_EDIT_KEYS.len(),
-            SQL_MODAL_NORMAL_KEYS.len(),
-            SQL_MODAL_KEYS.len(),
-            SQL_MODAL_PLAN_KEYS.len(),
-            SQL_MODAL_COMPARE_KEYS.len(),
-            SQL_MODAL_CONFIRMING_KEYS.len(),
-            OVERLAY_KEYS.len(),
-            COMMAND_LINE_KEYS.len(),
-            CONNECTION_SETUP_KEYS.len(),
-            CONNECTION_ERROR_ROWS.len(),
-            CONNECTION_SELECTOR_ROWS.len(),
-            ER_PICKER_ROWS.len(),
-            QUERY_HISTORY_PICKER_ROWS.len(),
-            TABLE_PICKER_ROWS.len(),
-            COMMAND_PALETTE_ROWS.len(),
-            HELP_ROWS.len(),
-            CONFIRM_DIALOG_KEYS.len(),
-            JSONB_DETAIL_ROWS.len(),
-            JSONB_EDIT_ROWS.len(),
-            JSONB_SEARCH_KEYS.len(),
-        ];
-        let section_count = sections.len();
-        let dedup_pairs = 3; // Focus, ReadOnly, History
-        let expected: usize =
-            section_count + sections.iter().sum::<usize>() + (section_count - 1) - dedup_pairs;
-
-        assert_eq!(help_content_line_count(), expected);
-    }
-
-    mod semantic {
+    mod catalog_semantics {
         use super::*;
         use crate::app::update::input::keymap;
-        use rstest::rstest;
 
-        // ------------------------------------------------------------------ //
-        // 1. idx-to-Action correctness
-        // ------------------------------------------------------------------ //
+        mod action_mapping {
+            use super::*;
+            use rstest::rstest;
 
-        #[rstest]
-        #[case(idx::global::QUIT, Action::Quit)]
-        #[case(idx::global::HELP, Action::OpenHelp)]
-        #[case(idx::global::TABLE_PICKER, Action::OpenTablePicker)]
-        #[case(idx::global::PALETTE, Action::OpenCommandPalette)]
-        #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
-        #[case(idx::global::RELOAD, Action::ReloadMetadata)]
-        #[case(idx::global::SQL, Action::OpenSqlModal)]
-        #[case(idx::global::ER_DIAGRAM, Action::OpenErTablePicker)]
-        #[case(idx::global::CONNECTIONS, Action::OpenConnectionSelector)]
-        #[case(idx::global::CSV_EXPORT, Action::RequestCsvExport)]
-        #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
-        #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
-        #[case(idx::global::QUERY_HISTORY, Action::OpenQueryHistoryPicker)]
-        fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),
-                "GLOBAL_KEYS[{i}] has action {:?}, expected {expected:?}",
-                GLOBAL_KEYS[i].action
-            );
-        }
+            #[rstest]
+            #[case(idx::global::QUIT, Action::Quit)]
+            #[case(idx::global::HELP, Action::OpenHelp)]
+            #[case(idx::global::TABLE_PICKER, Action::OpenTablePicker)]
+            #[case(idx::global::PALETTE, Action::OpenCommandPalette)]
+            #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
+            #[case(idx::global::RELOAD, Action::ReloadMetadata)]
+            #[case(idx::global::SQL, Action::OpenSqlModal)]
+            #[case(idx::global::ER_DIAGRAM, Action::OpenErTablePicker)]
+            #[case(idx::global::CONNECTIONS, Action::OpenConnectionSelector)]
+            #[case(idx::global::CSV_EXPORT, Action::RequestCsvExport)]
+            #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
+            #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
+            #[case(idx::global::QUERY_HISTORY, Action::OpenQueryHistoryPicker)]
+            fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+                assert!(
+                    std::mem::discriminant(&GLOBAL_KEYS[i].action)
+                        == std::mem::discriminant(&expected),
+                    "GLOBAL_KEYS[{i}] has action {:?}, expected {expected:?}",
+                    GLOBAL_KEYS[i].action
+                );
+            }
 
-        #[test]
-        fn confirm_yes_action_matches() {
-            assert!(matches!(
-                CONFIRM_DIALOG_KEYS[idx::confirm::YES].action,
-                Action::ConfirmDialogConfirm
-            ));
-        }
+            #[test]
+            fn confirm_yes_action_matches() {
+                assert!(matches!(
+                    CONFIRM_DIALOG_KEYS[idx::confirm::YES].action,
+                    Action::ConfirmDialogConfirm
+                ));
+            }
 
-        #[test]
-        fn confirm_scroll_down_action_matches() {
-            assert!(matches!(
-                CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_DOWN].action,
-                Action::Scroll {
-                    target: ScrollTarget::ConfirmDialog,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
-                }
-            ));
-        }
-
-        #[test]
-        fn confirm_scroll_up_action_matches() {
-            assert!(matches!(
-                CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_UP].action,
-                Action::Scroll {
-                    target: ScrollTarget::ConfirmDialog,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
-                }
-            ));
-        }
-
-        #[test]
-        fn confirm_no_action_matches() {
-            assert!(matches!(
-                CONFIRM_DIALOG_KEYS[idx::confirm::NO].action,
-                Action::ConfirmDialogCancel
-            ));
-        }
-
-        #[rstest]
-        #[case(idx::sql_modal_plan::EXPLAIN, Action::ExplainRequest)]
-        #[case(idx::sql_modal_plan::ANALYZE, Action::ExplainAnalyzeRequest)]
-        #[case(idx::sql_modal_plan::YANK, Action::SqlModalYank)]
-        #[case(idx::sql_modal_plan::TAB, Action::SqlModalNextTab)]
-        #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
-        #[case(idx::sql_modal_plan::CLOSE, Action::CloseSqlModal)]
-        fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&SQL_MODAL_PLAN_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "SQL_MODAL_PLAN_KEYS[{i}] has action {:?}, expected {expected:?}",
-                SQL_MODAL_PLAN_KEYS[i].action
-            );
-        }
-
-        #[rstest]
-        #[case(idx::sql_modal_compare::EXPLAIN, Action::ExplainRequest)]
-        #[case(idx::sql_modal_compare::ANALYZE, Action::ExplainAnalyzeRequest)]
-        #[case(idx::sql_modal_compare::EDIT_QUERY, Action::CompareEditQuery)]
-        #[case(idx::sql_modal_compare::YANK, Action::SqlModalYank)]
-        #[case(idx::sql_modal_compare::TAB, Action::SqlModalNextTab)]
-        #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
-        #[case(idx::sql_modal_compare::CLOSE, Action::CloseSqlModal)]
-        fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&SQL_MODAL_COMPARE_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "SQL_MODAL_COMPARE_KEYS[{i}] has action {:?}, expected {expected:?}",
-                SQL_MODAL_COMPARE_KEYS[i].action
-            );
-        }
-
-        // ------------------------------------------------------------------ //
-        // 2. Non-None bindings have at least one combo (KeyBinding arrays)
-        // ------------------------------------------------------------------ //
-
-        fn check_non_none_have_combos(bindings: &[KeyBinding], name: &str) {
-            for (i, kb) in bindings.iter().enumerate() {
-                if !matches!(kb.action, Action::None) && kb.combos.is_empty() {
-                    if kb.key.starts_with(':') {
-                        continue;
+            #[test]
+            fn confirm_scroll_down_action_matches() {
+                assert!(matches!(
+                    CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_DOWN].action,
+                    Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line,
                     }
-                    if kb.key_short == ":w" || kb.desc_short == "Write" {
-                        continue;
+                ));
+            }
+
+            #[test]
+            fn confirm_scroll_up_action_matches() {
+                assert!(matches!(
+                    CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_UP].action,
+                    Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::Line,
                     }
-                    panic!(
-                        "{name}[{i}] has action {:?} but no combos (key={:?})",
-                        kb.action, kb.key
+                ));
+            }
+
+            #[test]
+            fn confirm_no_action_matches() {
+                assert!(matches!(
+                    CONFIRM_DIALOG_KEYS[idx::confirm::NO].action,
+                    Action::ConfirmDialogCancel
+                ));
+            }
+
+            #[rstest]
+            #[case(idx::sql_modal_plan::EXPLAIN, Action::ExplainRequest)]
+            #[case(idx::sql_modal_plan::ANALYZE, Action::ExplainAnalyzeRequest)]
+            #[case(idx::sql_modal_plan::YANK, Action::SqlModalYank)]
+            #[case(idx::sql_modal_plan::TAB, Action::SqlModalNextTab)]
+            #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
+            #[case(idx::sql_modal_plan::CLOSE, Action::CloseSqlModal)]
+            fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+                assert!(
+                    std::mem::discriminant(&SQL_MODAL_PLAN_KEYS[i].action)
+                        == std::mem::discriminant(&expected),
+                    "SQL_MODAL_PLAN_KEYS[{i}] has action {:?}, expected {expected:?}",
+                    SQL_MODAL_PLAN_KEYS[i].action
+                );
+            }
+
+            #[rstest]
+            #[case(idx::sql_modal_compare::EXPLAIN, Action::ExplainRequest)]
+            #[case(idx::sql_modal_compare::ANALYZE, Action::ExplainAnalyzeRequest)]
+            #[case(idx::sql_modal_compare::EDIT_QUERY, Action::CompareEditQuery)]
+            #[case(idx::sql_modal_compare::YANK, Action::SqlModalYank)]
+            #[case(idx::sql_modal_compare::TAB, Action::SqlModalNextTab)]
+            #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
+            #[case(idx::sql_modal_compare::CLOSE, Action::CloseSqlModal)]
+            fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+                assert!(
+                    std::mem::discriminant(&SQL_MODAL_COMPARE_KEYS[i].action)
+                        == std::mem::discriminant(&expected),
+                    "SQL_MODAL_COMPARE_KEYS[{i}] has action {:?}, expected {expected:?}",
+                    SQL_MODAL_COMPARE_KEYS[i].action
+                );
+            }
+        }
+
+        mod binding_shape {
+            use super::*;
+
+            fn check_non_none_have_combos(bindings: &[KeyBinding], name: &str) {
+                for (i, kb) in bindings.iter().enumerate() {
+                    if !matches!(kb.action, Action::None) && kb.combos.is_empty() {
+                        if kb.key.starts_with(':') {
+                            continue;
+                        }
+                        if kb.key_short == ":w" || kb.desc_short == "Write" {
+                            continue;
+                        }
+                        panic!(
+                            "{name}[{i}] has action {:?} but no combos (key={:?})",
+                            kb.action, kb.key
+                        );
+                    }
+                }
+            }
+
+            #[test]
+            fn all_non_none_bindings_have_combos() {
+                check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
+                check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
+                check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+                check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
+                check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
+                check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+            }
+
+            fn check_mode_rows_exec_valid(rows: &[ModeRow], name: &str) {
+                for (i, row) in rows.iter().enumerate() {
+                    for (j, eb) in row.bindings.iter().enumerate() {
+                        assert!(
+                            !eb.combos.is_empty(),
+                            "{name}[{i}].bindings[{j}] has action {:?} but no combos",
+                            eb.action
+                        );
+                        assert!(
+                            !matches!(eb.action, Action::None),
+                            "{name}[{i}].bindings[{j}] has Action::None in exec binding",
+                        );
+                    }
+                }
+            }
+
+            #[test]
+            fn all_mode_row_exec_entries_are_valid() {
+                for (name, mb) in ALL_MODE_BINDINGS {
+                    check_mode_rows_exec_valid(mb.rows, name);
+                }
+            }
+
+            fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
+                for (i, kb) in bindings.iter().enumerate() {
+                    assert!(
+                        !matches!(kb.action, Action::None) || kb.combos.is_empty(),
+                        "{name}[{i}] has action Action::None but non-empty combos: {:?}",
+                        kb.combos
                     );
                 }
             }
-        }
 
-        #[test]
-        fn all_non_none_bindings_have_combos() {
-            check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
-            check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-            check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
-            check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
-            check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-        }
-
-        // ------------------------------------------------------------------ //
-        // 2b. ModeRow exec entries have non-empty combos
-        // ------------------------------------------------------------------ //
-
-        fn check_mode_rows_exec_valid(rows: &[ModeRow], name: &str) {
-            for (i, row) in rows.iter().enumerate() {
-                for (j, eb) in row.bindings.iter().enumerate() {
-                    assert!(
-                        !eb.combos.is_empty(),
-                        "{name}[{i}].bindings[{j}] has action {:?} but no combos",
-                        eb.action
-                    );
-                    assert!(
-                        !matches!(eb.action, Action::None),
-                        "{name}[{i}].bindings[{j}] has Action::None in exec binding",
-                    );
-                }
+            #[test]
+            fn none_action_entries_have_no_combos() {
+                check_none_action_entries_have_no_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
+                check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
+                check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
+                check_none_action_entries_have_no_combos(
+                    SQL_MODAL_NORMAL_KEYS,
+                    "SQL_MODAL_NORMAL_KEYS",
+                );
+                check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
+                check_none_action_entries_have_no_combos(
+                    SQL_MODAL_PLAN_KEYS,
+                    "SQL_MODAL_PLAN_KEYS",
+                );
+                check_none_action_entries_have_no_combos(
+                    SQL_MODAL_COMPARE_KEYS,
+                    "SQL_MODAL_COMPARE_KEYS",
+                );
+                check_none_action_entries_have_no_combos(
+                    SQL_MODAL_CONFIRMING_KEYS,
+                    "SQL_MODAL_CONFIRMING_KEYS",
+                );
+                check_none_action_entries_have_no_combos(OVERLAY_KEYS, "OVERLAY_KEYS");
+                check_none_action_entries_have_no_combos(
+                    CONNECTION_SETUP_KEYS,
+                    "CONNECTION_SETUP_KEYS",
+                );
+                check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
+                check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
+                check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             }
         }
 
-        #[test]
-        fn all_mode_row_exec_entries_are_valid() {
-            for (name, mb) in ALL_MODE_BINDINGS {
-                check_mode_rows_exec_valid(mb.rows, name);
-            }
-        }
+        mod uniqueness {
+            use super::*;
 
-        // ------------------------------------------------------------------ //
-        // 3. No duplicate combos within simple (non-context-dependent) modes
-        // ------------------------------------------------------------------ //
-
-        fn check_no_duplicate_combos(bindings: &[KeyBinding], name: &str) {
-            let mut seen: Vec<KeyCombo> = Vec::new();
-            for kb in bindings
-                .iter()
-                .filter(|kb| !matches!(kb.action, Action::None))
-            {
-                for combo in kb.combos {
-                    assert!(
-                        !seen.contains(combo),
-                        "{name}: duplicate combo {combo:?} in binding {:?}",
-                        kb.action
-                    );
-                    seen.push(*combo);
-                }
-            }
-        }
-
-        fn check_no_duplicate_combos_rows(rows: &[ModeRow], name: &str) {
-            let mut seen: Vec<KeyCombo> = Vec::new();
-            for row in rows {
-                for eb in row.bindings {
-                    for combo in eb.combos {
+            fn check_no_duplicate_combos(bindings: &[KeyBinding], name: &str) {
+                let mut seen: Vec<KeyCombo> = Vec::new();
+                for kb in bindings
+                    .iter()
+                    .filter(|kb| !matches!(kb.action, Action::None))
+                {
+                    for combo in kb.combos {
                         assert!(
                             !seen.contains(combo),
                             "{name}: duplicate combo {combo:?} in binding {:?}",
-                            eb.action
+                            kb.action
                         );
                         seen.push(*combo);
                     }
                 }
             }
-        }
 
-        // GLOBAL_KEYS excluded: FOCUS/EXIT_FOCUS share a combo for footer label switching.
-        #[test]
-        fn no_duplicate_combos_in_simple_modes() {
-            check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-            check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-            for (name, mb) in ALL_MODE_BINDINGS {
-                check_no_duplicate_combos_rows(mb.rows, name);
-            }
-        }
-
-        // ------------------------------------------------------------------ //
-        // 4. keymap::resolve() round-trip
-        // ------------------------------------------------------------------ //
-
-        fn check_keymap_roundtrip(bindings: &[KeyBinding], name: &str) {
-            for kb in bindings
-                .iter()
-                .filter(|kb| !matches!(kb.action, Action::None))
-            {
-                for combo in kb.combos {
-                    let resolved = keymap::resolve(combo, bindings);
-                    match resolved {
-                        Some(ref action)
-                            if std::mem::discriminant(action)
-                                == std::mem::discriminant(&kb.action) => {}
-                        other => panic!(
-                            "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
-                            kb.action
-                        ),
+            fn check_no_duplicate_combos_rows(rows: &[ModeRow], name: &str) {
+                let mut seen: Vec<KeyCombo> = Vec::new();
+                for row in rows {
+                    for eb in row.bindings {
+                        for combo in eb.combos {
+                            assert!(
+                                !seen.contains(combo),
+                                "{name}: duplicate combo {combo:?} in binding {:?}",
+                                eb.action
+                            );
+                            seen.push(*combo);
+                        }
                     }
+                }
+            }
+
+            // GLOBAL_KEYS excluded: FOCUS/EXIT_FOCUS share a combo for footer label switching.
+            #[test]
+            fn no_duplicate_combos_in_simple_modes() {
+                check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
+                check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+                check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                for (name, mb) in ALL_MODE_BINDINGS {
+                    check_no_duplicate_combos_rows(mb.rows, name);
                 }
             }
         }
 
-        fn check_resolve_mode_roundtrip(rows: &[ModeRow], name: &str) {
-            for row in rows {
-                for eb in row.bindings {
-                    for combo in eb.combos {
-                        let resolved = keymap::resolve_mode(combo, rows);
+        mod resolver_contract {
+            use super::*;
+
+            fn check_keymap_roundtrip(bindings: &[KeyBinding], name: &str) {
+                for kb in bindings
+                    .iter()
+                    .filter(|kb| !matches!(kb.action, Action::None))
+                {
+                    for combo in kb.combos {
+                        let resolved = keymap::resolve(combo, bindings);
                         match resolved {
                             Some(ref action)
                                 if std::mem::discriminant(action)
-                                    == std::mem::discriminant(&eb.action) => {}
+                                    == std::mem::discriminant(&kb.action) => {}
                             other => panic!(
                                 "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
-                                eb.action
+                                kb.action
                             ),
                         }
                     }
                 }
             }
-        }
 
-        #[test]
-        fn keymap_resolve_roundtrip_for_simple_modes() {
-            check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-            check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-            for (name, mb) in ALL_MODE_BINDINGS {
-                check_resolve_mode_roundtrip(mb.rows, name);
-            }
-        }
-
-        // ------------------------------------------------------------------ //
-        // 5. Char fallback safety
-        // ------------------------------------------------------------------ //
-
-        fn check_no_plain_char_in_filter_mode(
-            bindings: &[KeyBinding],
-            name: &str,
-            allowed_chars: &[char],
-        ) {
-            let no_mods = Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            };
-            for kb in bindings
-                .iter()
-                .filter(|kb| !matches!(kb.action, Action::None))
-            {
-                for combo in kb.combos {
-                    if combo.modifiers == no_mods
-                        && let Key::Char(c) = combo.key
-                    {
-                        assert!(
-                            allowed_chars.contains(&c),
-                            "{name}: executable entry {:?} has plain Char({c:?}) combo \
-                             which would shadow filter input",
-                            kb.action
-                        );
+            fn check_resolve_mode_roundtrip(rows: &[ModeRow], name: &str) {
+                for row in rows {
+                    for eb in row.bindings {
+                        for combo in eb.combos {
+                            let resolved = keymap::resolve_mode(combo, rows);
+                            match resolved {
+                                Some(ref action)
+                                    if std::mem::discriminant(action)
+                                        == std::mem::discriminant(&eb.action) => {}
+                                other => panic!(
+                                    "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
+                                    eb.action
+                                ),
+                            }
+                        }
                     }
+                }
+            }
+
+            #[test]
+            fn keymap_resolve_roundtrip_for_simple_modes() {
+                check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
+                check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+                check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                for (name, mb) in ALL_MODE_BINDINGS {
+                    check_resolve_mode_roundtrip(mb.rows, name);
                 }
             }
         }
 
-        fn check_no_plain_char_in_filter_mode_rows(
-            rows: &[ModeRow],
-            name: &str,
-            allowed_chars: &[char],
-        ) {
-            let no_mods = Modifiers {
-                ctrl: false,
-                alt: false,
-                shift: false,
-            };
-            for row in rows {
-                for eb in row.bindings {
-                    for combo in eb.combos {
+        mod conflict_safety {
+            use super::*;
+
+            fn check_no_plain_char_in_filter_mode(
+                bindings: &[KeyBinding],
+                name: &str,
+                allowed_chars: &[char],
+            ) {
+                let no_mods = Modifiers {
+                    ctrl: false,
+                    alt: false,
+                    shift: false,
+                };
+                for kb in bindings
+                    .iter()
+                    .filter(|kb| !matches!(kb.action, Action::None))
+                {
+                    for combo in kb.combos {
                         if combo.modifiers == no_mods
                             && let Key::Char(c) = combo.key
                         {
                             assert!(
                                 allowed_chars.contains(&c),
                                 "{name}: executable entry {:?} has plain Char({c:?}) combo \
-                                 which would shadow filter input",
-                                eb.action
+                             which would shadow filter input",
+                                kb.action
                             );
                         }
                     }
                 }
             }
-        }
 
-        #[test]
-        fn table_picker_has_no_plain_char_combos() {
-            check_no_plain_char_in_filter_mode_rows(TABLE_PICKER_ROWS, "TABLE_PICKER_ROWS", &[]);
-        }
+            fn check_no_plain_char_in_filter_mode_rows(
+                rows: &[ModeRow],
+                name: &str,
+                allowed_chars: &[char],
+            ) {
+                let no_mods = Modifiers {
+                    ctrl: false,
+                    alt: false,
+                    shift: false,
+                };
+                for row in rows {
+                    for eb in row.bindings {
+                        for combo in eb.combos {
+                            if combo.modifiers == no_mods
+                                && let Key::Char(c) = combo.key
+                            {
+                                assert!(
+                                    allowed_chars.contains(&c),
+                                    "{name}: executable entry {:?} has plain Char({c:?}) combo \
+                                 which would shadow filter input",
+                                    eb.action
+                                );
+                            }
+                        }
+                    }
+                }
+            }
 
-        #[test]
-        fn er_picker_has_no_plain_char_combos() {
-            check_no_plain_char_in_filter_mode_rows(ER_PICKER_ROWS, "ER_PICKER_ROWS", &[' ']);
-        }
-
-        #[test]
-        fn query_history_picker_has_no_plain_char_combos() {
-            check_no_plain_char_in_filter_mode_rows(
-                QUERY_HISTORY_PICKER_ROWS,
-                "QUERY_HISTORY_PICKER_ROWS",
-                &[],
-            );
-        }
-
-        #[test]
-        fn command_line_has_no_problematic_plain_char_combos() {
-            check_no_plain_char_in_filter_mode(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS", &[]);
-        }
-
-        #[test]
-        fn cell_edit_plain_char_combos_are_intentional() {
-            check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
-        }
-
-        // ------------------------------------------------------------------ //
-        // 6. Action::None entries must have combos: &[] (KeyBinding arrays only)
-        // ------------------------------------------------------------------ //
-
-        fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
-            for (i, kb) in bindings.iter().enumerate() {
-                assert!(
-                    !matches!(kb.action, Action::None) || kb.combos.is_empty(),
-                    "{name}[{i}] has action Action::None but non-empty combos: {:?}",
-                    kb.combos
+            #[test]
+            fn table_picker_has_no_plain_char_combos() {
+                check_no_plain_char_in_filter_mode_rows(
+                    TABLE_PICKER_ROWS,
+                    "TABLE_PICKER_ROWS",
+                    &[],
                 );
+            }
+
+            #[test]
+            fn er_picker_has_no_plain_char_combos() {
+                check_no_plain_char_in_filter_mode_rows(ER_PICKER_ROWS, "ER_PICKER_ROWS", &[' ']);
+            }
+
+            #[test]
+            fn query_history_picker_has_no_plain_char_combos() {
+                check_no_plain_char_in_filter_mode_rows(
+                    QUERY_HISTORY_PICKER_ROWS,
+                    "QUERY_HISTORY_PICKER_ROWS",
+                    &[],
+                );
+            }
+
+            #[test]
+            fn command_line_has_no_problematic_plain_char_combos() {
+                check_no_plain_char_in_filter_mode(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS", &[]);
+            }
+
+            #[test]
+            fn cell_edit_plain_char_combos_are_intentional() {
+                check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
             }
         }
 
-        #[test]
-        fn none_action_entries_have_no_combos() {
-            check_none_action_entries_have_no_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
-            check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
-            check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
-            check_none_action_entries_have_no_combos(
-                SQL_MODAL_NORMAL_KEYS,
-                "SQL_MODAL_NORMAL_KEYS",
-            );
-            check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
-            check_none_action_entries_have_no_combos(SQL_MODAL_PLAN_KEYS, "SQL_MODAL_PLAN_KEYS");
-            check_none_action_entries_have_no_combos(
-                SQL_MODAL_COMPARE_KEYS,
-                "SQL_MODAL_COMPARE_KEYS",
-            );
-            check_none_action_entries_have_no_combos(
-                SQL_MODAL_CONFIRMING_KEYS,
-                "SQL_MODAL_CONFIRMING_KEYS",
-            );
-            check_none_action_entries_have_no_combos(OVERLAY_KEYS, "OVERLAY_KEYS");
-            check_none_action_entries_have_no_combos(
-                CONNECTION_SETUP_KEYS,
-                "CONNECTION_SETUP_KEYS",
-            );
-            check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
-            check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
-            check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
-        }
+        mod catalog_coverage {
+            use super::*;
 
-        // ------------------------------------------------------------------ //
-        // 7. ALL_MODE_BINDINGS exhaustiveness
-        // ------------------------------------------------------------------ //
-
-        // HELP, CONNECTION_ERROR, TABLE_PICKER, ER_PICKER, COMMAND_PALETTE, CONNECTION_SELECTOR
-        #[test]
-        fn all_mode_bindings_count() {
-            assert_eq!(ALL_MODE_BINDINGS.len(), 9);
+            #[test]
+            fn all_mode_bindings_count() {
+                assert_eq!(ALL_MODE_BINDINGS.len(), 9);
+            }
         }
     }
 }
