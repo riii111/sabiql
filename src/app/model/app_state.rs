@@ -253,7 +253,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn default_result_pane_height_returns_zero_visible_rows() {
+        fn result_rows_default_to_zero() {
             let state = make_state();
 
             let visible = state.result_visible_rows();
@@ -266,10 +266,7 @@ mod tests {
         #[case(15, 10)]
         #[case(20, 15)]
         #[case(30, 25)]
-        fn result_pane_height_calculates_correct_visible_rows(
-            #[case] pane_height: u16,
-            #[case] expected: usize,
-        ) {
+        fn result_rows_follow_pane_height(#[case] pane_height: u16, #[case] expected: usize) {
             let mut state = make_state();
             state.ui.result_pane_height = pane_height;
 
@@ -279,7 +276,7 @@ mod tests {
         }
 
         #[test]
-        fn small_result_pane_height_does_not_underflow() {
+        fn result_rows_clamp_small_heights() {
             let mut state = make_state();
             state.ui.result_pane_height = 2;
 
@@ -289,7 +286,7 @@ mod tests {
         }
 
         #[test]
-        fn very_small_result_pane_returns_zero_rows() {
+        fn result_rows_stay_zero_at_minimum() {
             let mut state = make_state();
             state.ui.result_pane_height = 1;
 
@@ -299,7 +296,7 @@ mod tests {
         }
 
         #[test]
-        fn large_result_pane_height_returns_proportional_rows() {
+        fn result_rows_scale_with_height() {
             let mut state = make_state();
             state.ui.result_pane_height = 50;
 
@@ -309,7 +306,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_visible_rows_is_greater_than_standard() {
+        fn inspector_ddl_rows_exceed_standard_rows() {
             let mut state = make_state();
             state.ui.inspector_pane_height = 20;
 
@@ -323,10 +320,7 @@ mod tests {
         #[case(10, 7)]
         #[case(15, 12)]
         #[case(20, 17)]
-        fn ddl_visible_rows_equals_height_minus_three(
-            #[case] pane_height: u16,
-            #[case] expected: usize,
-        ) {
+        fn inspector_ddl_rows_subtract_three(#[case] pane_height: u16, #[case] expected: usize) {
             let mut state = make_state();
             state.ui.inspector_pane_height = pane_height;
 
@@ -336,7 +330,7 @@ mod tests {
         }
 
         #[test]
-        fn small_pane_height_does_not_underflow() {
+        fn inspector_ddl_rows_clamp_small_heights() {
             let mut state = make_state();
             state.ui.inspector_pane_height = 2;
 
@@ -350,7 +344,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn filtered_tables_with_empty_filter_returns_all() {
+        fn filtered_tables_return_all_for_empty_filter() {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
@@ -368,7 +362,7 @@ mod tests {
         }
 
         #[test]
-        fn filtered_tables_with_matching_filter_returns_subset() {
+        fn filtered_tables_match_substring() {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
@@ -387,7 +381,7 @@ mod tests {
         }
 
         #[test]
-        fn filtered_tables_is_case_insensitive() {
+        fn filtered_tables_ignore_case() {
             let mut state = make_state();
             state
                 .session
@@ -416,7 +410,7 @@ mod tests {
         }
 
         #[test]
-        fn selection_generation_increments_prevent_race_conditions() {
+        fn selection_generation_increments_on_selection() {
             let mut state = make_state();
 
             let gen1 = state.session.selection_generation();
@@ -433,7 +427,7 @@ mod tests {
         }
 
         #[test]
-        fn selection_generation_can_detect_stale_responses() {
+        fn selection_generation_advances_after_reselection() {
             let mut state = make_state();
 
             let initial_gen = state.session.selection_generation();
@@ -458,7 +452,7 @@ mod tests {
         }
 
         #[test]
-        fn prefetch_queue_pop_returns_fifo_order() {
+        fn prefetch_queue_is_fifo() {
             let mut state = make_state();
             state
                 .sql_modal
@@ -477,7 +471,7 @@ mod tests {
         }
 
         #[test]
-        fn prefetching_tables_tracks_in_flight() {
+        fn prefetching_tables_track_in_flight() {
             let mut state = make_state();
 
             state
@@ -490,7 +484,7 @@ mod tests {
         }
 
         #[test]
-        fn failed_prefetch_tables_tracks_failure_time_and_error() {
+        fn failed_prefetch_tables_store_error_and_time() {
             let mut state = make_state();
             let now = Instant::now();
 
@@ -522,7 +516,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn clears_prefetch_state() {
+            fn reset_prefetch_clears_state() {
                 let mut state = make_state();
                 state.sql_modal.begin_prefetch();
                 state
@@ -551,7 +545,7 @@ mod tests {
             }
 
             #[test]
-            fn clears_stale_messages() {
+            fn reset_messages_clears_stale_errors() {
                 let mut state = make_state();
                 state.set_error("Old error".to_string());
 
@@ -584,7 +578,7 @@ mod tests {
         }
 
         #[test]
-        fn toggle_focus_exits_focus_mode_and_restores_pane() {
+        fn toggle_focus_restores_previous_pane() {
             let mut state = make_state();
             state.ui.focused_pane = FocusedPane::Inspector;
             state.toggle_focus();
@@ -597,7 +591,7 @@ mod tests {
         }
 
         #[test]
-        fn can_request_csv_export_returns_true_for_live_non_error_result() {
+        fn csv_export_allowed_for_live_result() {
             let mut state = make_state();
             state
                 .query
@@ -607,7 +601,7 @@ mod tests {
         }
 
         #[test]
-        fn can_request_csv_export_returns_false_in_history_mode() {
+        fn csv_export_blocked_in_history_mode() {
             let mut state = make_state();
             state
                 .query
@@ -626,14 +620,14 @@ mod tests {
             use super::*;
 
             #[test]
-            fn new_state_defaults_to_idle() {
+            fn er_preparation_defaults_to_idle() {
                 let state = make_state();
 
                 assert_eq!(state.er_preparation.status, ErStatus::Idle);
             }
 
             #[test]
-            fn status_can_be_set_to_waiting() {
+            fn er_preparation_accepts_waiting() {
                 let mut state = make_state();
 
                 state.er_preparation.status = ErStatus::Waiting;
@@ -642,7 +636,7 @@ mod tests {
             }
 
             #[test]
-            fn status_can_be_set_to_rendering() {
+            fn er_preparation_accepts_rendering() {
                 let mut state = make_state();
 
                 state.er_preparation.status = ErStatus::Rendering;
@@ -655,7 +649,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn scroll_offset_resets_to_zero_on_table_switch() {
+            fn inspector_scroll_reset_is_zero_on_switch() {
                 let mut state = make_state();
                 state.ui.inspector_scroll_offset = 42;
 
@@ -665,7 +659,7 @@ mod tests {
             }
 
             #[test]
-            fn scroll_offset_stays_zero_when_no_table_detail() {
+            fn inspector_scroll_offset_defaults_to_zero() {
                 let state = make_state();
 
                 assert_eq!(state.ui.inspector_scroll_offset, 0);
@@ -703,7 +697,7 @@ mod tests {
         }
 
         #[test]
-        fn set_connections_rebuilds_list() {
+        fn connections_rebuild_list() {
             let mut state = make_state();
 
             state.set_connections(vec![make_profile("a"), make_profile("b")]);
@@ -719,7 +713,7 @@ mod tests {
         }
 
         #[test]
-        fn set_service_entries_rebuilds_list() {
+        fn service_entries_rebuild_list() {
             let mut state = make_state();
 
             state.set_service_entries(vec![make_service("s1"), make_service("s2")]);
@@ -735,7 +729,7 @@ mod tests {
         }
 
         #[test]
-        fn set_connections_and_services_rebuilds_combined_list() {
+        fn connections_and_services_rebuild_combined_list() {
             let mut state = make_state();
 
             state.set_connections_and_services(
@@ -757,7 +751,7 @@ mod tests {
         }
 
         #[test]
-        fn retain_connections_filters_and_rebuilds() {
+        fn retain_connections_rebuilds_list() {
             let mut state = make_state();
             let keep = make_profile("keep");
             let drop = make_profile("drop");
@@ -777,7 +771,7 @@ mod tests {
         }
 
         #[test]
-        fn set_connections_with_empty_vec_clears_list() {
+        fn clearing_connections_clears_list() {
             let mut state = make_state();
             state.set_connections(vec![make_profile("a")]);
             assert_eq!(state.connections().len(), 1);
@@ -789,7 +783,7 @@ mod tests {
         }
 
         #[test]
-        fn set_service_entries_with_empty_vec_clears_list() {
+        fn clearing_service_entries_clears_list() {
             let mut state = make_state();
             state.set_service_entries(vec![make_service("s1")]);
             assert_eq!(state.service_entries().len(), 1);
