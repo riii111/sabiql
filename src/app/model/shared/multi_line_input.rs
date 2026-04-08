@@ -285,40 +285,78 @@ mod tests {
 
     // ── cursor_to_position ──────────────────────────────────────────
 
-    mod cursor_to_position_tests {
+    mod cursor_to_position {
         use super::*;
 
-        #[test]
-        fn empty_string_returns_origin() {
-            let s = ml("", 0);
-            assert_eq!(s.cursor_to_position(), (0, 0));
+        mod position {
+            use super::*;
+
+            #[test]
+            fn empty_string_returns_origin() {
+                let s = ml("", 0);
+                assert_eq!(s.cursor_to_position(), (0, 0));
+            }
+
+            #[test]
+            fn single_line_returns_correct_col() {
+                let s = ml("SELECT * FROM users", 7);
+                assert_eq!(s.cursor_to_position(), (0, 7));
+            }
+
+            #[test]
+            fn multiline_returns_correct_row_and_col() {
+                // "SELECT *\nFROM users\nWHERE id = 1"
+                //  cursor at 17 → "FROM user" (8 chars of line0 + \n + 8 chars into line1)
+                let s = ml("SELECT *\nFROM users\nWHERE id = 1", 17);
+                assert_eq!(s.cursor_to_position(), (1, 8));
+            }
+
+            #[rstest]
+            #[case("こんにちは\n世界", 5, (0, 5))]
+            #[case("こんにちは\n世界", 6, (1, 0))]
+            #[case("こんにちは\n世界", 7, (1, 1))]
+            fn multibyte_returns_correct_row_and_col(
+                #[case] content: &str,
+                #[case] cursor: usize,
+                #[case] expected: (usize, usize),
+            ) {
+                let s = ml(content, cursor);
+                assert_eq!(s.cursor_to_position(), expected);
+            }
         }
 
-        #[test]
-        fn single_line_returns_correct_col() {
-            let s = ml("SELECT * FROM users", 7);
-            assert_eq!(s.cursor_to_position(), (0, 7));
-        }
+        mod newline_boundary {
+            use super::*;
 
-        #[test]
-        fn multiline_returns_correct_row_and_col() {
-            // "SELECT *\nFROM users\nWHERE id = 1"
-            //  cursor at 17 → "FROM user" (8 chars of line0 + \n + 8 chars into line1)
-            let s = ml("SELECT *\nFROM users\nWHERE id = 1", 17);
-            assert_eq!(s.cursor_to_position(), (1, 8));
-        }
+            #[test]
+            fn trailing_newline_returns_next_row_origin() {
+                // "abc\n" → 2 lines: ("abc", 3) and ("", 0)
+                // cursor at 4 → line 1, col 0
+                let s = ml("abc\n", 4);
+                assert_eq!(s.cursor_to_position(), (1, 0));
+            }
 
-        #[rstest]
-        #[case("こんにちは\n世界", 5, (0, 5))]
-        #[case("こんにちは\n世界", 6, (1, 0))]
-        #[case("こんにちは\n世界", 7, (1, 1))]
-        fn multibyte_returns_correct_row_and_col(
-            #[case] content: &str,
-            #[case] cursor: usize,
-            #[case] expected: (usize, usize),
-        ) {
-            let s = ml(content, cursor);
-            assert_eq!(s.cursor_to_position(), expected);
+            #[test]
+            fn consecutive_newlines_returns_middle_row() {
+                // "a\n\nb" → lines: ("a",1), ("",0), ("b",1)
+                // cursor at 2 → line 1, col 0
+                let s = ml("a\n\nb", 2);
+                assert_eq!(s.cursor_to_position(), (1, 0));
+            }
+
+            #[test]
+            fn cursor_before_newline_returns_end_of_current_line() {
+                // "abc\ndef" → cursor at 3 (on \n boundary, actually end of line 0)
+                let s = ml("abc\ndef", 3);
+                assert_eq!(s.cursor_to_position(), (0, 3));
+            }
+
+            #[test]
+            fn cursor_after_newline_returns_start_of_next_line() {
+                // "abc\ndef" → cursor at 4 (start of line 1)
+                let s = ml("abc\ndef", 4);
+                assert_eq!(s.cursor_to_position(), (1, 0));
+            }
         }
     }
 
@@ -592,14 +630,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn trailing_newline_returns_next_row_origin() {
-            // "abc\n" → 2 lines: ("abc", 3) and ("", 0)
-            // cursor at 4 → line 1, col 0
-            let s = ml("abc\n", 4);
-            assert_eq!(s.cursor_to_position(), (1, 0));
-        }
-
-        #[test]
         fn up_from_empty_trailing_line_returns_prev_line_origin() {
             // "abc\n" → cursor at 4 (empty line 1)
             // Up → line 0, col 0.min(3) = 0 → cursor=0
@@ -615,14 +645,6 @@ mod tests {
             let mut s = ml("abc\n", 2);
             s.move_cursor(CursorMove::Down);
             assert_eq!(s.cursor(), 4);
-        }
-
-        #[test]
-        fn consecutive_newlines_returns_middle_row() {
-            // "a\n\nb" → lines: ("a",1), ("",0), ("b",1)
-            // cursor at 2 → line 1, col 0
-            let s = ml("a\n\nb", 2);
-            assert_eq!(s.cursor_to_position(), (1, 0));
         }
 
         #[test]
@@ -653,20 +675,6 @@ mod tests {
 
             s.move_cursor(CursorMove::End);
             assert_eq!(s.cursor(), 4);
-        }
-
-        #[test]
-        fn cursor_before_newline_returns_end_of_current_line() {
-            // "abc\ndef" → cursor at 3 (on \n boundary, actually end of line 0)
-            let s = ml("abc\ndef", 3);
-            assert_eq!(s.cursor_to_position(), (0, 3));
-        }
-
-        #[test]
-        fn cursor_after_newline_returns_start_of_next_line() {
-            // "abc\ndef" → cursor at 4 (start of line 1)
-            let s = ml("abc\ndef", 4);
-            assert_eq!(s.cursor_to_position(), (1, 0));
         }
     }
 
@@ -727,6 +735,34 @@ mod tests {
 
     // ── scroll ──────────────────────────────────────────────────────
 
+    mod viewport_position_tests {
+        use super::*;
+
+        #[test]
+        fn top_preserves_column() {
+            let mut s = ml("aa\nbb\ncc\ndd", 10);
+            s.scroll_row = 1;
+            s.move_cursor_to_viewport_position(CursorMove::ViewportTop, 3);
+            assert_eq!(s.cursor(), 4);
+        }
+
+        #[test]
+        fn middle_moves_cursor_to_middle_visible_row_preserving_column() {
+            let mut s = ml("aa\nbb\ncc\ndd\nee", 13);
+            s.scroll_row = 1;
+            s.move_cursor_to_viewport_position(CursorMove::ViewportMiddle, 3);
+            assert_eq!(s.cursor(), 7);
+        }
+
+        #[test]
+        fn bottom_moves_cursor_to_bottom_visible_row_preserving_column() {
+            let mut s = ml("aa\nbb\ncc\ndd\nee", 1);
+            s.scroll_row = 1;
+            s.move_cursor_to_viewport_position(CursorMove::ViewportBottom, 3);
+            assert_eq!(s.cursor(), 10);
+        }
+    }
+
     mod scroll_tests {
         use super::*;
 
@@ -759,30 +795,6 @@ mod tests {
             s.scroll_row = 1;
             s.update_scroll(0);
             assert_eq!(s.scroll_row(), 1); // unchanged
-        }
-
-        #[test]
-        fn viewport_top_preserves_column() {
-            let mut s = ml("aa\nbb\ncc\ndd", 10);
-            s.scroll_row = 1;
-            s.move_cursor_to_viewport_position(CursorMove::ViewportTop, 3);
-            assert_eq!(s.cursor(), 4);
-        }
-
-        #[test]
-        fn viewport_middle_moves_cursor_to_middle_visible_row_preserving_column() {
-            let mut s = ml("aa\nbb\ncc\ndd\nee", 13);
-            s.scroll_row = 1;
-            s.move_cursor_to_viewport_position(CursorMove::ViewportMiddle, 3);
-            assert_eq!(s.cursor(), 7);
-        }
-
-        #[test]
-        fn viewport_bottom_moves_cursor_to_bottom_visible_row_preserving_column() {
-            let mut s = ml("aa\nbb\ncc\ndd\nee", 1);
-            s.scroll_row = 1;
-            s.move_cursor_to_viewport_position(CursorMove::ViewportBottom, 3);
-            assert_eq!(s.cursor(), 10);
         }
     }
 
