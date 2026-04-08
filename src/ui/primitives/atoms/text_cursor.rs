@@ -527,6 +527,7 @@ mod tests {
             use super::*;
 
             #[rstest]
+            #[case(0)]
             #[case(1)]
             #[case(3)]
             fn preserves_text_without_glyph(#[case] cursor: usize) {
