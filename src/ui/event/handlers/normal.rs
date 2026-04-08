@@ -1248,7 +1248,7 @@ mod tests {
                 #[case(Key::Char(':'))]
                 #[case(Key::Enter)]
                 #[case(Key::Esc)]
-                fn blocked_keys_are_noop(#[case] key: Key) {
+                fn are_noop(#[case] key: Key) {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
 
@@ -1271,7 +1271,7 @@ mod tests {
                 #[case(Key::Char('H'), ScrollDirection::Up, ScrollAmount::ViewportTop)]
                 #[case(Key::Char('M'), ScrollDirection::Up, ScrollAmount::ViewportMiddle)]
                 #[case(Key::Char('L'), ScrollDirection::Down, ScrollAmount::ViewportBottom)]
-                fn scroll_keys_are_allowed(
+                fn are_allowed(
                     #[case] key: Key,
                     #[case] direction: ScrollDirection,
                     #[case] amount: ScrollAmount,
