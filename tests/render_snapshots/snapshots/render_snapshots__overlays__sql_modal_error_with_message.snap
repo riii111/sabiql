@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]          ✗ ERROR:  syntax error at or near "FORM"  │       │
-│       ╰ ⌥Enter: Run │ ^E: Explain │ ⌥E: Analyze │ y: Yank │ ^O: Histo╯       │
+│       ╰ ⌥Enter: Run │ Enter/i: Insert │ hjkl: Move │ 0$wb: Jump │ Tab╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

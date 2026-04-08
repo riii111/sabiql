@@ -245,11 +245,9 @@ impl SqlModal {
         static SQL: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::ANALYZE].as_hint(),
-                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::YANK].as_hint(),
-                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::QUERY_HISTORY].as_hint(),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::MOVE].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::HOME_END].as_hint(),
                 (
                     "Tab/⇧Tab",
                     SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,

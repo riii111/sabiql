@@ -644,7 +644,12 @@ mod tests {
     #[case(Key::Down, Expected::SqlModalMoveCursor(CursorMove::Down))]
     #[case(Key::Left, Expected::SqlModalMoveCursor(CursorMove::Left))]
     #[case(Key::Right, Expected::SqlModalMoveCursor(CursorMove::Right))]
-    fn normal_mode_arrow_keys_move_cursor(#[case] code: Key, #[case] expected: Expected) {
+    #[case(Key::Home, Expected::SqlModalMoveCursor(CursorMove::Home))]
+    #[case(Key::End, Expected::SqlModalMoveCursor(CursorMove::End))]
+    fn normal_mode_arrow_keys_and_aliases_move_cursor(
+        #[case] code: Key,
+        #[case] expected: Expected,
+    ) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -653,6 +658,41 @@ mod tests {
         );
 
         assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(Key::Char('h'), Expected::SqlModalMoveCursor(CursorMove::Left))]
+    #[case(Key::Char('j'), Expected::SqlModalMoveCursor(CursorMove::Down))]
+    #[case(Key::Char('k'), Expected::SqlModalMoveCursor(CursorMove::Up))]
+    #[case(Key::Char('l'), Expected::SqlModalMoveCursor(CursorMove::Right))]
+    #[case(Key::Char('0'), Expected::SqlModalMoveCursor(CursorMove::LineStart))]
+    #[case(Key::Char('$'), Expected::SqlModalMoveCursor(CursorMove::LineEnd))]
+    #[case(Key::Char('w'), Expected::SqlModalMoveCursor(CursorMove::WordForward))]
+    #[case(Key::Char('b'), Expected::SqlModalMoveCursor(CursorMove::WordBackward))]
+    fn normal_mode_vim_keys_move_cursor(#[case] code: Key, #[case] expected: Expected) {
+        let result = handle_sql_modal_keys(
+            combo(code),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, expected);
+    }
+
+    #[rstest]
+    #[case(Key::Char('a'))]
+    #[case(Key::Char('e'))]
+    #[case(Key::Char('A'))]
+    fn unsupported_normal_mode_keys_remain_unbound(#[case] code: Key) {
+        let result = handle_sql_modal_keys(
+            combo(code),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::None);
     }
 
     #[rstest]
