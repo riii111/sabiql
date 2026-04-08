@@ -133,7 +133,7 @@ def main() -> int:
             test_name = failure["name"].replace("|", "\\|")
             summary = failure["summary"].replace("|", "\\|")
             rerun = (
-                rerun_command(profile, failure["name"])
+                rerun_command(profile, failure["raw_test_name"])
                 if failure["raw_test_name"]
                 else "Unavailable"
             )
