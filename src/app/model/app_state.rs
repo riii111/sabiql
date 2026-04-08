@@ -529,7 +529,7 @@ mod tests {
                 .failed_prefetch_tables
                 .get("public.users")
                 .unwrap();
-            assert!(entry.failed_at.elapsed().as_secs() < 1);
+            assert_eq!(entry.failed_at, now);
             assert_eq!(entry.error, "connection timeout");
         }
     }
