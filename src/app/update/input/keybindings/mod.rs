@@ -429,237 +429,241 @@ mod tests {
     use super::*;
     use crate::app::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
 
-    #[test]
-    fn idx_constants_are_within_bounds() {
-        // GLOBAL_KEYS
-        assert!(idx::global::QUIT < GLOBAL_KEYS.len());
-        assert!(idx::global::HELP < GLOBAL_KEYS.len());
-        assert!(idx::global::TABLE_PICKER < GLOBAL_KEYS.len());
-        assert!(idx::global::PALETTE < GLOBAL_KEYS.len());
-        assert!(idx::global::COMMAND_LINE < GLOBAL_KEYS.len());
-        assert!(idx::global::FOCUS < GLOBAL_KEYS.len());
-        assert!(idx::global::EXIT_FOCUS < GLOBAL_KEYS.len());
-        assert!(idx::global::PANE_SWITCH < GLOBAL_KEYS.len());
-        assert!(idx::global::INSPECTOR_TABS < GLOBAL_KEYS.len());
-        assert!(idx::global::RELOAD < GLOBAL_KEYS.len());
-        assert!(idx::global::SQL < GLOBAL_KEYS.len());
-        assert!(idx::global::ER_DIAGRAM < GLOBAL_KEYS.len());
-        assert!(idx::global::CONNECTIONS < GLOBAL_KEYS.len());
-        assert!(idx::global::CSV_EXPORT < GLOBAL_KEYS.len());
-        assert!(idx::global::READ_ONLY < GLOBAL_KEYS.len());
-        assert!(idx::global::EXIT_READ_ONLY < GLOBAL_KEYS.len());
-        assert!(idx::global::QUERY_HISTORY < GLOBAL_KEYS.len());
+    mod structure {
+        use super::*;
 
-        // FOOTER_NAV_KEYS
-        assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());
-        assert!(idx::footer_nav::SCROLL_SHORT < FOOTER_NAV_KEYS.len());
-        assert!(idx::footer_nav::TOP_BOTTOM < FOOTER_NAV_KEYS.len());
-        assert!(idx::footer_nav::H_SCROLL < FOOTER_NAV_KEYS.len());
-        assert!(idx::footer_nav::PAGE_NAV < FOOTER_NAV_KEYS.len());
+        #[test]
+        fn idx_constants_are_within_bounds() {
+            // GLOBAL_KEYS
+            assert!(idx::global::QUIT < GLOBAL_KEYS.len());
+            assert!(idx::global::HELP < GLOBAL_KEYS.len());
+            assert!(idx::global::TABLE_PICKER < GLOBAL_KEYS.len());
+            assert!(idx::global::PALETTE < GLOBAL_KEYS.len());
+            assert!(idx::global::COMMAND_LINE < GLOBAL_KEYS.len());
+            assert!(idx::global::FOCUS < GLOBAL_KEYS.len());
+            assert!(idx::global::EXIT_FOCUS < GLOBAL_KEYS.len());
+            assert!(idx::global::PANE_SWITCH < GLOBAL_KEYS.len());
+            assert!(idx::global::INSPECTOR_TABS < GLOBAL_KEYS.len());
+            assert!(idx::global::RELOAD < GLOBAL_KEYS.len());
+            assert!(idx::global::SQL < GLOBAL_KEYS.len());
+            assert!(idx::global::ER_DIAGRAM < GLOBAL_KEYS.len());
+            assert!(idx::global::CONNECTIONS < GLOBAL_KEYS.len());
+            assert!(idx::global::CSV_EXPORT < GLOBAL_KEYS.len());
+            assert!(idx::global::READ_ONLY < GLOBAL_KEYS.len());
+            assert!(idx::global::EXIT_READ_ONLY < GLOBAL_KEYS.len());
+            assert!(idx::global::QUERY_HISTORY < GLOBAL_KEYS.len());
 
-        // SQL_MODAL_NORMAL_KEYS
-        assert!(idx::sql_modal_normal::RUN < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::YANK < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::ENTER_INSERT < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::APPEND < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::MOVE < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::HOME_END < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::VIEWPORT < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::CLOSE < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::CLEAR < SQL_MODAL_NORMAL_KEYS.len());
-        assert!(idx::sql_modal_normal::QUERY_HISTORY < SQL_MODAL_NORMAL_KEYS.len());
+            // FOOTER_NAV_KEYS
+            assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());
+            assert!(idx::footer_nav::SCROLL_SHORT < FOOTER_NAV_KEYS.len());
+            assert!(idx::footer_nav::TOP_BOTTOM < FOOTER_NAV_KEYS.len());
+            assert!(idx::footer_nav::H_SCROLL < FOOTER_NAV_KEYS.len());
+            assert!(idx::footer_nav::PAGE_NAV < FOOTER_NAV_KEYS.len());
 
-        // SQL_MODAL_KEYS
-        assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::ESC_NORMAL < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::MOVE < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::HOME_END < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::TAB < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::COMPLETION_TRIGGER < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::CLEAR < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::QUERY_HISTORY < SQL_MODAL_KEYS.len());
+            // SQL_MODAL_NORMAL_KEYS
+            assert!(idx::sql_modal_normal::RUN < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::YANK < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::ENTER_INSERT < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::APPEND < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::MOVE < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::HOME_END < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::VIEWPORT < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::CLOSE < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::CLEAR < SQL_MODAL_NORMAL_KEYS.len());
+            assert!(idx::sql_modal_normal::QUERY_HISTORY < SQL_MODAL_NORMAL_KEYS.len());
 
-        // SQL_MODAL_PLAN_KEYS
-        assert!(idx::sql_modal_plan::EXPLAIN < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::ANALYZE < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::YANK < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::SCROLL < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::TAB < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::BACKTAB < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::CLOSE < SQL_MODAL_PLAN_KEYS.len());
+            // SQL_MODAL_KEYS
+            assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::ESC_NORMAL < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::MOVE < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::HOME_END < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::TAB < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::COMPLETION_TRIGGER < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::CLEAR < SQL_MODAL_KEYS.len());
+            assert!(idx::sql_modal::QUERY_HISTORY < SQL_MODAL_KEYS.len());
 
-        // SQL_MODAL_COMPARE_KEYS
-        assert!(idx::sql_modal_compare::EXPLAIN < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::ANALYZE < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::EDIT_QUERY < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::YANK < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::SCROLL < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::TAB < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::BACKTAB < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::CLOSE < SQL_MODAL_COMPARE_KEYS.len());
+            // SQL_MODAL_PLAN_KEYS
+            assert!(idx::sql_modal_plan::EXPLAIN < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::ANALYZE < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::YANK < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::SCROLL < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::TAB < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::BACKTAB < SQL_MODAL_PLAN_KEYS.len());
+            assert!(idx::sql_modal_plan::CLOSE < SQL_MODAL_PLAN_KEYS.len());
 
-        // SQL_MODAL_CONFIRMING_KEYS
-        assert!(idx::sql_modal_confirming::CANCEL_CONFIRM < SQL_MODAL_CONFIRMING_KEYS.len());
+            // SQL_MODAL_COMPARE_KEYS
+            assert!(idx::sql_modal_compare::EXPLAIN < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::ANALYZE < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::EDIT_QUERY < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::YANK < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::SCROLL < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::TAB < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::BACKTAB < SQL_MODAL_COMPARE_KEYS.len());
+            assert!(idx::sql_modal_compare::CLOSE < SQL_MODAL_COMPARE_KEYS.len());
 
-        // OVERLAY_KEYS
-        assert!(idx::overlay::ESC_CANCEL < OVERLAY_KEYS.len());
-        assert!(idx::overlay::ESC_CLOSE < OVERLAY_KEYS.len());
-        assert!(idx::overlay::ENTER_EXECUTE < OVERLAY_KEYS.len());
-        assert!(idx::overlay::ENTER_SELECT < OVERLAY_KEYS.len());
-        assert!(idx::overlay::NAVIGATE_JK < OVERLAY_KEYS.len());
-        assert!(idx::overlay::TYPE_FILTER < OVERLAY_KEYS.len());
-        assert!(idx::overlay::ERROR_OPEN < OVERLAY_KEYS.len());
+            // SQL_MODAL_CONFIRMING_KEYS
+            assert!(idx::sql_modal_confirming::CANCEL_CONFIRM < SQL_MODAL_CONFIRMING_KEYS.len());
 
-        // CONNECTION_SETUP_KEYS
-        assert!(idx::conn_setup::TAB_NAV < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::TAB_NEXT < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::TAB_PREV < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::SAVE < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::ESC_CANCEL < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::ENTER_DROPDOWN < CONNECTION_SETUP_KEYS.len());
-        assert!(idx::conn_setup::DROPDOWN_NAV < CONNECTION_SETUP_KEYS.len());
+            // OVERLAY_KEYS
+            assert!(idx::overlay::ESC_CANCEL < OVERLAY_KEYS.len());
+            assert!(idx::overlay::ESC_CLOSE < OVERLAY_KEYS.len());
+            assert!(idx::overlay::ENTER_EXECUTE < OVERLAY_KEYS.len());
+            assert!(idx::overlay::ENTER_SELECT < OVERLAY_KEYS.len());
+            assert!(idx::overlay::NAVIGATE_JK < OVERLAY_KEYS.len());
+            assert!(idx::overlay::TYPE_FILTER < OVERLAY_KEYS.len());
+            assert!(idx::overlay::ERROR_OPEN < OVERLAY_KEYS.len());
 
-        // CONNECTION_ERROR_ROWS
-        assert!(idx::conn_error::EDIT < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::SWITCH < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::DETAILS < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::COPY < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::SCROLL < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::ESC_CLOSE < CONNECTION_ERROR_ROWS.len());
+            // CONNECTION_SETUP_KEYS
+            assert!(idx::conn_setup::TAB_NAV < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::TAB_NEXT < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::TAB_PREV < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::SAVE < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::ESC_CANCEL < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::ENTER_DROPDOWN < CONNECTION_SETUP_KEYS.len());
+            assert!(idx::conn_setup::DROPDOWN_NAV < CONNECTION_SETUP_KEYS.len());
 
-        // CONFIRM_DIALOG_KEYS
-        assert!(idx::confirm::YES < CONFIRM_DIALOG_KEYS.len());
-        assert!(idx::confirm::SCROLL_DOWN < CONFIRM_DIALOG_KEYS.len());
-        assert!(idx::confirm::SCROLL_UP < CONFIRM_DIALOG_KEYS.len());
-        assert!(idx::confirm::NO < CONFIRM_DIALOG_KEYS.len());
+            // CONNECTION_ERROR_ROWS
+            assert!(idx::conn_error::EDIT < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::SWITCH < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::DETAILS < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::COPY < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::SCROLL < CONNECTION_ERROR_ROWS.len());
+            assert!(idx::conn_error::ESC_CLOSE < CONNECTION_ERROR_ROWS.len());
 
-        // TABLE_PICKER_ROWS
-        assert!(idx::table_picker::ENTER_SELECT < TABLE_PICKER_ROWS.len());
-        assert!(idx::table_picker::NAVIGATE < TABLE_PICKER_ROWS.len());
-        assert!(idx::table_picker::TYPE_FILTER < TABLE_PICKER_ROWS.len());
-        assert!(idx::table_picker::ESC_CLOSE < TABLE_PICKER_ROWS.len());
+            // CONFIRM_DIALOG_KEYS
+            assert!(idx::confirm::YES < CONFIRM_DIALOG_KEYS.len());
+            assert!(idx::confirm::SCROLL_DOWN < CONFIRM_DIALOG_KEYS.len());
+            assert!(idx::confirm::SCROLL_UP < CONFIRM_DIALOG_KEYS.len());
+            assert!(idx::confirm::NO < CONFIRM_DIALOG_KEYS.len());
 
-        // ER_PICKER_ROWS
-        assert!(idx::er_picker::ENTER_GENERATE < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::SELECT < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::SELECT_ALL < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::NAVIGATE < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_ROWS.len());
-        assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_ROWS.len());
+            // TABLE_PICKER_ROWS
+            assert!(idx::table_picker::ENTER_SELECT < TABLE_PICKER_ROWS.len());
+            assert!(idx::table_picker::NAVIGATE < TABLE_PICKER_ROWS.len());
+            assert!(idx::table_picker::TYPE_FILTER < TABLE_PICKER_ROWS.len());
+            assert!(idx::table_picker::ESC_CLOSE < TABLE_PICKER_ROWS.len());
 
-        // QUERY_HISTORY_PICKER_ROWS
-        assert!(idx::qh_picker::ENTER_SELECT < QUERY_HISTORY_PICKER_ROWS.len());
-        assert!(idx::qh_picker::NAVIGATE < QUERY_HISTORY_PICKER_ROWS.len());
-        assert!(idx::qh_picker::TYPE_FILTER < QUERY_HISTORY_PICKER_ROWS.len());
-        assert!(idx::qh_picker::ESC_CLOSE < QUERY_HISTORY_PICKER_ROWS.len());
+            // ER_PICKER_ROWS
+            assert!(idx::er_picker::ENTER_GENERATE < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::SELECT < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::SELECT_ALL < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::NAVIGATE < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_ROWS.len());
+            assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_ROWS.len());
 
-        // COMMAND_PALETTE_ROWS
-        assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_ROWS.len());
-        assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_ROWS.len());
-        assert!(idx::cmd_palette::ESC_CLOSE < COMMAND_PALETTE_ROWS.len());
+            // QUERY_HISTORY_PICKER_ROWS
+            assert!(idx::qh_picker::ENTER_SELECT < QUERY_HISTORY_PICKER_ROWS.len());
+            assert!(idx::qh_picker::NAVIGATE < QUERY_HISTORY_PICKER_ROWS.len());
+            assert!(idx::qh_picker::TYPE_FILTER < QUERY_HISTORY_PICKER_ROWS.len());
+            assert!(idx::qh_picker::ESC_CLOSE < QUERY_HISTORY_PICKER_ROWS.len());
 
-        // HELP_ROWS
-        assert!(idx::help::SCROLL < HELP_ROWS.len());
-        assert!(idx::help::TOP_BOTTOM < HELP_ROWS.len());
-        assert!(idx::help::HALF_PAGE < HELP_ROWS.len());
-        assert!(idx::help::FULL_PAGE < HELP_ROWS.len());
-        assert!(idx::help::CLOSE < HELP_ROWS.len());
+            // COMMAND_PALETTE_ROWS
+            assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_ROWS.len());
+            assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_ROWS.len());
+            assert!(idx::cmd_palette::ESC_CLOSE < COMMAND_PALETTE_ROWS.len());
 
-        // RESULT_ACTIVE_KEYS
-        assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::YANK < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::STAGE_DELETE < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::UNSTAGE_DELETE < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::CELL_NAV < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::ROW_NAV < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::ESC_BACK < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::DRAFT_DISCARD < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::ROW_YANK < RESULT_ACTIVE_KEYS.len());
+            // HELP_ROWS
+            assert!(idx::help::SCROLL < HELP_ROWS.len());
+            assert!(idx::help::TOP_BOTTOM < HELP_ROWS.len());
+            assert!(idx::help::HALF_PAGE < HELP_ROWS.len());
+            assert!(idx::help::FULL_PAGE < HELP_ROWS.len());
+            assert!(idx::help::CLOSE < HELP_ROWS.len());
 
-        // HISTORY_KEYS
-        assert!(idx::history::OPEN < HISTORY_KEYS.len());
-        assert!(idx::history::NAV < HISTORY_KEYS.len());
-        assert!(idx::history::EXIT < HISTORY_KEYS.len());
+            // RESULT_ACTIVE_KEYS
+            assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::YANK < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::STAGE_DELETE < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::UNSTAGE_DELETE < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::CELL_NAV < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::ROW_NAV < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::ESC_BACK < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::DRAFT_DISCARD < RESULT_ACTIVE_KEYS.len());
+            assert!(idx::result_active::ROW_YANK < RESULT_ACTIVE_KEYS.len());
 
-        // INSPECTOR_DDL_KEYS
-        assert!(idx::inspector_ddl::YANK < INSPECTOR_DDL_KEYS.len());
+            // HISTORY_KEYS
+            assert!(idx::history::OPEN < HISTORY_KEYS.len());
+            assert!(idx::history::NAV < HISTORY_KEYS.len());
+            assert!(idx::history::EXIT < HISTORY_KEYS.len());
 
-        // CELL_EDIT_KEYS
-        assert!(idx::cell_edit::WRITE < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::TYPE < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::MOVE < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::HOME_END < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::COMMAND < CELL_EDIT_KEYS.len());
-        assert!(idx::cell_edit::ESC_CANCEL < CELL_EDIT_KEYS.len());
+            // INSPECTOR_DDL_KEYS
+            assert!(idx::inspector_ddl::YANK < INSPECTOR_DDL_KEYS.len());
 
-        // CONNECTION_SELECTOR_ROWS
-        assert!(idx::connection_selector::CONFIRM < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::SELECT < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::NEW < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::CLOSE < CONNECTION_SELECTOR_ROWS.len());
+            // CELL_EDIT_KEYS
+            assert!(idx::cell_edit::WRITE < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::TYPE < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::MOVE < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::HOME_END < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::COMMAND < CELL_EDIT_KEYS.len());
+            assert!(idx::cell_edit::ESC_CANCEL < CELL_EDIT_KEYS.len());
 
-        // JSONB_DETAIL_ROWS
-        assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::INSERT < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::NEXT_PREV < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::MOVE < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::HOME_END < JSONB_DETAIL_ROWS.len());
-        assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_ROWS.len());
+            // CONNECTION_SELECTOR_ROWS
+            assert!(idx::connection_selector::CONFIRM < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::SELECT < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::NEW < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
+            assert!(idx::connection_selector::CLOSE < CONNECTION_SELECTOR_ROWS.len());
 
-        // JSONB_SEARCH_KEYS
-        assert!(idx::jsonb_search::TYPE_SEARCH < JSONB_SEARCH_KEYS.len());
-        assert!(idx::jsonb_search::CONFIRM < JSONB_SEARCH_KEYS.len());
-        assert!(idx::jsonb_search::CANCEL < JSONB_SEARCH_KEYS.len());
+            // JSONB_DETAIL_ROWS
+            assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::INSERT < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::NEXT_PREV < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::MOVE < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::HOME_END < JSONB_DETAIL_ROWS.len());
+            assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_ROWS.len());
 
-        // JSONB_EDIT_ROWS
-        assert!(idx::jsonb_edit::ESC_NORMAL < JSONB_EDIT_ROWS.len());
-        assert!(idx::jsonb_edit::MOVE < JSONB_EDIT_ROWS.len());
-        assert!(idx::jsonb_edit::HOME_END < JSONB_EDIT_ROWS.len());
+            // JSONB_SEARCH_KEYS
+            assert!(idx::jsonb_search::TYPE_SEARCH < JSONB_SEARCH_KEYS.len());
+            assert!(idx::jsonb_search::CONFIRM < JSONB_SEARCH_KEYS.len());
+            assert!(idx::jsonb_search::CANCEL < JSONB_SEARCH_KEYS.len());
+
+            // JSONB_EDIT_ROWS
+            assert!(idx::jsonb_edit::ESC_NORMAL < JSONB_EDIT_ROWS.len());
+            assert!(idx::jsonb_edit::MOVE < JSONB_EDIT_ROWS.len());
+            assert!(idx::jsonb_edit::HOME_END < JSONB_EDIT_ROWS.len());
+        }
+
+        #[test]
+        fn help_content_line_count_matches_section_structure() {
+            let sections: &[usize] = &[
+                GLOBAL_KEYS.len(),
+                NAVIGATION_KEYS.len(),
+                HISTORY_KEYS.len(),
+                RESULT_ACTIVE_KEYS.len(),
+                INSPECTOR_DDL_KEYS.len(),
+                CELL_EDIT_KEYS.len(),
+                SQL_MODAL_NORMAL_KEYS.len(),
+                SQL_MODAL_KEYS.len(),
+                SQL_MODAL_PLAN_KEYS.len(),
+                SQL_MODAL_COMPARE_KEYS.len(),
+                SQL_MODAL_CONFIRMING_KEYS.len(),
+                OVERLAY_KEYS.len(),
+                COMMAND_LINE_KEYS.len(),
+                CONNECTION_SETUP_KEYS.len(),
+                CONNECTION_ERROR_ROWS.len(),
+                CONNECTION_SELECTOR_ROWS.len(),
+                ER_PICKER_ROWS.len(),
+                QUERY_HISTORY_PICKER_ROWS.len(),
+                TABLE_PICKER_ROWS.len(),
+                COMMAND_PALETTE_ROWS.len(),
+                HELP_ROWS.len(),
+                CONFIRM_DIALOG_KEYS.len(),
+                JSONB_DETAIL_ROWS.len(),
+                JSONB_EDIT_ROWS.len(),
+                JSONB_SEARCH_KEYS.len(),
+            ];
+            let section_count = sections.len();
+            let dedup_pairs = 3; // Focus, ReadOnly, History
+            let expected: usize =
+                section_count + sections.iter().sum::<usize>() + (section_count - 1) - dedup_pairs;
+
+            assert_eq!(help_content_line_count(), expected);
+        }
     }
 
-    #[test]
-    fn help_content_line_count_matches_section_structure() {
-        let sections: &[usize] = &[
-            GLOBAL_KEYS.len(),
-            NAVIGATION_KEYS.len(),
-            HISTORY_KEYS.len(),
-            RESULT_ACTIVE_KEYS.len(),
-            INSPECTOR_DDL_KEYS.len(),
-            CELL_EDIT_KEYS.len(),
-            SQL_MODAL_NORMAL_KEYS.len(),
-            SQL_MODAL_KEYS.len(),
-            SQL_MODAL_PLAN_KEYS.len(),
-            SQL_MODAL_COMPARE_KEYS.len(),
-            SQL_MODAL_CONFIRMING_KEYS.len(),
-            OVERLAY_KEYS.len(),
-            COMMAND_LINE_KEYS.len(),
-            CONNECTION_SETUP_KEYS.len(),
-            CONNECTION_ERROR_ROWS.len(),
-            CONNECTION_SELECTOR_ROWS.len(),
-            ER_PICKER_ROWS.len(),
-            QUERY_HISTORY_PICKER_ROWS.len(),
-            TABLE_PICKER_ROWS.len(),
-            COMMAND_PALETTE_ROWS.len(),
-            HELP_ROWS.len(),
-            CONFIRM_DIALOG_KEYS.len(),
-            JSONB_DETAIL_ROWS.len(),
-            JSONB_EDIT_ROWS.len(),
-            JSONB_SEARCH_KEYS.len(),
-        ];
-        let section_count = sections.len();
-        let dedup_pairs = 3; // Focus, ReadOnly, History
-        let expected: usize =
-            section_count + sections.iter().sum::<usize>() + (section_count - 1) - dedup_pairs;
-
-        assert_eq!(help_content_line_count(), expected);
-    }
-
-    mod semantic {
+    mod catalog_semantics {
         use super::*;
         use crate::app::update::input::keymap;
         use rstest::rstest;
