@@ -32,6 +32,14 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Char('i'))],
     },
     KeyBinding {
+        key_short: "A",
+        key: "A",
+        desc_short: "Append",
+        description: "Append at line end",
+        action: Action::SqlModalAppendInsert,
+        combos: &[KeyCombo::plain(Key::Char('A'))],
+    },
+    KeyBinding {
         key_short: "hjkl",
         key: "h / j / k / l / ↑↓←→",
         desc_short: "Move",

@@ -132,7 +132,10 @@ impl TextInputState {
             | CursorMove::FirstLine => {
                 self.cursor = 0;
             }
-            CursorMove::End | CursorMove::LineEnd | CursorMove::BufferEnd => {
+            CursorMove::End
+            | CursorMove::LineEnd
+            | CursorMove::BufferEnd
+            | CursorMove::LastLine => {
                 self.cursor = self.char_count();
             }
             CursorMove::WordForward => {
@@ -143,7 +146,6 @@ impl TextInputState {
             }
             CursorMove::Up
             | CursorMove::Down
-            | CursorMove::LastLine
             | CursorMove::ViewportTop
             | CursorMove::ViewportMiddle
             | CursorMove::ViewportBottom => {}
@@ -538,6 +540,15 @@ mod tests {
             let mut s = state_with("abc", 0);
 
             s.move_cursor(CursorMove::End);
+
+            assert_eq!(s.cursor(), 3);
+        }
+
+        #[test]
+        fn move_last_line_moves_to_end() {
+            let mut s = state_with("abc", 0);
+
+            s.move_cursor(CursorMove::LastLine);
 
             assert_eq!(s.cursor(), 3);
         }

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::app::model::sql_editor::modal::SQL_MODAL_HEIGHT_PERCENT;
+use crate::app::model::sql_editor::modal::{SQL_MODAL_CHROME_LINES, SQL_MODAL_HEIGHT_PERCENT};
 use crate::domain::explain_plan::{self, ExplainPlan};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,10 +132,8 @@ impl ExplainContext {
     }
 
     pub fn modal_inner_height(terminal_height: u16) -> usize {
-        // border(2) + separator(1) + status(1) + padding(1)
-        const MODAL_CHROME_LINES: usize = 5;
         (terminal_height as usize * SQL_MODAL_HEIGHT_PERCENT as usize / 100)
-            .saturating_sub(MODAL_CHROME_LINES)
+            .saturating_sub(SQL_MODAL_CHROME_LINES)
     }
 
     pub fn compare_max_scroll(&self, terminal_height: u16) -> usize {

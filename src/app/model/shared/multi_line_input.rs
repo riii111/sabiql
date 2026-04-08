@@ -23,11 +23,11 @@ impl MultiLineInputState {
     }
 
     pub fn insert_newline(&mut self) {
-        self.inner.insert_char('\n');
+        self.insert_char('\n');
     }
 
     pub fn insert_tab(&mut self) {
-        self.inner.insert_str("    ");
+        self.insert_str("    ");
     }
 
     // ── Content management ──────────────────────────────────────────
@@ -226,6 +226,26 @@ impl TextInputLike for MultiLineInputState {
 
     fn text_input_mut(&mut self) -> &mut TextInputState {
         &mut self.inner
+    }
+
+    fn insert_char(&mut self, c: char) {
+        self.inner.insert_char(c);
+        self.preferred_col = None;
+    }
+
+    fn insert_str(&mut self, text: &str) {
+        self.inner.insert_str(text);
+        self.preferred_col = None;
+    }
+
+    fn backspace(&mut self) {
+        self.inner.backspace();
+        self.preferred_col = None;
+    }
+
+    fn delete(&mut self) {
+        self.inner.delete();
+        self.preferred_col = None;
     }
 }
 
@@ -468,6 +488,16 @@ mod tests {
         }
 
         #[test]
+        fn word_forward_treats_cjk_as_keyword_word() {
+            let mut s = ml("SELECT あいう", 0);
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 7);
+
+            s.move_cursor(CursorMove::WordForward);
+            assert_eq!(s.cursor(), 10);
+        }
+
+        #[test]
         fn word_backward_crosses_whitespace_and_newline() {
             let mut s = ml("foo \n  bar", 10);
             s.move_cursor(CursorMove::WordBackward);
@@ -679,6 +709,19 @@ mod tests {
             s.delete();
             assert_eq!(s.content(), "abcdef");
             assert_eq!(s.cursor(), 3);
+        }
+
+        #[test]
+        fn operations_clear_preferred_column() {
+            let mut s = ml("abcdefghij\nxy\nabcdefghij", 8);
+
+            s.move_cursor(CursorMove::Down);
+            assert_eq!(s.cursor_to_position(), (1, 2));
+
+            s.insert_char('z');
+            s.move_cursor(CursorMove::Down);
+
+            assert_eq!(s.cursor_to_position(), (2, 3));
         }
     }
 

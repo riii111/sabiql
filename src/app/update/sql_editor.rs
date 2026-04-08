@@ -17,7 +17,7 @@ use crate::app::policy::write::sql_risk::{
 use crate::app::policy::write::write_guardrails::{
     AdhocRiskDecision, RiskLevel, evaluate_sql_risk,
 };
-use crate::app::update::action::{Action, InputTarget};
+use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 
 // Fallback used before the renderer provides a real terminal height.
@@ -140,9 +140,9 @@ pub fn reduce_sql_modal(
             direction: movement,
         } => {
             match movement {
-                crate::app::update::action::CursorMove::ViewportTop
-                | crate::app::update::action::CursorMove::ViewportMiddle
-                | crate::app::update::action::CursorMove::ViewportBottom => {
+                CursorMove::ViewportTop
+                | CursorMove::ViewportMiddle
+                | CursorMove::ViewportBottom => {
                     state.sql_modal.editor.move_cursor_to_viewport_position(
                         *movement,
                         sql_modal_visible_rows(state.ui.terminal_height),
@@ -385,10 +385,7 @@ pub fn reduce_sql_modal(
         }
 
         Action::SqlModalAppendInsert => {
-            state
-                .sql_modal
-                .editor
-                .move_cursor(crate::app::update::action::CursorMove::LineEnd);
+            state.sql_modal.editor.move_cursor(CursorMove::LineEnd);
             state
                 .sql_modal
                 .editor
@@ -1210,6 +1207,47 @@ mod tests {
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert!(!state.sql_modal.completion.visible);
+        }
+
+        #[test]
+        fn vertical_move_after_edit_uses_current_column() {
+            let mut state = sql_modal_state();
+            state.sql_modal.set_status(SqlModalStatus::Normal);
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("abcdefghij\nxy\nabcdefghij".to_string(), 8);
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::SqlModal,
+                    direction: CursorMove::Down,
+                },
+                Instant::now(),
+            );
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (1, 2));
+
+            reduce_sql_modal(&mut state, &Action::SqlModalEnterInsert, Instant::now());
+            reduce_sql_modal(
+                &mut state,
+                &Action::TextInput {
+                    target: InputTarget::SqlModal,
+                    ch: 'z',
+                },
+                Instant::now(),
+            );
+            reduce_sql_modal(&mut state, &Action::SqlModalEnterNormal, Instant::now());
+            reduce_sql_modal(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::SqlModal,
+                    direction: CursorMove::Down,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.sql_modal.editor.cursor_to_position(), (2, 3));
         }
 
         #[test]
