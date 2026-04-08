@@ -662,22 +662,15 @@ mod tests {
                 assert_eq!(state.er_preparation.status, ErStatus::Idle);
             }
 
-            #[test]
-            fn accepts_waiting() {
+            #[rstest]
+            #[case(ErStatus::Waiting)]
+            #[case(ErStatus::Rendering)]
+            fn accepts_status(#[case] status: ErStatus) {
                 let mut state = make_state();
 
-                state.er_preparation.status = ErStatus::Waiting;
+                state.er_preparation.status = status;
 
-                assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            }
-
-            #[test]
-            fn accepts_rendering() {
-                let mut state = make_state();
-
-                state.er_preparation.status = ErStatus::Rendering;
-
-                assert_eq!(state.er_preparation.status, ErStatus::Rendering);
+                assert_eq!(state.er_preparation.status, status);
             }
         }
 
@@ -741,7 +734,7 @@ mod tests {
         }
 
         #[test]
-        fn set_rebuilds_list() {
+        fn set_connections_rebuilds_list() {
             let mut state = make_state();
 
             state.set_connections(vec![make_profile("a"), make_profile("b")]);
