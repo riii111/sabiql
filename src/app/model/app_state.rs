@@ -620,14 +620,14 @@ mod tests {
             use super::*;
 
             #[test]
-            fn er_preparation_defaults_to_idle() {
+            fn defaults_to_idle() {
                 let state = make_state();
 
                 assert_eq!(state.er_preparation.status, ErStatus::Idle);
             }
 
             #[test]
-            fn er_preparation_accepts_waiting() {
+            fn accepts_waiting() {
                 let mut state = make_state();
 
                 state.er_preparation.status = ErStatus::Waiting;
@@ -636,7 +636,7 @@ mod tests {
             }
 
             #[test]
-            fn er_preparation_accepts_rendering() {
+            fn accepts_rendering() {
                 let mut state = make_state();
 
                 state.er_preparation.status = ErStatus::Rendering;
@@ -649,7 +649,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn inspector_scroll_reset_is_zero_on_switch() {
+            fn is_zero_on_switch() {
                 let mut state = make_state();
                 state.ui.inspector_scroll_offset = 42;
 
