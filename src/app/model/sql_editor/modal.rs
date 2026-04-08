@@ -151,6 +151,7 @@ impl SqlModalContext {
         self.completion.visible = false;
         self.completion.candidates.clear();
         self.completion.selected_index = 0;
+        self.completion_debounce = None;
     }
 }
 

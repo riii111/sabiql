@@ -308,6 +308,7 @@ pub(crate) fn previous_word_start(content: &str, cursor: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     fn state_with(content: &str, cursor: usize) -> TextInputState {
         TextInputState::new(content, cursor)
@@ -591,6 +592,44 @@ mod tests {
             s.move_cursor(CursorMove::Down);
 
             assert_eq!(s.cursor(), 1);
+        }
+
+        #[rstest]
+        #[case("foo bar", 0, CursorMove::WordForward, 4)]
+        #[case("foo.bar", 0, CursorMove::WordForward, 3)]
+        #[case("  foo", 0, CursorMove::WordForward, 2)]
+        #[case("foo  ", 0, CursorMove::WordForward, 5)]
+        #[case("あいう えお", 0, CursorMove::WordForward, 4)]
+        fn word_forward_boundaries(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] movement: CursorMove,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with(content, cursor);
+
+            s.move_cursor(movement);
+
+            assert_eq!(s.cursor(), expected);
+        }
+
+        #[rstest]
+        #[case("foo bar", 7, CursorMove::WordBackward, 4)]
+        #[case("foo.bar", 7, CursorMove::WordBackward, 4)]
+        #[case("  foo", 4, CursorMove::WordBackward, 2)]
+        #[case("foo  ", 5, CursorMove::WordBackward, 0)]
+        #[case("あいう えお", 6, CursorMove::WordBackward, 4)]
+        fn word_backward_boundaries(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] movement: CursorMove,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with(content, cursor);
+
+            s.move_cursor(movement);
+
+            assert_eq!(s.cursor(), expected);
         }
     }
 

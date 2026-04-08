@@ -294,6 +294,8 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     state.sql_modal.reset_completion();
                 }
                 InputMode::SqlModal => {
+                    state.sql_modal.active_tab =
+                        crate::app::model::sql_editor::modal::SqlModalTab::Sql;
                     state.sql_modal.editor.set_content(query);
                     state
                         .sql_modal
