@@ -393,6 +393,23 @@ mod tests {
         spans.iter().map(|s| s.content.to_string()).collect()
     }
 
+    mod display_geometry {
+        use super::*;
+
+        #[test]
+        fn display_width_uses_terminal_cell_width() {
+            assert_eq!(display_width_up_to_char("a語b", 0), 0);
+            assert_eq!(display_width_up_to_char("a語b", 1), 1);
+            assert_eq!(display_width_up_to_char("a語b", 2), 3);
+            assert_eq!(display_width_up_to_char("a語b", 3), 4);
+        }
+
+        #[test]
+        fn visual_cursor_position_wraps_with_display_width() {
+            assert_eq!(visual_cursor_position("a語b", 0, 2, 0, 2), Some((1, 1)));
+        }
+    }
+
     #[test]
     fn cursor_at_beginning() {
         let spans = text_cursor_spans("abc", 0, 0, usize::MAX, &DEFAULT_THEME);
@@ -468,14 +485,6 @@ mod tests {
     }
 
     #[test]
-    fn display_width_uses_terminal_cell_width() {
-        assert_eq!(display_width_up_to_char("a語b", 0), 0);
-        assert_eq!(display_width_up_to_char("a語b", 1), 1);
-        assert_eq!(display_width_up_to_char("a語b", 2), 3);
-        assert_eq!(display_width_up_to_char("a語b", 3), 4);
-    }
-
-    #[test]
     fn visible_width_usize_max_sentinel() {
         let spans = text_cursor_spans("hello", 2, 0, usize::MAX, &DEFAULT_THEME);
 
@@ -534,11 +543,6 @@ mod tests {
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["abc"]);
-    }
-
-    #[test]
-    fn visual_cursor_position_wraps_with_display_width() {
-        assert_eq!(visual_cursor_position("a語b", 0, 2, 0, 2), Some((1, 1)));
     }
 
     #[test]
