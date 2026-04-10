@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
+use crate::app::model::explain_context::ExplainContext;
 use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::app::model::sql_editor::completion::CompletionState;
 use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
@@ -111,36 +112,6 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             Some(vec![])
         }
 
-        Action::Scroll {
-            target: ScrollTarget::ExplainConfirm,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::Line,
-        } => {
-            state.explain.confirm_scroll_offset =
-                state.explain.confirm_scroll_offset.saturating_sub(1);
-            Some(vec![])
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::ExplainConfirm,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        } => {
-            // blank + title + blank + separator + blank + warning(2) + blank = 8
-            const CONFIRM_HEADER_LINES: usize = 8;
-            let content_lines =
-                CONFIRM_HEADER_LINES + state.sql_modal.editor.content().lines().count();
-            let modal_inner =
-                crate::app::model::explain_context::ExplainContext::modal_inner_height(
-                    state.ui.terminal_height,
-                );
-            let max = content_lines.saturating_sub(modal_inner);
-            if state.explain.confirm_scroll_offset < max {
-                state.explain.confirm_scroll_offset += 1;
-            }
-            Some(vec![])
-        }
-
         Action::ExplainAnalyzeConfirm => {
             let query = match state.sql_modal.status() {
                 SqlModalStatus::ConfirmingAnalyzeHigh {
@@ -204,48 +175,44 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         }
 
         Action::Scroll {
-            target: ScrollTarget::ExplainPlan,
-            direction: ScrollDirection::Up,
+            target:
+                target @ (ScrollTarget::ExplainConfirm
+                | ScrollTarget::ExplainPlan
+                | ScrollTarget::ExplainCompare),
+            direction,
             amount: ScrollAmount::Line,
         } => {
-            state.explain.scroll_offset = state.explain.scroll_offset.saturating_sub(1);
-            Some(vec![])
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::ExplainPlan,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        } => {
-            let modal_inner =
-                crate::app::model::explain_context::ExplainContext::modal_inner_height(
-                    state.ui.terminal_height,
-                );
-            let max = state.explain.line_count().saturating_sub(modal_inner);
-            if state.explain.scroll_offset < max {
-                state.explain.scroll_offset += 1;
-            }
-            Some(vec![])
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::ExplainCompare,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::Line,
-        } => {
-            state.explain.compare_scroll_offset =
-                state.explain.compare_scroll_offset.saturating_sub(1);
-            Some(vec![])
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::ExplainCompare,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        } => {
-            let max = state.explain.compare_max_scroll(state.ui.terminal_height);
-            if state.explain.compare_scroll_offset < max {
-                state.explain.compare_scroll_offset += 1;
+            let (offset, max) = match target {
+                ScrollTarget::ExplainConfirm => {
+                    // blank + title + blank + separator + blank + warning(2) + blank = 8
+                    const CONFIRM_HEADER_LINES: usize = 8;
+                    let content_lines =
+                        CONFIRM_HEADER_LINES + state.sql_modal.editor.content().lines().count();
+                    let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
+                    (
+                        &mut state.explain.confirm_scroll_offset,
+                        content_lines.saturating_sub(modal_inner),
+                    )
+                }
+                ScrollTarget::ExplainPlan => {
+                    let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
+                    let max = state.explain.line_count().saturating_sub(modal_inner);
+                    (&mut state.explain.scroll_offset, max)
+                }
+                ScrollTarget::ExplainCompare => {
+                    let max = state.explain.compare_max_scroll(state.ui.terminal_height);
+                    (&mut state.explain.compare_scroll_offset, max)
+                }
+                _ => unreachable!(),
+            };
+            match direction {
+                ScrollDirection::Up => *offset = offset.saturating_sub(1),
+                ScrollDirection::Down => {
+                    if *offset < max {
+                        *offset += 1;
+                    }
+                }
+                _ => {}
             }
             Some(vec![])
         }

@@ -243,61 +243,43 @@ pub fn reduce_sql_modal(
             }
         }
 
-        // HIGH risk confirmation input
+        // HIGH risk confirmation input (adhoc + EXPLAIN ANALYZE)
         Action::TextInput {
-            target: InputTarget::SqlModalHighRisk,
+            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
             ch: c,
         } => {
-            if let Some(input) = state.sql_modal.confirming_high_input_mut() {
+            let input = match target {
+                InputTarget::SqlModalHighRisk => state.sql_modal.confirming_high_input_mut(),
+                _ => state.sql_modal.confirming_analyze_high_input_mut(),
+            };
+            if let Some(input) = input {
                 input.insert_char(*c);
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }
         Action::TextBackspace {
-            target: InputTarget::SqlModalHighRisk,
+            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
         } => {
-            if let Some(input) = state.sql_modal.confirming_high_input_mut() {
+            let input = match target {
+                InputTarget::SqlModalHighRisk => state.sql_modal.confirming_high_input_mut(),
+                _ => state.sql_modal.confirming_analyze_high_input_mut(),
+            };
+            if let Some(input) = input {
                 input.backspace();
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }
         Action::TextMoveCursor {
-            target: InputTarget::SqlModalHighRisk,
+            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
             direction: movement,
         } => {
-            if let Some(input) = state.sql_modal.confirming_high_input_mut() {
-                input.move_cursor(*movement);
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            Some(vec![])
-        }
-        // EXPLAIN ANALYZE high-risk confirmation input
-        Action::TextInput {
-            target: InputTarget::SqlModalAnalyzeHighRisk,
-            ch: c,
-        } => {
-            if let Some(input) = state.sql_modal.confirming_analyze_high_input_mut() {
-                input.insert_char(*c);
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            Some(vec![])
-        }
-        Action::TextBackspace {
-            target: InputTarget::SqlModalAnalyzeHighRisk,
-        } => {
-            if let Some(input) = state.sql_modal.confirming_analyze_high_input_mut() {
-                input.backspace();
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            Some(vec![])
-        }
-        Action::TextMoveCursor {
-            target: InputTarget::SqlModalAnalyzeHighRisk,
-            direction: movement,
-        } => {
-            if let Some(input) = state.sql_modal.confirming_analyze_high_input_mut() {
+            let input = match target {
+                InputTarget::SqlModalHighRisk => state.sql_modal.confirming_high_input_mut(),
+                _ => state.sql_modal.confirming_analyze_high_input_mut(),
+            };
+            if let Some(input) = input {
                 input.move_cursor(*movement);
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }

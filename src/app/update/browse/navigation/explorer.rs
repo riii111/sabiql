@@ -128,7 +128,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
 
-        Action::Select(SelectMotion::HalfPageDown) => {
+        Action::Select(motion @ (SelectMotion::HalfPageDown | SelectMotion::FullPageDown)) => {
             let len = explorer_item_count(state);
             if len == 0 {
                 return Some(vec![]);
@@ -137,16 +137,18 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             if visible == 0 {
                 return Some(vec![]);
             }
-            let delta = (visible / 2).max(1);
+            let delta = match motion {
+                SelectMotion::HalfPageDown => (visible / 2).max(1),
+                _ => visible.max(1),
+            };
             let max_idx = len.saturating_sub(1);
             let max_offset = len.saturating_sub(visible);
-            let new_idx = (state.ui.explorer_selected + delta).min(max_idx);
-            state.ui.explorer_selected = new_idx;
+            state.ui.explorer_selected = (state.ui.explorer_selected + delta).min(max_idx);
             state.ui.explorer_scroll_offset =
                 (state.ui.explorer_scroll_offset + delta).min(max_offset);
             Some(vec![])
         }
-        Action::Select(SelectMotion::HalfPageUp) => {
+        Action::Select(motion @ (SelectMotion::HalfPageUp | SelectMotion::FullPageUp)) => {
             let len = explorer_item_count(state);
             if len == 0 {
                 return Some(vec![]);
@@ -155,42 +157,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             if visible == 0 {
                 return Some(vec![]);
             }
-            let delta = (visible / 2).max(1);
-            let new_idx = state.ui.explorer_selected.saturating_sub(delta);
-            state.ui.explorer_selected = new_idx;
-            state.ui.explorer_scroll_offset = state.ui.explorer_scroll_offset.saturating_sub(delta);
-            Some(vec![])
-        }
-        Action::Select(SelectMotion::FullPageDown) => {
-            let len = explorer_item_count(state);
-            if len == 0 {
-                return Some(vec![]);
-            }
-            let visible = state.ui.explorer_visible_items();
-            if visible == 0 {
-                return Some(vec![]);
-            }
-            let delta = visible.max(1);
-            let max_idx = len.saturating_sub(1);
-            let max_offset = len.saturating_sub(visible);
-            let new_idx = (state.ui.explorer_selected + delta).min(max_idx);
-            state.ui.explorer_selected = new_idx;
-            state.ui.explorer_scroll_offset =
-                (state.ui.explorer_scroll_offset + delta).min(max_offset);
-            Some(vec![])
-        }
-        Action::Select(SelectMotion::FullPageUp) => {
-            let len = explorer_item_count(state);
-            if len == 0 {
-                return Some(vec![]);
-            }
-            let visible = state.ui.explorer_visible_items();
-            if visible == 0 {
-                return Some(vec![]);
-            }
-            let delta = visible.max(1);
-            let new_idx = state.ui.explorer_selected.saturating_sub(delta);
-            state.ui.explorer_selected = new_idx;
+            let delta = match motion {
+                SelectMotion::HalfPageUp => (visible / 2).max(1),
+                _ => visible.max(1),
+            };
+            state.ui.explorer_selected = state.ui.explorer_selected.saturating_sub(delta);
             state.ui.explorer_scroll_offset = state.ui.explorer_scroll_offset.saturating_sub(delta);
             Some(vec![])
         }

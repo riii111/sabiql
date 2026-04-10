@@ -26,21 +26,12 @@ pub fn reduce(
     match action {
         Action::Scroll {
             target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Up,
+            direction: direction @ (ScrollDirection::Up | ScrollDirection::Down),
             amount: ScrollAmount::Line,
         } => {
-            state.ui.inspector_scroll_offset = state.ui.inspector_scroll_offset.saturating_sub(1);
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Inspector,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        } => {
-            let max_offset = inspector_max_scroll(state, services);
-            if state.ui.inspector_scroll_offset < max_offset {
-                state.ui.inspector_scroll_offset += 1;
-            }
+            let max = inspector_max_scroll(state, services);
+            state.ui.inspector_scroll_offset =
+                direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, 1);
             Some(vec![])
         }
         Action::Scroll {
