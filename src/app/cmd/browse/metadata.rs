@@ -12,6 +12,25 @@ use crate::app::ports::{DbOperationError, MetadataProvider};
 use crate::app::update::action::Action;
 use crate::domain::DatabaseMetadata;
 
+#[derive(Clone, Copy)]
+struct SharedDeps<'a> {
+    action_tx: &'a mpsc::Sender<Action>,
+}
+
+#[derive(Clone, Copy)]
+struct MetadataDeps<'a> {
+    shared: SharedDeps<'a>,
+    metadata_provider: &'a Arc<dyn MetadataProvider>,
+    metadata_cache: &'a TtlCache<String, Arc<DatabaseMetadata>>,
+}
+
+#[derive(Clone, Copy)]
+struct PrefetchDeps<'a> {
+    shared: SharedDeps<'a>,
+    metadata_provider: &'a Arc<dyn MetadataProvider>,
+    completion_engine: &'a RefCell<CompletionEngine>,
+}
+
 pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
@@ -20,130 +39,181 @@ pub async fn run(
     _state: &mut AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
+    let shared = SharedDeps { action_tx };
+    let metadata = MetadataDeps {
+        shared,
+        metadata_provider,
+        metadata_cache,
+    };
+    let prefetch = PrefetchDeps {
+        shared,
+        metadata_provider,
+        completion_engine,
+    };
+
     match effect {
-        Effect::FetchMetadata { dsn } => {
-            if let Some(cached) = metadata_cache.get(&dsn).await {
-                action_tx.send(Action::MetadataLoaded(cached)).await.ok();
-            } else {
-                let provider = Arc::clone(metadata_provider);
-                let cache = metadata_cache.clone();
-                let tx = action_tx.clone();
-
-                tokio::spawn(async move {
-                    match provider.fetch_metadata(&dsn).await {
-                        Ok(metadata) => {
-                            let metadata = Arc::new(metadata);
-                            cache.set(dsn, Arc::clone(&metadata)).await;
-                            tx.send(Action::MetadataLoaded(metadata)).await.ok();
-                        }
-                        Err(e) => {
-                            tx.send(Action::MetadataFailed(e)).await.ok();
-                        }
-                    }
-                });
-            }
-            Ok(())
-        }
-
+        Effect::FetchMetadata { dsn } => fetch_metadata(metadata, dsn).await,
         Effect::FetchTableDetail {
             dsn,
             schema,
             table,
             generation,
         } => {
-            let provider = Arc::clone(metadata_provider);
-            let tx = action_tx.clone();
-
-            tokio::spawn(async move {
-                match provider.fetch_table_detail(&dsn, &schema, &table).await {
-                    Ok(detail) => {
-                        tx.send(Action::TableDetailLoaded(Box::new(detail), generation))
-                            .await
-                            .ok();
-                    }
-                    Err(e) => {
-                        tx.send(Action::TableDetailFailed(e, generation)).await.ok();
-                    }
-                }
-            });
+            fetch_table_detail(metadata, dsn, schema, table, generation);
             Ok(())
         }
-
         Effect::PrefetchTableDetail { dsn, schema, table } => {
-            let qualified_name = format!("{schema}.{table}");
-
-            let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
-            if already_cached {
-                action_tx
-                    .send(Action::TableDetailAlreadyCached { schema, table })
-                    .await
-                    .ok();
-                return Ok(());
-            }
-
-            let provider = Arc::clone(metadata_provider);
-            let tx = action_tx.clone();
-
-            tokio::spawn(async move {
-                let result = tokio::time::timeout(
-                    tokio::time::Duration::from_secs(10),
-                    provider.fetch_table_columns_and_fks(&dsn, &schema, &table),
-                )
-                .await;
-                match result {
-                    Ok(Ok(detail)) => {
-                        tx.send(Action::TableDetailCached {
-                            schema,
-                            table,
-                            detail: Box::new(detail),
-                        })
-                        .await
-                        .ok();
-                    }
-                    Ok(Err(e)) => {
-                        tx.send(Action::TableDetailCacheFailed {
-                            schema,
-                            table,
-                            error: e,
-                        })
-                        .await
-                        .ok();
-                    }
-                    Err(_) => {
-                        tx.send(Action::TableDetailCacheFailed {
-                            schema,
-                            table,
-                            error: DbOperationError::Timeout("timed out".to_string()),
-                        })
-                        .await
-                        .ok();
-                    }
-                }
-            });
-            Ok(())
+            prefetch_table_detail(prefetch, dsn, schema, table).await
         }
-
-        Effect::ProcessPrefetchQueue => {
-            action_tx.send(Action::ProcessPrefetchQueue).await.ok();
-            Ok(())
-        }
-
+        Effect::ProcessPrefetchQueue => dispatch_prefetch_queue(shared).await,
         Effect::DelayedProcessPrefetchQueue { delay_secs } => {
-            let tx = action_tx.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
-                tx.send(Action::ProcessPrefetchQueue).await.ok();
-            });
+            schedule_prefetch_queue(shared, delay_secs);
             Ok(())
         }
-
-        Effect::CacheInvalidate { dsn } => {
-            metadata_cache.invalidate(&dsn).await;
-            Ok(())
-        }
+        Effect::CacheInvalidate { dsn } => invalidate_cache(metadata, dsn).await,
 
         _ => unreachable!("metadata::run called with non-metadata effect"),
     }
+}
+
+async fn fetch_metadata(deps: MetadataDeps<'_>, dsn: String) -> Result<()> {
+    if let Some(cached) = deps.metadata_cache.get(&dsn).await {
+        deps.shared
+            .action_tx
+            .send(Action::MetadataLoaded(cached))
+            .await
+            .ok();
+        return Ok(());
+    }
+
+    let provider = Arc::clone(deps.metadata_provider);
+    let cache = deps.metadata_cache.clone();
+    let tx = deps.shared.action_tx.clone();
+
+    tokio::spawn(async move {
+        match provider.fetch_metadata(&dsn).await {
+            Ok(metadata) => {
+                let metadata = Arc::new(metadata);
+                cache.set(dsn, Arc::clone(&metadata)).await;
+                tx.send(Action::MetadataLoaded(metadata)).await.ok();
+            }
+            Err(e) => {
+                tx.send(Action::MetadataFailed(e)).await.ok();
+            }
+        }
+    });
+
+    Ok(())
+}
+
+fn fetch_table_detail(
+    deps: MetadataDeps<'_>,
+    dsn: String,
+    schema: String,
+    table: String,
+    generation: u64,
+) {
+    let provider = Arc::clone(deps.metadata_provider);
+    let tx = deps.shared.action_tx.clone();
+
+    tokio::spawn(async move {
+        match provider.fetch_table_detail(&dsn, &schema, &table).await {
+            Ok(detail) => {
+                tx.send(Action::TableDetailLoaded(Box::new(detail), generation))
+                    .await
+                    .ok();
+            }
+            Err(e) => {
+                tx.send(Action::TableDetailFailed(e, generation)).await.ok();
+            }
+        }
+    });
+}
+
+async fn prefetch_table_detail(
+    deps: PrefetchDeps<'_>,
+    dsn: String,
+    schema: String,
+    table: String,
+) -> Result<()> {
+    let qualified_name = format!("{schema}.{table}");
+    let already_cached = deps
+        .completion_engine
+        .borrow()
+        .has_cached_table(&qualified_name);
+
+    if already_cached {
+        deps.shared
+            .action_tx
+            .send(Action::TableDetailAlreadyCached { schema, table })
+            .await
+            .ok();
+        return Ok(());
+    }
+
+    let provider = Arc::clone(deps.metadata_provider);
+    let tx = deps.shared.action_tx.clone();
+
+    tokio::spawn(async move {
+        let result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(10),
+            provider.fetch_table_columns_and_fks(&dsn, &schema, &table),
+        )
+        .await;
+        match result {
+            Ok(Ok(detail)) => {
+                tx.send(Action::TableDetailCached {
+                    schema,
+                    table,
+                    detail: Box::new(detail),
+                })
+                .await
+                .ok();
+            }
+            Ok(Err(e)) => {
+                tx.send(Action::TableDetailCacheFailed {
+                    schema,
+                    table,
+                    error: e,
+                })
+                .await
+                .ok();
+            }
+            Err(_) => {
+                tx.send(Action::TableDetailCacheFailed {
+                    schema,
+                    table,
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                })
+                .await
+                .ok();
+            }
+        }
+    });
+
+    Ok(())
+}
+
+async fn dispatch_prefetch_queue(shared: SharedDeps<'_>) -> Result<()> {
+    shared
+        .action_tx
+        .send(Action::ProcessPrefetchQueue)
+        .await
+        .ok();
+    Ok(())
+}
+
+fn schedule_prefetch_queue(shared: SharedDeps<'_>, delay_secs: u64) {
+    let tx = shared.action_tx.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
+        tx.send(Action::ProcessPrefetchQueue).await.ok();
+    });
+}
+
+async fn invalidate_cache(deps: MetadataDeps<'_>, dsn: String) -> Result<()> {
+    deps.metadata_cache.invalidate(&dsn).await;
+    Ok(())
 }
 
 #[cfg(test)]
