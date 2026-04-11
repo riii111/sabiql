@@ -5,7 +5,7 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 
 use crate::app::cmd::cache::TtlCache;
-use crate::app::cmd::runner::EffectRunner;
+use crate::app::cmd::runner::{EffectRunner, EffectRunnerBuilder};
 use crate::app::ports::{
     ClipboardError, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter,
     ErExportResult, ErLogWriter, FolderOpenError, FolderOpener, MetadataProvider, QueryExecutor,
@@ -95,29 +95,6 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
     }
 }
 
-pub fn make_runner_builder(
-    metadata_provider: Arc<dyn MetadataProvider>,
-    query_executor: Arc<dyn QueryExecutor>,
-    connection_store: Arc<dyn ConnectionStore>,
-    cache: TtlCache<String, Arc<DatabaseMetadata>>,
-    action_tx: mpsc::Sender<Action>,
-) -> crate::app::cmd::runner::EffectRunnerBuilder {
-    EffectRunner::builder()
-        .metadata_provider(metadata_provider)
-        .query_executor(query_executor)
-        .dsn_builder(Arc::new(NoopDsnBuilder))
-        .er_exporter(Arc::new(NoopErExporter))
-        .config_writer(Arc::new(NoopConfigWriter))
-        .er_log_writer(Arc::new(NoopErLogWriter))
-        .connection_store(connection_store)
-        .service_file_reader(Arc::new(NoopServiceFileReader))
-        .clipboard(Arc::new(NoopClipboardWriter))
-        .folder_opener(Arc::new(NoopFolderOpener))
-        .query_history_store(Arc::new(NoopQueryHistoryStore))
-        .metadata_cache(cache)
-        .action_tx(action_tx)
-}
-
 pub fn make_runner(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
@@ -133,6 +110,29 @@ pub fn make_runner(
         action_tx,
     )
     .build()
+}
+
+pub fn make_runner_builder(
+    metadata_provider: Arc<dyn MetadataProvider>,
+    query_executor: Arc<dyn QueryExecutor>,
+    connection_store: Arc<dyn ConnectionStore>,
+    cache: TtlCache<String, Arc<DatabaseMetadata>>,
+    action_tx: mpsc::Sender<Action>,
+) -> EffectRunnerBuilder {
+    EffectRunner::builder()
+        .metadata_provider(metadata_provider)
+        .query_executor(query_executor)
+        .dsn_builder(Arc::new(NoopDsnBuilder))
+        .er_exporter(Arc::new(NoopErExporter))
+        .config_writer(Arc::new(NoopConfigWriter))
+        .er_log_writer(Arc::new(NoopErLogWriter))
+        .connection_store(connection_store)
+        .service_file_reader(Arc::new(NoopServiceFileReader))
+        .clipboard(Arc::new(NoopClipboardWriter))
+        .folder_opener(Arc::new(NoopFolderOpener))
+        .query_history_store(Arc::new(NoopQueryHistoryStore))
+        .metadata_cache(cache)
+        .action_tx(action_tx)
 }
 
 pub fn sample_metadata() -> DatabaseMetadata {

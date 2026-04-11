@@ -49,37 +49,6 @@ enum Command {
     Update,
 }
 
-fn build_effect_runner(
-    adapter: &Arc<PostgresAdapter>,
-    connection_store: Arc<dyn ConnectionStore>,
-    service_file_reader: Arc<dyn ServiceFileReader>,
-    metadata_cache: TtlCache<String, Arc<sabiql::domain::DatabaseMetadata>>,
-    action_tx: mpsc::Sender<Action>,
-) -> EffectRunner {
-    EffectRunner::builder()
-        .metadata_provider(Arc::clone(adapter) as _)
-        .query_executor(Arc::clone(adapter) as _)
-        .dsn_builder(Arc::clone(adapter) as _)
-        .er_exporter(Arc::new(DotExporter::new()))
-        .config_writer(Arc::new(FileConfigWriter::new()))
-        .er_log_writer(Arc::new(FsErLogWriter))
-        .connection_store(connection_store)
-        .service_file_reader(service_file_reader)
-        .clipboard(Arc::new(ArboardClipboard))
-        .folder_opener(Arc::new(NativeFolderOpener))
-        .query_history_store(Arc::new(FileQueryHistoryStore::new()))
-        .metadata_cache(metadata_cache)
-        .action_tx(action_tx)
-        .build()
-}
-
-fn build_app_services(adapter: &Arc<PostgresAdapter>) -> AppServices {
-    AppServices {
-        ddl_generator: Arc::clone(adapter) as _,
-        sql_dialect: Arc::clone(adapter) as _,
-    }
-}
-
 #[tokio::main]
 #[allow(
     clippy::print_stderr,
@@ -116,14 +85,26 @@ async fn main() -> Result<()> {
 
     let service_file_reader: Arc<dyn ServiceFileReader> = Arc::new(PgServiceFileReader::new());
 
-    let effect_runner = build_effect_runner(
-        &adapter,
-        Arc::clone(&connection_store) as _,
-        Arc::clone(&service_file_reader),
-        metadata_cache.clone(),
-        action_tx.clone(),
-    );
-    let services = build_app_services(&adapter);
+    let effect_runner = EffectRunner::builder()
+        .metadata_provider(Arc::clone(&adapter) as _)
+        .query_executor(Arc::clone(&adapter) as _)
+        .dsn_builder(Arc::clone(&adapter) as _)
+        .er_exporter(Arc::new(DotExporter::new()))
+        .config_writer(Arc::new(FileConfigWriter::new()))
+        .er_log_writer(Arc::new(FsErLogWriter))
+        .connection_store(Arc::clone(&connection_store) as _)
+        .service_file_reader(Arc::clone(&service_file_reader))
+        .clipboard(Arc::new(ArboardClipboard))
+        .folder_opener(Arc::new(NativeFolderOpener))
+        .query_history_store(Arc::new(FileQueryHistoryStore::new()))
+        .metadata_cache(metadata_cache.clone())
+        .action_tx(action_tx.clone())
+        .build();
+
+    let services = AppServices {
+        ddl_generator: Arc::clone(&adapter) as _,
+        sql_dialect: Arc::clone(&adapter) as _,
+    };
 
     let mut state = AppState::new(project_name);
 
