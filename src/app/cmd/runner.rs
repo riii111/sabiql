@@ -27,15 +27,6 @@ use crate::app::services::AppServices;
 use crate::app::update::action::Action;
 use crate::domain::DatabaseMetadata;
 
-struct SharedDeps {
-    metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
-    action_tx: mpsc::Sender<Action>,
-}
-
-struct MetadataDeps {
-    metadata_provider: Arc<dyn MetadataProvider>,
-}
-
 struct ConnectionDeps {
     dsn_builder: Arc<dyn DsnBuilder>,
     connection_store: Arc<dyn ConnectionStore>,
@@ -59,12 +50,13 @@ struct UtilityDeps {
 }
 
 pub struct EffectRunner {
-    shared: SharedDeps,
-    metadata: MetadataDeps,
+    metadata_provider: Arc<dyn MetadataProvider>,
     connection: ConnectionDeps,
     query: QueryDeps,
     er: ErDeps,
     utility: UtilityDeps,
+    metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
+    action_tx: mpsc::Sender<Action>,
 }
 
 pub struct EffectRunnerBuilder {
@@ -152,15 +144,9 @@ impl EffectRunnerBuilder {
 
     pub fn build(self) -> EffectRunner {
         EffectRunner {
-            shared: SharedDeps {
-                metadata_cache: self.metadata_cache.expect("metadata_cache is required"),
-                action_tx: self.action_tx.expect("action_tx is required"),
-            },
-            metadata: MetadataDeps {
-                metadata_provider: self
-                    .metadata_provider
-                    .expect("metadata_provider is required"),
-            },
+            metadata_provider: self
+                .metadata_provider
+                .expect("metadata_provider is required"),
             connection: ConnectionDeps {
                 dsn_builder: self.dsn_builder.expect("dsn_builder is required"),
                 connection_store: self.connection_store.expect("connection_store is required"),
@@ -183,13 +169,15 @@ impl EffectRunnerBuilder {
                 clipboard: self.clipboard.expect("clipboard is required"),
                 folder_opener: self.folder_opener.expect("folder_opener is required"),
             },
+            metadata_cache: self.metadata_cache.expect("metadata_cache is required"),
+            action_tx: self.action_tx.expect("action_tx is required"),
         }
     }
 }
 
 impl EffectRunner {
     pub fn action_tx(&self) -> &mpsc::Sender<Action> {
-        &self.shared.action_tx
+        &self.action_tx
     }
 
     pub fn builder() -> EffectRunnerBuilder {
@@ -314,7 +302,7 @@ impl EffectRunner {
             e @ (Effect::CopyToClipboard { .. } | Effect::OpenFolder { .. }) => {
                 cmd_utility::run(
                     e,
-                    &self.shared.action_tx,
+                    &self.action_tx,
                     &self.utility.clipboard,
                     &self.utility.folder_opener,
                 )
@@ -330,10 +318,10 @@ impl EffectRunner {
             | Effect::SwitchToService { .. }) => {
                 cmd_connection::run(
                     e,
-                    &self.shared.action_tx,
+                    &self.action_tx,
                     &self.connection.dsn_builder,
-                    &self.metadata.metadata_provider,
-                    &self.shared.metadata_cache,
+                    &self.metadata_provider,
+                    &self.metadata_cache,
                     &self.connection.connection_store,
                     &self.connection.service_file_reader,
                     state,
@@ -350,9 +338,9 @@ impl EffectRunner {
             | Effect::CacheInvalidate { .. }) => {
                 cmd_browse::metadata::run(
                     e,
-                    &self.shared.action_tx,
-                    &self.metadata.metadata_provider,
-                    &self.shared.metadata_cache,
+                    &self.action_tx,
+                    &self.metadata_provider,
+                    &self.metadata_cache,
                     state,
                     completion_engine,
                 )
@@ -368,7 +356,7 @@ impl EffectRunner {
             | Effect::ExportCsv { .. }) => {
                 cmd_browse::query::run(
                     e,
-                    &self.shared.action_tx,
+                    &self.action_tx,
                     &self.query.query_executor,
                     &self.query.query_history_store,
                     state,
@@ -383,8 +371,8 @@ impl EffectRunner {
             | Effect::SmartErRefresh { .. }) => {
                 cmd_er::run(
                     e,
-                    &self.shared.action_tx,
-                    &self.metadata.metadata_provider,
+                    &self.action_tx,
+                    &self.metadata_provider,
                     &self.er.er_exporter,
                     &self.er.config_writer,
                     &self.er.er_log_writer,
@@ -396,7 +384,7 @@ impl EffectRunner {
             }
 
             e @ Effect::LoadQueryHistory { .. } => {
-                cmd_query_history::run(e, &self.shared.action_tx, &self.query.query_history_store);
+                cmd_query_history::run(e, &self.action_tx, &self.query.query_history_store);
                 Ok(vec![])
             }
 
@@ -405,7 +393,7 @@ impl EffectRunner {
             | Effect::ClearCompletionEngineCache
             | Effect::ResizeCompletionCache { .. }
             | Effect::TriggerCompletion) => {
-                cmd_completion::run(e, &self.shared.action_tx, state, completion_engine).await?;
+                cmd_completion::run(e, &self.action_tx, state, completion_engine).await?;
                 Ok(vec![])
             }
         }
