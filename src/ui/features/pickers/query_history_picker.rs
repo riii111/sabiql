@@ -291,7 +291,7 @@ fn render_preview(
 ) {
     let block = Block::default()
         .borders(Borders::TOP)
-        .border_style(Style::default().fg(theme.semantic.surface.modal_border))
+        .border_style(Style::default().fg(theme.component.modal.border))
         .title(Span::styled(
             " Preview ",
             Style::default().fg(theme.component.modal.title),
@@ -338,7 +338,7 @@ fn render_preview(
 fn render_empty_preview(frame: &mut Frame, area: ratatui::layout::Rect, theme: &ThemePalette) {
     let block = Block::default()
         .borders(Borders::TOP)
-        .border_style(Style::default().fg(theme.semantic.surface.modal_border))
+        .border_style(Style::default().fg(theme.component.modal.border))
         .title(Span::styled(
             " Preview ",
             Style::default().fg(theme.component.modal.title),

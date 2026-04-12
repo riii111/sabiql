@@ -105,7 +105,7 @@ pub(super) fn render_completion_popup(
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.semantic.surface.modal_border))
+            .border_style(Style::default().fg(theme.component.modal.border))
             .style(Style::default()),
     );
 

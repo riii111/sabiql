@@ -26,8 +26,6 @@ pub struct SemanticTokens {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SurfaceTokens {
-    pub modal_border: Color,
-    pub modal_border_highlight: Color,
     pub focus_border: Color,
     pub unfocus_border: Color,
     pub highlight_border: Color,
@@ -48,6 +46,7 @@ pub struct StatusTokens {
     pub success: Color,
     pub error: Color,
     pub warning: Color,
+    pub pending: Color,
     pub medium_risk: Color,
 }
 
@@ -72,6 +71,8 @@ pub struct ComponentTokens {
 pub struct ModalTokens {
     pub title: Color,
     pub hint: Color,
+    pub border: Color,
+    pub border_highlight: Color,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,7 +98,6 @@ pub struct TableTokens {
     pub result_row_active_bg: Color,
     pub result_cell_active_bg: Color,
     pub cell_edit_fg: Color,
-    pub cell_draft_pending_fg: Color,
     pub staged_delete_bg: Color,
     pub staged_delete_fg: Color,
     pub striped_row_bg: Color,
@@ -161,9 +161,9 @@ impl ThemePalette {
         let color = if has_error {
             self.semantic.status.error
         } else if focused {
-            self.semantic.surface.modal_border_highlight
+            self.component.modal.border_highlight
         } else {
-            self.semantic.surface.modal_border
+            self.component.modal.border
         };
         Style::default().fg(color)
     }
@@ -191,8 +191,6 @@ impl ThemePalette {
 pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     semantic: SemanticTokens {
         surface: SurfaceTokens {
-            modal_border: Color::Rgb(0x70, 0x68, 0x60),
-            modal_border_highlight: Color::Rgb(0xc0, 0xb8, 0xb8),
             focus_border: Color::Rgb(0x97, 0xc9, 0xc3),
             unfocus_border: Color::Rgb(0x45, 0x47, 0x55),
             highlight_border: Color::Rgb(0xb0, 0xdd, 0xd8),
@@ -209,6 +207,7 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
             success: Color::Rgb(0x97, 0xc9, 0xc3),
             error: Color::Rgb(0xc4, 0x74, 0x6e),
             warning: Color::Rgb(0xe0, 0xaf, 0x68),
+            pending: Color::Rgb(0xd4, 0xa0, 0x60),
             medium_risk: Color::Rgb(0xd4, 0x70, 0x50),
         },
         cursor: CursorTokens {
@@ -221,6 +220,8 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
         modal: ModalTokens {
             title: Color::Rgb(0xe9, 0xdb, 0xdb),
             hint: Color::Rgb(0xc0, 0xb8, 0xb0),
+            border: Color::Rgb(0x70, 0x68, 0x60),
+            border_highlight: Color::Rgb(0xc0, 0xb8, 0xb8),
         },
         navigation: NavigationTokens {
             key_chip_bg: Color::Rgb(0x3a, 0x3a, 0x4a),
@@ -240,7 +241,6 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
             result_row_active_bg: Color::Rgb(0x2e, 0x2e, 0x44),
             result_cell_active_bg: Color::Rgb(0x3a, 0x3a, 0x5a),
             cell_edit_fg: Color::Rgb(0xa8, 0xb8, 0xb5),
-            cell_draft_pending_fg: Color::Rgb(0xd4, 0xa0, 0x60),
             staged_delete_bg: Color::Rgb(0x3d, 0x22, 0x22),
             staged_delete_fg: Color::Rgb(0xee, 0x77, 0x77),
             striped_row_bg: Color::Rgb(0x1e, 0x1e, 0x23),
@@ -265,8 +265,6 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
 pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
     semantic: SemanticTokens {
         surface: SurfaceTokens {
-            modal_border: Color::Rgb(0xd8, 0x2a, 0x1f),
-            modal_border_highlight: Color::Rgb(0xff, 0xe0, 0x66),
             focus_border: Color::Rgb(0x2f, 0xc4, 0xb2),
             unfocus_border: Color::Rgb(0x5d, 0x62, 0x74),
             highlight_border: Color::Rgb(0xff, 0xc8, 0x57),
@@ -283,6 +281,7 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
             success: Color::Rgb(0x7b, 0xe0, 0x73),
             error: Color::Rgb(0xff, 0x7a, 0x59),
             warning: Color::Rgb(0xff, 0xc8, 0x57),
+            pending: Color::Rgb(0xff, 0x9f, 0x1c),
             medium_risk: Color::Rgb(0xff, 0x9f, 0x1c),
         },
         cursor: CursorTokens {
@@ -295,6 +294,8 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
         modal: ModalTokens {
             title: Color::Rgb(0xf6, 0xf0, 0xe8),
             hint: Color::Rgb(0x7b, 0xe0, 0x73),
+            border: Color::Rgb(0xd8, 0x2a, 0x1f),
+            border_highlight: Color::Rgb(0xff, 0xe0, 0x66),
         },
         navigation: NavigationTokens {
             key_chip_bg: Color::Rgb(0x1a, 0x45, 0x5e),
@@ -314,7 +315,6 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
             result_row_active_bg: Color::Rgb(0x2b, 0x32, 0x54),
             result_cell_active_bg: Color::Rgb(0x3a, 0x44, 0x6e),
             cell_edit_fg: Color::Rgb(0xff, 0xe0, 0x66),
-            cell_draft_pending_fg: Color::Rgb(0xff, 0x9f, 0x1c),
             staged_delete_bg: Color::Rgb(0x4a, 0x1f, 0x1f),
             staged_delete_fg: Color::Rgb(0xff, 0x7a, 0x59),
             striped_row_bg: Color::Rgb(0x1d, 0x21, 0x2b),
@@ -399,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn block_cursor_style_inverts_cursor_and_selection_colors() {
+    fn block_cursor_style_uses_semantic_cursor_colors() {
         let style = DEFAULT_THEME.block_cursor_style();
 
         assert_eq!(style.bg, Some(DEFAULT_THEME.semantic.cursor.bg));

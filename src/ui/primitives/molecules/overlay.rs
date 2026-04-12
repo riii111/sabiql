@@ -27,7 +27,7 @@ pub fn render_scrim(frame: &mut Frame, theme: &ThemePalette) {
 }
 
 pub fn modal_block_with_hint(title: String, hint: String, theme: &ThemePalette) -> Block<'static> {
-    modal_block_with_hint_color(title, hint, theme.semantic.surface.modal_border, theme)
+    modal_block_with_hint_color(title, hint, theme.component.modal.border, theme)
 }
 
 pub fn modal_block_with_hint_color(

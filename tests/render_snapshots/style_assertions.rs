@@ -111,7 +111,7 @@ fn pending_draft_cell_uses_orange_fg() {
         .find(|&(x, y)| {
             buffer
                 .cell((x, y))
-                .is_some_and(|c| c.fg == DEFAULT_THEME.component.table.cell_draft_pending_fg)
+                .is_some_and(|c| c.fg == DEFAULT_THEME.semantic.status.pending)
         });
     assert!(
         draft_cell.is_some(),
@@ -256,7 +256,7 @@ fn modal_border_uses_theme_color() {
         cell.symbol()
     );
     assert_eq!(
-        cell.fg, DEFAULT_THEME.semantic.surface.modal_border,
+        cell.fg, DEFAULT_THEME.component.modal.border,
         "Expected MODAL_BORDER fg on modal border at ({}, {}), got {:?}",
         mx, my, cell.fg
     );
@@ -857,7 +857,6 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         semantic: sabiql::ui::theme::SemanticTokens {
             surface: sabiql::ui::theme::SurfaceTokens {
                 focus_border: Color::Rgb(0x11, 0x88, 0xdd),
-                modal_border: Color::Rgb(0xdd, 0x44, 0x11),
                 ..DEFAULT_THEME.semantic.surface
             },
             ..DEFAULT_THEME.semantic
@@ -865,6 +864,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         component: sabiql::ui::theme::ComponentTokens {
             modal: sabiql::ui::theme::ModalTokens {
                 hint: Color::Rgb(0xaa, 0xee, 0x22),
+                border: Color::Rgb(0xdd, 0x44, 0x11),
                 ..DEFAULT_THEME.component.modal
             },
             editor: sabiql::ui::theme::EditorTokens {
@@ -893,7 +893,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     let help_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let (mx, my) = help_modal_origin();
     let modal_corner = help_buffer.cell((mx, my)).unwrap();
-    assert_eq!(modal_corner.fg, theme.semantic.surface.modal_border);
+    assert_eq!(modal_corner.fg, theme.component.modal.border);
     let has_custom_help_hint = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
@@ -1008,9 +1008,9 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
     let has_pending_draft_fg = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
-            draft_buffer.cell((x, y)).is_some_and(|cell| {
-                cell.fg == TEST_CONTRAST_THEME.component.table.cell_draft_pending_fg
-            })
+            draft_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.fg == TEST_CONTRAST_THEME.semantic.status.pending)
         });
 
     assert!(
@@ -1024,20 +1024,18 @@ fn sql_completion_popup_uses_injected_theme_styles() {
     let (mut state, now) = connected_state();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
-        semantic: sabiql::ui::theme::SemanticTokens {
-            surface: sabiql::ui::theme::SurfaceTokens {
-                modal_border: Color::Rgb(0xdd, 0x44, 0x11),
-                ..DEFAULT_THEME.semantic.surface
-            },
-            ..DEFAULT_THEME.semantic
-        },
         component: sabiql::ui::theme::ComponentTokens {
+            modal: sabiql::ui::theme::ModalTokens {
+                border: Color::Rgb(0xdd, 0x44, 0x11),
+                ..DEFAULT_THEME.component.modal
+            },
             editor: sabiql::ui::theme::EditorTokens {
                 completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
                 ..DEFAULT_THEME.component.editor
             },
             ..DEFAULT_THEME.component
         },
+        ..DEFAULT_THEME
     };
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -1114,9 +1112,9 @@ fn sql_completion_popup_uses_injected_theme_styles() {
     let top_left = buffer.cell((popup_x, popup_y)).unwrap();
     let top_right = buffer.cell((popup_x + popup_width - 1, popup_y)).unwrap();
     let has_completion_border = top_left.symbol() == "┌"
-        && top_left.fg == theme.semantic.surface.modal_border
+        && top_left.fg == theme.component.modal.border
         && top_right.symbol() == "┐"
-        && top_right.fg == theme.semantic.surface.modal_border;
+        && top_right.fg == theme.component.modal.border;
 
     assert!(
         has_completion_border,

@@ -160,7 +160,7 @@ fn render_verdict_section(
         flash_mask,
         Line::styled(
             format!(" {sep}"),
-            Style::default().fg(theme.semantic.surface.modal_border),
+            Style::default().fg(theme.component.modal.border),
         ),
     );
     push_empty(lines, flash_mask);
@@ -179,7 +179,7 @@ fn render_slot_columns(
     let half = (total_width.saturating_sub(3) / 2) as usize;
     let sep = Span::styled(
         " \u{2502} ",
-        Style::default().fg(theme.semantic.surface.modal_border),
+        Style::default().fg(theme.component.modal.border),
     );
 
     let active_header = Style::default()

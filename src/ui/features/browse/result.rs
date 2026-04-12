@@ -322,7 +322,7 @@ impl ResultPane {
                                 cell = Cell::from(display).style(
                                     Style::default()
                                         .bg(theme.component.table.result_cell_active_bg)
-                                        .fg(theme.component.table.cell_draft_pending_fg),
+                                        .fg(theme.semantic.status.pending),
                                 );
                             }
                         } else {

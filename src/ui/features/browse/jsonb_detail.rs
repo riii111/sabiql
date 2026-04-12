@@ -135,7 +135,7 @@ impl JsonbDetail {
         if state.jsonb_detail.has_pending_changes() {
             spans.push(Span::styled(
                 "\u{25cf} Modified  ",
-                Style::default().fg(theme.component.table.cell_draft_pending_fg),
+                Style::default().fg(theme.semantic.status.pending),
             ));
         }
 

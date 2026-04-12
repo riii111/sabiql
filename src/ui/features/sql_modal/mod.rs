@@ -123,7 +123,7 @@ impl SqlModal {
         frame.render_widget(
             Paragraph::new(Line::styled(
                 sep_line,
-                Style::default().fg(theme.semantic.surface.modal_border),
+                Style::default().fg(theme.component.modal.border),
             )),
             separator_area,
         );
@@ -171,7 +171,7 @@ impl SqlModal {
             .title_bottom(Line::styled(hint.to_string(), theme.modal_hint_style()))
             .borders(Borders::ALL)
             .border_set(border::ROUNDED)
-            .border_style(Style::default().fg(theme.semantic.surface.modal_border))
+            .border_style(Style::default().fg(theme.component.modal.border))
             .style(Style::default().fg(theme.semantic.text.primary));
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -198,7 +198,7 @@ impl SqlModal {
             Span::styled(" SQL Editor ", title_style),
             Span::styled(
                 "\u{2500}\u{2500} ",
-                Style::default().fg(theme.semantic.surface.modal_border),
+                Style::default().fg(theme.component.modal.border),
             ),
             Span::styled("[SQL]", style_for(SqlModalTab::Sql)),
             Span::raw(" "),
