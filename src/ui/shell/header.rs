@@ -15,17 +15,17 @@ impl Header {
         let db_name = state.session.database_name().unwrap_or("-");
         let table = state.session.selected_table_key().unwrap_or("-");
 
-        let sep_style = Style::default().fg(theme.text_muted);
-        let item_style = Style::default().fg(theme.text_secondary);
+        let sep_style = Style::default().fg(theme.semantic.text.muted);
+        let item_style = Style::default().fg(theme.semantic.text.secondary);
 
         let (status_text, status_color) = if state.session.dsn.is_none() {
-            ("no dsn", theme.status_error)
+            ("no dsn", theme.semantic.status.error)
         } else {
             match &state.session.metadata_state() {
-                MetadataState::Loaded => ("connected", theme.status_success),
-                MetadataState::Loading => ("loading...", theme.status_warning),
-                MetadataState::Error(_) => ("error", theme.status_error),
-                MetadataState::NotLoaded => ("not loaded", theme.text_muted),
+                MetadataState::Loaded => ("connected", theme.semantic.status.success),
+                MetadataState::Loading => ("loading...", theme.semantic.status.warning),
+                MetadataState::Error(_) => ("error", theme.semantic.status.error),
+                MetadataState::NotLoaded => ("not loaded", theme.semantic.text.muted),
             }
         };
 
@@ -40,7 +40,7 @@ impl Header {
             Span::styled(" | ", sep_style),
             Span::styled(db_name, item_style),
             Span::styled(" | ", sep_style),
-            Span::styled(table, Style::default().fg(theme.text_primary)),
+            Span::styled(table, Style::default().fg(theme.semantic.text.primary)),
             Span::styled(" | ", sep_style),
             Span::styled(status_text, Style::default().fg(status_color)),
             Span::styled(" | ", sep_style),
@@ -50,7 +50,7 @@ impl Header {
             line.push_span(Span::styled(" | ", sep_style));
             line.push_span(Span::styled(
                 "READ-ONLY",
-                Style::default().fg(theme.status_warning),
+                Style::default().fg(theme.semantic.status.warning),
             ));
         }
 

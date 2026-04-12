@@ -36,7 +36,7 @@ pub fn render(
             .map(|line| {
                 Line::from(Span::styled(
                     line.to_string(),
-                    Style::default().fg(theme.status_error),
+                    Style::default().fg(theme.semantic.status.error),
                 ))
             })
             .collect();
@@ -47,14 +47,14 @@ pub fn render(
             (
                 "EXPLAIN ANALYZE",
                 Style::default()
-                    .fg(theme.text_accent)
+                    .fg(theme.semantic.text.accent)
                     .add_modifier(Modifier::BOLD),
             )
         } else {
             (
                 "EXPLAIN",
                 Style::default()
-                    .fg(theme.text_accent)
+                    .fg(theme.semantic.text.accent)
                     .add_modifier(Modifier::BOLD),
             )
         };
@@ -63,7 +63,7 @@ pub fn render(
             Span::styled(format!("{label} "), label_style),
             Span::styled(
                 format!("({time_secs:.2}s)"),
-                Style::default().fg(theme.text_muted),
+                Style::default().fg(theme.semantic.text.muted),
             ),
         ]);
 
@@ -72,7 +72,7 @@ pub fn render(
             Span::styled("  ", Style::default()),
             Span::styled(
                 query_snippet.to_string(),
-                Style::default().fg(theme.text_muted),
+                Style::default().fg(theme.semantic.text.muted),
             ),
         ]);
 
@@ -101,7 +101,7 @@ pub fn render(
     } else {
         let placeholder = Line::from(Span::styled(
             " Press Ctrl+E to run EXPLAIN",
-            Style::default().fg(theme.placeholder_text),
+            Style::default().fg(theme.semantic.text.placeholder),
         ));
         frame.render_widget(Paragraph::new(vec![placeholder]), area);
         area.height
@@ -125,7 +125,7 @@ fn build_analyze_confirm_lines<'a>(
     let mut lines = Vec::new();
 
     let header_style = Style::default()
-        .fg(theme.status_error)
+        .fg(theme.semantic.status.error)
         .add_modifier(Modifier::BOLD);
 
     lines.push(Line::raw(""));
@@ -138,7 +138,7 @@ fn build_analyze_confirm_lines<'a>(
     let sep = "\u{2500}".repeat(area.width.saturating_sub(2) as usize);
     lines.push(Line::styled(
         format!(" {sep}"),
-        Style::default().fg(theme.modal_border),
+        Style::default().fg(theme.semantic.surface.modal_border),
     ));
     lines.push(Line::raw(""));
 
@@ -156,7 +156,7 @@ fn build_analyze_confirm_lines<'a>(
     for line in full_query.lines() {
         lines.push(Line::from(Span::styled(
             format!("  {line}"),
-            Style::default().fg(theme.text_dim),
+            Style::default().fg(theme.semantic.text.dim),
         )));
     }
     lines.push(Line::raw(""));
@@ -167,7 +167,7 @@ fn build_analyze_confirm_lines<'a>(
             let prompt = format!(" Type \"{name}\" to confirm: > ");
             let mut prompt_spans = vec![Span::styled(
                 prompt,
-                Style::default().fg(theme.text_secondary),
+                Style::default().fg(theme.semantic.text.secondary),
             )];
             prompt_spans.extend(text_cursor_spans(
                 input.content(),
@@ -179,7 +179,7 @@ fn build_analyze_confirm_lines<'a>(
             if is_match {
                 prompt_spans.push(Span::styled(
                     " \u{2713}",
-                    Style::default().fg(theme.status_success),
+                    Style::default().fg(theme.semantic.status.success),
                 ));
             }
             lines.push(Line::from(prompt_spans));
@@ -187,7 +187,7 @@ fn build_analyze_confirm_lines<'a>(
         None => {
             lines.push(Line::from(Span::styled(
                 " Cannot identify target object name.  Esc: Back",
-                Style::default().fg(theme.text_muted),
+                Style::default().fg(theme.semantic.text.muted),
             )));
         }
     }

@@ -124,14 +124,14 @@ impl ResultPane {
     fn render_placeholder(frame: &mut Frame, area: Rect, block: Block, theme: &ThemePalette) {
         let content = Paragraph::new("(select a table to preview)")
             .block(block)
-            .style(Style::default().fg(theme.placeholder_text));
+            .style(Style::default().fg(theme.semantic.text.placeholder));
         frame.render_widget(content, area);
     }
 
     fn render_empty(frame: &mut Frame, area: Rect, block: Block, theme: &ThemePalette) {
         let content = Paragraph::new("No rows returned")
             .block(block)
-            .style(Style::default().fg(theme.placeholder_text));
+            .style(Style::default().fg(theme.semantic.text.placeholder));
         frame.render_widget(content, area);
     }
 
@@ -144,12 +144,12 @@ impl ResultPane {
     ) {
         let error_msg = result.error.as_deref().unwrap_or("Unknown error");
 
-        let block = block.style(Style::default().fg(theme.status_error));
+        let block = block.style(Style::default().fg(theme.semantic.status.error));
 
         let content = Paragraph::new(error_msg)
             .block(block)
             .wrap(Wrap { trim: false })
-            .style(Style::default().fg(theme.status_error));
+            .style(Style::default().fg(theme.semantic.status.error));
 
         frame.render_widget(content, area);
     }
@@ -257,7 +257,7 @@ impl ResultPane {
             Style::default()
                 .add_modifier(Modifier::UNDERLINED)
                 .add_modifier(Modifier::BOLD)
-                .fg(theme.text_primary),
+                .fg(theme.semantic.text.primary),
         )
         .height(1);
 
@@ -283,13 +283,13 @@ impl ResultPane {
                     .map(|f| f.col);
                 let is_row_flash = flash_scope == Some(None);
                 let row_bg = if is_row_flash {
-                    Some(theme.yank_flash_bg)
+                    Some(theme.component.feedback.yank_flash_bg)
                 } else if is_staged_for_delete {
-                    Some(theme.staged_delete_bg)
+                    Some(theme.component.table.staged_delete_bg)
                 } else if is_active_row {
-                    Some(theme.result_row_active_bg)
+                    Some(theme.component.table.result_row_active_bg)
                 } else if (abs_row_idx - scroll_offset) % 2 == 1 {
-                    Some(theme.striped_row_bg)
+                    Some(theme.component.table.striped_row_bg)
                 } else {
                     None
                 };
@@ -314,15 +314,15 @@ impl ResultPane {
                                 );
                                 cell = Cell::from(line).style(
                                     Style::default()
-                                        .bg(theme.result_cell_active_bg)
-                                        .fg(theme.cell_edit_fg),
+                                        .bg(theme.component.table.result_cell_active_bg)
+                                        .fg(theme.component.table.cell_edit_fg),
                                 );
                             } else {
                                 let display = truncate_cell(draft, col_width as usize);
                                 cell = Cell::from(display).style(
                                     Style::default()
-                                        .bg(theme.result_cell_active_bg)
-                                        .fg(theme.cell_draft_pending_fg),
+                                        .bg(theme.component.table.result_cell_active_bg)
+                                        .fg(theme.component.table.cell_draft_pending_fg),
                                 );
                             }
                         } else {
@@ -333,13 +333,18 @@ impl ResultPane {
                             if is_row_flash || flash_scope == Some(Some(orig_idx)) {
                                 cell = cell.style(
                                     Style::default()
-                                        .fg(theme.yank_flash_fg)
-                                        .bg(theme.yank_flash_bg),
+                                        .fg(theme.component.feedback.yank_flash_fg)
+                                        .bg(theme.component.feedback.yank_flash_bg),
                                 );
                             } else if is_staged_for_delete {
-                                cell = cell.style(Style::default().fg(theme.staged_delete_fg));
+                                cell = cell.style(
+                                    Style::default().fg(theme.component.table.staged_delete_fg),
+                                );
                             } else if is_active_row && active_cell == Some(orig_idx) {
-                                cell = cell.style(Style::default().bg(theme.result_cell_active_bg));
+                                cell = cell.style(
+                                    Style::default()
+                                        .bg(theme.component.table.result_cell_active_bg),
+                                );
                             }
                         }
                         cell
@@ -356,7 +361,7 @@ impl ResultPane {
 
         let table = Table::new(rows, widths)
             .header(header)
-            .style(Style::default().fg(theme.text_primary));
+            .style(Style::default().fg(theme.semantic.text.primary));
 
         frame.render_widget(table, inner);
 
@@ -388,7 +393,7 @@ impl ResultPane {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![ratatui::text::Span::styled(
                     text,
-                    Style::default().fg(theme.text_secondary),
+                    Style::default().fg(theme.semantic.text.secondary),
                 )])),
                 Rect::new(inner.x, bottom_row, render_width, 1),
             );

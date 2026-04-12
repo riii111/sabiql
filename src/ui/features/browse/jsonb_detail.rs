@@ -110,8 +110,8 @@ impl JsonbDetail {
             } else {
                 " Press Enter or i to edit..."
             },
-            base_style: Style::default().fg(theme.text_primary),
-            current_line_style: Style::default().bg(theme.editor_current_line_bg),
+            base_style: Style::default().fg(theme.semantic.text.primary),
+            current_line_style: Style::default().bg(theme.component.editor.current_line_bg),
         };
 
         let line_spans: Vec<Vec<Span<'static>>> = content
@@ -135,19 +135,19 @@ impl JsonbDetail {
         if state.jsonb_detail.has_pending_changes() {
             spans.push(Span::styled(
                 "\u{25cf} Modified  ",
-                Style::default().fg(theme.cell_draft_pending_fg),
+                Style::default().fg(theme.component.table.cell_draft_pending_fg),
             ));
         }
 
         if let Some(err) = state.jsonb_detail.validation_error() {
             spans.push(Span::styled(
                 format!("\u{2717} {err}"),
-                Style::default().fg(theme.status_error),
+                Style::default().fg(theme.semantic.status.error),
             ));
         } else {
             spans.push(Span::styled(
                 "\u{2713} Valid JSON",
-                Style::default().fg(theme.status_success),
+                Style::default().fg(theme.semantic.status.success),
             ));
         }
 
@@ -172,7 +172,10 @@ impl JsonbDetail {
         let visible_input = slice_chars_fitting_width(input, viewport_offset, visible_width);
         let relative_cursor = cursor.saturating_sub(viewport_offset);
 
-        let mut spans = vec![Span::styled("/", Style::default().fg(theme.text_accent))];
+        let mut spans = vec![Span::styled(
+            "/",
+            Style::default().fg(theme.semantic.text.accent),
+        )];
         spans.extend(text_cursor_spans_with_kind(
             &visible_input,
             relative_cursor,
@@ -181,7 +184,10 @@ impl JsonbDetail {
             CursorKind::Insert,
             theme,
         ));
-        spans.push(Span::styled(suffix, Style::default().fg(theme.text_muted)));
+        spans.push(Span::styled(
+            suffix,
+            Style::default().fg(theme.semantic.text.muted),
+        ));
 
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
         set_terminal_cursor(frame, area, &visible_input, 0, relative_cursor, 0, 1);

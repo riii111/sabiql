@@ -95,7 +95,7 @@ pub(super) fn render_completion_popup(
             let style = if is_selected {
                 theme.picker_selected_style()
             } else {
-                Style::default().fg(theme.text_secondary)
+                Style::default().fg(theme.semantic.text.secondary)
             };
 
             ListItem::new(text).style(style)
@@ -105,7 +105,7 @@ pub(super) fn render_completion_popup(
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.modal_border))
+            .border_style(Style::default().fg(theme.semantic.surface.modal_border))
             .style(Style::default()),
     );
 

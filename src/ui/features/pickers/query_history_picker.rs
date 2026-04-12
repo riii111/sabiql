@@ -133,16 +133,19 @@ impl QueryHistoryPicker {
         let filter_line = if filter_content.is_empty() {
             Line::from(Span::styled(
                 "  type to filter",
-                Style::default().fg(theme.placeholder_text),
+                Style::default().fg(theme.semantic.text.placeholder),
             ))
         } else {
             Line::from(vec![
-                Span::styled("  > ", Style::default().fg(theme.modal_title)),
-                Span::styled(filter_content, Style::default().fg(theme.text_primary)),
+                Span::styled("  > ", Style::default().fg(theme.component.modal.title)),
+                Span::styled(
+                    filter_content,
+                    Style::default().fg(theme.semantic.text.primary),
+                ),
                 Span::styled(
                     "\u{2588}",
                     Style::default()
-                        .fg(theme.cursor_fg)
+                        .fg(theme.semantic.cursor.fg)
                         .add_modifier(Modifier::SLOW_BLINK),
                 ),
             ])
@@ -158,7 +161,7 @@ impl QueryHistoryPicker {
             };
             let empty_line = Line::from(Span::styled(
                 format!("  {msg}"),
-                Style::default().fg(theme.text_secondary),
+                Style::default().fg(theme.semantic.text.secondary),
             ));
             frame.render_widget(Paragraph::new(empty_line), list_area);
             if let Some(pa) = preview_area {
@@ -228,9 +231,9 @@ fn build_list_item(
         spans.push(Span::styled(
             truncated.clone(),
             Style::default().fg(if i == selected_idx {
-                theme.text_primary
+                theme.semantic.text.primary
             } else {
-                theme.text_secondary
+                theme.semantic.text.secondary
             }),
         ));
     } else {
@@ -238,11 +241,11 @@ fn build_list_item(
         for (ci, ch) in chars.iter().enumerate() {
             let is_match = ge.match_indices.contains(&(ci as u32));
             let color = if is_match {
-                theme.text_accent
+                theme.semantic.text.accent
             } else if i == selected_idx {
-                theme.text_primary
+                theme.semantic.text.primary
             } else {
-                theme.text_secondary
+                theme.semantic.text.secondary
             };
             let mut style = Style::default().fg(color);
             if is_match {
@@ -265,13 +268,16 @@ fn build_list_item(
     let pad = query_max.saturating_sub(used);
 
     if !badge.is_empty() {
-        spans.push(Span::styled(badge, Style::default().fg(theme.text_dim)));
+        spans.push(Span::styled(
+            badge,
+            Style::default().fg(theme.semantic.text.dim),
+        ));
     }
 
     spans.push(Span::raw(" ".repeat(pad)));
     spans.push(Span::styled(
         format!("  {ts_short}"),
-        Style::default().fg(theme.text_dim),
+        Style::default().fg(theme.semantic.text.dim),
     ));
 
     ListItem::new(Line::from(spans))
@@ -285,10 +291,10 @@ fn render_preview(
 ) {
     let block = Block::default()
         .borders(Borders::TOP)
-        .border_style(Style::default().fg(theme.modal_border))
+        .border_style(Style::default().fg(theme.semantic.surface.modal_border))
         .title(Span::styled(
             " Preview ",
-            Style::default().fg(theme.modal_title),
+            Style::default().fg(theme.component.modal.title),
         ));
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -308,12 +314,12 @@ fn render_preview(
     if let Some(rows) = pd.affected_rows {
         meta_spans.push(Span::styled(
             format!("  \u{2502} {rows} rows affected"),
-            Style::default().fg(theme.text_secondary),
+            Style::default().fg(theme.semantic.text.secondary),
         ));
     }
     meta_spans.push(Span::styled(
         format!("  \u{2502} {}", format_short_timestamp(&pd.executed_at)),
-        Style::default().fg(theme.text_dim),
+        Style::default().fg(theme.semantic.text.dim),
     ));
     lines.push(Line::from(meta_spans));
     lines.push(Line::raw(""));
@@ -321,7 +327,7 @@ fn render_preview(
     for sql_line in pd.query.lines() {
         lines.push(Line::styled(
             sql_line.to_string(),
-            Style::default().fg(theme.text_primary),
+            Style::default().fg(theme.semantic.text.primary),
         ));
     }
 
@@ -332,17 +338,17 @@ fn render_preview(
 fn render_empty_preview(frame: &mut Frame, area: ratatui::layout::Rect, theme: &ThemePalette) {
     let block = Block::default()
         .borders(Borders::TOP)
-        .border_style(Style::default().fg(theme.modal_border))
+        .border_style(Style::default().fg(theme.semantic.surface.modal_border))
         .title(Span::styled(
             " Preview ",
-            Style::default().fg(theme.modal_title),
+            Style::default().fg(theme.component.modal.title),
         ));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     let msg = Paragraph::new(Line::styled(
         "No selection",
-        Style::default().fg(theme.text_muted),
+        Style::default().fg(theme.semantic.text.muted),
     ));
     frame.render_widget(msg, inner);
 }

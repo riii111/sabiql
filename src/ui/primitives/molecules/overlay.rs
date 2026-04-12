@@ -21,13 +21,13 @@ pub fn render_scrim(frame: &mut Frame, theme: &ThemePalette) {
     buf.set_style(
         area,
         Style::default()
-            .fg(theme.text_muted)
+            .fg(theme.semantic.text.muted)
             .add_modifier(Modifier::DIM),
     );
 }
 
 pub fn modal_block_with_hint(title: String, hint: String, theme: &ThemePalette) -> Block<'static> {
-    modal_block_with_hint_color(title, hint, theme.modal_border, theme)
+    modal_block_with_hint_color(title, hint, theme.semantic.surface.modal_border, theme)
 }
 
 pub fn modal_block_with_hint_color(

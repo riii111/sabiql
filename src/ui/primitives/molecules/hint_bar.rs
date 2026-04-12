@@ -26,6 +26,9 @@ pub fn chip_hint_line(key: &str, desc: &str, theme: &ThemePalette) -> Line<'stat
         Span::raw("  "),
         chip,
         Span::raw(" ".repeat(padding_len)),
-        Span::styled(desc.to_string(), Style::default().fg(theme.text_secondary)),
+        Span::styled(
+            desc.to_string(),
+            Style::default().fg(theme.semantic.text.secondary),
+        ),
     ])
 }
