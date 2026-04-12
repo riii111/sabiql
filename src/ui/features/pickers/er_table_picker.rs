@@ -45,13 +45,13 @@ impl ErTablePicker {
             (
                 "Partial ER".to_string(),
                 name,
-                theme.component.navigation.section_header,
+                theme.semantic.status.pending,
             )
         } else {
             (
                 "Partial ER".to_string(),
                 format!("{selected_count} tables"),
-                theme.component.navigation.section_header,
+                theme.semantic.status.pending,
             )
         };
 
