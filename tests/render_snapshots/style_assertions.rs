@@ -263,6 +263,142 @@ fn modal_border_uses_theme_color() {
 }
 
 #[test]
+fn header_status_uses_success_warning_and_error_colors() {
+    let mut terminal = create_test_terminal();
+
+    let now = test_instant();
+    let mut connected = create_test_state();
+    connected
+        .session
+        .begin_connecting("postgres://localhost/test");
+    connected
+        .session
+        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+    let connected_buffer = render_and_get_buffer_at(&mut terminal, &mut connected, now);
+    let has_success = (0..TEST_WIDTH).any(|x| {
+        connected_buffer
+            .cell((x, 0))
+            .is_some_and(|cell| cell.fg == DEFAULT_THEME.status_success)
+    });
+    assert!(
+        has_success,
+        "Expected header to use status_success color for connected state"
+    );
+
+    let mut loading = create_test_state();
+    loading
+        .session
+        .begin_connecting("postgres://localhost/test");
+    let loading_buffer = render_and_get_buffer_at(&mut terminal, &mut loading, now);
+    let has_warning = (0..TEST_WIDTH).any(|x| {
+        loading_buffer
+            .cell((x, 0))
+            .is_some_and(|cell| cell.fg == DEFAULT_THEME.status_warning)
+    });
+    assert!(
+        has_warning,
+        "Expected header to use status_warning color for loading state"
+    );
+
+    let mut no_dsn = create_test_state();
+    let no_dsn_buffer = render_and_get_buffer_at(&mut terminal, &mut no_dsn, now);
+    let has_error = (0..TEST_WIDTH).any(|x| {
+        no_dsn_buffer
+            .cell((x, 0))
+            .is_some_and(|cell| cell.fg == DEFAULT_THEME.status_error)
+    });
+    assert!(
+        has_error,
+        "Expected header to use status_error color when no DSN is set"
+    );
+}
+
+#[test]
+fn help_overlay_uses_section_header_and_scrollbar_colors() {
+    let (mut state, now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::Help);
+    state.ui.help_scroll_offset = 1;
+
+    let buffer = render_and_get_buffer_at(&mut terminal, &mut state, now);
+
+    let has_section_header = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.symbol() == "▸" && cell.fg == DEFAULT_THEME.section_header)
+        });
+    assert!(
+        has_section_header,
+        "Expected help overlay section markers to use section_header color"
+    );
+
+    let has_active_scrollbar = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                matches!(cell.symbol(), "▲" | "▼" | "┃")
+                    && cell.fg == DEFAULT_THEME.scrollbar_active
+            })
+        });
+    assert!(
+        has_active_scrollbar,
+        "Expected help overlay active scrollbar parts to use scrollbar_active color"
+    );
+
+    let has_inactive_scrollbar = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "│" && cell.fg == DEFAULT_THEME.scrollbar_inactive
+            })
+        });
+    assert!(
+        has_inactive_scrollbar,
+        "Expected help overlay scrollbar track to use scrollbar_inactive color"
+    );
+}
+
+#[test]
+fn test_contrast_theme_applies_help_overlay_navigation_colors() {
+    let (mut state, now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.set_theme(ThemeId::TestContrast);
+    state.modal.set_mode(InputMode::Help);
+    state.ui.help_scroll_offset = 1;
+
+    let buffer = render_and_get_buffer_at(&mut terminal, &mut state, now);
+
+    let has_section_header = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "▸" && cell.fg == TEST_CONTRAST_THEME.section_header
+            })
+        });
+    assert!(
+        has_section_header,
+        "Expected help overlay to resolve section_header from TEST_CONTRAST_THEME"
+    );
+
+    let has_active_scrollbar = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                matches!(cell.symbol(), "▲" | "▼" | "┃")
+                    && cell.fg == TEST_CONTRAST_THEME.scrollbar_active
+            })
+        });
+    assert!(
+        has_active_scrollbar,
+        "Expected help overlay to resolve active scrollbar color from TEST_CONTRAST_THEME"
+    );
+}
+
+#[test]
 fn sql_modal_keyword_and_number_use_syntax_colors() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -337,6 +473,57 @@ fn sql_modal_string_comment_and_operator_use_syntax_colors() {
     assert!(has_string, "Expected a green SQL string cell");
     assert!(has_operator, "Expected a cyan SQL operator cell");
     assert!(has_comment, "Expected a dark gray SQL comment cell");
+}
+
+#[test]
+fn test_contrast_theme_applies_sql_syntax_colors() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.set_theme(ThemeId::TestContrast);
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content("SELECT 'x', 42 -- note".to_string());
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+    let has_keyword = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "S" && cell.fg == TEST_CONTRAST_THEME.sql_keyword
+            })
+        });
+    let has_string = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "'" && cell.fg == TEST_CONTRAST_THEME.sql_string
+            })
+        });
+    let has_comment = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "-" && cell.fg == TEST_CONTRAST_THEME.sql_comment
+            })
+        });
+
+    assert!(
+        has_keyword,
+        "Expected SQL keyword color to resolve from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_string,
+        "Expected SQL string color to resolve from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_comment,
+        "Expected SQL comment color to resolve from TEST_CONTRAST_THEME"
+    );
 }
 
 #[test]
@@ -750,6 +937,65 @@ fn state_theme_id_drives_render_palette_resolution() {
     assert!(
         has_test_theme_focus_border,
         "Expected render() to resolve palette from state.theme_id"
+    );
+}
+
+#[test]
+fn test_contrast_theme_applies_result_pane_table_colors() {
+    let (mut state, now) = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    with_current_result(&mut state, now);
+    state.ui.set_theme(ThemeId::TestContrast);
+    state.ui.focused_pane = FocusedPane::Result;
+    state.result_interaction.activate_cell(0, 0);
+    state.result_interaction.stage_row(1);
+
+    let staged_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_staged_delete_bg = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            staged_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.bg == TEST_CONTRAST_THEME.staged_delete_bg)
+        });
+    let has_active_cell_bg = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            staged_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.bg == TEST_CONTRAST_THEME.result_cell_active_bg)
+        });
+
+    assert!(
+        has_staged_delete_bg,
+        "Expected staged delete row to resolve background from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_active_cell_bg,
+        "Expected active result cell to resolve background from TEST_CONTRAST_THEME"
+    );
+
+    state
+        .result_interaction
+        .begin_cell_edit(0, 0, "1".to_string());
+    state
+        .result_interaction
+        .cell_edit_input_mut()
+        .set_content("new@example.com".to_string());
+
+    let draft_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_pending_draft_fg = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            draft_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.fg == TEST_CONTRAST_THEME.cell_draft_pending_fg)
+        });
+
+    assert!(
+        has_pending_draft_fg,
+        "Expected pending draft cell to resolve foreground from TEST_CONTRAST_THEME"
     );
 }
 
