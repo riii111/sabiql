@@ -262,6 +262,37 @@ fn modal_border_uses_theme_color() {
     );
 }
 
+fn find_row0_text_start(buffer: &ratatui::buffer::Buffer, text: &str) -> Option<u16> {
+    let len = text.chars().count() as u16;
+    if len == 0 || len > TEST_WIDTH {
+        return None;
+    }
+    (0..=TEST_WIDTH - len).find(|&x| {
+        text.chars().enumerate().all(|(i, c)| {
+            buffer
+                .cell((x + i as u16, 0))
+                .and_then(|cell| cell.symbol().chars().next())
+                == Some(c)
+        })
+    })
+}
+
+fn assert_header_status_color(buffer: &ratatui::buffer::Buffer, text: &str, expected: Color) {
+    let start = find_row0_text_start(buffer, text)
+        .unwrap_or_else(|| panic!("Expected header status text {text:?} to be rendered"));
+    for (i, c) in text.chars().enumerate() {
+        let cell = buffer
+            .cell((start + i as u16, 0))
+            .expect("status text cell in row 0");
+        assert_eq!(
+            cell.fg,
+            expected,
+            "Status text {text:?}: cell at ({}, 0) rendering '{c}' should have fg={expected:?}",
+            start + i as u16
+        );
+    }
+}
+
 #[test]
 fn header_status_uses_success_warning_and_error_colors() {
     let mut terminal = create_test_terminal();
@@ -275,14 +306,10 @@ fn header_status_uses_success_warning_and_error_colors() {
         .session
         .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     let connected_buffer = render_and_get_buffer_at(&mut terminal, &mut connected, now);
-    let has_success = (0..TEST_WIDTH).any(|x| {
-        connected_buffer
-            .cell((x, 0))
-            .is_some_and(|cell| cell.fg == DEFAULT_THEME.semantic.status.success)
-    });
-    assert!(
-        has_success,
-        "Expected header to use status_success color for connected state"
+    assert_header_status_color(
+        &connected_buffer,
+        "connected",
+        DEFAULT_THEME.semantic.status.success,
     );
 
     let mut loading = create_test_state();
@@ -290,26 +317,18 @@ fn header_status_uses_success_warning_and_error_colors() {
         .session
         .begin_connecting("postgres://localhost/test");
     let loading_buffer = render_and_get_buffer_at(&mut terminal, &mut loading, now);
-    let has_warning = (0..TEST_WIDTH).any(|x| {
-        loading_buffer
-            .cell((x, 0))
-            .is_some_and(|cell| cell.fg == DEFAULT_THEME.semantic.status.warning)
-    });
-    assert!(
-        has_warning,
-        "Expected header to use status_warning color for loading state"
+    assert_header_status_color(
+        &loading_buffer,
+        "loading...",
+        DEFAULT_THEME.semantic.status.warning,
     );
 
     let mut no_dsn = create_test_state();
     let no_dsn_buffer = render_and_get_buffer_at(&mut terminal, &mut no_dsn, now);
-    let has_error = (0..TEST_WIDTH).any(|x| {
-        no_dsn_buffer
-            .cell((x, 0))
-            .is_some_and(|cell| cell.fg == DEFAULT_THEME.semantic.status.error)
-    });
-    assert!(
-        has_error,
-        "Expected header to use status_error color when no DSN is set"
+    assert_header_status_color(
+        &no_dsn_buffer,
+        "no dsn",
+        DEFAULT_THEME.semantic.status.error,
     );
 }
 
@@ -489,7 +508,7 @@ fn test_contrast_theme_applies_sql_syntax_colors() {
     state
         .sql_modal
         .editor
-        .set_content("SELECT 'x', 42 -- note".to_string());
+        .set_content("SELECT 'x' + 42 -- note".to_string());
     state.sql_modal.set_status(SqlModalStatus::Editing);
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -515,6 +534,20 @@ fn test_contrast_theme_applies_sql_syntax_colors() {
                 cell.symbol() == "-" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_comment
             })
         });
+    let has_number = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "4" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_number
+            })
+        });
+    let has_operator = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "+" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_operator
+            })
+        });
 
     assert!(
         has_keyword,
@@ -527,6 +560,14 @@ fn test_contrast_theme_applies_sql_syntax_colors() {
     assert!(
         has_comment,
         "Expected SQL comment color to resolve from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_number,
+        "Expected SQL number color to resolve from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_operator,
+        "Expected SQL operator color to resolve from TEST_CONTRAST_THEME"
     );
 }
 
