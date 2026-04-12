@@ -47,7 +47,7 @@ pub fn render_horizontal_scroll_indicator(
     let fixed_parts_len = position_text.len() + 1 + 1;
     let scrollbar_width = available_width.saturating_sub(fixed_parts_len).max(5);
 
-    let text_style = Style::default().fg(theme.scrollbar_active);
+    let text_style = Style::default().fg(theme.component.navigation.scrollbar_active);
 
     let position_span = Span::styled(format!("{position_text} "), text_style);
 
@@ -68,16 +68,16 @@ pub fn render_horizontal_scroll_indicator(
         height: 1,
     };
 
-    let arrow_active = Style::default().fg(theme.scrollbar_active);
-    let arrow_inactive = Style::default().fg(theme.scrollbar_inactive);
+    let arrow_active = Style::default().fg(theme.component.navigation.scrollbar_active);
+    let arrow_inactive = Style::default().fg(theme.component.navigation.scrollbar_inactive);
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
         .thumb_symbol("═")
         .track_symbol(Some("─"))
         .begin_symbol(Some("◀︎"))
         .end_symbol(Some("▶︎"))
-        .thumb_style(Style::default().fg(theme.scrollbar_active))
-        .track_style(Style::default().fg(theme.scrollbar_inactive))
+        .thumb_style(Style::default().fg(theme.component.navigation.scrollbar_active))
+        .track_style(Style::default().fg(theme.component.navigation.scrollbar_inactive))
         .begin_style(if can_scroll_left {
             arrow_active
         } else {
@@ -142,16 +142,16 @@ pub fn render_vertical_scroll_indicator_bar(
         height,
     };
 
-    let arrow_active = Style::default().fg(theme.scrollbar_active);
-    let arrow_inactive = Style::default().fg(theme.scrollbar_inactive);
+    let arrow_active = Style::default().fg(theme.component.navigation.scrollbar_active);
+    let arrow_inactive = Style::default().fg(theme.component.navigation.scrollbar_inactive);
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .thumb_symbol("┃")
         .track_symbol(Some("│"))
         .begin_symbol(Some("▲"))
         .end_symbol(Some("▼"))
-        .thumb_style(Style::default().fg(theme.scrollbar_active))
-        .track_style(Style::default().fg(theme.scrollbar_inactive))
+        .thumb_style(Style::default().fg(theme.component.navigation.scrollbar_active))
+        .track_style(Style::default().fg(theme.component.navigation.scrollbar_inactive))
         .begin_style(if can_scroll_up {
             arrow_active
         } else {

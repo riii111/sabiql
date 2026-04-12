@@ -48,10 +48,10 @@ impl Inspector {
                 let is_selected = *tab == state.ui.inspector_tab;
                 let style = if is_selected {
                     Style::default()
-                        .fg(theme.tab_active)
+                        .fg(theme.component.navigation.tab_active)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(theme.tab_inactive)
+                    Style::default().fg(theme.component.navigation.tab_inactive)
                 };
 
                 let mut spans = vec![];
@@ -148,7 +148,7 @@ impl Inspector {
         } else {
             let content = Paragraph::new("(select a table)")
                 .block(block)
-                .style(Style::default().fg(theme.placeholder_text));
+                .style(Style::default().fg(theme.semantic.text.placeholder));
             frame.render_widget(content, area);
             ViewportPlan::default()
         }
@@ -162,7 +162,7 @@ impl Inspector {
         theme: &ThemePalette,
     ) {
         let label_style = Style::default().add_modifier(Modifier::BOLD);
-        let none_style = Style::default().fg(theme.placeholder_text);
+        let none_style = Style::default().fg(theme.semantic.text.placeholder);
 
         let owner_value = table.owner.as_deref().unwrap_or("(none)");
         let comment_value = table.comment.as_deref().unwrap_or("(none)");
@@ -216,7 +216,7 @@ impl Inspector {
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
         let paragraph = Paragraph::new(lines)
-            .style(Style::default().fg(theme.text_primary))
+            .style(Style::default().fg(theme.semantic.text.primary))
             .wrap(Wrap { trim: false })
             .scroll((clamped_scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
@@ -319,7 +319,7 @@ impl Inspector {
             Style::default()
                 .add_modifier(Modifier::UNDERLINED)
                 .add_modifier(Modifier::BOLD)
-                .fg(theme.text_primary),
+                .fg(theme.semantic.text.primary),
         )
         .height(1);
 
@@ -339,7 +339,7 @@ impl Inspector {
             .take(data_rows_visible)
             .map(|(row_idx, row)| {
                 let base_style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(theme.striped_row_bg)
+                    Style::default().bg(theme.component.table.striped_row_bg)
                 } else {
                     Style::default()
                 };
@@ -351,9 +351,9 @@ impl Inspector {
 
                         // Special styling for PK and Comment columns
                         let cell_style = if col_idx == 3 && !text.is_empty() {
-                            Style::default().fg(theme.text_accent)
+                            Style::default().fg(theme.semantic.text.accent)
                         } else if col_idx == 5 {
-                            Style::default().fg(theme.text_muted)
+                            Style::default().fg(theme.semantic.text.muted)
                         } else {
                             Style::default()
                         };
@@ -366,7 +366,7 @@ impl Inspector {
 
         let table_widget = RatatuiTable::new(rows, widths)
             .header(header)
-            .style(Style::default().fg(theme.text_primary));
+            .style(Style::default().fg(theme.semantic.text.primary));
         frame.render_widget(table_widget, area);
 
         use crate::ui::primitives::atoms::scroll_indicator::{
@@ -519,7 +519,7 @@ impl Inspector {
         match &table.rls {
             None => {
                 let msg = Paragraph::new("RLS not enabled")
-                    .style(Style::default().fg(theme.placeholder_text));
+                    .style(Style::default().fg(theme.semantic.text.placeholder));
                 frame.render_widget(msg, area);
             }
             Some(rls) => {
@@ -538,9 +538,9 @@ impl Inspector {
                     Span::styled(
                         status,
                         Style::default().fg(if rls.enabled {
-                            theme.status_success
+                            theme.semantic.status.success
                         } else {
-                            theme.status_error
+                            theme.semantic.status.error
                         }),
                     ),
                 ])];
@@ -583,7 +583,7 @@ impl Inspector {
                     clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
                 let paragraph = Paragraph::new(lines)
-                    .style(Style::default().fg(theme.text_primary))
+                    .style(Style::default().fg(theme.semantic.text.primary))
                     .wrap(Wrap { trim: false })
                     .scroll((clamped_scroll_offset as u16, 0));
                 frame.render_widget(paragraph, area);
@@ -679,7 +679,9 @@ impl Inspector {
 
         let mut lines: Vec<Line> = ddl
             .lines()
-            .map(|l| Line::from(l.to_string()).style(Style::default().fg(theme.text_primary)))
+            .map(|l| {
+                Line::from(l.to_string()).style(Style::default().fg(theme.semantic.text.primary))
+            })
             .collect();
 
         crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);

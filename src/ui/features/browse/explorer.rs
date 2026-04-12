@@ -80,10 +80,10 @@ impl Explorer {
         };
 
         let list = List::new(items)
-            .style(Style::default().fg(theme.text_primary))
+            .style(Style::default().fg(theme.semantic.text.primary))
             .highlight_style(
                 Style::default()
-                    .fg(theme.text_accent)
+                    .fg(theme.semantic.text.accent)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");

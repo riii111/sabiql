@@ -34,7 +34,7 @@ pub(super) fn render_editor(
             .map(|line| {
                 Line::from(Span::styled(
                     line.to_string(),
-                    Style::default().fg(theme.text_muted),
+                    Style::default().fg(theme.semantic.text.muted),
                 ))
             })
             .collect();
@@ -71,7 +71,7 @@ pub(super) fn render_editor(
             " Enter SQL query..."
         },
         base_style: Style::default(),
-        current_line_style: Style::default().bg(theme.editor_current_line_bg),
+        current_line_style: Style::default().bg(theme.component.editor.current_line_bg),
     };
     let line_spans = highlight_sql_spans(content, theme);
     let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);

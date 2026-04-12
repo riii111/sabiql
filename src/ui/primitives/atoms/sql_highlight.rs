@@ -58,16 +58,16 @@ pub fn highlight_sql_spans(text: &str, theme: &ThemePalette) -> Vec<Vec<Span<'st
 fn token_style(kind: &TokenKind, theme: &ThemePalette) -> Style {
     match kind {
         TokenKind::Keyword(_) => Style::default()
-            .fg(theme.sql_keyword)
+            .fg(theme.component.syntax.sql_keyword)
             .add_modifier(Modifier::BOLD),
-        TokenKind::StringLiteral => Style::default().fg(theme.sql_string),
-        TokenKind::Number => Style::default().fg(theme.sql_number),
-        TokenKind::Comment => Style::default().fg(theme.sql_comment),
-        TokenKind::Operator(_) => Style::default().fg(theme.sql_operator),
+        TokenKind::StringLiteral => Style::default().fg(theme.component.syntax.sql_string),
+        TokenKind::Number => Style::default().fg(theme.component.syntax.sql_number),
+        TokenKind::Comment => Style::default().fg(theme.component.syntax.sql_comment),
+        TokenKind::Operator(_) => Style::default().fg(theme.component.syntax.sql_operator),
         TokenKind::Identifier(_)
         | TokenKind::Punctuation(_)
         | TokenKind::Whitespace
-        | TokenKind::Unknown => Style::default().fg(theme.sql_text),
+        | TokenKind::Unknown => Style::default().fg(theme.component.syntax.sql_text),
     }
 }
 
@@ -109,13 +109,13 @@ mod tests {
             lines[0]
                 .spans
                 .iter()
-                .any(|span| span.style.fg == Some(DEFAULT_THEME.sql_comment))
+                .any(|span| span.style.fg == Some(DEFAULT_THEME.component.syntax.sql_comment))
         );
         assert!(
             lines[1]
                 .spans
                 .iter()
-                .any(|span| span.style.fg == Some(DEFAULT_THEME.sql_comment))
+                .any(|span| span.style.fg == Some(DEFAULT_THEME.component.syntax.sql_comment))
         );
     }
 
@@ -124,22 +124,46 @@ mod tests {
         let lines = highlight_sql("SELECT 'x', 42 -- note", &DEFAULT_THEME);
         let spans = &lines[0].spans;
 
-        assert_eq!(spans[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
+        assert_eq!(
+            spans[0].style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_keyword)
+        );
         assert!(spans[0].style.add_modifier.contains(Modifier::BOLD));
-        assert_eq!(spans[2].style.fg, Some(DEFAULT_THEME.sql_string));
-        assert_eq!(spans[5].style.fg, Some(DEFAULT_THEME.sql_number));
-        assert_eq!(spans[7].style.fg, Some(DEFAULT_THEME.sql_comment));
+        assert_eq!(
+            spans[2].style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_string)
+        );
+        assert_eq!(
+            spans[5].style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_number)
+        );
+        assert_eq!(
+            spans[7].style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_comment)
+        );
     }
 
     #[test]
     fn highlight_sql_with_cursor_preserves_neighbor_styles() {
         let spans = line_spans_with_cursor("SELECT 'x'", 0, 8, CursorKind::Block);
 
-        assert_eq!(spans[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
-        assert_eq!(spans[2].style.fg, Some(DEFAULT_THEME.sql_string));
-        assert_eq!(spans[3].style.bg, Some(DEFAULT_THEME.cursor_bg));
-        assert_eq!(spans[3].style.fg, Some(DEFAULT_THEME.cursor_text_fg));
-        assert_eq!(spans[4].style.fg, Some(DEFAULT_THEME.sql_string));
+        assert_eq!(
+            spans[0].style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_keyword)
+        );
+        assert_eq!(
+            spans[2].style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_string)
+        );
+        assert_eq!(spans[3].style.bg, Some(DEFAULT_THEME.semantic.cursor.bg));
+        assert_eq!(
+            spans[3].style.fg,
+            Some(DEFAULT_THEME.semantic.cursor.text_fg)
+        );
+        assert_eq!(
+            spans[4].style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_string)
+        );
     }
 
     #[test]
@@ -173,7 +197,7 @@ mod tests {
                 .collect::<String>(),
             " "
         );
-        assert_eq!(spans[0].style.bg, Some(DEFAULT_THEME.cursor_bg));
+        assert_eq!(spans[0].style.bg, Some(DEFAULT_THEME.semantic.cursor.bg));
     }
 
     #[test]
@@ -189,9 +213,12 @@ mod tests {
         );
         assert_eq!(
             spans.last().unwrap().style.bg,
-            Some(DEFAULT_THEME.cursor_bg)
+            Some(DEFAULT_THEME.semantic.cursor.bg)
         );
-        assert_eq!(spans[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
+        assert_eq!(
+            spans[0].style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_keyword)
+        );
     }
 
     #[test]
@@ -206,7 +233,7 @@ mod tests {
             r#"SET "email" = 0"#
         );
         assert_eq!(spans[2].content.as_ref(), "\"");
-        assert_eq!(spans[2].style.bg, Some(DEFAULT_THEME.cursor_bg));
+        assert_eq!(spans[2].style.bg, Some(DEFAULT_THEME.semantic.cursor.bg));
         assert_eq!(spans[3].content.as_ref(), "email\"");
     }
 
@@ -225,13 +252,19 @@ mod tests {
             .iter()
             .find(|span| span.content.as_ref() == "0")
             .expect("number token should be present");
-        assert_eq!(number_span.style.bg, Some(DEFAULT_THEME.cursor_bg));
+        assert_eq!(number_span.style.bg, Some(DEFAULT_THEME.semantic.cursor.bg));
     }
 
     #[test]
     fn highlight_sql_honors_injected_theme_colors() {
         let custom_theme = ThemePalette {
-            sql_keyword: ratatui::style::Color::Rgb(0x12, 0x34, 0x56),
+            component: crate::ui::theme::ComponentTokens {
+                syntax: crate::ui::theme::SyntaxTokens {
+                    sql_keyword: ratatui::style::Color::Rgb(0x12, 0x34, 0x56),
+                    ..DEFAULT_THEME.component.syntax
+                },
+                ..DEFAULT_THEME.component
+            },
             ..DEFAULT_THEME
         };
 
@@ -239,14 +272,20 @@ mod tests {
 
         assert_eq!(
             highlighted[0].spans[0].style.fg,
-            Some(custom_theme.sql_keyword)
+            Some(custom_theme.component.syntax.sql_keyword)
         );
     }
 
     #[test]
     fn highlight_sql_with_insert_cursor_preserves_injected_token_style() {
         let custom_theme = ThemePalette {
-            cursor_fg: ratatui::style::Color::Rgb(0xfe, 0xdc, 0xba),
+            semantic: crate::ui::theme::SemanticTokens {
+                cursor: crate::ui::theme::CursorTokens {
+                    fg: ratatui::style::Color::Rgb(0xfe, 0xdc, 0xba),
+                    ..DEFAULT_THEME.semantic.cursor
+                },
+                ..DEFAULT_THEME.semantic
+            },
             ..DEFAULT_THEME
         };
 
@@ -261,7 +300,7 @@ mod tests {
 
         assert_eq!(
             highlighted_with_cursor[0].style.fg,
-            Some(custom_theme.sql_keyword)
+            Some(custom_theme.component.syntax.sql_keyword)
         );
     }
 }

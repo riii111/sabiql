@@ -28,7 +28,7 @@ impl CommandPalette {
                 let style = if i == state.ui.table_picker.selected() {
                     theme.picker_selected_style()
                 } else {
-                    Style::default().fg(theme.text_secondary)
+                    Style::default().fg(theme.semantic.text.secondary)
                 };
                 let content = format!("  {:<18} {}", kb.key, kb.description);
                 ListItem::new(content).style(style)

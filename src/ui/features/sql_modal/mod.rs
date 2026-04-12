@@ -64,7 +64,7 @@ impl SqlModal {
                         Constraint::Percentage(SQL_MODAL_HEIGHT_PERCENT),
                         &title,
                         footer,
-                        theme.status_error,
+                        theme.semantic.status.error,
                         theme,
                     )
                 }
@@ -121,10 +121,7 @@ impl SqlModal {
         // Draw horizontal separator between editor and status bar
         let sep_line = "\u{2500}".repeat(separator_area.width as usize);
         frame.render_widget(
-            Paragraph::new(Line::styled(
-                sep_line,
-                Style::default().fg(theme.modal_border),
-            )),
+            Paragraph::new(Line::styled(sep_line, theme.modal_border_style())),
             separator_area,
         );
 
@@ -171,8 +168,8 @@ impl SqlModal {
             .title_bottom(Line::styled(hint.to_string(), theme.modal_hint_style()))
             .borders(Borders::ALL)
             .border_set(border::ROUNDED)
-            .border_style(Style::default().fg(theme.modal_border))
-            .style(Style::default().fg(theme.text_primary));
+            .border_style(theme.modal_border_style())
+            .style(Style::default().fg(theme.semantic.text.primary));
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
@@ -182,9 +179,9 @@ impl SqlModal {
     fn build_title_with_tabs(active_tab: SqlModalTab, theme: &ThemePalette) -> Line<'static> {
         let title_style = theme.modal_title_style();
         let active_style = Style::default()
-            .fg(theme.tab_active)
+            .fg(theme.component.navigation.tab_active)
             .add_modifier(Modifier::BOLD);
-        let inactive_style = Style::default().fg(theme.tab_inactive);
+        let inactive_style = Style::default().fg(theme.component.navigation.tab_inactive);
 
         let style_for = |tab: SqlModalTab| {
             if tab == active_tab {
@@ -196,7 +193,7 @@ impl SqlModal {
 
         Line::from(vec![
             Span::styled(" SQL Editor ", title_style),
-            Span::styled("\u{2500}\u{2500} ", Style::default().fg(theme.modal_border)),
+            Span::styled("\u{2500}\u{2500} ", theme.modal_border_style()),
             Span::styled("[SQL]", style_for(SqlModalTab::Sql)),
             Span::raw(" "),
             Span::styled("[Plan]", style_for(SqlModalTab::Plan)),

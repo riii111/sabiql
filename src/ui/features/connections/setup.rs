@@ -22,7 +22,7 @@ fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> 
         Span::styled("[", border_style),
         Span::styled(
             format!(" {content} "),
-            Style::default().fg(theme.text_primary),
+            Style::default().fg(theme.semantic.text.primary),
         ),
         Span::styled("]", border_style),
     ])
@@ -128,7 +128,8 @@ impl ConnectionSetup {
         );
 
         let notice = "Note: Connection info is stored locally in plain text";
-        let notice_para = Paragraph::new(notice).style(Style::default().fg(theme.note_text));
+        let notice_para =
+            Paragraph::new(notice).style(Style::default().fg(theme.component.feedback.note_text));
         frame.render_widget(notice_para, chunks[8]);
 
         if form_state.ssl_dropdown.is_open {
@@ -161,9 +162,9 @@ impl ConnectionSetup {
         .split(area);
 
         let label_style = if is_focused {
-            Style::default().fg(theme.text_secondary).bold()
+            Style::default().fg(theme.semantic.text.secondary).bold()
         } else {
-            Style::default().fg(theme.text_secondary)
+            Style::default().fg(theme.semantic.text.secondary)
         };
         let label_para = Paragraph::new(field.label()).style(label_style);
         frame.render_widget(label_para, chunks[0]);
@@ -176,7 +177,7 @@ impl ConnectionSetup {
 
         let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
 
-        let border_style = theme.input_border_style(is_focused, error.is_some());
+        let border_style = theme.modal_input_border_style(is_focused, error.is_some());
 
         let input_line = if is_focused {
             let input = state.focused_input().unwrap();
@@ -200,13 +201,16 @@ impl ConnectionSetup {
 
             let mut spans = vec![
                 Span::styled("[", border_style),
-                Span::styled(" ", Style::default().fg(theme.text_primary)),
+                Span::styled(" ", Style::default().fg(theme.semantic.text.primary)),
             ];
             spans.extend(cursor_spans);
             if padding > 0 {
                 spans.push(Span::raw(" ".repeat(padding)));
             }
-            spans.push(Span::styled(" ", Style::default().fg(theme.text_primary)));
+            spans.push(Span::styled(
+                " ",
+                Style::default().fg(theme.semantic.text.primary),
+            ));
             spans.push(Span::styled("]", border_style));
             Line::from(spans)
         } else {
@@ -223,8 +227,8 @@ impl ConnectionSetup {
         frame.render_widget(input_para, chunks[1]);
 
         if let Some(err) = error {
-            let err_para =
-                Paragraph::new(format!(" {err}")).style(Style::default().fg(theme.status_error));
+            let err_para = Paragraph::new(format!(" {err}"))
+                .style(Style::default().fg(theme.semantic.status.error));
             frame.render_widget(err_para, chunks[2]);
         }
     }
@@ -245,9 +249,9 @@ impl ConnectionSetup {
 
         // Label: gray (like Explorer content), bold when focused
         let label_style = if is_focused {
-            Style::default().fg(theme.text_secondary).bold()
+            Style::default().fg(theme.semantic.text.secondary).bold()
         } else {
-            Style::default().fg(theme.text_secondary)
+            Style::default().fg(theme.semantic.text.secondary)
         };
         let label_para = Paragraph::new("SSL Mode:").style(label_style);
         frame.render_widget(label_para, chunks[0]);
@@ -257,7 +261,7 @@ impl ConnectionSetup {
         let ssl_mode_str = ssl_mode.to_string();
         let display_content = format!("{:<1$} ▼", ssl_mode_str, content_width - 2);
 
-        let border_style = theme.input_border_style(is_focused, false);
+        let border_style = theme.modal_input_border_style(is_focused, false);
 
         let input_para = Paragraph::new(bracketed_input(&display_content, border_style, theme));
         frame.render_widget(input_para, chunks[1]);
@@ -287,7 +291,7 @@ impl ConnectionSetup {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.modal_border))
+            .border_style(theme.modal_border_style())
             .style(Style::default());
         frame.render_widget(block, dropdown_area);
 
@@ -309,7 +313,7 @@ impl ConnectionSetup {
             let item_style = if is_selected {
                 theme.picker_selected_style()
             } else {
-                Style::default().fg(theme.text_secondary)
+                Style::default().fg(theme.semantic.text.secondary)
             };
 
             let item_para = Paragraph::new(variant.to_string()).style(item_style);

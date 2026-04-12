@@ -50,7 +50,10 @@ impl TablePicker {
             visible_width,
             theme,
         );
-        let mut spans = vec![Span::styled("  > ", Style::default().fg(theme.modal_title))];
+        let mut spans = vec![Span::styled(
+            "  > ",
+            Style::default().fg(theme.component.modal.title),
+        )];
         spans.extend(cursor_spans);
         let filter_line = Line::from(spans);
 
@@ -61,7 +64,7 @@ impl TablePicker {
             .iter()
             .map(|t| {
                 let content = format!("  {}", t.qualified_name());
-                ListItem::new(content).style(Style::default().fg(theme.text_secondary))
+                ListItem::new(content).style(Style::default().fg(theme.semantic.text.secondary))
             })
             .collect();
 

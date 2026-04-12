@@ -63,9 +63,9 @@ pub fn highlight_plan_line(raw: &str, theme: &ThemePalette) -> Line<'static> {
         let cost_part = &content[cost_paren..];
 
         let node_style = Style::default()
-            .fg(theme.section_header)
+            .fg(theme.component.navigation.section_header)
             .add_modifier(Modifier::BOLD);
-        let cost_style = Style::default().fg(theme.text_dim);
+        let cost_style = Style::default().fg(theme.semantic.text.dim);
 
         if let Some(node_name) = find_node_type(before_cost) {
             let after_node = &before_cost[node_name.len()..];
@@ -78,7 +78,7 @@ pub fn highlight_plan_line(raw: &str, theme: &ThemePalette) -> Line<'static> {
         spans.push(Span::styled(cost_part.to_string(), cost_style));
     } else if let Some(node_name) = find_node_type(content) {
         let node_style = Style::default()
-            .fg(theme.section_header)
+            .fg(theme.component.navigation.section_header)
             .add_modifier(Modifier::BOLD);
         let after_node = &content[node_name.len()..];
         spans.push(Span::styled(node_name.to_string(), node_style));
@@ -100,9 +100,9 @@ pub(super) fn highlight_truncated(
     let content = trimmed.trim_start_matches("->").trim_start();
 
     let node_style = Style::default()
-        .fg(theme.section_header)
+        .fg(theme.component.navigation.section_header)
         .add_modifier(Modifier::BOLD);
-    let cost_style = Style::default().fg(theme.text_dim);
+    let cost_style = Style::default().fg(theme.semantic.text.dim);
 
     let prefix_len = truncated.len() - content.len();
     let prefix = &truncated[..prefix_len];

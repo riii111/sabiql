@@ -244,7 +244,7 @@ pub fn build_modal_text_surface_lines(
                 placeholder_span.clone(),
                 Span::styled(
                     surface.empty_placeholder.to_string(),
-                    Style::default().fg(theme.placeholder_text),
+                    Style::default().fg(theme.semantic.text.placeholder),
                 ),
             ])
             .style(surface.current_line_style),
@@ -550,15 +550,15 @@ mod tests {
             let spans = vec![
                 Span::styled(
                     "ab".to_string(),
-                    Style::default().fg(DEFAULT_THEME.sql_keyword),
+                    Style::default().fg(DEFAULT_THEME.component.syntax.sql_keyword),
                 ),
                 Span::styled(
                     "cd".to_string(),
-                    Style::default().fg(DEFAULT_THEME.sql_string),
+                    Style::default().fg(DEFAULT_THEME.component.syntax.sql_string),
                 ),
                 Span::styled(
                     "ef".to_string(),
-                    Style::default().fg(DEFAULT_THEME.sql_comment),
+                    Style::default().fg(DEFAULT_THEME.component.syntax.sql_comment),
                 ),
             ];
 
@@ -566,13 +566,22 @@ mod tests {
 
             let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
             assert_eq!(texts, vec!["ab", "c", "d", "ef"]);
-            assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
+            assert_eq!(
+                inserted[0].style.fg,
+                Some(DEFAULT_THEME.component.syntax.sql_keyword)
+            );
             assert_eq!(
                 inserted[1].style,
                 cursor_style_for(CursorKind::Block, &DEFAULT_THEME)
             );
-            assert_eq!(inserted[2].style.fg, Some(DEFAULT_THEME.sql_string));
-            assert_eq!(inserted[3].style.fg, Some(DEFAULT_THEME.sql_comment));
+            assert_eq!(
+                inserted[2].style.fg,
+                Some(DEFAULT_THEME.component.syntax.sql_string)
+            );
+            assert_eq!(
+                inserted[3].style.fg,
+                Some(DEFAULT_THEME.component.syntax.sql_comment)
+            );
         }
 
         #[test]
@@ -580,11 +589,11 @@ mod tests {
             let spans = vec![
                 Span::styled(
                     "ab".to_string(),
-                    Style::default().fg(DEFAULT_THEME.sql_keyword),
+                    Style::default().fg(DEFAULT_THEME.component.syntax.sql_keyword),
                 ),
                 Span::styled(
                     "cd".to_string(),
-                    Style::default().fg(DEFAULT_THEME.sql_string),
+                    Style::default().fg(DEFAULT_THEME.component.syntax.sql_string),
                 ),
             ];
 
@@ -592,12 +601,18 @@ mod tests {
 
             let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
             assert_eq!(texts, vec!["ab", "c", "d"]);
-            assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
+            assert_eq!(
+                inserted[0].style.fg,
+                Some(DEFAULT_THEME.component.syntax.sql_keyword)
+            );
             assert_eq!(
                 inserted[1].style,
                 cursor_style_for(CursorKind::Block, &DEFAULT_THEME)
             );
-            assert_eq!(inserted[2].style.fg, Some(DEFAULT_THEME.sql_string));
+            assert_eq!(
+                inserted[2].style.fg,
+                Some(DEFAULT_THEME.component.syntax.sql_string)
+            );
         }
 
         #[test]
@@ -605,15 +620,18 @@ mod tests {
             let spans = vec![Span::styled(
                 "ab".to_string(),
                 Style::default()
-                    .fg(DEFAULT_THEME.sql_keyword)
+                    .fg(DEFAULT_THEME.component.syntax.sql_keyword)
                     .add_modifier(Modifier::BOLD),
             )];
 
             let inserted = insert_cursor_span(spans, 0, &DEFAULT_THEME);
 
             assert_eq!(inserted[0].content.as_ref(), "a");
-            assert_eq!(inserted[0].style.bg, Some(DEFAULT_THEME.cursor_bg));
-            assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.cursor_text_fg));
+            assert_eq!(inserted[0].style.bg, Some(DEFAULT_THEME.semantic.cursor.bg));
+            assert_eq!(
+                inserted[0].style.fg,
+                Some(DEFAULT_THEME.semantic.cursor.text_fg)
+            );
             assert!(inserted[0].style.add_modifier.contains(Modifier::BOLD));
         }
 
@@ -622,11 +640,11 @@ mod tests {
             let spans = vec![
                 Span::styled(
                     "ab".to_string(),
-                    Style::default().fg(DEFAULT_THEME.sql_keyword),
+                    Style::default().fg(DEFAULT_THEME.component.syntax.sql_keyword),
                 ),
                 Span::styled(
                     "cd".to_string(),
-                    Style::default().fg(DEFAULT_THEME.sql_string),
+                    Style::default().fg(DEFAULT_THEME.component.syntax.sql_string),
                 ),
             ];
 
@@ -644,7 +662,7 @@ mod tests {
         fn with_insert_kind_preserves_text_without_glyph() {
             let spans = vec![Span::styled(
                 "abcd".to_string(),
-                Style::default().fg(DEFAULT_THEME.sql_keyword),
+                Style::default().fg(DEFAULT_THEME.component.syntax.sql_keyword),
             )];
 
             let inserted =
@@ -652,8 +670,14 @@ mod tests {
 
             let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
             assert_eq!(texts, vec!["ab", "cd"]);
-            assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
-            assert_eq!(inserted[1].style.fg, Some(DEFAULT_THEME.sql_keyword));
+            assert_eq!(
+                inserted[0].style.fg,
+                Some(DEFAULT_THEME.component.syntax.sql_keyword)
+            );
+            assert_eq!(
+                inserted[1].style.fg,
+                Some(DEFAULT_THEME.component.syntax.sql_keyword)
+            );
         }
     }
 }

@@ -33,7 +33,7 @@ pub fn render_striped_table<'a>(
             Style::default()
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(Modifier::UNDERLINED)
-                .fg(theme.text_primary),
+                .fg(theme.semantic.text.primary),
         )
         .height(1);
 
@@ -47,7 +47,7 @@ pub fn render_striped_table<'a>(
         .enumerate()
         .map(|(visual_idx, item_idx)| {
             let style = if visual_idx % 2 == 1 {
-                Style::default().bg(theme.striped_row_bg)
+                Style::default().bg(theme.component.table.striped_row_bg)
             } else {
                 Style::default()
             };
@@ -57,7 +57,7 @@ pub fn render_striped_table<'a>(
 
     let table_widget = Table::new(rows, config.widths)
         .header(header)
-        .style(Style::default().fg(theme.text_primary));
+        .style(Style::default().fg(theme.semantic.text.primary));
     frame.render_widget(table_widget, area);
 
     render_vertical_scroll_indicator_bar(
