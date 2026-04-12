@@ -157,7 +157,7 @@ impl ThemePalette {
             .add_modifier(Modifier::BOLD)
     }
 
-    pub fn input_border_style(&self, focused: bool, has_error: bool) -> Style {
+    pub fn modal_input_border_style(&self, focused: bool, has_error: bool) -> Style {
         let color = if has_error {
             self.semantic.status.error
         } else if focused {
@@ -381,8 +381,8 @@ mod tests {
     }
 
     #[test]
-    fn input_border_style_prefers_error_over_focus() {
-        let style = DEFAULT_THEME.input_border_style(true, true);
+    fn modal_input_border_style_prefers_error_over_focus() {
+        let style = DEFAULT_THEME.modal_input_border_style(true, true);
 
         assert_eq!(style.fg, Some(DEFAULT_THEME.semantic.status.error));
     }

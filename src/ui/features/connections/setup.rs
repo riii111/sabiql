@@ -177,7 +177,7 @@ impl ConnectionSetup {
 
         let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
 
-        let border_style = theme.input_border_style(is_focused, error.is_some());
+        let border_style = theme.modal_input_border_style(is_focused, error.is_some());
 
         let input_line = if is_focused {
             let input = state.focused_input().unwrap();
@@ -261,7 +261,7 @@ impl ConnectionSetup {
         let ssl_mode_str = ssl_mode.to_string();
         let display_content = format!("{:<1$} ▼", ssl_mode_str, content_width - 2);
 
-        let border_style = theme.input_border_style(is_focused, false);
+        let border_style = theme.modal_input_border_style(is_focused, false);
 
         let input_para = Paragraph::new(bracketed_input(&display_content, border_style, theme));
         frame.render_widget(input_para, chunks[1]);
