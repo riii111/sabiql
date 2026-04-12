@@ -1,6 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 use crate::ui::theme::ThemePalette;
@@ -46,7 +47,6 @@ pub fn render_horizontal_scroll_indicator(
     let fixed_parts_len = position_text.len() + 1 + 1;
     let scrollbar_width = available_width.saturating_sub(fixed_parts_len).max(5);
 
-    use ratatui::text::{Line, Span};
     let text_style = Style::default().fg(theme.scrollbar_active);
 
     let position_span = Span::styled(format!("{position_text} "), text_style);
