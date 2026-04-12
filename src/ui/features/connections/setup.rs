@@ -291,7 +291,7 @@ impl ConnectionSetup {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.component.modal.border))
+            .border_style(theme.modal_border_style())
             .style(Style::default());
         frame.render_widget(block, dropdown_area);
 

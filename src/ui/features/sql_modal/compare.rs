@@ -158,10 +158,7 @@ fn render_verdict_section(
     push_chrome(
         lines,
         flash_mask,
-        Line::styled(
-            format!(" {sep}"),
-            Style::default().fg(theme.component.modal.border),
-        ),
+        Line::styled(format!(" {sep}"), theme.modal_border_style()),
     );
     push_empty(lines, flash_mask);
 }
@@ -177,10 +174,7 @@ fn render_slot_columns(
     theme: &ThemePalette,
 ) {
     let half = (total_width.saturating_sub(3) / 2) as usize;
-    let sep = Span::styled(
-        " \u{2502} ",
-        Style::default().fg(theme.component.modal.border),
-    );
+    let sep = Span::styled(" \u{2502} ", theme.modal_border_style());
 
     let active_header = Style::default()
         .fg(theme.semantic.text.accent)

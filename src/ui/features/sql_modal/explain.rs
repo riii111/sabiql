@@ -136,10 +136,7 @@ fn build_analyze_confirm_lines<'a>(
     lines.push(Line::raw(""));
 
     let sep = "\u{2500}".repeat(area.width.saturating_sub(2) as usize);
-    lines.push(Line::styled(
-        format!(" {sep}"),
-        Style::default().fg(theme.component.modal.border),
-    ));
+    lines.push(Line::styled(format!(" {sep}"), theme.modal_border_style()));
     lines.push(Line::raw(""));
 
     lines.push(Line::from(Span::styled(

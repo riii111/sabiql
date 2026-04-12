@@ -168,6 +168,10 @@ impl ThemePalette {
         Style::default().fg(color)
     }
 
+    pub fn modal_border_style(&self) -> Style {
+        Style::default().fg(self.component.modal.border)
+    }
+
     pub fn status_style(&self, tone: StatusTone) -> Style {
         let color = match tone {
             StatusTone::Success => self.semantic.status.success,
@@ -396,6 +400,13 @@ mod tests {
 
         assert_eq!(style.fg, Some(DEFAULT_THEME.component.modal.hint));
         assert!(!style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn modal_border_style_uses_component_modal_border() {
+        let style = DEFAULT_THEME.modal_border_style();
+
+        assert_eq!(style.fg, Some(DEFAULT_THEME.component.modal.border));
     }
 
     #[test]
