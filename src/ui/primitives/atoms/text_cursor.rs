@@ -24,10 +24,6 @@ impl CursorKind {
     }
 }
 
-pub fn cursor_style(theme: &ThemePalette) -> Style {
-    cursor_style_for(CursorKind::Block, theme)
-}
-
 pub fn cursor_style_for(kind: CursorKind, theme: &ThemePalette) -> Style {
     match kind {
         CursorKind::Block => theme.block_cursor_style(),
@@ -571,7 +567,10 @@ mod tests {
             let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
             assert_eq!(texts, vec!["ab", "c", "d", "ef"]);
             assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
-            assert_eq!(inserted[1].style, cursor_style(&DEFAULT_THEME));
+            assert_eq!(
+                inserted[1].style,
+                cursor_style_for(CursorKind::Block, &DEFAULT_THEME)
+            );
             assert_eq!(inserted[2].style.fg, Some(DEFAULT_THEME.sql_string));
             assert_eq!(inserted[3].style.fg, Some(DEFAULT_THEME.sql_comment));
         }
@@ -594,7 +593,10 @@ mod tests {
             let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
             assert_eq!(texts, vec!["ab", "c", "d"]);
             assert_eq!(inserted[0].style.fg, Some(DEFAULT_THEME.sql_keyword));
-            assert_eq!(inserted[1].style, cursor_style(&DEFAULT_THEME));
+            assert_eq!(
+                inserted[1].style,
+                cursor_style_for(CursorKind::Block, &DEFAULT_THEME)
+            );
             assert_eq!(inserted[2].style.fg, Some(DEFAULT_THEME.sql_string));
         }
 
@@ -632,7 +634,10 @@ mod tests {
 
             let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
             assert_eq!(texts, vec!["ab", "cd", " "]);
-            assert_eq!(inserted[2].style, cursor_style(&DEFAULT_THEME));
+            assert_eq!(
+                inserted[2].style,
+                cursor_style_for(CursorKind::Block, &DEFAULT_THEME)
+            );
         }
 
         #[test]
