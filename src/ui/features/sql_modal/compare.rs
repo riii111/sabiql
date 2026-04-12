@@ -39,7 +39,7 @@ pub fn render(
     if lines.is_empty() {
         lines.push(Line::from(Span::styled(
             " Run EXPLAIN (Ctrl+E) to start comparing.",
-            Style::default().fg(theme.placeholder_text),
+            Style::default().fg(theme.semantic.text.placeholder),
         )));
         flash_mask.push(false);
     }
@@ -63,7 +63,7 @@ pub fn render(
 
     frame.render_widget(
         Paragraph::new(visible)
-            .style(Style::default().fg(theme.text_primary))
+            .style(Style::default().fg(theme.semantic.text.primary))
             .wrap(Wrap { trim: false }),
         area,
     );
@@ -103,25 +103,25 @@ fn render_verdict_section(
         ComparisonVerdict::Improved => (
             "\u{2193} Improved",
             Style::default()
-                .fg(theme.status_success)
+                .fg(theme.semantic.status.success)
                 .add_modifier(Modifier::BOLD),
         ),
         ComparisonVerdict::Worsened => (
             "\u{2191} Worsened",
             Style::default()
-                .fg(theme.status_error)
+                .fg(theme.semantic.status.error)
                 .add_modifier(Modifier::BOLD),
         ),
         ComparisonVerdict::Similar => (
             "\u{2248} Similar",
             Style::default()
-                .fg(theme.text_accent)
+                .fg(theme.semantic.text.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         ComparisonVerdict::Unavailable => (
             "Comparison unavailable",
             Style::default()
-                .fg(theme.text_muted)
+                .fg(theme.semantic.text.muted)
                 .add_modifier(Modifier::BOLD),
         ),
     };
@@ -139,8 +139,14 @@ fn render_verdict_section(
             lines,
             flash_mask,
             Line::from(vec![
-                Span::styled("  \u{2022} ", Style::default().fg(theme.text_muted)),
-                Span::styled(reason.clone(), Style::default().fg(theme.text_primary)),
+                Span::styled(
+                    "  \u{2022} ",
+                    Style::default().fg(theme.semantic.text.muted),
+                ),
+                Span::styled(
+                    reason.clone(),
+                    Style::default().fg(theme.semantic.text.primary),
+                ),
             ]),
         );
     }
@@ -152,7 +158,7 @@ fn render_verdict_section(
     push_chrome(
         lines,
         flash_mask,
-        Line::styled(format!(" {sep}"), Style::default().fg(theme.modal_border)),
+        Line::styled(format!(" {sep}"), theme.modal_border_style()),
     );
     push_empty(lines, flash_mask);
 }
@@ -168,13 +174,13 @@ fn render_slot_columns(
     theme: &ThemePalette,
 ) {
     let half = (total_width.saturating_sub(3) / 2) as usize;
-    let sep = Span::styled(" \u{2502} ", Style::default().fg(theme.modal_border));
+    let sep = Span::styled(" \u{2502} ", theme.modal_border_style());
 
     let active_header = Style::default()
-        .fg(theme.text_accent)
+        .fg(theme.semantic.text.accent)
         .add_modifier(Modifier::BOLD);
     let empty_header = Style::default()
-        .fg(theme.text_dim)
+        .fg(theme.semantic.text.dim)
         .add_modifier(Modifier::BOLD);
 
     let left_label = match left {
@@ -210,8 +216,8 @@ fn render_slot_columns(
         ]),
     );
 
-    let detail_style = Style::default().fg(theme.text_muted);
-    let placeholder_style = Style::default().fg(theme.placeholder_text);
+    let detail_style = Style::default().fg(theme.semantic.text.muted);
+    let placeholder_style = Style::default().fg(theme.semantic.text.placeholder);
 
     let left_detail = slot_detail_text(left);
     let right_detail = slot_detail_text(right);
@@ -245,13 +251,19 @@ fn render_slot_columns(
         lines,
         flash_mask,
         Line::from(vec![
-            Span::styled(format!(" {thin_sep}"), Style::default().fg(theme.text_dim)),
+            Span::styled(
+                format!(" {thin_sep}"),
+                Style::default().fg(theme.semantic.text.dim),
+            ),
             sep.clone(),
-            Span::styled(format!(" {thin_sep}"), Style::default().fg(theme.text_dim)),
+            Span::styled(
+                format!(" {thin_sep}"),
+                Style::default().fg(theme.semantic.text.dim),
+            ),
         ]),
     );
 
-    let dim_style = Style::default().fg(theme.text_dim);
+    let dim_style = Style::default().fg(theme.semantic.text.dim);
 
     let l_plan: Vec<&str> = left
         .map(|s| s.plan.raw_text.lines().collect())
@@ -292,9 +304,9 @@ fn render_slot_stacked(
     theme: &ThemePalette,
 ) {
     let header_style = Style::default()
-        .fg(theme.text_accent)
+        .fg(theme.semantic.text.accent)
         .add_modifier(Modifier::BOLD);
-    let badge_style = Style::default().fg(theme.text_muted);
+    let badge_style = Style::default().fg(theme.semantic.text.muted);
 
     render_stacked_slot(
         lines,
@@ -355,7 +367,7 @@ fn render_stacked_slot(
             Line::from(Span::styled(
                 empty_label.to_string(),
                 Style::default()
-                    .fg(theme.text_dim)
+                    .fg(theme.semantic.text.dim)
                     .add_modifier(Modifier::BOLD),
             )),
         );
@@ -364,7 +376,7 @@ fn render_stacked_slot(
             flash_mask,
             Line::from(Span::styled(
                 "  Run EXPLAIN again to compare",
-                Style::default().fg(theme.placeholder_text),
+                Style::default().fg(theme.semantic.text.placeholder),
             )),
         );
     }

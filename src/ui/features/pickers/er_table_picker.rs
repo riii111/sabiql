@@ -29,21 +29,29 @@ impl ErTablePicker {
         let filtered_count = state.er_filtered_tables().len();
 
         let (mode_label, targets_label, preview_color) = if selected_count == 0 {
-            ("Invalid".to_string(), "—".to_string(), theme.status_error)
+            (
+                "Invalid".to_string(),
+                "—".to_string(),
+                theme.semantic.status.error,
+            )
         } else if selected_count == total_count {
             (
                 "Full ER".to_string(),
                 format!("all {total_count} tables"),
-                theme.text_muted,
+                theme.semantic.text.muted,
             )
         } else if selected_count == 1 {
             let name = state.ui.er_selected_tables.iter().next().unwrap().clone();
-            ("Partial ER".to_string(), name, theme.section_header)
+            (
+                "Partial ER".to_string(),
+                name,
+                theme.semantic.status.pending,
+            )
         } else {
             (
                 "Partial ER".to_string(),
                 format!("{selected_count} tables"),
-                theme.section_header,
+                theme.semantic.status.pending,
             )
         };
 
@@ -88,22 +96,34 @@ impl ErTablePicker {
             visible_width,
             theme,
         );
-        let mut spans = vec![Span::styled("  > ", Style::default().fg(theme.modal_title))];
+        let mut spans = vec![Span::styled(
+            "  > ",
+            Style::default().fg(theme.component.modal.title),
+        )];
         spans.extend(cursor_spans);
         frame.render_widget(Paragraph::new(Line::from(spans)), filter_area);
 
         // 3-line execution preview
         let preview_lines = vec![
             Line::from(vec![
-                Span::styled("  Mode:    ", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    "  Mode:    ",
+                    Style::default().fg(theme.semantic.text.muted),
+                ),
                 Span::styled(mode_label, Style::default().fg(preview_color)),
             ]),
             Line::from(vec![
-                Span::styled("  Targets: ", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    "  Targets: ",
+                    Style::default().fg(theme.semantic.text.muted),
+                ),
                 Span::styled(targets_label, Style::default().fg(preview_color)),
             ]),
             Line::from(vec![
-                Span::styled("  Output:  ", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    "  Output:  ",
+                    Style::default().fg(theme.semantic.text.muted),
+                ),
                 Span::styled(output_label, Style::default().fg(preview_color)),
             ]),
         ];
@@ -118,9 +138,9 @@ impl ErTablePicker {
                 let is_selected = state.ui.er_selected_tables.contains(&qn);
                 let mark = if is_selected { "✔ " } else { "  " };
                 let style = if is_selected {
-                    Style::default().fg(theme.focus_border)
+                    Style::default().fg(theme.semantic.surface.focus_border)
                 } else {
-                    Style::default().fg(theme.text_secondary)
+                    Style::default().fg(theme.semantic.text.secondary)
                 };
                 ListItem::new(format!("  {mark}{qn}")).style(style)
             })

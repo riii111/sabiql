@@ -25,26 +25,26 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
             if let Some(ref msg) = state.messages.last_success {
                 (
                     "[NORMAL]",
-                    Style::default().fg(theme.text_dim),
+                    Style::default().fg(theme.semantic.text.dim),
                     format!("\u{2713} {msg}"),
-                    Style::default().fg(theme.status_success),
+                    Style::default().fg(theme.semantic.status.success),
                 )
             } else {
                 (
                     "[NORMAL]",
-                    Style::default().fg(theme.text_dim),
+                    Style::default().fg(theme.semantic.text.dim),
                     "Ready".to_string(),
-                    Style::default().fg(theme.text_dim),
+                    Style::default().fg(theme.semantic.text.dim),
                 )
             }
         }
         SqlModalStatus::Editing => (
             "[INSERT]",
             Style::default()
-                .fg(theme.text_accent)
+                .fg(theme.semantic.text.accent)
                 .add_modifier(Modifier::BOLD),
             "Ready".to_string(),
-            Style::default().fg(theme.text_dim),
+            Style::default().fg(theme.semantic.text.dim),
         ),
         SqlModalStatus::Running => {
             let elapsed = state
@@ -57,19 +57,19 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
             let status = format!("{spinner} Running {elapsed_secs:.1}s");
             (
                 "[RUNNING]",
-                Style::default().fg(theme.text_accent),
+                Style::default().fg(theme.semantic.text.accent),
                 status,
-                Style::default().fg(theme.text_accent),
+                Style::default().fg(theme.semantic.text.accent),
             )
         }
         SqlModalStatus::Success => {
             let msg = success_status_message(state);
             (
                 "[NORMAL]",
-                Style::default().fg(theme.status_success),
+                Style::default().fg(theme.semantic.status.success),
                 msg,
                 Style::default()
-                    .fg(theme.status_success)
+                    .fg(theme.semantic.status.success)
                     .add_modifier(Modifier::BOLD),
             )
         }
@@ -77,21 +77,21 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
             let msg = error_status_message(state);
             (
                 "[NORMAL]",
-                Style::default().fg(theme.status_error),
+                Style::default().fg(theme.semantic.status.error),
                 msg,
                 Style::default()
-                    .fg(theme.status_error)
+                    .fg(theme.semantic.status.error)
                     .add_modifier(Modifier::BOLD),
             )
         }
         SqlModalStatus::ConfirmingAnalyzeHigh { .. } => (
             "[CONFIRM]",
             Style::default()
-                .fg(theme.status_error)
+                .fg(theme.semantic.status.error)
                 .add_modifier(Modifier::BOLD),
             "Confirm ANALYZE".to_string(),
             Style::default()
-                .fg(theme.status_error)
+                .fg(theme.semantic.status.error)
                 .add_modifier(Modifier::BOLD),
         ),
         SqlModalStatus::ConfirmingHigh { .. } => unreachable!(),
@@ -133,7 +133,7 @@ fn render_confirming_high_status(
     target_name: Option<&String>,
     theme: &ThemePalette,
 ) {
-    let error_style = Style::default().fg(theme.status_error);
+    let error_style = Style::default().fg(theme.semantic.status.error);
 
     if let Some(name) = target_name {
         let is_match = input.content() == name;
@@ -146,7 +146,7 @@ fn render_confirming_high_status(
             line1_spans.push(Span::raw(" ".repeat(padding as usize)));
             line1_spans.push(Span::styled(
                 blocked_label,
-                Style::default().fg(theme.text_muted),
+                Style::default().fg(theme.semantic.text.muted),
             ));
         }
         let line1 = Line::from(line1_spans);
@@ -166,13 +166,13 @@ fn render_confirming_high_status(
         );
         let mut line2_spans = vec![Span::styled(
             prompt,
-            Style::default().fg(theme.text_secondary),
+            Style::default().fg(theme.semantic.text.secondary),
         )];
         line2_spans.extend(cursor_spans);
         if is_match {
             line2_spans.push(Span::styled(
                 " \u{2713}",
-                Style::default().fg(theme.status_success),
+                Style::default().fg(theme.semantic.status.success),
             ));
         }
         let line2 = Line::from(line2_spans);
@@ -186,7 +186,7 @@ fn render_confirming_high_status(
         ));
         let line2 = Line::from(Span::styled(
             "Cannot identify target object name.  Esc: Back",
-            Style::default().fg(theme.text_muted),
+            Style::default().fg(theme.semantic.text.muted),
         ));
         let paragraph = Paragraph::new(vec![line1, line2]);
         frame.render_widget(paragraph, area);

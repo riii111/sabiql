@@ -35,8 +35,8 @@ impl ConfirmDialog {
 
     fn intent_border_color(intent: Option<&ConfirmIntent>, theme: &ThemePalette) -> Option<Color> {
         match intent {
-            Some(ConfirmIntent::DisableReadOnly) => Some(theme.status_warning),
-            Some(ConfirmIntent::DeleteConnection(_)) => Some(theme.status_error),
+            Some(ConfirmIntent::DisableReadOnly) => Some(theme.semantic.status.warning),
+            Some(ConfirmIntent::DeleteConnection(_)) => Some(theme.semantic.status.error),
             _ => None,
         }
     }
@@ -93,7 +93,7 @@ impl ConfirmDialog {
 
         let inner = modal_inner.inner(Margin::new(1, 0));
         let message_para = Paragraph::new(dialog.message().to_owned())
-            .style(Style::default().fg(theme.text_primary))
+            .style(Style::default().fg(theme.semantic.text.primary))
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false });
         frame.render_widget(message_para, inner);
@@ -142,12 +142,12 @@ impl ConfirmDialog {
             WriteOperation::Update => {
                 content_lines.push(Line::from(vec![Span::styled(
                     "Diff",
-                    Style::default().fg(theme.text_secondary),
+                    Style::default().fg(theme.semantic.text.secondary),
                 )]));
                 for (i, diff) in preview.diff.iter().enumerate() {
                     content_lines.push(Line::from(Span::styled(
                         format!("  {}:", diff.column),
-                        Style::default().fg(theme.text_secondary),
+                        Style::default().fg(theme.semantic.text.secondary),
                     )));
                     if let Some(json_lines) = &diff.json_diff {
                         Self::render_json_diff_lines(json_lines, &mut content_lines, theme);
@@ -156,11 +156,11 @@ impl ConfirmDialog {
                         let after = format!("\"{}\"", escape_preview_value(&diff.after));
                         content_lines.push(Line::from(Span::styled(
                             format!("    - {before}"),
-                            Style::default().fg(theme.status_error),
+                            Style::default().fg(theme.semantic.status.error),
                         )));
                         content_lines.push(Line::from(Span::styled(
                             format!("    + {after}"),
-                            Style::default().fg(theme.status_success),
+                            Style::default().fg(theme.semantic.status.success),
                         )));
                     }
                     if i + 1 < preview.diff.len() {
@@ -171,17 +171,17 @@ impl ConfirmDialog {
             WriteOperation::Delete => {
                 content_lines.push(Line::from(vec![Span::styled(
                     "Target",
-                    Style::default().fg(theme.text_secondary),
+                    Style::default().fg(theme.semantic.text.secondary),
                 )]));
                 for (key, value) in &preview.target_summary.key_values {
                     content_lines.push(Line::from(vec![
                         Span::styled(
                             format!("  {key}: "),
-                            Style::default().fg(theme.text_secondary),
+                            Style::default().fg(theme.semantic.text.secondary),
                         ),
                         Span::styled(
                             format!("\"{}\"", escape_preview_value(value)),
-                            Style::default().fg(theme.text_primary),
+                            Style::default().fg(theme.semantic.text.primary),
                         ),
                     ]));
                 }
@@ -192,7 +192,7 @@ impl ConfirmDialog {
 
         content_lines.push(Line::from(vec![Span::styled(
             "SQL Preview",
-            Style::default().fg(theme.text_secondary),
+            Style::default().fg(theme.semantic.text.secondary),
         )]));
         for sql_line in preview.sql.lines() {
             let indented = format!("  {sql_line}");
@@ -284,25 +284,25 @@ impl ConfirmDialog {
                 JsonDiffLine::Context(s) => {
                     output.push(Line::from(Span::styled(
                         format!("    {s}"),
-                        Style::default().fg(theme.text_dim),
+                        Style::default().fg(theme.semantic.text.dim),
                     )));
                 }
                 JsonDiffLine::Added(s) => {
                     output.push(Line::from(Span::styled(
                         format!("  + {s}"),
-                        Style::default().fg(theme.status_success),
+                        Style::default().fg(theme.semantic.status.success),
                     )));
                 }
                 JsonDiffLine::Removed(s) => {
                     output.push(Line::from(Span::styled(
                         format!("  - {s}"),
-                        Style::default().fg(theme.status_error),
+                        Style::default().fg(theme.semantic.status.error),
                     )));
                 }
                 JsonDiffLine::Ellipsis => {
                     output.push(Line::from(Span::styled(
                         "    ...".to_string(),
-                        Style::default().fg(theme.text_dim),
+                        Style::default().fg(theme.semantic.text.dim),
                     )));
                 }
             }

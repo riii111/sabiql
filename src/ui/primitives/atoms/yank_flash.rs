@@ -8,8 +8,8 @@ pub fn apply_yank_flash(lines: &mut [Line], active: bool, theme: &ThemePalette) 
         return;
     }
     let flash_style = Style::default()
-        .fg(theme.yank_flash_fg)
-        .bg(theme.yank_flash_bg);
+        .fg(theme.component.feedback.yank_flash_fg)
+        .bg(theme.component.feedback.yank_flash_bg);
     for line in lines {
         *line = std::mem::take(line).style(flash_style);
     }
@@ -30,8 +30,8 @@ pub fn apply_yank_flash_masked(
         return;
     }
     let flash_style = Style::default()
-        .fg(theme.yank_flash_fg)
-        .bg(theme.yank_flash_bg);
+        .fg(theme.component.feedback.yank_flash_fg)
+        .bg(theme.component.feedback.yank_flash_bg);
     for (line, &should_flash) in lines.iter_mut().zip(mask.iter()) {
         if should_flash {
             *line = std::mem::take(line).style(flash_style);

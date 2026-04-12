@@ -80,11 +80,11 @@ impl ConnectionError {
 
     fn render_summary(frame: &mut Frame, area: Rect, summary: &str, theme: &ThemePalette) {
         let line = Line::from(vec![
-            Span::styled("✗ ", Style::default().fg(theme.status_error)),
+            Span::styled("✗ ", Style::default().fg(theme.semantic.status.error)),
             Span::styled(
                 summary,
                 Style::default()
-                    .fg(theme.status_error)
+                    .fg(theme.semantic.status.error)
                     .add_modifier(Modifier::BOLD),
             ),
         ]);
@@ -98,15 +98,15 @@ impl ConnectionError {
             .as_ref()
             .map_or("", |e| e.kind.hint());
         let mut spans = vec![
-            Span::styled("Hint: ", Style::default().fg(theme.text_accent)),
-            Span::styled(hint.to_string(), Style::default().fg(theme.text_secondary)),
+            Span::styled("Hint: ", Style::default().fg(theme.semantic.text.accent)),
+            Span::styled(hint, Style::default().fg(theme.semantic.text.secondary)),
         ];
         if state.session.is_service_connection()
             && let Some(ref path) = state.runtime.service_file_path
         {
             spans.push(Span::styled(
                 format!("  (edit {})", path.display()),
-                Style::default().fg(theme.text_muted),
+                Style::default().fg(theme.semantic.text.muted),
             ));
         }
         let line = Line::from(spans);
@@ -126,7 +126,7 @@ impl ConnectionError {
             let toggle_line = Line::from(vec![Span::styled(
                 "▼ Details",
                 Style::default()
-                    .fg(theme.section_header)
+                    .fg(theme.component.navigation.section_header)
                     .add_modifier(Modifier::BOLD),
             )]);
             frame.render_widget(Paragraph::new(toggle_line), chunks[0]);
@@ -140,14 +140,23 @@ impl ConnectionError {
                 let para = Paragraph::new(lines)
                     .scroll((scroll as u16, 0))
                     .wrap(Wrap { trim: false })
-                    .style(Style::default().fg(theme.text_muted));
+                    .style(Style::default().fg(theme.semantic.text.muted));
                 frame.render_widget(para, chunks[1]);
             }
         } else {
             let toggle_line = Line::from(vec![
-                Span::styled("▶ ", Style::default().fg(theme.section_header)),
-                Span::styled("Details ", Style::default().fg(theme.section_header)),
-                Span::styled("(press d to expand)", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    "▶ ",
+                    Style::default().fg(theme.component.navigation.section_header),
+                ),
+                Span::styled(
+                    "Details ",
+                    Style::default().fg(theme.component.navigation.section_header),
+                ),
+                Span::styled(
+                    "(press d to expand)",
+                    Style::default().fg(theme.semantic.text.muted),
+                ),
             ]);
             frame.render_widget(Paragraph::new(toggle_line), area);
         }
@@ -163,7 +172,7 @@ impl ConnectionError {
         let error_state = &state.connection_error;
         let mut spans = vec![Span::styled(
             "Actions: ",
-            Style::default().fg(theme.text_muted),
+            Style::default().fg(theme.semantic.text.muted),
         )];
 
         if state.session.is_service_connection() {
@@ -188,7 +197,7 @@ impl ConnectionError {
             spans.push(Span::styled(
                 "Copied!",
                 Style::default()
-                    .fg(theme.status_success)
+                    .fg(theme.semantic.status.success)
                     .add_modifier(Modifier::BOLD),
             ));
         }

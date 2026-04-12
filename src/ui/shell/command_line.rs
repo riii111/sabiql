@@ -29,7 +29,10 @@ impl CommandLine {
                 visible_width,
                 theme,
             );
-            let mut spans = vec![Span::styled(":", Style::default().fg(theme.text_accent))];
+            let mut spans = vec![Span::styled(
+                ":",
+                Style::default().fg(theme.semantic.text.accent),
+            )];
             spans.extend(cursor_spans);
             Line::from(spans)
         } else {

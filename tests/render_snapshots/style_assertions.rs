@@ -111,7 +111,7 @@ fn pending_draft_cell_uses_orange_fg() {
         .find(|&(x, y)| {
             buffer
                 .cell((x, y))
-                .is_some_and(|c| c.fg == DEFAULT_THEME.cell_draft_pending_fg)
+                .is_some_and(|c| c.fg == DEFAULT_THEME.semantic.status.pending)
         });
     assert!(
         draft_cell.is_some(),
@@ -143,7 +143,7 @@ fn active_cell_edit_uses_yellow_fg() {
         .find(|&(x, y)| {
             buffer
                 .cell((x, y))
-                .is_some_and(|c| c.fg == DEFAULT_THEME.cell_edit_fg)
+                .is_some_and(|c| c.fg == DEFAULT_THEME.component.table.cell_edit_fg)
         });
     assert!(
         edit_cell.is_some(),
@@ -168,7 +168,7 @@ fn staged_delete_row_uses_dark_red_bg() {
         .find(|&(x, y)| {
             buffer
                 .cell((x, y))
-                .is_some_and(|c| c.bg == DEFAULT_THEME.staged_delete_bg)
+                .is_some_and(|c| c.bg == DEFAULT_THEME.component.table.staged_delete_bg)
         });
     assert!(
         staged_cell.is_some(),
@@ -213,7 +213,7 @@ fn result_highlight_respects_injected_now() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             let cell = buf_before.cell((x, y)).unwrap();
-            cell.fg == DEFAULT_THEME.highlight_border && cell.symbol() == "─"
+            cell.fg == DEFAULT_THEME.semantic.surface.highlight_border && cell.symbol() == "─"
         });
     assert!(
         has_green_border,
@@ -228,7 +228,7 @@ fn result_highlight_respects_injected_now() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             let cell = buf_after.cell((x, y)).unwrap();
-            cell.fg == DEFAULT_THEME.highlight_border && cell.symbol() == "─"
+            cell.fg == DEFAULT_THEME.semantic.surface.highlight_border && cell.symbol() == "─"
         });
     assert!(
         !has_green_border_after,
@@ -256,9 +256,166 @@ fn modal_border_uses_theme_color() {
         cell.symbol()
     );
     assert_eq!(
-        cell.fg, DEFAULT_THEME.modal_border,
+        cell.fg, DEFAULT_THEME.component.modal.border,
         "Expected MODAL_BORDER fg on modal border at ({}, {}), got {:?}",
         mx, my, cell.fg
+    );
+}
+
+fn find_row0_text_start(buffer: &ratatui::buffer::Buffer, text: &str) -> Option<u16> {
+    let len = text.chars().count() as u16;
+    if len == 0 || len > TEST_WIDTH {
+        return None;
+    }
+    (0..=TEST_WIDTH - len).find(|&x| {
+        text.chars().enumerate().all(|(i, c)| {
+            buffer
+                .cell((x + i as u16, 0))
+                .and_then(|cell| cell.symbol().chars().next())
+                == Some(c)
+        })
+    })
+}
+
+fn assert_header_status_color(buffer: &ratatui::buffer::Buffer, text: &str, expected: Color) {
+    let start = find_row0_text_start(buffer, text)
+        .unwrap_or_else(|| panic!("Expected header status text {text:?} to be rendered"));
+    for (i, c) in text.chars().enumerate() {
+        let cell = buffer
+            .cell((start + i as u16, 0))
+            .expect("status text cell in row 0");
+        assert_eq!(
+            cell.fg,
+            expected,
+            "Status text {text:?}: cell at ({}, 0) rendering '{c}' should have fg={expected:?}",
+            start + i as u16
+        );
+    }
+}
+
+#[test]
+fn header_status_uses_success_warning_and_error_colors() {
+    let mut terminal = create_test_terminal();
+
+    let now = test_instant();
+    let mut connected = create_test_state();
+    connected
+        .session
+        .begin_connecting("postgres://localhost/test");
+    connected
+        .session
+        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+    let connected_buffer = render_and_get_buffer_at(&mut terminal, &mut connected, now);
+    assert_header_status_color(
+        &connected_buffer,
+        "connected",
+        DEFAULT_THEME.semantic.status.success,
+    );
+
+    let mut loading = create_test_state();
+    loading
+        .session
+        .begin_connecting("postgres://localhost/test");
+    let loading_buffer = render_and_get_buffer_at(&mut terminal, &mut loading, now);
+    assert_header_status_color(
+        &loading_buffer,
+        "loading...",
+        DEFAULT_THEME.semantic.status.warning,
+    );
+
+    let mut no_dsn = create_test_state();
+    let no_dsn_buffer = render_and_get_buffer_at(&mut terminal, &mut no_dsn, now);
+    assert_header_status_color(
+        &no_dsn_buffer,
+        "no dsn",
+        DEFAULT_THEME.semantic.status.error,
+    );
+}
+
+#[test]
+fn help_overlay_uses_section_header_and_scrollbar_colors() {
+    let (mut state, now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::Help);
+    state.ui.help_scroll_offset = 1;
+
+    let buffer = render_and_get_buffer_at(&mut terminal, &mut state, now);
+
+    let has_section_header = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "▸" && cell.fg == DEFAULT_THEME.component.navigation.section_header
+            })
+        });
+    assert!(
+        has_section_header,
+        "Expected help overlay section markers to use section_header color"
+    );
+
+    let has_active_scrollbar = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                matches!(cell.symbol(), "▲" | "▼" | "┃")
+                    && cell.fg == DEFAULT_THEME.component.navigation.scrollbar_active
+            })
+        });
+    assert!(
+        has_active_scrollbar,
+        "Expected help overlay active scrollbar parts to use scrollbar_active color"
+    );
+
+    let has_inactive_scrollbar = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "│"
+                    && cell.fg == DEFAULT_THEME.component.navigation.scrollbar_inactive
+            })
+        });
+    assert!(
+        has_inactive_scrollbar,
+        "Expected help overlay scrollbar track to use scrollbar_inactive color"
+    );
+}
+
+#[test]
+fn test_contrast_theme_applies_help_overlay_navigation_colors() {
+    let (mut state, now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.set_theme(ThemeId::TestContrast);
+    state.modal.set_mode(InputMode::Help);
+    state.ui.help_scroll_offset = 1;
+
+    let buffer = render_and_get_buffer_at(&mut terminal, &mut state, now);
+
+    let has_section_header = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "▸"
+                    && cell.fg == TEST_CONTRAST_THEME.component.navigation.section_header
+            })
+        });
+    assert!(
+        has_section_header,
+        "Expected help overlay to resolve section_header from TEST_CONTRAST_THEME"
+    );
+
+    let has_active_scrollbar = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                matches!(cell.symbol(), "▲" | "▼" | "┃")
+                    && cell.fg == TEST_CONTRAST_THEME.component.navigation.scrollbar_active
+            })
+        });
+    assert!(
+        has_active_scrollbar,
+        "Expected help overlay to resolve active scrollbar color from TEST_CONTRAST_THEME"
     );
 }
 
@@ -277,14 +434,16 @@ fn sql_modal_keyword_and_number_use_syntax_colors() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .find_map(|(x, y)| {
             buffer.cell((x, y)).and_then(|cell| {
-                (cell.symbol() == "S" && cell.fg == DEFAULT_THEME.sql_keyword).then_some(cell)
+                (cell.symbol() == "S" && cell.fg == DEFAULT_THEME.component.syntax.sql_keyword)
+                    .then_some(cell)
             })
         });
     let number_cell = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .find_map(|(x, y)| {
             buffer.cell((x, y)).and_then(|cell| {
-                (cell.symbol() == "4" && cell.fg == DEFAULT_THEME.sql_number).then_some(cell)
+                (cell.symbol() == "4" && cell.fg == DEFAULT_THEME.component.syntax.sql_number)
+                    .then_some(cell)
             })
         });
 
@@ -315,28 +474,101 @@ fn sql_modal_string_comment_and_operator_use_syntax_colors() {
     let has_string = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
-            buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == "'" && cell.fg == DEFAULT_THEME.sql_string)
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "'" && cell.fg == DEFAULT_THEME.component.syntax.sql_string
+            })
         });
     let has_operator = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
-            buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == ":" && cell.fg == DEFAULT_THEME.sql_operator)
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == ":" && cell.fg == DEFAULT_THEME.component.syntax.sql_operator
+            })
         });
     let has_comment = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
-            buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == "-" && cell.fg == DEFAULT_THEME.sql_comment)
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "-" && cell.fg == DEFAULT_THEME.component.syntax.sql_comment
+            })
         });
 
     assert!(has_string, "Expected a green SQL string cell");
     assert!(has_operator, "Expected a cyan SQL operator cell");
     assert!(has_comment, "Expected a dark gray SQL comment cell");
+}
+
+#[test]
+fn test_contrast_theme_applies_sql_syntax_colors() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.set_theme(ThemeId::TestContrast);
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content("SELECT 'x' + 42 -- note".to_string());
+    state.sql_modal.set_status(SqlModalStatus::Editing);
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+    let has_keyword = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "S" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_keyword
+            })
+        });
+    let has_string = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "'" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_string
+            })
+        });
+    let has_comment = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "-" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_comment
+            })
+        });
+    let has_number = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "4" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_number
+            })
+        });
+    let has_operator = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "+" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_operator
+            })
+        });
+
+    assert!(
+        has_keyword,
+        "Expected SQL keyword color to resolve from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_string,
+        "Expected SQL string color to resolve from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_comment,
+        "Expected SQL comment color to resolve from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_number,
+        "Expected SQL number color to resolve from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_operator,
+        "Expected SQL operator color to resolve from TEST_CONTRAST_THEME"
+    );
 }
 
 #[test]
@@ -353,7 +585,8 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             normal_buffer.cell((x, y)).is_some_and(|cell| {
-                cell.bg == DEFAULT_THEME.cursor_bg && cell.fg == DEFAULT_THEME.cursor_text_fg
+                cell.bg == DEFAULT_THEME.semantic.cursor.bg
+                    && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
             })
         });
 
@@ -383,7 +616,8 @@ fn sql_modal_block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .find(|&(x, y)| {
             buffer.cell((x, y)).is_some_and(|cell| {
-                cell.bg == DEFAULT_THEME.cursor_bg && cell.fg == DEFAULT_THEME.cursor_text_fg
+                cell.bg == DEFAULT_THEME.semantic.cursor.bg
+                    && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
             })
         })
 }
@@ -617,7 +851,7 @@ fn sql_modal_unterminated_string_keeps_string_highlight() {
         .any(|(x, y)| {
             buffer.cell((x, y)).is_some_and(|cell| {
                 (cell.symbol() == "'" || cell.symbol() == "u")
-                    && cell.fg == DEFAULT_THEME.sql_string
+                    && cell.fg == DEFAULT_THEME.component.syntax.sql_string
             })
         });
 
@@ -646,7 +880,7 @@ fn sql_modal_unterminated_block_comment_keeps_comment_highlight() {
         .any(|(x, y)| {
             buffer.cell((x, y)).is_some_and(|cell| {
                 (cell.symbol() == "/" || cell.symbol() == "*")
-                    && cell.fg == DEFAULT_THEME.sql_comment
+                    && cell.fg == DEFAULT_THEME.component.syntax.sql_comment
             })
         });
 
@@ -661,11 +895,25 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     let (mut state, now) = connected_state();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
-        focus_border: Color::Rgb(0x11, 0x88, 0xdd),
-        modal_border: Color::Rgb(0xdd, 0x44, 0x11),
-        completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
-        modal_hint: Color::Rgb(0xaa, 0xee, 0x22),
-        ..DEFAULT_THEME
+        semantic: sabiql::ui::theme::SemanticTokens {
+            surface: sabiql::ui::theme::SurfaceTokens {
+                focus_border: Color::Rgb(0x11, 0x88, 0xdd),
+                ..DEFAULT_THEME.semantic.surface
+            },
+            ..DEFAULT_THEME.semantic
+        },
+        component: sabiql::ui::theme::ComponentTokens {
+            modal: sabiql::ui::theme::ModalTokens {
+                hint: Color::Rgb(0xaa, 0xee, 0x22),
+                border: Color::Rgb(0xdd, 0x44, 0x11),
+                ..DEFAULT_THEME.component.modal
+            },
+            editor: sabiql::ui::theme::EditorTokens {
+                completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
+                ..DEFAULT_THEME.component.editor
+            },
+            ..DEFAULT_THEME.component
+        },
     };
 
     state.ui.focused_pane = FocusedPane::Explorer;
@@ -673,9 +921,9 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     let has_custom_focus_border = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
-            shell_buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == "─" && cell.fg == theme.focus_border)
+            shell_buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "─" && cell.fg == theme.semantic.surface.focus_border
+            })
         });
     assert!(
         has_custom_focus_border,
@@ -686,13 +934,13 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     let help_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let (mx, my) = help_modal_origin();
     let modal_corner = help_buffer.cell((mx, my)).unwrap();
-    assert_eq!(modal_corner.fg, theme.modal_border);
+    assert_eq!(modal_corner.fg, theme.component.modal.border);
     let has_custom_help_hint = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             help_buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.fg == theme.modal_hint)
+                .is_some_and(|cell| cell.fg == theme.component.modal.hint)
         });
     assert!(
         has_custom_help_hint,
@@ -706,7 +954,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         .any(|(x, y)| {
             picker_buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.bg == theme.completion_selected_bg)
+                .is_some_and(|cell| cell.bg == theme.component.editor.completion_selected_bg)
         });
     assert!(
         has_custom_picker_selection,
@@ -721,7 +969,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         .any(|(x, y)| {
             sql_buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.fg == theme.modal_hint)
+                .is_some_and(|cell| cell.fg == theme.component.modal.hint)
         });
     assert!(
         has_custom_sql_hint,
@@ -743,7 +991,7 @@ fn state_theme_id_drives_render_palette_resolution() {
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
             buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "─" && cell.fg == TEST_CONTRAST_THEME.focus_border
+                cell.symbol() == "─" && cell.fg == TEST_CONTRAST_THEME.semantic.surface.focus_border
             })
         });
 
@@ -754,12 +1002,80 @@ fn state_theme_id_drives_render_palette_resolution() {
 }
 
 #[test]
+fn test_contrast_theme_applies_result_pane_table_colors() {
+    let (mut state, now) = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    with_current_result(&mut state, now);
+    state.ui.set_theme(ThemeId::TestContrast);
+    state.ui.focused_pane = FocusedPane::Result;
+    state.result_interaction.activate_cell(0, 0);
+    state.result_interaction.stage_row(1);
+
+    let staged_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_staged_delete_bg = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            staged_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.bg == TEST_CONTRAST_THEME.component.table.staged_delete_bg)
+        });
+    let has_active_cell_bg = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            staged_buffer.cell((x, y)).is_some_and(|cell| {
+                cell.bg == TEST_CONTRAST_THEME.component.table.result_cell_active_bg
+            })
+        });
+
+    assert!(
+        has_staged_delete_bg,
+        "Expected staged delete row to resolve background from TEST_CONTRAST_THEME"
+    );
+    assert!(
+        has_active_cell_bg,
+        "Expected active result cell to resolve background from TEST_CONTRAST_THEME"
+    );
+
+    state
+        .result_interaction
+        .begin_cell_edit(0, 0, "1".to_string());
+    state
+        .result_interaction
+        .cell_edit_input_mut()
+        .set_content("new@example.com".to_string());
+
+    let draft_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_pending_draft_fg = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            draft_buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.fg == TEST_CONTRAST_THEME.semantic.status.pending)
+        });
+
+    assert!(
+        has_pending_draft_fg,
+        "Expected pending draft cell to resolve foreground from TEST_CONTRAST_THEME"
+    );
+}
+
+#[test]
 fn sql_completion_popup_uses_injected_theme_styles() {
     let (mut state, now) = connected_state();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
-        modal_border: Color::Rgb(0xdd, 0x44, 0x11),
-        completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
+        component: sabiql::ui::theme::ComponentTokens {
+            modal: sabiql::ui::theme::ModalTokens {
+                border: Color::Rgb(0xdd, 0x44, 0x11),
+                ..DEFAULT_THEME.component.modal
+            },
+            editor: sabiql::ui::theme::EditorTokens {
+                completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
+                ..DEFAULT_THEME.component.editor
+            },
+            ..DEFAULT_THEME.component
+        },
         ..DEFAULT_THEME
     };
 
@@ -832,14 +1148,14 @@ fn sql_completion_popup_uses_injected_theme_styles() {
         .any(|(x, y)| {
             buffer
                 .cell((x, y))
-                .is_some_and(|cell| cell.bg == theme.completion_selected_bg)
+                .is_some_and(|cell| cell.bg == theme.component.editor.completion_selected_bg)
         });
     let top_left = buffer.cell((popup_x, popup_y)).unwrap();
     let top_right = buffer.cell((popup_x + popup_width - 1, popup_y)).unwrap();
     let has_completion_border = top_left.symbol() == "┌"
-        && top_left.fg == theme.modal_border
+        && top_left.fg == theme.component.modal.border
         && top_right.symbol() == "┐"
-        && top_right.fg == theme.modal_border;
+        && top_right.fg == theme.component.modal.border;
 
     assert!(
         has_completion_border,

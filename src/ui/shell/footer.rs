@@ -31,7 +31,7 @@ impl Footer {
         time_ms: Option<u128>,
         theme: &ThemePalette,
     ) {
-        let base_style = Style::default().fg(theme.text_primary);
+        let base_style = Style::default().fg(theme.semantic.text.primary);
         if state.er_preparation.status == ErStatus::Waiting {
             let line = Self::build_er_waiting_line(state, time_ms, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
@@ -70,7 +70,10 @@ impl Footer {
         let cached = total.saturating_sub(remaining + failed_count);
 
         let text = format!("{spinner} Preparing ER... ({cached}/{total})");
-        Line::from(Span::styled(text, Style::default().fg(theme.text_accent)))
+        Line::from(Span::styled(
+            text,
+            Style::default().fg(theme.semantic.text.accent),
+        ))
     }
 
     // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
@@ -322,7 +325,7 @@ impl Footer {
         if let Some(msg) = success_msg {
             spans.push(Span::styled(
                 format!("✓ {msg}  "),
-                Style::default().fg(theme.status_success),
+                Style::default().fg(theme.semantic.status.success),
             ));
         }
 

@@ -72,9 +72,9 @@ fn render_profile_item(
     let prefix = active_prefix(is_active);
     let text = format!("{prefix}{display_name}");
     let style = if is_active {
-        Style::default().fg(theme.active_indicator)
+        Style::default().fg(theme.component.navigation.active_indicator)
     } else {
-        Style::default().fg(theme.text_secondary)
+        Style::default().fg(theme.semantic.text.secondary)
     };
     ListItem::new(text).style(style)
 }
@@ -109,16 +109,16 @@ fn render_service_item(
     let name_part = format!("{prefix}{name}");
 
     let name_style = if is_active {
-        Style::default().fg(theme.active_indicator)
+        Style::default().fg(theme.component.navigation.active_indicator)
     } else {
-        Style::default().fg(theme.text_secondary)
+        Style::default().fg(theme.semantic.text.secondary)
     };
     let line = Line::from(vec![
         Span::styled(name_part, name_style),
         Span::raw(" ".repeat(gap)),
         Span::styled(
             source_label.to_owned(),
-            Style::default().fg(theme.text_muted),
+            Style::default().fg(theme.semantic.text.muted),
         ),
     ]);
     ListItem::new(line)
@@ -165,7 +165,7 @@ pub fn render_connection_list(
     let list = List::new(items)
         .highlight_style(
             Style::default()
-                .fg(theme.text_accent)
+                .fg(theme.semantic.text.accent)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("> ");

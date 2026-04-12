@@ -207,11 +207,14 @@ impl HelpOverlay {
 
     fn section(title: &str, theme: &ThemePalette) -> Line<'static> {
         Line::from(vec![
-            Span::styled("▸ ", Style::default().fg(theme.section_header)),
+            Span::styled(
+                "▸ ",
+                Style::default().fg(theme.component.navigation.section_header),
+            ),
             Span::styled(
                 title.to_string(),
                 Style::default()
-                    .fg(theme.section_header)
+                    .fg(theme.component.navigation.section_header)
                     .add_modifier(Modifier::BOLD),
             ),
         ])
@@ -240,10 +243,13 @@ impl HelpOverlay {
             Span::styled(
                 format!("  {key:<20}"),
                 Style::default()
-                    .fg(theme.text_accent)
+                    .fg(theme.semantic.text.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(desc.to_string(), Style::default().fg(theme.text_secondary)),
+            Span::styled(
+                desc.to_string(),
+                Style::default().fg(theme.semantic.text.secondary),
+            ),
         ])
     }
 }
