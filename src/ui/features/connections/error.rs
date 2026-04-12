@@ -99,10 +99,7 @@ impl ConnectionError {
             .map_or("", |e| e.kind.hint());
         let mut spans = vec![
             Span::styled("Hint: ", Style::default().fg(theme.semantic.text.accent)),
-            Span::styled(
-                hint.to_string(),
-                Style::default().fg(theme.semantic.text.secondary),
-            ),
+            Span::styled(hint, Style::default().fg(theme.semantic.text.secondary)),
         ];
         if state.session.is_service_connection()
             && let Some(ref path) = state.runtime.service_file_path
