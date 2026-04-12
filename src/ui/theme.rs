@@ -20,7 +20,6 @@ pub struct ThemePalette {
     pub key_chip_fg: Color,
     pub editor_current_line_bg: Color,
     pub completion_selected_bg: Color,
-    pub input_value: Color,
     pub note_text: Color,
     pub focus_border: Color,
     pub unfocus_border: Color,
@@ -54,17 +53,10 @@ pub struct ThemePalette {
     pub sql_comment: Color,
     pub sql_operator: Color,
     pub sql_text: Color,
-    pub json_key: Color,
-    pub json_string: Color,
-    pub json_number: Color,
-    pub json_bool: Color,
-    pub json_null: Color,
-    pub json_bracket: Color,
     pub striped_row_bg: Color,
     pub tab_active: Color,
     pub tab_inactive: Color,
     pub active_indicator: Color,
-    pub inactive_indicator: Color,
     pub placeholder_text: Color,
 }
 
@@ -132,10 +124,6 @@ impl ThemePalette {
     pub fn insert_cursor_style(&self) -> Style {
         Style::default().fg(self.cursor_fg)
     }
-
-    pub fn cursor_style(&self) -> Style {
-        self.block_cursor_style()
-    }
 }
 
 pub const DEFAULT_THEME: ThemePalette = ThemePalette {
@@ -147,7 +135,6 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     key_chip_fg: Color::Rgb(0xd4, 0xa4, 0x85),
     editor_current_line_bg: Color::Rgb(0x22, 0x26, 0x33),
     completion_selected_bg: Color::Rgb(0x45, 0x47, 0x5a),
-    input_value: Color::Rgb(0xaa, 0xaa, 0xaa),
     note_text: Color::Rgb(0x66, 0x66, 0x77),
     focus_border: Color::Rgb(0x97, 0xc9, 0xc3),
     unfocus_border: Color::Rgb(0x45, 0x47, 0x55),
@@ -181,17 +168,10 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     sql_comment: Color::Rgb(0x62, 0x72, 0xa4),
     sql_operator: Color::Rgb(0x8a, 0x91, 0xa5),
     sql_text: Color::Rgb(0xe9, 0xdb, 0xdb),
-    json_key: Color::Rgb(0x7a, 0x9f, 0xc8),
-    json_string: Color::Rgb(0x8a, 0xb8, 0x8a),
-    json_number: Color::Rgb(0xb0, 0x9a, 0x88),
-    json_bool: Color::Rgb(0xb0, 0x9a, 0x88),
-    json_null: Color::Rgb(0x5b, 0x5f, 0x6e),
-    json_bracket: Color::Rgb(0xc0, 0xb8, 0xb8),
     striped_row_bg: Color::Rgb(0x1e, 0x1e, 0x23),
     tab_active: Color::Rgb(0xd0, 0xc0, 0xa0),
     tab_inactive: Color::Rgb(0x5b, 0x5f, 0x6e),
     active_indicator: Color::Rgb(0xff, 0xff, 0xff),
-    inactive_indicator: Color::Rgb(0x5b, 0x5f, 0x6e),
     placeholder_text: Color::Rgb(0x5b, 0x5f, 0x6e),
 };
 
@@ -205,7 +185,6 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
     key_chip_fg: Color::Rgb(0xff, 0xe0, 0x66),
     editor_current_line_bg: Color::Rgb(0x1d, 0x2d, 0x3f),
     completion_selected_bg: Color::Rgb(0x2d, 0x5d, 0x46),
-    input_value: Color::Rgb(0xf6, 0xf0, 0xe8),
     note_text: Color::Rgb(0x92, 0xb3, 0xc2),
     focus_border: Color::Rgb(0x2f, 0xc4, 0xb2),
     unfocus_border: Color::Rgb(0x5d, 0x62, 0x74),
@@ -239,17 +218,10 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
     sql_comment: Color::Rgb(0x7c, 0x8a, 0xa5),
     sql_operator: Color::Rgb(0x5e, 0xe0, 0xd5),
     sql_text: Color::Rgb(0xf6, 0xf0, 0xe8),
-    json_key: Color::Rgb(0x2f, 0xc4, 0xb2),
-    json_string: Color::Rgb(0x9b, 0xf0, 0x8f),
-    json_number: Color::Rgb(0xff, 0xb8, 0x6b),
-    json_bool: Color::Rgb(0xff, 0xb8, 0x6b),
-    json_null: Color::Rgb(0x92, 0xb3, 0xc2),
-    json_bracket: Color::Rgb(0xc9, 0xd6, 0xdf),
     striped_row_bg: Color::Rgb(0x1d, 0x21, 0x2b),
     tab_active: Color::Rgb(0x2f, 0xc4, 0xb2),
     tab_inactive: Color::Rgb(0x92, 0xb3, 0xc2),
     active_indicator: Color::Rgb(0x2f, 0xc4, 0xb2),
-    inactive_indicator: Color::Rgb(0x92, 0xb3, 0xc2),
     placeholder_text: Color::Rgb(0x92, 0xb3, 0xc2),
 };
 
@@ -314,8 +286,8 @@ mod tests {
     }
 
     #[test]
-    fn cursor_style_inverts_cursor_and_selection_colors() {
-        let style = DEFAULT_THEME.cursor_style();
+    fn block_cursor_style_inverts_cursor_and_selection_colors() {
+        let style = DEFAULT_THEME.block_cursor_style();
 
         assert_eq!(style.bg, Some(DEFAULT_THEME.cursor_bg));
         assert_eq!(style.fg, Some(DEFAULT_THEME.cursor_text_fg));
