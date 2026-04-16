@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::viewport::{
@@ -674,8 +675,7 @@ impl Inspector {
         };
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
-        let flash_active =
-            flash_timers.is_active(crate::app::model::shared::flash_timer::FlashId::Ddl, now);
+        let flash_active = flash_timers.is_active(FlashId::Ddl, now);
 
         let mut lines: Vec<Line> = ddl
             .lines()

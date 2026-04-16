@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::ThemePalette;
@@ -85,10 +86,7 @@ pub fn render(
                 .map(|line| super::plan_highlight::highlight_plan_line(line, theme)),
         );
 
-        let flash_active = state.flash_timers.is_active(
-            crate::app::model::shared::flash_timer::FlashId::SqlModal,
-            now,
-        );
+        let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
         let content_start = 3; // skip header, query snippet, empty line
         crate::ui::primitives::atoms::apply_yank_flash(
             &mut lines[content_start..],

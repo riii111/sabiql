@@ -8,6 +8,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
+use crate::app::model::shared::flash_timer::FlashId;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::ui::theme::ThemePalette;
 
@@ -49,11 +50,7 @@ pub fn render(
     let mut visible: Vec<Line> = lines.into_iter().skip(clamped).collect();
     let visible_mask: Vec<bool> = flash_mask.into_iter().skip(clamped).collect();
 
-    let flash_active = can_yank
-        && state.flash_timers.is_active(
-            crate::app::model::shared::flash_timer::FlashId::SqlModal,
-            now,
-        );
+    let flash_active = can_yank && state.flash_timers.is_active(FlashId::SqlModal, now);
     crate::ui::primitives::atoms::apply_yank_flash_masked(
         &mut visible,
         flash_active,

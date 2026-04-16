@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
@@ -17,6 +18,7 @@ use crate::app::policy::write::sql_risk::{
 use crate::app::policy::write::write_guardrails::{
     AdhocRiskDecision, RiskLevel, evaluate_sql_risk,
 };
+use crate::app::ports::ClipboardError;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 
@@ -171,9 +173,7 @@ pub fn reduce_sql_modal(
             state.sql_modal.completion.candidates.clear();
             state.sql_modal.completion.selected_index = 0;
             state.sql_modal.completion_debounce = None;
-            state
-                .flash_timers
-                .clear(crate::app::model::shared::flash_timer::FlashId::SqlModal);
+            state.flash_timers.clear(FlashId::SqlModal);
             if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some() {
                 Some(vec![Effect::DispatchActions(vec![
                     Action::StartPrefetchAll,
@@ -419,7 +419,7 @@ pub fn reduce_sql_modal(
                 Some(c) if !c.is_empty() => Some(vec![Effect::CopyToClipboard {
                     content: c,
                     on_success: Some(Action::SqlModalYankSuccess),
-                    on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
+                    on_failure: Some(Action::CopyFailed(ClipboardError {
                         message: "Clipboard unavailable".into(),
                     })),
                 }]),
@@ -427,10 +427,7 @@ pub fn reduce_sql_modal(
             }
         }
         Action::SqlModalYankSuccess => {
-            state.flash_timers.set(
-                crate::app::model::shared::flash_timer::FlashId::SqlModal,
-                now,
-            );
+            state.flash_timers.set(FlashId::SqlModal, now);
             Some(vec![])
         }
 
@@ -1250,10 +1247,7 @@ mod tests {
 
             reduce_sql_modal(&mut state, &Action::SqlModalYankSuccess, now);
 
-            assert!(state.flash_timers.is_active(
-                crate::app::model::shared::flash_timer::FlashId::SqlModal,
-                now
-            ));
+            assert!(state.flash_timers.is_active(FlashId::SqlModal, now));
         }
 
         #[test]

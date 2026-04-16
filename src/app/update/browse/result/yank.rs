@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::ui_state::YankFlash;
 use crate::app::ports::ClipboardError;
@@ -56,13 +57,11 @@ pub fn reduce(
                 && let Some(table) = state.session.table_detail().as_ref()
             {
                 let ddl = services.ddl_generator.generate_ddl(table);
-                state
-                    .flash_timers
-                    .set(crate::app::model::shared::flash_timer::FlashId::Ddl, now);
+                state.flash_timers.set(FlashId::Ddl, now);
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
-                    on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
+                    on_failure: Some(Action::CopyFailed(ClipboardError {
                         message: "Clipboard unavailable".into(),
                     })),
                 }]);
@@ -496,11 +495,7 @@ mod tests {
 
             reduce(&mut state, &Action::DdlYank, &fake_services(), now);
 
-            assert!(
-                state
-                    .flash_timers
-                    .is_active(crate::app::model::shared::flash_timer::FlashId::Ddl, now)
-            );
+            assert!(state.flash_timers.is_active(FlashId::Ddl, now));
         }
 
         #[test]

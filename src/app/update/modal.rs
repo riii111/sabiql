@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::update::action::{
     Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
@@ -81,9 +82,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.modal.set_mode(InputMode::Normal);
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion_debounce = None;
-            state
-                .flash_timers
-                .clear(crate::app::model::shared::flash_timer::FlashId::SqlModal);
+            state.flash_timers.clear(FlashId::SqlModal);
             Some(vec![])
         }
         Action::OpenErTablePicker => {

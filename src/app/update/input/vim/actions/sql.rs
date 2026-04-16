@@ -1,3 +1,4 @@
+use crate::app::model::shared::key_sequence::Prefix;
 use crate::app::update::action::{
     Action, CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
@@ -144,7 +145,7 @@ mod tests {
     fn gg_moves_to_first_line() {
         let action = crate::app::update::input::vim::action_for_input(
             &combo(Key::Char('g')),
-            Some(crate::app::model::shared::key_sequence::Prefix::G),
+            Some(Prefix::G),
             VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),
         );
 

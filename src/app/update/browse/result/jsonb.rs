@@ -4,10 +4,12 @@ use unicode_casefold::UnicodeCaseFold;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailState;
+use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
+use crate::app::ports::ClipboardError;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::QuerySource;
 
@@ -82,14 +84,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
         Action::JsonbYankAll => {
             let json = state.jsonb_detail.current_json_for_yank();
-            state.flash_timers.set(
-                crate::app::model::shared::flash_timer::FlashId::JsonbDetail,
-                now,
-            );
+            state.flash_timers.set(FlashId::JsonbDetail, now);
             Some(vec![Effect::CopyToClipboard {
                 content: json,
                 on_success: Some(Action::CellCopied),
-                on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
+                on_failure: Some(Action::CopyFailed(ClipboardError {
                     message: "Clipboard unavailable".into(),
                 })),
             }])
@@ -565,6 +564,7 @@ mod tests {
         use super::*;
         use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
         use crate::app::model::shared::key_sequence::{KeySequenceState, Prefix};
+        use crate::app::update::action::CursorMove;
         use rstest::rstest;
 
         #[test]
@@ -586,7 +586,7 @@ mod tests {
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
-                    direction: crate::app::update::action::CursorMove::Down,
+                    direction: CursorMove::Down,
                 },
                 Instant::now(),
             );
@@ -594,7 +594,7 @@ mod tests {
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
-                    direction: crate::app::update::action::CursorMove::Right,
+                    direction: CursorMove::Right,
                 },
                 Instant::now(),
             );
@@ -631,7 +631,7 @@ mod tests {
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
-                    direction: crate::app::update::action::CursorMove::Down,
+                    direction: CursorMove::Down,
                 },
                 Instant::now(),
             );
@@ -639,7 +639,7 @@ mod tests {
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
-                    direction: crate::app::update::action::CursorMove::Down,
+                    direction: CursorMove::Down,
                 },
                 Instant::now(),
             );
@@ -648,11 +648,11 @@ mod tests {
         }
 
         #[rstest]
-        #[case(crate::app::update::action::CursorMove::ViewportTop, 0)]
-        #[case(crate::app::update::action::CursorMove::ViewportMiddle, 1)]
-        #[case(crate::app::update::action::CursorMove::ViewportBottom, 2)]
+        #[case(CursorMove::ViewportTop, 0)]
+        #[case(CursorMove::ViewportMiddle, 1)]
+        #[case(CursorMove::ViewportBottom, 2)]
         fn viewport_cursor_moves_follow_visible_rows(
-            #[case] movement: crate::app::update::action::CursorMove,
+            #[case] movement: CursorMove,
             #[case] expected_row: usize,
         ) {
             let mut state =
@@ -693,7 +693,7 @@ mod tests {
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
-                    direction: crate::app::update::action::CursorMove::Right,
+                    direction: CursorMove::Right,
                 },
                 Instant::now(),
             );

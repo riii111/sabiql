@@ -62,6 +62,7 @@ fn navigation_action(navigation: VimNavigation) -> Option<Action> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::model::shared::key_sequence::Prefix;
     use crate::app::update::input::keybindings::{Key, KeyCombo};
     use crate::app::update::input::vim::{VimSurfaceContext, action_for_key};
     use rstest::rstest;
@@ -115,7 +116,7 @@ mod tests {
     fn gg_moves_to_first_line() {
         let action = crate::app::update::input::vim::action_for_input(
             &combo(Key::Char('g')),
-            Some(crate::app::model::shared::key_sequence::Prefix::G),
+            Some(Prefix::G),
             VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing),
         );
 
