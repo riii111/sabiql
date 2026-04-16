@@ -253,6 +253,7 @@ mod tests {
 
     mod jsonb_search {
         use super::*;
+        use crate::app::model::shared::key_sequence::Prefix;
 
         #[test]
         fn ctrl_n_still_falls_through_to_search_input() {
@@ -276,6 +277,19 @@ mod tests {
                 Action::TextInput {
                     target: InputTarget::JsonbSearch,
                     ch: 'p',
+                }
+            ));
+        }
+
+        #[test]
+        fn pending_prefix_is_ignored_while_search_is_active() {
+            let result = handle_jsonb_detail_keys(combo(Key::Char('g')), true, Some(Prefix::G));
+
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::JsonbSearch,
+                    ch: 'g',
                 }
             ));
         }

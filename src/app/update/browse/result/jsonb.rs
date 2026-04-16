@@ -8,7 +8,7 @@ use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
-use crate::app::update::action::{Action, InputTarget};
+use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::QuerySource;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -117,7 +117,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state
                 .jsonb_detail
                 .editor_mut()
-                .move_cursor(crate::app::update::action::CursorMove::LineEnd);
+                .move_cursor(CursorMove::LineEnd);
             update_editor_scroll(state);
             state.jsonb_detail.enter_edit();
             state.modal.replace_mode(InputMode::JsonbEdit);
@@ -169,13 +169,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             direction,
         } => {
             match direction {
-                crate::app::update::action::CursorMove::ViewportTop
-                | crate::app::update::action::CursorMove::ViewportMiddle
-                | crate::app::update::action::CursorMove::ViewportBottom => {
-                    let visible_rows = match state.jsonb_detail_editor_visible_rows() {
-                        0 => DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS,
-                        rows => rows,
-                    };
+                CursorMove::ViewportTop
+                | CursorMove::ViewportMiddle
+                | CursorMove::ViewportBottom => {
+                    let visible_rows = effective_visible_rows(state);
                     state
                         .jsonb_detail
                         .editor_mut()
@@ -306,11 +303,15 @@ fn jump_to_current_match(state: &mut AppState) {
 }
 
 fn update_editor_scroll(state: &mut AppState) {
-    let visible_rows = match state.jsonb_detail_editor_visible_rows() {
+    let visible_rows = effective_visible_rows(state);
+    state.jsonb_detail.editor_mut().update_scroll(visible_rows);
+}
+
+fn effective_visible_rows(state: &AppState) -> usize {
+    match state.jsonb_detail_editor_visible_rows() {
         0 => DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS,
         rows => rows,
-    };
-    state.jsonb_detail.editor_mut().update_scroll(visible_rows);
+    }
 }
 
 fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
@@ -709,6 +710,20 @@ mod tests {
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+            assert!(state.messages.last_error.is_some());
+        }
+
+        #[test]
+        fn append_insert_blocked_in_read_only_mode() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            state.session.read_only = true;
+            let cursor_before = state.jsonb_detail.editor().cursor();
+
+            reduce(&mut state, &Action::JsonbAppendInsert, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+            assert_eq!(state.jsonb_detail.editor().cursor(), cursor_before);
             assert!(state.messages.last_error.is_some());
         }
 

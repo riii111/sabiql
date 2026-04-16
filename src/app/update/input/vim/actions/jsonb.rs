@@ -25,7 +25,7 @@ pub(in crate::app::update::input::vim) fn command(
                 Some(Action::JsonbSearchPrev)
             }
             VimCommand::Operator(VimOperator::Yank) => Some(Action::JsonbYankAll),
-            VimCommand::Operator(VimOperator::Delete) => Some(Action::None),
+            VimCommand::Operator(VimOperator::Delete) => None,
         },
         JsonbDetailVimContext::Editing => match command {
             VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::JsonbExitEdit),
