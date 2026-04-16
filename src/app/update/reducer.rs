@@ -1503,9 +1503,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 Action::ConnectionSaveFailed(ConnectionSaveError::Store(
-                    ConnectionStoreError::Io(std::sync::Arc::new(std::io::Error::other(
-                        "Write error",
-                    ))),
+                    ConnectionStoreError::Io(Arc::new(std::io::Error::other("Write error"))),
                 )),
                 now,
                 &AppServices::stub(),

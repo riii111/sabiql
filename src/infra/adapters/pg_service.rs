@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::app::ports::service_file::{ServiceFileError, ServiceFileReader};
 use crate::domain::connection::ServiceEntry;
@@ -18,7 +19,7 @@ impl ServiceFileReader for PgServiceFileReader {
         let content =
             std::fs::read_to_string(&path).map_err(|source| ServiceFileError::ReadAt {
                 path: path.clone(),
-                source: std::sync::Arc::new(source),
+                source: Arc::new(source),
             })?;
         let entries = parse(&content);
         Ok((entries, path))
