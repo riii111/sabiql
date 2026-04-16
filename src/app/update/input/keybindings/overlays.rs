@@ -613,14 +613,20 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "Enter/i",
-        key: "Enter / i",
+        key_short: "Enter/i/A",
+        key: "Enter / i / A",
         desc_short: "Insert",
-        description: "Enter Insert mode",
-        bindings: &[ExecBinding {
-            action: Action::JsonbEnterEdit,
-            combos: &[KeyCombo::plain(Key::Enter), KeyCombo::plain(Key::Char('i'))],
-        }],
+        description: "Enter Insert mode / append at line end",
+        bindings: &[
+            ExecBinding {
+                action: Action::JsonbEnterEdit,
+                combos: &[KeyCombo::plain(Key::Enter), KeyCombo::plain(Key::Char('i'))],
+            },
+            ExecBinding {
+                action: Action::JsonbAppendInsert,
+                combos: &[KeyCombo::plain(Key::Char('A'))],
+            },
+        ],
     },
     ModeRow {
         key_short: "/",
@@ -693,26 +699,47 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
         ],
     },
     ModeRow {
-        key_short: "Home/End",
-        key: "Home / End",
-        desc_short: "Line",
-        description: "Line start/end",
+        key_short: "0$wb",
+        key: "0 / $ / w / b / Home / End",
+        desc_short: "Jump",
+        description: "Move by word or line boundary",
         bindings: &[
             ExecBinding {
                 action: Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
-                    direction: CursorMove::Home,
+                    direction: CursorMove::LineStart,
                 },
-                combos: &[KeyCombo::plain(Key::Home)],
+                combos: &[KeyCombo::plain(Key::Char('0')), KeyCombo::plain(Key::Home)],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
-                    direction: CursorMove::End,
+                    direction: CursorMove::LineEnd,
                 },
-                combos: &[KeyCombo::plain(Key::End)],
+                combos: &[KeyCombo::plain(Key::Char('$')), KeyCombo::plain(Key::End)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::WordForward,
+                },
+                combos: &[KeyCombo::plain(Key::Char('w'))],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::WordBackward,
+                },
+                combos: &[KeyCombo::plain(Key::Char('b'))],
             },
         ],
+    },
+    ModeRow {
+        key_short: "ggGHML",
+        key: "gg / G / H / M / L",
+        desc_short: "View",
+        description: "Jump by buffer or viewport",
+        bindings: &[],
     },
     ModeRow {
         key_short: "Esc",
