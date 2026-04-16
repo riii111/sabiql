@@ -50,9 +50,12 @@ impl From<&[ConnectionProfile]> for ConnectionConfigFile {
     }
 }
 
-impl ConnectionConfigFile {
-    pub fn to_profiles(&self) -> Result<Vec<ConnectionProfile>, ConnectionNameError> {
-        self.connections
+impl TryFrom<&ConnectionConfigFile> for Vec<ConnectionProfile> {
+    type Error = ConnectionNameError;
+
+    fn try_from(config: &ConnectionConfigFile) -> Result<Self, Self::Error> {
+        config
+            .connections
             .iter()
             .map(|entry| {
                 Ok(ConnectionProfile {

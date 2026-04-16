@@ -101,8 +101,7 @@ impl ConnectionStore for TomlConnectionStore {
         let config: ConnectionConfigFile = toml::from_str(&content)
             .map_err(|e| ConnectionStoreError::InvalidFormat(e.to_string()))?;
 
-        config
-            .to_profiles()
+        Vec::<ConnectionProfile>::try_from(&config)
             .map_err(|e| ConnectionStoreError::InvalidFormat(e.to_string()))
     }
 
