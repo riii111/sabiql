@@ -37,16 +37,27 @@ impl Inspector {
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
-        Self::render_tab_bar(frame, tab_area, state, theme);
+        Self::render_tab_bar(frame, tab_area, state, services, theme);
         Self::render_content(frame, content_area, state, is_focused, services, now, theme)
     }
 
-    fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
-        let tabs: Vec<Span> = InspectorTab::all()
+    fn render_tab_bar(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        services: &AppServices,
+        theme: &ThemePalette,
+    ) {
+        let active_tab = services
+            .db_capabilities
+            .normalize_inspector_tab(state.ui.inspector_tab);
+        let tabs: Vec<Span> = services
+            .db_capabilities
+            .supported_inspector_tabs()
             .iter()
             .enumerate()
             .flat_map(|(i, tab)| {
-                let is_selected = *tab == state.ui.inspector_tab;
+                let is_selected = *tab == active_tab;
                 let style = if is_selected {
                     Style::default()
                         .fg(theme.component.navigation.tab_active)
@@ -83,8 +94,11 @@ impl Inspector {
         if let Some(table) = &state.session.table_detail() {
             let inner = block.inner(area);
             frame.render_widget(block, area);
+            let active_tab = services
+                .db_capabilities
+                .normalize_inspector_tab(state.ui.inspector_tab);
 
-            match state.ui.inspector_tab {
+            match active_tab {
                 InspectorTab::Info => {
                     Self::render_info(frame, inner, table, state.ui.inspector_scroll_offset, theme);
                     ViewportPlan::default()

@@ -13,10 +13,13 @@ use crate::app::services::AppServices;
 use crate::app::update::action::Action;
 
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
+    let active_tab = services
+        .db_capabilities
+        .normalize_inspector_tab(state.ui.inspector_tab);
     state
         .session
         .table_detail()
-        .map_or(0, |t| match state.ui.inspector_tab {
+        .map_or(0, |t| match active_tab {
             InspectorTab::Info => 5,
             InspectorTab::Columns => t.columns.len(),
             InspectorTab::Indexes => t.indexes.len(),
@@ -40,7 +43,10 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
 }
 
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
-    let visible = match state.ui.inspector_tab {
+    let visible = match services
+        .db_capabilities
+        .normalize_inspector_tab(state.ui.inspector_tab)
+    {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
         _ => state.inspector_visible_rows(),
     };
@@ -57,7 +63,7 @@ pub fn reduce_navigation(
     services: &AppServices,
     now: Instant,
 ) -> Option<Vec<Effect>> {
-    focus::reduce(state, action, now)
+    focus::reduce(state, action, services, now)
         .or_else(|| input::reduce(state, action))
         .or_else(|| explorer::reduce(state, action))
         .or_else(|| inspector::reduce(state, action, services))

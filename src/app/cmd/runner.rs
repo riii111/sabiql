@@ -21,7 +21,8 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::ui_state::scroll_max_offset;
 use crate::app::ports::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
-    FolderOpener, MetadataProvider, QueryExecutor, QueryHistoryStore, Renderer, ServiceFileReader,
+    FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
+    Renderer,
 };
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
@@ -30,7 +31,7 @@ use crate::domain::DatabaseMetadata;
 struct ConnectionDeps {
     dsn_builder: Arc<dyn DsnBuilder>,
     connection_store: Arc<dyn ConnectionStore>,
-    service_file_reader: Arc<dyn ServiceFileReader>,
+    service_file_reader: Arc<dyn PgServiceEntryReader>,
 }
 
 struct QueryDeps {
@@ -67,7 +68,7 @@ pub struct EffectRunnerBuilder {
     config_writer: Option<Arc<dyn ConfigWriter>>,
     er_log_writer: Option<Arc<dyn ErLogWriter>>,
     connection_store: Option<Arc<dyn ConnectionStore>>,
-    service_file_reader: Option<Arc<dyn ServiceFileReader>>,
+    service_file_reader: Option<Arc<dyn PgServiceEntryReader>>,
     clipboard: Option<Arc<dyn ClipboardWriter>>,
     folder_opener: Option<Arc<dyn FolderOpener>>,
     query_history_store: Option<Arc<dyn QueryHistoryStore>>,
@@ -112,7 +113,7 @@ impl EffectRunnerBuilder {
         self
     }
     #[must_use]
-    pub fn service_file_reader(mut self, v: Arc<dyn ServiceFileReader>) -> Self {
+    pub fn service_file_reader(mut self, v: Arc<dyn PgServiceEntryReader>) -> Self {
         self.service_file_reader = Some(v);
         self
     }
@@ -324,6 +325,7 @@ impl EffectRunner {
                     &self.metadata_cache,
                     &self.connection.connection_store,
                     &self.connection.service_file_reader,
+                    services.db_capabilities.supports_pg_service_entries,
                     state,
                 )
                 .await?;

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::app::ports::service_file::{ServiceFileError, ServiceFileReader};
+use crate::app::ports::service_file::{PgServiceEntryReader, ServiceFileError};
 use crate::domain::connection::ServiceEntry;
 
 #[derive(Default)]
@@ -12,7 +12,7 @@ impl PgServiceFileReader {
     }
 }
 
-impl ServiceFileReader for PgServiceFileReader {
+impl PgServiceEntryReader for PgServiceFileReader {
     fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError> {
         let path = find_service_file()?;
         let content = std::fs::read_to_string(&path)

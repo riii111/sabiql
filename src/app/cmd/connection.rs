@@ -7,8 +7,8 @@ use crate::app::cmd::cache::TtlCache;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::ports::{
-    ConnectionStore, ConnectionStoreError, DsnBuilder, MetadataProvider, ServiceFileError,
-    ServiceFileReader,
+    ConnectionStore, ConnectionStoreError, DsnBuilder, MetadataProvider, PgServiceEntryReader,
+    ServiceFileError,
 };
 use crate::app::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
 use crate::domain::DatabaseMetadata;
@@ -21,7 +21,8 @@ pub(crate) async fn run(
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     connection_store: &Arc<dyn ConnectionStore>,
-    service_file_reader: &Arc<dyn ServiceFileReader>,
+    service_file_reader: &Arc<dyn PgServiceEntryReader>,
+    supports_pg_service_entries: bool,
     state: &AppState,
 ) -> Result<()> {
     match effect {
@@ -139,10 +140,14 @@ pub(crate) async fn run(
                     Err(e) => (vec![], Some(e.to_string())),
                 };
                 let (services, service_file_path, service_load_warning) =
-                    match reader.read_services() {
-                        Ok((s, p)) => (s, Some(p), None),
-                        Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
-                        Err(e) => (vec![], None, Some(e.to_string())),
+                    if supports_pg_service_entries {
+                        match reader.read_services() {
+                            Ok((s, p)) => (s, Some(p), None),
+                            Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
+                            Err(e) => (vec![], None, Some(e.to_string())),
+                        }
+                    } else {
+                        (vec![], None, None)
                     };
 
                 tx.blocking_send(Action::ConnectionsLoaded(ConnectionsLoadedPayload {

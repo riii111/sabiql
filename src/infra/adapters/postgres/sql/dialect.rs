@@ -1,7 +1,7 @@
 use crate::app::ports::SqlDialect;
-use crate::infra::utils::{quote_ident, quote_literal};
 
 use super::super::PostgresAdapter;
+use super::{quote_ident, quote_literal};
 
 fn sql_literal_or_null(value: &str) -> String {
     if value == "NULL" {

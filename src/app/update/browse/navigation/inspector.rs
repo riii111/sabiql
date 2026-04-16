@@ -9,8 +9,15 @@ use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTa
 
 use super::inspector_max_scroll;
 
-fn inspector_page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
-    let visible = match state.ui.inspector_tab {
+fn inspector_page_scroll_delta(
+    state: &AppState,
+    services: &AppServices,
+    amount: ScrollAmount,
+) -> Option<usize> {
+    let visible = match services
+        .db_capabilities
+        .normalize_inspector_tab(state.ui.inspector_tab)
+    {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
         _ => state.inspector_visible_rows(),
     };
@@ -55,7 +62,7 @@ pub fn reduce(
             direction,
             amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
-            if let Some(delta) = inspector_page_scroll_delta(state, *amount) {
+            if let Some(delta) = inspector_page_scroll_delta(state, services, *amount) {
                 let max = inspector_max_scroll(state, services);
                 state.ui.inspector_scroll_offset =
                     direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, delta);

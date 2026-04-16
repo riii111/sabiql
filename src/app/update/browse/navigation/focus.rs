@@ -7,7 +7,12 @@ use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::update::action::Action;
 
-pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce(
+    state: &mut AppState,
+    action: &Action,
+    services: &crate::app::services::AppServices,
+    _now: Instant,
+) -> Option<Vec<Effect>> {
     match action {
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {
@@ -41,11 +46,15 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
             Some(vec![])
         }
         Action::InspectorNextTab => {
-            state.ui.inspector_tab = state.ui.inspector_tab.next();
+            state.ui.inspector_tab = services
+                .db_capabilities
+                .next_inspector_tab(state.ui.inspector_tab);
             Some(vec![])
         }
         Action::InspectorPrevTab => {
-            state.ui.inspector_tab = state.ui.inspector_tab.prev();
+            state.ui.inspector_tab = services
+                .db_capabilities
+                .prev_inspector_tab(state.ui.inspector_tab);
             Some(vec![])
         }
 

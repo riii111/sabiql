@@ -422,10 +422,10 @@ mod tests {
         }
 
         fn fake_services() -> AppServices {
-            AppServices {
-                ddl_generator: AppServices::stub().ddl_generator,
-                sql_dialect: std::sync::Arc::new(FakeSqlDialect),
-            }
+            let mut services = AppServices::stub();
+            services.ddl_generator = AppServices::stub().ddl_generator;
+            services.sql_dialect = std::sync::Arc::new(FakeSqlDialect);
+            services
         }
 
         fn editable_state() -> AppState {

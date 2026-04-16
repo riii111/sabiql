@@ -13,9 +13,10 @@ use sabiql::app::cmd::effect::Effect;
 use sabiql::app::cmd::render_schedule::next_animation_deadline;
 use sabiql::app::cmd::runner::EffectRunner;
 use sabiql::app::model::app_state::AppState;
+use sabiql::app::model::shared::db_capabilities::DbCapabilities;
 use sabiql::app::model::shared::input_mode::InputMode;
 use sabiql::app::ports::{
-    ConnectionStore, ConnectionStoreError, ServiceFileError, ServiceFileReader,
+    ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError,
 };
 use sabiql::app::services::AppServices;
 use sabiql::app::update::action::Action;
@@ -83,7 +84,8 @@ async fn main() -> Result<()> {
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
-    let service_file_reader: Arc<dyn ServiceFileReader> = Arc::new(PgServiceFileReader::new());
+    let db_capabilities = DbCapabilities::postgres();
+    let service_file_reader: Arc<dyn PgServiceEntryReader> = Arc::new(PgServiceFileReader::new());
 
     let effect_runner = EffectRunner::builder()
         .metadata_provider(Arc::clone(&adapter) as _)
@@ -104,6 +106,7 @@ async fn main() -> Result<()> {
     let services = AppServices {
         ddl_generator: Arc::clone(&adapter) as _,
         sql_dialect: Arc::clone(&adapter) as _,
+        db_capabilities,
     };
 
     let mut state = AppState::new(project_name);
@@ -434,7 +437,7 @@ async fn drain_and_process_terminal_events(
     Ok(())
 }
 
-fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
+fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
     match reader.read_services() {
         Ok((services, path)) if !services.is_empty() => {
             state.set_service_entries(services);

@@ -9,6 +9,7 @@ use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
+use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
@@ -28,6 +29,7 @@ impl Footer {
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
+        services: &AppServices,
         time_ms: Option<u128>,
         theme: &ThemePalette,
     ) {
@@ -40,7 +42,7 @@ impl Footer {
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
-            let hints = Self::get_context_hints(state);
+            let hints = Self::get_context_hints(state, services);
             let line = Self::build_hint_line_with_success(
                 &hints,
                 state.messages.last_success.as_deref(),
@@ -77,7 +79,10 @@ impl Footer {
     }
 
     // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
-    fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
+    fn get_context_hints(
+        state: &AppState,
+        services: &AppServices,
+    ) -> Vec<(&'static str, &'static str)> {
         use crate::app::model::shared::focused_pane::FocusedPane;
 
         match state.input_mode() {
@@ -185,7 +190,9 @@ impl Footer {
                         }
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
-                        list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
+                        if services.db_capabilities.supported_inspector_tabs().len() > 1 {
+                            list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
+                        }
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
@@ -234,12 +241,20 @@ impl Footer {
                     vec![]
                 } else {
                     // Editing mode
-                    vec![
+                    let mut hints = vec![
                         SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
-                        SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
                         SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
                         SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
-                    ]
+                    ];
+                    if services.db_capabilities.supports_explain
+                        && state.sql_modal.status() == &SqlModalStatus::Editing
+                    {
+                        hints.insert(
+                            1,
+                            SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
+                        );
+                    }
+                    hints
                 }
             }
             InputMode::ConnectionSetup => vec![

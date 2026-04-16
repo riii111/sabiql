@@ -22,10 +22,11 @@ use crate::app::ports::ClipboardError;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 
-pub fn reduce_sql_modal(
+pub fn reduce_sql_modal_with_services(
     state: &mut AppState,
     action: &Action,
     now: Instant,
+    _services: &crate::app::services::AppServices,
 ) -> Option<Vec<Effect>> {
     match action {
         // Completion navigation
@@ -433,6 +434,20 @@ pub fn reduce_sql_modal(
 
         _ => None,
     }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn reduce_sql_modal(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> Option<Vec<Effect>> {
+    reduce_sql_modal_with_services(
+        state,
+        action,
+        now,
+        &crate::app::services::AppServices::stub(),
+    )
 }
 
 fn high_risk_input_mut(

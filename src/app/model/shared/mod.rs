@@ -1,4 +1,5 @@
 pub mod confirm_dialog;
+pub mod db_capabilities;
 pub mod flash_timer;
 pub mod focused_pane;
 pub mod input_mode;

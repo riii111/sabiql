@@ -29,5 +29,5 @@ pub use metadata::MetadataProvider;
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};
 pub use renderer::{RenderOutput, Renderer};
-pub use service_file::{ServiceFileError, ServiceFileReader};
+pub use service_file::{PgServiceEntryReader, ServiceFileError};
 pub use sql_dialect::SqlDialect;

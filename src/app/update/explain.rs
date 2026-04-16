@@ -8,13 +8,19 @@ use crate::app::model::sql_editor::completion::CompletionState;
 use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::app::policy::sql::statement_classifier::{self, StatementKind};
 use crate::app::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk, split_statements};
+use crate::app::services::AppServices;
 use crate::app::update::action::{Action, ScrollAmount, ScrollTarget};
 
 fn is_multi_statement(content: &str) -> bool {
     split_statements(content).len() > 1
 }
 
-pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce_explain_with_services(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+    services: &AppServices,
+) -> Option<Vec<Effect>> {
     match action {
         Action::ExplainRequest => {
             let content = state.sql_modal.editor.content().trim().to_string();
@@ -24,6 +30,13 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             let Some(dsn) = &state.session.dsn else {
                 return Some(vec![]);
             };
+            if !services.db_capabilities.supports_explain {
+                state
+                    .explain
+                    .set_error("EXPLAIN is unavailable for this database".to_string());
+                state.sql_modal.active_tab = SqlModalTab::Sql;
+                return Some(vec![]);
+            }
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return Some(vec![]);
             }
@@ -59,6 +72,13 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             };
             let dsn = dsn.clone();
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
+                return Some(vec![]);
+            }
+            if !services.db_capabilities.supports_explain {
+                state
+                    .explain
+                    .set_error("EXPLAIN is unavailable for this database".to_string());
+                state.sql_modal.active_tab = SqlModalTab::Sql;
                 return Some(vec![]);
             }
             if is_multi_statement(&content) {
@@ -113,6 +133,13 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         }
 
         Action::ExplainAnalyzeConfirm => {
+            if !services.db_capabilities.supports_explain {
+                state
+                    .explain
+                    .set_error("EXPLAIN is unavailable for this database".to_string());
+                state.sql_modal.active_tab = SqlModalTab::Sql;
+                return Some(vec![]);
+            }
             let query = match state.sql_modal.status() {
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     query,
@@ -221,19 +248,27 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         }
 
         Action::SqlModalNextTab => {
-            state.sql_modal.active_tab = match state.sql_modal.active_tab {
-                SqlModalTab::Sql => SqlModalTab::Plan,
-                SqlModalTab::Plan => SqlModalTab::Compare,
-                SqlModalTab::Compare => SqlModalTab::Sql,
+            state.sql_modal.active_tab = if services.db_capabilities.supports_explain {
+                match state.sql_modal.active_tab {
+                    SqlModalTab::Sql => SqlModalTab::Plan,
+                    SqlModalTab::Plan => SqlModalTab::Compare,
+                    SqlModalTab::Compare => SqlModalTab::Sql,
+                }
+            } else {
+                SqlModalTab::Sql
             };
             Some(vec![])
         }
 
         Action::SqlModalPrevTab => {
-            state.sql_modal.active_tab = match state.sql_modal.active_tab {
-                SqlModalTab::Sql => SqlModalTab::Compare,
-                SqlModalTab::Compare => SqlModalTab::Plan,
-                SqlModalTab::Plan => SqlModalTab::Sql,
+            state.sql_modal.active_tab = if services.db_capabilities.supports_explain {
+                match state.sql_modal.active_tab {
+                    SqlModalTab::Sql => SqlModalTab::Compare,
+                    SqlModalTab::Compare => SqlModalTab::Plan,
+                    SqlModalTab::Plan => SqlModalTab::Sql,
+                }
+            } else {
+                SqlModalTab::Sql
             };
             Some(vec![])
         }
@@ -242,17 +277,70 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+    reduce_explain_with_services(
+        state,
+        action,
+        now,
+        &crate::app::services::AppServices::stub(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::model::shared::db_capabilities::DbCapabilities;
     use crate::app::model::shared::input_mode::InputMode;
+    use crate::app::model::shared::inspector_tab::InspectorTab;
+    use crate::app::ports::{DdlGenerator, SqlDialect};
+    use crate::app::services::AppServices;
     use crate::app::update::action::ScrollDirection;
+    use std::sync::Arc;
     use std::time::Instant;
 
     fn sql_modal_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::SqlModal);
         state
+    }
+
+    fn services_without_explain() -> AppServices {
+        struct NoopDdl;
+        impl DdlGenerator for NoopDdl {
+            fn generate_ddl(&self, _table: &crate::domain::Table) -> String {
+                String::new()
+            }
+        }
+
+        struct NoopSql;
+        impl SqlDialect for NoopSql {
+            fn build_update_sql(
+                &self,
+                _schema: &str,
+                _table: &str,
+                _column: &str,
+                _new_value: &str,
+                _pk_pairs: &[(String, String)],
+            ) -> String {
+                String::new()
+            }
+
+            fn build_bulk_delete_sql(
+                &self,
+                _schema: &str,
+                _table: &str,
+                _pk_pairs_per_row: &[Vec<(String, String)>],
+            ) -> String {
+                String::new()
+            }
+        }
+
+        AppServices {
+            ddl_generator: Arc::new(NoopDdl),
+            sql_dialect: Arc::new(NoopSql),
+            db_capabilities: DbCapabilities::new_for_tests(false, false, vec![InspectorTab::Info]),
+        }
     }
 
     mod explain_request {
@@ -292,6 +380,28 @@ mod tests {
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn unsupported_database_sets_error_without_effects() {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state.session.dsn = Some("dsn://test".to_string());
+
+            let effects = reduce_explain_with_services(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &services_without_explain(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("EXPLAIN is unavailable for this database")
+            );
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
         }
 
         #[test]
@@ -383,6 +493,28 @@ mod tests {
             );
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
             assert!(state.confirm_dialog.intent().is_none());
+        }
+
+        #[test]
+        fn unsupported_database_sets_error_without_effects() {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state.session.dsn = Some("dsn://test".to_string());
+
+            let effects = reduce_explain_with_services(
+                &mut state,
+                &Action::ExplainAnalyzeRequest,
+                Instant::now(),
+                &services_without_explain(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("EXPLAIN is unavailable for this database")
+            );
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
         }
 
         #[test]
@@ -1007,6 +1139,21 @@ mod tests {
         }
 
         #[test]
+        fn next_tab_stays_on_sql_when_explain_is_unsupported() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Sql;
+
+            reduce_explain_with_services(
+                &mut state,
+                &Action::SqlModalNextTab,
+                Instant::now(),
+                &services_without_explain(),
+            );
+
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
+        }
+
+        #[test]
         fn prev_tab_switches_sql_to_compare() {
             let mut state = sql_modal_state();
             state.sql_modal.active_tab = SqlModalTab::Sql;
@@ -1032,6 +1179,21 @@ mod tests {
             state.sql_modal.active_tab = SqlModalTab::Plan;
 
             reduce_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
+
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
+        }
+
+        #[test]
+        fn prev_tab_stays_on_sql_when_explain_is_unsupported() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Sql;
+
+            reduce_explain_with_services(
+                &mut state,
+                &Action::SqlModalPrevTab,
+                Instant::now(),
+                &services_without_explain(),
+            );
 
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
         }
