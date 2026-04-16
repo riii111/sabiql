@@ -41,7 +41,6 @@ self-update = ["dep:self_update"]
 test-support = []
 
 [dev-dependencies]
-pretty_assertions = "1"
 rstest = "0.19"
 tempfile = "3"
 insta = "1"
