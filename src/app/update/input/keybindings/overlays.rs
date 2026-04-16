@@ -709,14 +709,14 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
                     target: InputTarget::JsonbEdit,
                     direction: CursorMove::LineStart,
                 },
-                combos: &[KeyCombo::plain(Key::Char('0')), KeyCombo::plain(Key::Home)],
+                combos: &[KeyCombo::plain(Key::Char('0'))],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
                     direction: CursorMove::LineEnd,
                 },
-                combos: &[KeyCombo::plain(Key::Char('$')), KeyCombo::plain(Key::End)],
+                combos: &[KeyCombo::plain(Key::Char('$'))],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
@@ -739,7 +739,36 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
         key: "gg / G / H / M / L",
         desc_short: "View",
         description: "Jump by buffer or viewport",
-        bindings: &[],
+        bindings: &[
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::LastLine,
+                },
+                combos: &[KeyCombo::plain(Key::Char('G'))],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::ViewportTop,
+                },
+                combos: &[KeyCombo::plain(Key::Char('H'))],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::ViewportMiddle,
+                },
+                combos: &[KeyCombo::plain(Key::Char('M'))],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::ViewportBottom,
+                },
+                combos: &[KeyCombo::plain(Key::Char('L'))],
+            },
+        ],
     },
     ModeRow {
         key_short: "Esc",

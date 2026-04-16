@@ -109,7 +109,7 @@ impl JsonbDetail {
             empty_placeholder: if is_editing {
                 " Enter JSON..."
             } else {
-                " Press i or A to edit..."
+                " Press i to edit..."
             },
             base_style: Style::default().fg(theme.semantic.text.primary),
             current_line_style: Style::default().bg(theme.component.editor.current_line_bg),

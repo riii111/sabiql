@@ -35,6 +35,24 @@ pub fn handle_jsonb_detail_keys(
         return Action::BeginKeySequence(Prefix::G);
     }
 
+    if !combo.modifiers.ctrl && !combo.modifiers.alt {
+        match combo.key {
+            Key::Home => {
+                return Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::LineStart,
+                };
+            }
+            Key::End => {
+                return Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::LineEnd,
+                };
+            }
+            _ => {}
+        }
+    }
+
     if let Some(action) = action_for_key(
         &combo,
         VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing),
@@ -205,6 +223,32 @@ mod tests {
                 Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
                     direction: CursorMove::Left,
+                }
+            ));
+        }
+
+        #[test]
+        fn home_moves_cursor_to_line_start_in_normal_mode() {
+            let result = handle_jsonb_detail_keys(combo(Key::Home), false, None);
+
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::LineStart,
+                }
+            ));
+        }
+
+        #[test]
+        fn end_moves_cursor_to_line_end_in_normal_mode() {
+            let result = handle_jsonb_detail_keys(combo(Key::End), false, None);
+
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::LineEnd,
                 }
             ));
         }
