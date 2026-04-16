@@ -11,7 +11,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                  │╭ Command Palette ─────────────────────╮                   │
 │                  ││  q                  Quit application │                   │
 │                  ││  ?                  Toggle help      │                   │
-│                  ││  p                  Open Table Picker│                   │
+│                  ││  Ctrl+P             Open Table Picker│                   │
 │                  ││  f                  Toggle Focus mode│                   │
 │                  ││  r                  Reload metadata  │───────────────────┘
 │                  ││  s                  Open SQL Editor  │───────────────────┐

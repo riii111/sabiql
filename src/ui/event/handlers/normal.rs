@@ -40,6 +40,14 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('e') if state.can_request_csv_export() => {
                 return Action::RequestCsvExport;
             }
+            Key::Char('p') if !state.query.is_history_mode() => {
+                return Action::OpenTablePicker;
+            }
+            // Ctrl+N/P navigation disabled on main screen; use j/k or arrows.
+            // Modals/pickers handle Ctrl+N/P independently via their own bindings.
+            Key::Char('n' | 'p') => {
+                return Action::None;
+            }
             _ => {
                 if let Some(action) = action_for_key(&combo, VimSurfaceContext::Browse(browse_ctx))
                 {
@@ -151,7 +159,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         {
             Action::ResultCellYank
         }
-        Key::Char('p') => Action::OpenTablePicker,
         Key::Char('s') => Action::OpenSqlModal,
         Key::Char('e') => Action::OpenErTablePicker,
         Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
@@ -214,12 +221,21 @@ mod tests {
             use super::*;
 
             #[test]
-            fn p_opens_table_picker() {
+            fn ctrl_p_opens_table_picker() {
+                let state = browse_state();
+
+                let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
+
+                assert!(matches!(result, Action::OpenTablePicker));
+            }
+
+            #[test]
+            fn plain_p_is_noop() {
                 let state = browse_state();
 
                 let result = handle_normal_mode(combo(Key::Char('p')), &state);
 
-                assert!(matches!(result, Action::OpenTablePicker));
+                assert!(matches!(result, Action::None));
             }
 
             #[test]
@@ -321,21 +337,12 @@ mod tests {
             }
 
             #[test]
-            fn ctrl_n_selects_next_when_explorer_focused() {
+            fn ctrl_n_is_noop_on_main_screen() {
                 let state = browse_state();
 
                 let result = handle_normal_mode(combo_ctrl(Key::Char('n')), &state);
 
-                assert!(matches!(result, Action::Select(SelectMotion::Next)));
-            }
-
-            #[test]
-            fn ctrl_p_selects_previous_when_explorer_focused() {
-                let state = browse_state();
-
-                let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
-
-                assert!(matches!(result, Action::Select(SelectMotion::Previous)));
+                assert!(matches!(result, Action::None));
             }
 
             #[rstest]
@@ -583,19 +590,12 @@ mod tests {
             }
 
             #[test]
-            fn ctrl_p_scrolls_up() {
+            fn ctrl_p_opens_table_picker_from_inspector() {
                 let state = inspector_focused_state();
 
                 let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
 
-                assert!(matches!(
-                    result,
-                    Action::Scroll {
-                        target: ScrollTarget::Inspector,
-                        direction: ScrollDirection::Up,
-                        amount: ScrollAmount::Line
-                    }
-                ));
+                assert!(matches!(result, Action::OpenTablePicker));
             }
 
             #[rstest]
@@ -1247,7 +1247,7 @@ mod tests {
                 }
 
                 #[test]
-                fn ctrl_p_and_ctrl_n_scroll() {
+                fn ctrl_p_and_ctrl_n_are_noop_in_history() {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
                     state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
@@ -1255,22 +1255,8 @@ mod tests {
                     let prev = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
                     let next = handle_normal_mode(combo_ctrl(Key::Char('n')), &state);
 
-                    assert!(matches!(
-                        prev,
-                        Action::Scroll {
-                            target: ScrollTarget::Result,
-                            direction: ScrollDirection::Up,
-                            amount: ScrollAmount::Line
-                        }
-                    ));
-                    assert!(matches!(
-                        next,
-                        Action::Scroll {
-                            target: ScrollTarget::Result,
-                            direction: ScrollDirection::Down,
-                            amount: ScrollAmount::Line
-                        }
-                    ));
+                    assert!(matches!(prev, Action::None));
+                    assert!(matches!(next, Action::None));
                 }
 
                 #[test]

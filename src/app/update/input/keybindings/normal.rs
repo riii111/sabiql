@@ -24,12 +24,12 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Char('?'))],
     },
     KeyBinding {
-        key_short: "p",
-        key: "p",
+        key_short: "^P",
+        key: "Ctrl+P",
         desc_short: "Tables",
         description: "Open Table Picker",
         action: Action::OpenTablePicker,
-        combos: &[KeyCombo::plain(Key::Char('p'))],
+        combos: &[KeyCombo::ctrl(Key::Char('p'))],
     },
     KeyBinding {
         key_short: "^K",
@@ -151,16 +151,16 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
 
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     KeyBinding {
-        key_short: "^N/j/↓",
-        key: "Ctrl+N / j / ↓",
+        key_short: "j/↓",
+        key: "j / ↓",
         desc_short: "Down",
         description: "Move down / scroll",
         action: Action::None,
         combos: &[],
     },
     KeyBinding {
-        key_short: "^P/k/↑",
-        key: "Ctrl+P / k / ↑",
+        key_short: "k/↑",
+        key: "k / ↑",
         desc_short: "Up",
         description: "Move up / scroll",
         action: Action::None,
@@ -258,16 +258,16 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
 
 pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
     KeyBinding {
-        key_short: "^N/j/↓",
-        key: "Ctrl+N / j / ↓",
+        key_short: "j/↓",
+        key: "j / ↓",
         desc_short: "Scroll",
         description: "Move down/up",
         action: Action::None,
         combos: &[],
     },
     KeyBinding {
-        key_short: "^P/k/↑",
-        key: "Ctrl+P / k / ↑",
+        key_short: "k/↑",
+        key: "k / ↑",
         desc_short: "Scroll",
         description: "Move down/up",
         action: Action::None,
