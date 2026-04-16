@@ -23,7 +23,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::ConnectionEditLoaded(profile) => {
             state.connection_setup =
-                crate::app::model::connection::setup::ConnectionSetupState::from_profile(profile);
+                crate::app::model::connection::setup::ConnectionSetupState::from(&**profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }
