@@ -12,16 +12,18 @@ pub struct ServiceEntry {
 }
 
 impl ServiceEntry {
-    pub fn to_dsn(&self) -> String {
-        format!("service={}", self.service_name)
-    }
-
     pub fn connection_id(&self) -> ConnectionId {
         ConnectionId::from_string(format!("{}{}", SERVICE_ID_PREFIX, self.service_name))
     }
 
     pub fn display_name(&self) -> &str {
         &self.service_name
+    }
+}
+
+impl From<&ServiceEntry> for String {
+    fn from(entry: &ServiceEntry) -> Self {
+        format!("service={}", entry.service_name)
     }
 }
 
@@ -41,7 +43,7 @@ mod tests {
 
     #[test]
     fn to_dsn_formats_correctly() {
-        assert_eq!(sample().to_dsn(), "service=mydb");
+        assert_eq!(String::from(&sample()), "service=mydb");
     }
 
     #[test]
