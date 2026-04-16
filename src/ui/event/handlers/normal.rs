@@ -14,7 +14,7 @@ use crate::app::model::connection::error::ConnectionErrorInfo;
 use crate::app::model::shared::ui_state::FocusMode;
 
 pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
-    let browse_ctx = BrowseVimContext::from_state(state);
+    let browse_ctx = BrowseVimContext::from(state);
     let result_navigation = browse_ctx.is_result();
     let inspector_navigation = browse_ctx.is_inspector();
 
