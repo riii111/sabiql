@@ -613,9 +613,9 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "i/A",
+        key_short: "i",
         key: "i / A",
-        desc_short: "Insert/Append",
+        desc_short: "Insert",
         description: "Enter Insert mode / append at line end",
         bindings: &[
             ExecBinding {
