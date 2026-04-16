@@ -2,7 +2,9 @@ use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::model::connection::setup::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
+use crate::app::model::connection::setup::{
+    CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
+};
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::update::action::{Action, ConnectionTarget, InputTarget};
 use crate::app::update::helpers::{validate_all, validate_field};
@@ -22,8 +24,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
         }
         Action::ConnectionEditLoaded(profile) => {
-            state.connection_setup =
-                crate::app::model::connection::setup::ConnectionSetupState::from_profile(profile);
+            state.connection_setup = ConnectionSetupState::from(&**profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }

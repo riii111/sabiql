@@ -36,7 +36,7 @@ impl TomlConnectionStore {
                 .map_err(|e| ConnectionStoreError::IoError(e.to_string()))?;
         }
 
-        let config = ConnectionConfigFile::from_profiles(profiles);
+        let config = ConnectionConfigFile::from(profiles);
         let content = toml::to_string_pretty(&config)
             .map_err(|e| ConnectionStoreError::WriteError(e.to_string()))?;
 
@@ -101,8 +101,7 @@ impl ConnectionStore for TomlConnectionStore {
         let config: ConnectionConfigFile = toml::from_str(&content)
             .map_err(|e| ConnectionStoreError::InvalidFormat(e.to_string()))?;
 
-        config
-            .to_profiles()
+        Vec::<ConnectionProfile>::try_from(&config)
             .map_err(|e| ConnectionStoreError::InvalidFormat(e.to_string()))
     }
 
