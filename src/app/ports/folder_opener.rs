@@ -4,7 +4,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum FolderOpenError {
     #[error("{0}")]
-    Spawn(Arc<std::io::Error>),
+    Spawn(#[source] Arc<std::io::Error>),
 }
 
 impl From<std::io::Error> for FolderOpenError {

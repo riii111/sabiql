@@ -61,9 +61,7 @@ pub fn reduce(
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
-                    on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
-                        "Clipboard unavailable".into(),
-                    ))),
+                    on_failure: Some(clipboard_unavailable()),
                 }]);
             }
             Some(vec![])

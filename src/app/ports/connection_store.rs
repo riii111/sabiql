@@ -8,13 +8,13 @@ pub enum ConnectionStoreError {
     #[error("Config version mismatch: found {found}, expected {expected}")]
     VersionMismatch { found: u32, expected: u32 },
     #[error("IO error: {0}")]
-    Io(Arc<std::io::Error>),
+    Io(#[source] Arc<std::io::Error>),
     #[error("TOML serialize error: {0}")]
-    TomlSerialize(Arc<toml::ser::Error>),
+    TomlSerialize(#[source] Arc<toml::ser::Error>),
     #[error("TOML deserialize error: {0}")]
-    TomlDeserialize(Arc<toml::de::Error>),
+    TomlDeserialize(#[source] Arc<toml::de::Error>),
     #[error("Invalid profile: {0}")]
-    InvalidProfile(ConnectionNameError),
+    InvalidProfile(#[source] ConnectionNameError),
     #[error("Connection name already exists: {0}")]
     DuplicateName(String),
     #[error("Connection not found: {0}")]

@@ -918,7 +918,7 @@ mod tests {
 
                 reduce_modal(
                     &mut state,
-                    &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(Arc::new(
+                    &Action::QueryHistoryLoadFailed(QueryHistoryError::Io(Arc::new(
                         std::io::Error::other("disk error"),
                     ))),
                     now,
@@ -939,7 +939,7 @@ mod tests {
 
                 reduce_modal(
                     &mut state,
-                    &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(Arc::new(
+                    &Action::QueryHistoryLoadFailed(QueryHistoryError::Io(Arc::new(
                         std::io::Error::other("stale error"),
                     ))),
                     now,
@@ -956,7 +956,7 @@ mod tests {
 
                 let effects = reduce_modal(
                     &mut state,
-                    &Action::QueryHistoryAppendFailed(QueryHistoryError::IoError(Arc::new(
+                    &Action::QueryHistoryAppendFailed(QueryHistoryError::Io(Arc::new(
                         std::io::Error::other("write error"),
                     ))),
                     now,

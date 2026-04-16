@@ -7,11 +7,11 @@ pub enum DbOperationError {
     #[error("Query failed: {0}")]
     QueryFailed(String),
     #[error("Invalid JSON: {0}")]
-    InvalidJson(Arc<serde_json::Error>),
+    InvalidJson(#[source] Arc<serde_json::Error>),
     #[error("Empty response: {0}")]
     EmptyResponse(String),
     #[error("CSV parse error: {0}")]
-    CsvParse(Arc<csv::Error>),
+    CsvParse(#[source] Arc<csv::Error>),
     #[error("Command not found: {0}")]
     CommandNotFound(String),
     #[error("Operation timed out: {0}")]
