@@ -13,11 +13,13 @@ pub(in crate::app::update::input::vim) fn command(
         JsonbDetailVimContext::Viewing => match command {
             VimCommand::Navigation(navigation) => navigation_action(navigation),
             VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseJsonbDetail),
-            VimCommand::ModeTransition(
-                VimModeTransition::Insert
-                | VimModeTransition::Append
-                | VimModeTransition::ConfirmOrEnter,
-            ) => Some(Action::JsonbEnterEdit),
+            VimCommand::ModeTransition(VimModeTransition::Insert)
+            | VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter) => {
+                Some(Action::JsonbEnterEdit)
+            }
+            VimCommand::ModeTransition(VimModeTransition::Append) => {
+                Some(Action::JsonbAppendInsert)
+            }
             VimCommand::SearchContinuation(SearchContinuation::Next) => {
                 Some(Action::JsonbSearchNext)
             }
@@ -41,8 +43,15 @@ fn navigation_action(navigation: VimNavigation) -> Option<Action> {
         VimNavigation::MoveRight => CursorMove::Right,
         VimNavigation::MoveUp => CursorMove::Up,
         VimNavigation::MoveDown => CursorMove::Down,
-        VimNavigation::MoveToFirst => CursorMove::Home,
-        VimNavigation::MoveToLast => CursorMove::End,
+        VimNavigation::MoveToFirst => CursorMove::FirstLine,
+        VimNavigation::MoveToLast => CursorMove::LastLine,
+        VimNavigation::MoveLineStart => CursorMove::LineStart,
+        VimNavigation::MoveLineEnd => CursorMove::LineEnd,
+        VimNavigation::MoveWordForward => CursorMove::WordForward,
+        VimNavigation::MoveWordBackward => CursorMove::WordBackward,
+        VimNavigation::ViewportTop => CursorMove::ViewportTop,
+        VimNavigation::ViewportMiddle => CursorMove::ViewportMiddle,
+        VimNavigation::ViewportBottom => CursorMove::ViewportBottom,
         _ => return None,
     };
 
@@ -57,6 +66,7 @@ mod tests {
     use super::*;
     use crate::app::update::input::keybindings::{Key, KeyCombo};
     use crate::app::update::input::vim::{VimSurfaceContext, action_for_key};
+    use rstest::rstest;
 
     fn combo(key: Key) -> KeyCombo {
         KeyCombo::plain(key)
@@ -77,7 +87,47 @@ mod tests {
 
         let action = action_for_key(&combo(Key::Char('A')), ctx);
 
-        assert!(matches!(action, Some(Action::JsonbEnterEdit)));
+        assert!(matches!(action, Some(Action::JsonbAppendInsert)));
+    }
+
+    #[rstest]
+    #[case(Key::Char('0'), CursorMove::LineStart)]
+    #[case(Key::Char('$'), CursorMove::LineEnd)]
+    #[case(Key::Char('w'), CursorMove::WordForward)]
+    #[case(Key::Char('b'), CursorMove::WordBackward)]
+    #[case(Key::Char('G'), CursorMove::LastLine)]
+    #[case(Key::Char('H'), CursorMove::ViewportTop)]
+    #[case(Key::Char('M'), CursorMove::ViewportMiddle)]
+    #[case(Key::Char('L'), CursorMove::ViewportBottom)]
+    fn extended_navigation_maps_to_cursor_moves(#[case] key: Key, #[case] expected: CursorMove) {
+        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+
+        let action = action_for_key(&combo(key), ctx);
+
+        assert!(matches!(
+            action,
+            Some(Action::TextMoveCursor {
+                target: InputTarget::JsonbEdit,
+                direction,
+            }) if direction == expected
+        ));
+    }
+
+    #[test]
+    fn gg_moves_to_first_line() {
+        let action = crate::app::update::input::vim::action_for_input(
+            &combo(Key::Char('g')),
+            Some(crate::app::model::shared::key_sequence::Prefix::G),
+            VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing),
+        );
+
+        assert!(matches!(
+            action,
+            Some(Action::TextMoveCursor {
+                target: InputTarget::JsonbEdit,
+                direction: CursorMove::FirstLine,
+            })
+        ));
     }
 
     #[test]

@@ -5,6 +5,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailState;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::app::update::action::{Action, InputTarget};
@@ -106,6 +107,23 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
 
+        Action::JsonbAppendInsert => {
+            if state.session.read_only {
+                state
+                    .messages
+                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+                return Some(vec![]);
+            }
+            state
+                .jsonb_detail
+                .editor_mut()
+                .move_cursor(crate::app::update::action::CursorMove::LineEnd);
+            update_editor_scroll(state);
+            state.jsonb_detail.enter_edit();
+            state.modal.replace_mode(InputMode::JsonbEdit);
+            Some(vec![])
+        }
+
         Action::JsonbExitEdit => {
             state.jsonb_detail.exit_edit();
             state.modal.replace_mode(InputMode::JsonbDetail);
@@ -150,8 +168,23 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             target: InputTarget::JsonbEdit,
             direction,
         } => {
-            state.jsonb_detail.editor_mut().move_cursor(*direction);
+            match direction {
+                crate::app::update::action::CursorMove::ViewportTop
+                | crate::app::update::action::CursorMove::ViewportMiddle
+                | crate::app::update::action::CursorMove::ViewportBottom => {
+                    let visible_rows = match state.jsonb_detail_editor_visible_rows() {
+                        0 => DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS,
+                        rows => rows,
+                    };
+                    state
+                        .jsonb_detail
+                        .editor_mut()
+                        .move_cursor_to_viewport_position(*direction, visible_rows);
+                }
+                _ => state.jsonb_detail.editor_mut().move_cursor(*direction),
+            }
             update_editor_scroll(state);
+            state.ui.key_sequence = KeySequenceState::Idle;
             Some(vec![])
         }
 
@@ -530,6 +563,8 @@ mod tests {
     mod edit_lifecycle {
         use super::*;
         use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+        use crate::app::model::shared::key_sequence::{KeySequenceState, Prefix};
+        use rstest::rstest;
 
         #[test]
         fn enter_edit_switches_to_jsonb_edit_mode() {
@@ -570,6 +605,22 @@ mod tests {
         }
 
         #[test]
+        fn append_insert_moves_to_current_line_end_before_editing() {
+            let mut state = state_with_jsonb_value(r#"{"items":["admin","writer"]}"#);
+            open_detail(&mut state);
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content_with_cursor("abc\ndef".to_string(), 1);
+
+            reduce(&mut state, &Action::JsonbAppendInsert, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::JsonbEdit);
+            assert_eq!(state.jsonb_detail.editor().cursor_to_position(), (0, 3));
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
+        }
+
+        #[test]
         fn movement_updates_scroll_with_current_editor_viewport_height() {
             let mut state = state_with_jsonb_value(r#"{"items":["admin","writer","reader"]}"#);
             state.ui.jsonb_detail_editor_visible_rows = 2;
@@ -593,6 +644,60 @@ mod tests {
             );
 
             assert_eq!(state.jsonb_detail.editor().scroll_row(), 1);
+        }
+
+        #[rstest]
+        #[case(crate::app::update::action::CursorMove::ViewportTop, 0)]
+        #[case(crate::app::update::action::CursorMove::ViewportMiddle, 1)]
+        #[case(crate::app::update::action::CursorMove::ViewportBottom, 2)]
+        fn viewport_cursor_moves_follow_visible_rows(
+            #[case] movement: crate::app::update::action::CursorMove,
+            #[case] expected_row: usize,
+        ) {
+            let mut state =
+                state_with_jsonb_value("{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3,\n  \"d\": 4\n}");
+            state.ui.jsonb_detail_editor_visible_rows = 3;
+            open_detail(&mut state);
+            state.modal.replace_mode(InputMode::JsonbEdit);
+            state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content_with_cursor("line1\nline2\nline3\nline4".to_string(), 0);
+
+            reduce(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: movement,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(
+                state.jsonb_detail.editor().cursor_to_position().0,
+                expected_row
+            );
+        }
+
+        #[test]
+        fn cursor_movement_clears_pending_key_sequence() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            state.modal.replace_mode(InputMode::JsonbEdit);
+            state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::G);
+
+            reduce(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: crate::app::update::action::CursorMove::Right,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.key_sequence.pending_prefix(), None);
         }
 
         #[test]

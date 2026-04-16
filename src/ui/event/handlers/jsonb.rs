@@ -1,13 +1,38 @@
+use crate::app::model::shared::key_sequence::Prefix;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::app::update::input::keybindings::{
     JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo,
 };
 use crate::app::update::input::keymap;
-use crate::app::update::input::vim::{JsonbDetailVimContext, VimSurfaceContext, action_for_key};
+use crate::app::update::input::vim::{
+    JsonbDetailVimContext, VimSurfaceContext, action_for_input, action_for_key,
+};
 
-pub fn handle_jsonb_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
+pub fn handle_jsonb_detail_keys(
+    combo: KeyCombo,
+    is_searching: bool,
+    pending_prefix: Option<Prefix>,
+) -> Action {
     if is_searching {
         return handle_search_input(combo);
+    }
+
+    if let Some(prefix) = pending_prefix {
+        if combo.modifiers.ctrl || combo.modifiers.alt {
+            return Action::CancelKeySequence;
+        }
+        return match action_for_input(
+            &combo,
+            Some(prefix),
+            VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing),
+        ) {
+            Some(Action::None) | None => Action::CancelKeySequence,
+            Some(action) => action,
+        };
+    }
+
+    if !combo.modifiers.ctrl && !combo.modifiers.alt && combo.key == Key::Char('g') {
+        return Action::BeginKeySequence(Prefix::G);
     }
 
     if let Some(action) = action_for_key(
@@ -136,10 +161,11 @@ mod tests {
 
     mod jsonb_detail {
         use super::*;
+        use crate::app::model::shared::key_sequence::Prefix;
 
         #[test]
         fn ctrl_n_moves_cursor_down_in_normal_mode() {
-            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('n')), false);
+            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('n')), false, None);
 
             assert!(matches!(
                 result,
@@ -152,7 +178,7 @@ mod tests {
 
         #[test]
         fn ctrl_p_moves_cursor_up_in_normal_mode() {
-            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('p')), false);
+            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('p')), false, None);
 
             assert!(matches!(
                 result,
@@ -165,14 +191,14 @@ mod tests {
 
         #[test]
         fn enter_enters_insert_mode() {
-            let result = handle_jsonb_detail_keys(combo(Key::Enter), false);
+            let result = handle_jsonb_detail_keys(combo(Key::Enter), false, None);
 
             assert!(matches!(result, Action::JsonbEnterEdit));
         }
 
         #[test]
         fn h_moves_cursor_left_in_normal_mode() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('h')), false);
+            let result = handle_jsonb_detail_keys(combo(Key::Char('h')), false, None);
 
             assert!(matches!(
                 result,
@@ -185,16 +211,43 @@ mod tests {
 
         #[test]
         fn n_moves_to_next_search_match() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('n')), false);
+            let result = handle_jsonb_detail_keys(combo(Key::Char('n')), false, None);
 
             assert!(matches!(result, Action::JsonbSearchNext));
         }
 
         #[test]
         fn upper_n_moves_to_previous_search_match() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('N')), false);
+            let result = handle_jsonb_detail_keys(combo(Key::Char('N')), false, None);
 
             assert!(matches!(result, Action::JsonbSearchPrev));
+        }
+
+        #[test]
+        fn g_begins_key_sequence() {
+            let result = handle_jsonb_detail_keys(combo(Key::Char('g')), false, None);
+
+            assert!(matches!(result, Action::BeginKeySequence(Prefix::G)));
+        }
+
+        #[test]
+        fn gg_moves_to_first_line() {
+            let result = handle_jsonb_detail_keys(combo(Key::Char('g')), false, Some(Prefix::G));
+
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::JsonbEdit,
+                    direction: CursorMove::FirstLine,
+                }
+            ));
+        }
+
+        #[test]
+        fn unknown_prefixed_key_cancels_sequence() {
+            let result = handle_jsonb_detail_keys(combo(Key::Char('x')), false, Some(Prefix::G));
+
+            assert!(matches!(result, Action::CancelKeySequence));
         }
     }
 
@@ -203,7 +256,7 @@ mod tests {
 
         #[test]
         fn ctrl_n_still_falls_through_to_search_input() {
-            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('n')), true);
+            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('n')), true, None);
 
             assert!(matches!(
                 result,
@@ -216,7 +269,7 @@ mod tests {
 
         #[test]
         fn ctrl_p_still_falls_through_to_search_input() {
-            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('p')), true);
+            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('p')), true, None);
 
             assert!(matches!(
                 result,

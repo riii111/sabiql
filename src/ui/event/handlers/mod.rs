@@ -64,7 +64,11 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
         InputMode::JsonbDetail => {
             let is_searching = state.jsonb_detail.search().active;
-            jsonb::handle_jsonb_detail_keys(combo, is_searching)
+            jsonb::handle_jsonb_detail_keys(
+                combo,
+                is_searching,
+                state.ui.key_sequence.pending_prefix(),
+            )
         }
         InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),
     }

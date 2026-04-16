@@ -530,6 +530,7 @@ pub enum Action {
     CloseJsonbDetail,
     JsonbYankAll,
     JsonbEnterEdit,
+    JsonbAppendInsert,
     JsonbExitEdit,
     JsonbEnterSearch,
     JsonbExitSearch,
