@@ -1,23 +1,42 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use crate::domain::connection::{ConnectionId, ConnectionProfile};
+use crate::domain::connection::{ConnectionId, ConnectionNameError, ConnectionProfile};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionStoreError {
     #[error("Config version mismatch: found {found}, expected {expected}")]
     VersionMismatch { found: u32, expected: u32 },
-    #[error("Read error: {0}")]
-    ReadError(String),
-    #[error("Write error: {0}")]
-    WriteError(String),
-    #[error("Invalid format: {0}")]
-    InvalidFormat(String),
     #[error("IO error: {0}")]
-    IoError(String),
+    Io(Arc<std::io::Error>),
+    #[error("TOML serialize error: {0}")]
+    TomlSerialize(Arc<toml::ser::Error>),
+    #[error("TOML deserialize error: {0}")]
+    TomlDeserialize(Arc<toml::de::Error>),
+    #[error("Invalid profile: {0}")]
+    InvalidProfile(ConnectionNameError),
     #[error("Connection name already exists: {0}")]
     DuplicateName(String),
     #[error("Connection not found: {0}")]
     NotFound(String),
+}
+
+impl From<std::io::Error> for ConnectionStoreError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(Arc::new(e))
+    }
+}
+
+impl From<toml::ser::Error> for ConnectionStoreError {
+    fn from(e: toml::ser::Error) -> Self {
+        Self::TomlSerialize(Arc::new(e))
+    }
+}
+
+impl From<toml::de::Error> for ConnectionStoreError {
+    fn from(e: toml::de::Error) -> Self {
+        Self::TomlDeserialize(Arc::new(e))
+    }
 }
 
 #[cfg_attr(test, mockall::automock)]

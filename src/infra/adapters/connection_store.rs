@@ -32,13 +32,11 @@ impl TomlConnectionStore {
 
     fn write_all(&self, profiles: &[ConnectionProfile]) -> Result<(), ConnectionStoreError> {
         if !self.config_dir.exists() {
-            fs::create_dir_all(&self.config_dir)
-                .map_err(|e| ConnectionStoreError::IoError(e.to_string()))?;
+            fs::create_dir_all(&self.config_dir)?;
         }
 
         let config = ConnectionConfigFile::from_profiles(profiles);
-        let content = toml::to_string_pretty(&config)
-            .map_err(|e| ConnectionStoreError::WriteError(e.to_string()))?;
+        let content = toml::to_string_pretty(&config)?;
 
         let content_with_header = format!(
             "# sabiql connection configuration\n# WARNING: Passwords are stored in plain text\n\n{content}"
@@ -54,7 +52,7 @@ impl TomlConnectionStore {
 
         if let Err(e) = fs::write(&tmp_path, &content_with_header) {
             let _ = fs::remove_file(&tmp_path);
-            return Err(ConnectionStoreError::WriteError(e.to_string()));
+            return Err(e.into());
         }
 
         if let Err(e) = set_file_permissions(&tmp_path) {
@@ -64,7 +62,7 @@ impl TomlConnectionStore {
 
         if let Err(e) = fs::rename(&tmp_path, &path) {
             let _ = fs::remove_file(&tmp_path);
-            return Err(ConnectionStoreError::WriteError(e.to_string()));
+            return Err(e.into());
         }
 
         Ok(())
@@ -84,12 +82,10 @@ impl ConnectionStore for TomlConnectionStore {
             return Ok(vec![]);
         }
 
-        let content = fs::read_to_string(&path)
-            .map_err(|e| ConnectionStoreError::ReadError(e.to_string()))?;
+        let content = fs::read_to_string(&path)?;
 
         // Check version first to detect v1 format before full parse fails
-        let version_check: ConfigVersionCheck = toml::from_str(&content)
-            .map_err(|e| ConnectionStoreError::InvalidFormat(e.to_string()))?;
+        let version_check: ConfigVersionCheck = toml::from_str(&content)?;
 
         if version_check.version != CURRENT_VERSION {
             return Err(ConnectionStoreError::VersionMismatch {
@@ -98,12 +94,11 @@ impl ConnectionStore for TomlConnectionStore {
             });
         }
 
-        let config: ConnectionConfigFile = toml::from_str(&content)
-            .map_err(|e| ConnectionStoreError::InvalidFormat(e.to_string()))?;
+        let config: ConnectionConfigFile = toml::from_str(&content)?;
 
         config
             .to_profiles()
-            .map_err(|e| ConnectionStoreError::InvalidFormat(e.to_string()))
+            .map_err(ConnectionStoreError::InvalidProfile)
     }
 
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError> {
@@ -154,8 +149,12 @@ impl ConnectionStore for TomlConnectionStore {
 }
 
 fn get_config_dir() -> Result<PathBuf, ConnectionStoreError> {
-    let config_base = dirs::config_dir()
-        .ok_or_else(|| ConnectionStoreError::IoError("Could not find config directory".into()))?;
+    let config_base = dirs::config_dir().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Could not find config directory",
+        )
+    })?;
     Ok(config_base.join("sabiql"))
 }
 
@@ -163,7 +162,7 @@ fn get_config_dir() -> Result<PathBuf, ConnectionStoreError> {
 fn set_file_permissions(path: &Path) -> Result<(), ConnectionStoreError> {
     use std::os::unix::fs::PermissionsExt;
     let perms = fs::Permissions::from_mode(0o600);
-    fs::set_permissions(path, perms).map_err(|e| ConnectionStoreError::IoError(e.to_string()))?;
+    fs::set_permissions(path, perms)?;
     Ok(())
 }
 
@@ -247,7 +246,7 @@ ssl_mode = "prefer"
 
             assert!(matches!(
                 result,
-                Err(ConnectionStoreError::InvalidFormat(_))
+                Err(ConnectionStoreError::TomlDeserialize(_))
             ));
         }
     }
