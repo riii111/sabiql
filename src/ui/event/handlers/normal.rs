@@ -44,7 +44,10 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 return Action::OpenTablePicker;
             }
             // Ctrl+N/P navigation disabled on main screen; use j/k or arrows.
-            // Modals/pickers handle Ctrl+N/P independently via their own bindings.
+            // Modals/pickers handle Ctrl+N/P via their own bindings.
+            // NOTE: vim/classify.rs still maps Ctrl+N/P → MoveDown/MoveUp for
+            // modal contexts (SQL Modal Plan/Compare). This catch-all prevents
+            // that mapping from reaching the main screen.
             Key::Char('n' | 'p') => {
                 return Action::None;
             }
