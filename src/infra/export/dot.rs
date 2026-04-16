@@ -62,7 +62,10 @@ impl ViewerLauncher for SystemViewerLauncher {
         }
         #[cfg(target_os = "windows")]
         {
-            Command::new("cmd").args(["/C", "start"]).arg(path).spawn()?;
+            Command::new("cmd")
+                .args(["/C", "start"])
+                .arg(path)
+                .spawn()?;
         }
         Ok(())
     }

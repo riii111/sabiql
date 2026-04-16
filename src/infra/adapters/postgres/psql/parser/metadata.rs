@@ -49,8 +49,7 @@ impl PostgresAdapter {
             row_count_estimate: Option<i64>,
         }
 
-        let raw: RawTableInfo = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let raw: RawTableInfo = serde_json::from_str(trimmed)?;
 
         // PostgreSQL returns reltuples = -1 when VACUUM/ANALYZE has never run
         let row_count = raw.row_count_estimate.filter(|&n| n >= 0);
@@ -77,8 +76,7 @@ impl PostgresAdapter {
             has_rls: bool,
         }
 
-        let raw: Vec<RawTable> = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawTable> = serde_json::from_str(trimmed)?;
 
         Ok(raw
             .into_iter()
@@ -100,8 +98,7 @@ impl PostgresAdapter {
             signature: String,
         }
 
-        let raw: Vec<RawTableSignature> = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawTableSignature> = serde_json::from_str(trimmed)?;
 
         Ok(raw
             .into_iter()
@@ -125,8 +122,7 @@ impl PostgresAdapter {
             name: String,
         }
 
-        let raw: Vec<RawSchema> = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawSchema> = serde_json::from_str(trimmed)?;
 
         Ok(raw.into_iter().map(|s| Schema::new(s.name)).collect())
     }
@@ -150,8 +146,7 @@ impl PostgresAdapter {
             ordinal_position: i32,
         }
 
-        let raw: Vec<RawColumn> = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawColumn> = serde_json::from_str(trimmed)?;
 
         Ok(raw
             .into_iter()
@@ -185,8 +180,7 @@ impl PostgresAdapter {
             definition: Option<String>,
         }
 
-        let raw: Vec<RawIndex> = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawIndex> = serde_json::from_str(trimmed)?;
 
         Ok(raw
             .into_iter()
@@ -238,8 +232,7 @@ impl PostgresAdapter {
             }
         }
 
-        let raw: Vec<RawForeignKey> = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawForeignKey> = serde_json::from_str(trimmed)?;
 
         Ok(raw
             .into_iter()
@@ -281,8 +274,7 @@ impl PostgresAdapter {
             with_check: Option<String>,
         }
 
-        let raw: RawRls = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let raw: RawRls = serde_json::from_str(trimmed)?;
 
         let policies = raw
             .policies
@@ -326,8 +318,7 @@ impl PostgresAdapter {
             security_definer: bool,
         }
 
-        let raw: Vec<RawTrigger> = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawTrigger> = serde_json::from_str(trimmed)?;
 
         Ok(raw
             .into_iter()
@@ -359,8 +350,8 @@ impl PostgresAdapter {
         json: &str,
     ) -> Result<TableDetailCombined, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
-            return Err(DbOperationError::InvalidJson(
-                "table_detail_combined: empty response".to_string(),
+            return Err(DbOperationError::EmptyResponse(
+                "table_detail_combined".to_string(),
             ));
         };
 
@@ -375,8 +366,7 @@ impl PostgresAdapter {
             table_info: serde_json::Value,
         }
 
-        let combined: CombinedDetail = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let combined: CombinedDetail = serde_json::from_str(trimmed)?;
 
         let columns = Self::parse_columns(&combined.columns.to_string())?;
         let indexes = Self::parse_indexes(&combined.indexes.to_string())?;
@@ -392,8 +382,8 @@ impl PostgresAdapter {
         json: &str,
     ) -> Result<(Vec<Column>, Vec<ForeignKey>), DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
-            return Err(DbOperationError::InvalidJson(
-                "table_columns_and_fks: empty response".to_string(),
+            return Err(DbOperationError::EmptyResponse(
+                "table_columns_and_fks".to_string(),
             ));
         };
 
@@ -404,8 +394,7 @@ impl PostgresAdapter {
             foreign_keys: serde_json::Value,
         }
 
-        let light: LightDetail = serde_json::from_str(trimmed)
-            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
+        let light: LightDetail = serde_json::from_str(trimmed)?;
 
         let columns = Self::parse_columns(&light.columns.to_string())?;
         let foreign_keys = Self::parse_foreign_keys(&light.foreign_keys.to_string())?;
@@ -1126,13 +1115,13 @@ mod tests {
         #[test]
         fn empty_input_returns_error_for_combined_detail() {
             let result = PostgresAdapter::parse_table_detail_combined("");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::EmptyResponse(_))));
         }
 
         #[test]
         fn null_input_returns_error_for_combined_detail() {
             let result = PostgresAdapter::parse_table_detail_combined("null");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::EmptyResponse(_))));
         }
     }
 
@@ -1185,13 +1174,13 @@ mod tests {
         #[test]
         fn empty_input_returns_error_for_columns_and_fks() {
             let result = PostgresAdapter::parse_table_columns_and_fks("");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::EmptyResponse(_))));
         }
 
         #[test]
         fn null_input_returns_error_for_columns_and_fks() {
             let result = PostgresAdapter::parse_table_columns_and_fks("null");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::EmptyResponse(_))));
         }
     }
 }

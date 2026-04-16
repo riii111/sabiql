@@ -115,9 +115,7 @@ pub fn reduce(
 }
 
 fn clipboard_unavailable() -> Action {
-    Action::CopyFailed(ClipboardError::Unavailable(
-        "Clipboard unavailable".into(),
-    ))
+    Action::CopyFailed(ClipboardError::Unavailable("Clipboard unavailable".into()))
 }
 
 #[cfg(test)]
