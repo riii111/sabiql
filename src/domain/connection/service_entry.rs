@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::ConnectionId;
 
 const SERVICE_ID_PREFIX: &str = "service:";
@@ -12,16 +14,18 @@ pub struct ServiceEntry {
 }
 
 impl ServiceEntry {
-    pub fn to_dsn(&self) -> String {
-        format!("service={}", self.service_name)
-    }
-
     pub fn connection_id(&self) -> ConnectionId {
         ConnectionId::from_string(format!("{}{}", SERVICE_ID_PREFIX, self.service_name))
     }
 
     pub fn display_name(&self) -> &str {
         &self.service_name
+    }
+}
+
+impl fmt::Display for ServiceEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "service={}", self.service_name)
     }
 }
 
@@ -40,8 +44,8 @@ mod tests {
     }
 
     #[test]
-    fn to_dsn_formats_correctly() {
-        assert_eq!(sample().to_dsn(), "service=mydb");
+    fn formats_service_dsn_correctly() {
+        assert_eq!(sample().to_string(), "service=mydb");
     }
 
     #[test]
