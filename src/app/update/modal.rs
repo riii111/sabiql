@@ -381,6 +381,8 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 
@@ -916,9 +918,9 @@ mod tests {
 
                 reduce_modal(
                     &mut state,
-                    &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(
-                        "disk error".to_string(),
-                    )),
+                    &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(Arc::new(
+                        std::io::Error::other("disk error"),
+                    ))),
                     now,
                 )
                 .unwrap();
@@ -937,9 +939,9 @@ mod tests {
 
                 reduce_modal(
                     &mut state,
-                    &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(
-                        "stale error".to_string(),
-                    )),
+                    &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(Arc::new(
+                        std::io::Error::other("stale error"),
+                    ))),
                     now,
                 )
                 .unwrap();
@@ -954,9 +956,9 @@ mod tests {
 
                 let effects = reduce_modal(
                     &mut state,
-                    &Action::QueryHistoryAppendFailed(QueryHistoryError::IoError(
-                        "write error".to_string(),
-                    )),
+                    &Action::QueryHistoryAppendFailed(QueryHistoryError::IoError(Arc::new(
+                        std::io::Error::other("write error"),
+                    ))),
                     now,
                 )
                 .unwrap();

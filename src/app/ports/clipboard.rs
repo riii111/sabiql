@@ -1,7 +1,17 @@
+use std::sync::Arc;
+
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("{message}")]
-pub struct ClipboardError {
-    pub message: String,
+pub enum ClipboardError {
+    #[error("{0}")]
+    Backend(Arc<arboard::Error>),
+    #[error("{0}")]
+    Unavailable(String),
+}
+
+impl From<arboard::Error> for ClipboardError {
+    fn from(e: arboard::Error) -> Self {
+        Self::Backend(Arc::new(e))
+    }
 }
 
 pub trait ClipboardWriter: Send + Sync {
