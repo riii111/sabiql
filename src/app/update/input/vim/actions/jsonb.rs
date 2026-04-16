@@ -13,10 +13,8 @@ pub(in crate::app::update::input::vim) fn command(
         JsonbDetailVimContext::Viewing => match command {
             VimCommand::Navigation(navigation) => navigation_action(navigation),
             VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseJsonbDetail),
-            VimCommand::ModeTransition(VimModeTransition::Insert)
-            | VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter) => {
-                Some(Action::JsonbEnterEdit)
-            }
+            VimCommand::ModeTransition(VimModeTransition::Insert) => Some(Action::JsonbEnterEdit),
+            VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter) => None,
             VimCommand::ModeTransition(VimModeTransition::Append) => {
                 Some(Action::JsonbAppendInsert)
             }
@@ -27,7 +25,7 @@ pub(in crate::app::update::input::vim) fn command(
                 Some(Action::JsonbSearchPrev)
             }
             VimCommand::Operator(VimOperator::Yank) => Some(Action::JsonbYankAll),
-            VimCommand::Operator(VimOperator::Delete) => None,
+            VimCommand::Operator(VimOperator::Delete) => Some(Action::None),
         },
         JsonbDetailVimContext::Editing => match command {
             VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::JsonbExitEdit),
@@ -73,12 +71,12 @@ mod tests {
     }
 
     #[test]
-    fn enter_opens_edit_mode() {
+    fn enter_is_ignored_in_viewing_mode() {
         let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
 
         let action = action_for_key(&combo(Key::Enter), ctx);
 
-        assert!(matches!(action, Some(Action::JsonbEnterEdit)));
+        assert!(action.is_none());
     }
 
     #[test]

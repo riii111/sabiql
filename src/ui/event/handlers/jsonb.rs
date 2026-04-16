@@ -190,10 +190,10 @@ mod tests {
         }
 
         #[test]
-        fn enter_enters_insert_mode() {
+        fn enter_is_ignored_in_viewing_mode() {
             let result = handle_jsonb_detail_keys(combo(Key::Enter), false, None);
 
-            assert!(matches!(result, Action::JsonbEnterEdit));
+            assert!(matches!(result, Action::None));
         }
 
         #[test]

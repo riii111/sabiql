@@ -613,14 +613,14 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "Enter/i/A",
-        key: "Enter / i / A",
-        desc_short: "Insert",
+        key_short: "i/A",
+        key: "i / A",
+        desc_short: "Insert/Append",
         description: "Enter Insert mode / append at line end",
         bindings: &[
             ExecBinding {
                 action: Action::JsonbEnterEdit,
-                combos: &[KeyCombo::plain(Key::Enter), KeyCombo::plain(Key::Char('i'))],
+                combos: &[KeyCombo::plain(Key::Char('i'))],
             },
             ExecBinding {
                 action: Action::JsonbAppendInsert,

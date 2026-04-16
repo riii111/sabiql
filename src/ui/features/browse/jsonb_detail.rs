@@ -46,7 +46,7 @@ impl JsonbDetail {
         let hint = if is_editing {
             " Esc:Normal "
         } else {
-            " y:Copy  /:Search  Enter/i/A:Insert  Esc:Close "
+            " y:Copy  /:Search  i/A:Insert/Append  Esc:Close "
         };
 
         let (_area, inner) = render_modal(
@@ -108,7 +108,7 @@ impl JsonbDetail {
             empty_placeholder: if is_editing {
                 " Enter JSON..."
             } else {
-                " Press Enter or i to edit..."
+                " Press i or A to edit..."
             },
             base_style: Style::default().fg(theme.semantic.text.primary),
             current_line_style: Style::default().bg(theme.component.editor.current_line_bg),
