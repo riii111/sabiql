@@ -367,16 +367,6 @@ pub fn is_help(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::HELP].combos.contains(combo)
 }
 
-pub fn is_table_picker(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::TABLE_PICKER]
-        .combos
-        .contains(combo)
-}
-
-pub fn is_command_palette(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::PALETTE].combos.contains(combo)
-}
-
 pub fn is_command_line(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::COMMAND_LINE]
         .combos
@@ -397,20 +387,6 @@ pub fn is_open_sql(combo: &KeyCombo) -> bool {
 
 pub fn is_open_er(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::ER_DIAGRAM].combos.contains(combo)
-}
-
-pub fn is_csv_export(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::CSV_EXPORT].combos.contains(combo)
-}
-
-pub fn is_read_only_toggle(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::READ_ONLY].combos.contains(combo)
-}
-
-pub fn is_query_history(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::QUERY_HISTORY]
-        .combos
-        .contains(combo)
 }
 
 #[cfg(test)]
