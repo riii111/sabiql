@@ -15,8 +15,11 @@ impl PgServiceFileReader {
 impl ServiceFileReader for PgServiceFileReader {
     fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError> {
         let path = find_service_file()?;
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| ServiceFileError::ReadError(format!("{}: {}", path.display(), e)))?;
+        let content =
+            std::fs::read_to_string(&path).map_err(|source| ServiceFileError::ReadAt {
+                path: path.clone(),
+                source: std::sync::Arc::new(source),
+            })?;
         let entries = parse(&content);
         Ok((entries, path))
     }
