@@ -35,7 +35,7 @@ impl TomlConnectionStore {
             fs::create_dir_all(&self.config_dir)?;
         }
 
-        let config = ConnectionConfigFile::from_profiles(profiles);
+        let config = ConnectionConfigFile::from(profiles);
         let content = toml::to_string_pretty(&config)?;
 
         let content_with_header = format!(
@@ -96,9 +96,7 @@ impl ConnectionStore for TomlConnectionStore {
 
         let config: ConnectionConfigFile = toml::from_str(&content)?;
 
-        config
-            .to_profiles()
-            .map_err(ConnectionStoreError::InvalidProfile)
+        Vec::<ConnectionProfile>::try_from(&config).map_err(ConnectionStoreError::InvalidProfile)
     }
 
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError> {

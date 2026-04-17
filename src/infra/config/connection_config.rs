@@ -29,8 +29,8 @@ pub struct ConnectionConfigEntry {
     pub ssl_mode: SslMode,
 }
 
-impl ConnectionConfigFile {
-    pub fn from_profiles(profiles: &[ConnectionProfile]) -> Self {
+impl From<&[ConnectionProfile]> for ConnectionConfigFile {
+    fn from(profiles: &[ConnectionProfile]) -> Self {
         Self {
             version: CURRENT_VERSION,
             connections: profiles
@@ -48,9 +48,14 @@ impl ConnectionConfigFile {
                 .collect(),
         }
     }
+}
 
-    pub fn to_profiles(&self) -> Result<Vec<ConnectionProfile>, ConnectionNameError> {
-        self.connections
+impl TryFrom<&ConnectionConfigFile> for Vec<ConnectionProfile> {
+    type Error = ConnectionNameError;
+
+    fn try_from(config: &ConnectionConfigFile) -> Result<Self, Self::Error> {
+        config
+            .connections
             .iter()
             .map(|entry| {
                 Ok(ConnectionProfile {

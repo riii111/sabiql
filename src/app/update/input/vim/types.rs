@@ -84,7 +84,17 @@ pub struct ResultVimContext {
 }
 
 impl BrowseVimContext {
-    pub fn from_state(state: &AppState) -> Self {
+    pub fn is_result(self) -> bool {
+        matches!(self, Self::Result(_))
+    }
+
+    pub fn is_inspector(self) -> bool {
+        matches!(self, Self::Inspector(_))
+    }
+}
+
+impl From<&AppState> for BrowseVimContext {
+    fn from(state: &AppState) -> Self {
         let result_nav = state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result;
 
         if result_nav {
@@ -106,14 +116,6 @@ impl BrowseVimContext {
         } else {
             Self::Explorer
         }
-    }
-
-    pub fn is_result(self) -> bool {
-        matches!(self, Self::Result(_))
-    }
-
-    pub fn is_inspector(self) -> bool {
-        matches!(self, Self::Inspector(_))
     }
 }
 
@@ -145,7 +147,7 @@ mod tests {
         state.result_interaction.yank_op_pending = true;
         state.result_interaction.delete_op_pending = true;
 
-        let BrowseVimContext::Result(result_ctx) = BrowseVimContext::from_state(&state) else {
+        let BrowseVimContext::Result(result_ctx) = BrowseVimContext::from(&state) else {
             panic!("expected result context");
         };
 

@@ -175,7 +175,13 @@ impl ConnectionSetupState {
         !self.validation_errors.is_empty()
     }
 
-    pub fn from_profile(profile: &ConnectionProfile) -> Self {
+    pub fn is_edit_mode(&self) -> bool {
+        self.editing_id.is_some()
+    }
+}
+
+impl From<&ConnectionProfile> for ConnectionSetupState {
+    fn from(profile: &ConnectionProfile) -> Self {
         let name_len = profile.name.as_str().chars().count();
         let host_len = profile.host.chars().count();
         let port_str = profile.port.to_string();
@@ -197,10 +203,6 @@ impl ConnectionSetupState {
             is_first_run: false,
             editing_id: Some(profile.id.clone()),
         }
-    }
-
-    pub fn is_edit_mode(&self) -> bool {
-        self.editing_id.is_some()
     }
 }
 
@@ -338,7 +340,7 @@ mod tests {
             )
             .unwrap();
 
-            let state = ConnectionSetupState::from_profile(&profile);
+            let state = ConnectionSetupState::from(&profile);
 
             assert_eq!(state.name.content(), "Test DB");
             assert_eq!(state.host.content(), "db.example.com");
@@ -369,7 +371,7 @@ mod tests {
                 SslMode::Prefer,
             )
             .unwrap();
-            let state = ConnectionSetupState::from_profile(&profile);
+            let state = ConnectionSetupState::from(&profile);
             assert!(state.is_edit_mode());
         }
 
