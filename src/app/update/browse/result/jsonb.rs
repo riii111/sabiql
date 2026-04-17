@@ -88,9 +88,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![Effect::CopyToClipboard {
                 content: json,
                 on_success: Some(Action::CellCopied),
-                on_failure: Some(Action::CopyFailed(ClipboardError {
-                    message: "Clipboard unavailable".into(),
-                })),
+                on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
+                    "Clipboard unavailable".into(),
+                ))),
             }])
         }
 

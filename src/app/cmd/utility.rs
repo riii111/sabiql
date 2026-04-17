@@ -81,9 +81,9 @@ mod tests {
         fn failing(error: &str) -> Self {
             Self {
                 opened: Mutex::new(vec![]),
-                result: Err(FolderOpenError {
-                    message: error.to_string(),
-                }),
+                result: Err(FolderOpenError::Spawn(Arc::new(std::io::Error::other(
+                    error,
+                )))),
             }
         }
     }
@@ -128,9 +128,7 @@ mod tests {
         async fn on_failure_dispatched_when_copy_fails() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
-                result: Err(ClipboardError {
-                    message: "clipboard error".to_string(),
-                }),
+                result: Err(ClipboardError::Unavailable("clipboard error".to_string())),
             });
             let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
 
@@ -158,9 +156,7 @@ mod tests {
         async fn copy_failed_dispatched_when_no_on_failure() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
-                result: Err(ClipboardError {
-                    message: "clipboard error".to_string(),
-                }),
+                result: Err(ClipboardError::Unavailable("clipboard error".to_string())),
             });
             let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
 
@@ -182,7 +178,7 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             match action {
-                Action::CopyFailed(e) => assert_eq!(e.message, "clipboard error"),
+                Action::CopyFailed(e) => assert_eq!(e.to_string(), "clipboard error"),
                 other => panic!("expected CopyFailed, got {other:?}"),
             }
         }
@@ -238,7 +234,7 @@ mod tests {
                 .expect("channel closed");
             match action {
                 Action::OpenFolderFailed(e) => {
-                    assert_eq!(e.message, "No such file or directory");
+                    assert_eq!(e.to_string(), "No such file or directory");
                 }
                 other => panic!("expected OpenFolderFailed, got {other:?}"),
             }

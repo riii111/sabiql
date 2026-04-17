@@ -419,9 +419,9 @@ pub fn reduce_sql_modal(
                 Some(c) if !c.is_empty() => Some(vec![Effect::CopyToClipboard {
                     content: c,
                     on_success: Some(Action::SqlModalYankSuccess),
-                    on_failure: Some(Action::CopyFailed(ClipboardError {
-                        message: "Clipboard unavailable".into(),
-                    })),
+                    on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
+                        "Clipboard unavailable".into(),
+                    ))),
                 }]),
                 _ => Some(vec![]),
             }

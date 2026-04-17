@@ -20,8 +20,7 @@ impl FolderOpener for NativeFolderOpener {
         )))]
         compile_error!("FolderOpener: unsupported target OS");
 
-        result.map(|_| ()).map_err(|e| FolderOpenError {
-            message: e.to_string(),
-        })
+        result?;
+        Ok(())
     }
 }

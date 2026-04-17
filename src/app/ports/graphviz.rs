@@ -15,7 +15,7 @@ pub enum GraphvizError {
 #[derive(Debug, thiserror::Error)]
 pub enum ViewerError {
     #[error("Failed to open viewer: {0}")]
-    LaunchFailed(#[source] std::io::Error),
+    LaunchFailed(#[from] std::io::Error),
 }
 
 pub trait GraphvizRunner: Send + Sync {

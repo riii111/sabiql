@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::domain::connection::ServiceEntry;
 
@@ -6,8 +7,12 @@ use crate::domain::connection::ServiceEntry;
 pub enum ServiceFileError {
     #[error("Service file not found: {0}")]
     NotFound(String),
-    #[error("Read error: {0}")]
-    ReadError(String),
+    #[error("Failed to read {path}: {source}", path = path.display())]
+    ReadAt {
+        path: PathBuf,
+        #[source]
+        source: Arc<std::io::Error>,
+    },
     #[error("Parse error: {0}")]
     ParseError(String),
 }

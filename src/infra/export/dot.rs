@@ -43,40 +43,29 @@ impl ViewerLauncher for SystemViewerLauncher {
                     .arg("-a")
                     .arg(&browser)
                     .arg(path)
-                    .spawn()
-                    .map_err(ViewerError::LaunchFailed)?;
+                    .spawn()?;
             }
             #[cfg(not(target_os = "macos"))]
             {
-                Command::new(&browser)
-                    .arg(path)
-                    .spawn()
-                    .map_err(ViewerError::LaunchFailed)?;
+                Command::new(&browser).arg(path).spawn()?;
             }
             return Ok(());
         }
 
         #[cfg(target_os = "macos")]
         {
-            Command::new("open")
-                .arg(path)
-                .spawn()
-                .map_err(ViewerError::LaunchFailed)?;
+            Command::new("open").arg(path).spawn()?;
         }
         #[cfg(any(target_os = "freebsd", target_os = "linux"))]
         {
-            Command::new("xdg-open")
-                .arg(path)
-                .spawn()
-                .map_err(ViewerError::LaunchFailed)?;
+            Command::new("xdg-open").arg(path).spawn()?;
         }
         #[cfg(target_os = "windows")]
         {
             Command::new("cmd")
                 .args(["/C", "start"])
                 .arg(path)
-                .spawn()
-                .map_err(ViewerError::LaunchFailed)?;
+                .spawn()?;
         }
         Ok(())
     }
