@@ -60,8 +60,7 @@ impl FileQueryHistoryStore {
         if let Some(base) = &self.base_dir {
             Ok(base.join("history"))
         } else {
-            let cache_dir =
-                get_cache_dir(project_name).map_err(|e| std::io::Error::other(e.to_string()))?;
+            let cache_dir = get_cache_dir(project_name).map_err(std::io::Error::other)?;
             Ok(cache_dir.join("history"))
         }
     }
