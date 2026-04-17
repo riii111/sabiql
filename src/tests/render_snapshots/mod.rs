@@ -1,5 +1,4 @@
-#[path = "../harness/mod.rs"]
-mod harness;
+use crate::tests::harness;
 
 use harness::fixtures;
 use harness::{
@@ -26,14 +25,25 @@ use sabiql::app::policy::write::write_guardrails::{
 use sabiql::app::policy::write::write_update::normalize_for_diff;
 use sabiql::domain::{CommandTag, QuerySource};
 
+#[path = "../../../tests/render_snapshots/confirm_dialogs.rs"]
 mod confirm_dialogs;
+#[path = "../../../tests/render_snapshots/connection_flow.rs"]
 mod connection_flow;
+#[path = "../../../tests/render_snapshots/connection_management.rs"]
 mod connection_management;
+#[path = "../../../tests/render_snapshots/er_diagram.rs"]
 mod er_diagram;
+#[path = "../../../tests/render_snapshots/initial_state.rs"]
 mod initial_state;
+#[path = "../../../tests/render_snapshots/inspector.rs"]
 mod inspector;
+#[path = "../../../tests/render_snapshots/overlays.rs"]
 mod overlays;
+#[path = "../../../tests/render_snapshots/result_history.rs"]
 mod result_history;
+#[path = "../../../tests/render_snapshots/result_pane.rs"]
 mod result_pane;
+#[path = "../../../tests/render_snapshots/style_assertions.rs"]
 mod style_assertions;
+#[path = "../../../tests/render_snapshots/table_explorer.rs"]
 mod table_explorer;
