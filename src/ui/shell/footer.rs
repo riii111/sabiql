@@ -379,7 +379,7 @@ mod tests {
         let state = inspector_state();
         let mut services = AppServices::stub();
         services.db_capabilities =
-            DbCapabilities::new_for_tests(true, true, vec![InspectorTab::Info]);
+            DbCapabilities::new(true, true, vec![InspectorTab::Info]);
 
         let hints = Footer::get_context_hints(&state, &services);
 
@@ -391,7 +391,7 @@ mod tests {
         let state = inspector_state();
         let mut services = AppServices::stub();
         services.db_capabilities =
-            DbCapabilities::new_for_tests(true, true, vec![InspectorTab::Info, InspectorTab::Columns]);
+            DbCapabilities::new(true, true, vec![InspectorTab::Info, InspectorTab::Columns]);
 
         let hints = Footer::get_context_hints(&state, &services);
 

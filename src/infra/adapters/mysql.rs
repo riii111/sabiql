@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 
+use crate::app::model::shared::db_capabilities::DbCapabilities;
+use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::ports::{
     DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
 };
@@ -11,6 +13,20 @@ pub struct MySqlAdapter;
 impl MySqlAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    pub fn capabilities(&self) -> DbCapabilities {
+        DbCapabilities::new(
+            false,
+            false,
+            vec![
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+                InspectorTab::Ddl,
+            ],
+        )
     }
 }
 

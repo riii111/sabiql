@@ -117,7 +117,7 @@ mod tests {
         fn services_with_two_tabs() -> AppServices {
             let mut services = AppServices::stub();
             services.db_capabilities =
-                DbCapabilities::new_for_tests(true, true, vec![InspectorTab::Info, InspectorTab::Columns]);
+                DbCapabilities::new(true, true, vec![InspectorTab::Info, InspectorTab::Columns]);
             services
         }
 

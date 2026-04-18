@@ -38,7 +38,6 @@ use crate::app::cmd::effect::Effect;
 use crate::app::cmd::render_schedule::next_animation_deadline;
 use crate::app::cmd::runner::EffectRunner;
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::ports::{
     ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError,
@@ -108,7 +107,7 @@ async fn main() -> Result<()> {
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
-    let db_capabilities = DbCapabilities::postgres();
+    let db_capabilities = adapter.capabilities();
     let service_file_reader: Arc<dyn PgServiceEntryReader> = Arc::new(PgServiceFileReader::new());
 
     let effect_runner = EffectRunner::builder()

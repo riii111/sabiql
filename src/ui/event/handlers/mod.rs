@@ -124,7 +124,7 @@ mod tests {
 
             let mut services = AppServices::stub();
             services.db_capabilities =
-                crate::app::model::shared::db_capabilities::DbCapabilities::new_for_tests(
+                crate::app::model::shared::db_capabilities::DbCapabilities::new(
                     false,
                     false,
                     vec![crate::app::model::shared::inspector_tab::InspectorTab::Info],

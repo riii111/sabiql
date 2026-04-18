@@ -9,28 +9,11 @@ pub struct DbCapabilities {
 }
 
 impl DbCapabilities {
-    pub fn postgres() -> Self {
-        Self {
-            supports_explain: true,
-            supports_pg_service_entries: true,
-            supported_inspector_tabs: vec![
-                InspectorTab::Info,
-                InspectorTab::Columns,
-                InspectorTab::Indexes,
-                InspectorTab::ForeignKeys,
-                InspectorTab::Rls,
-                InspectorTab::Triggers,
-                InspectorTab::Ddl,
-            ],
-        }
-    }
-
     pub fn supported_inspector_tabs(&self) -> &[InspectorTab] {
         &self.supported_inspector_tabs
     }
 
-    #[cfg(test)]
-    pub fn new_for_tests(
+    pub fn new(
         supports_explain: bool,
         supports_pg_service_entries: bool,
         supported_inspector_tabs: Vec<InspectorTab>,
@@ -119,7 +102,19 @@ mod tests {
 
     #[test]
     fn postgres_supports_all_inspector_tabs() {
-        let caps = DbCapabilities::postgres();
+        let caps = DbCapabilities::new(
+            true,
+            true,
+            vec![
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+                InspectorTab::Rls,
+                InspectorTab::Triggers,
+                InspectorTab::Ddl,
+            ],
+        );
 
         assert!(caps.supports_explain);
         assert!(caps.supports_pg_service_entries);
@@ -143,14 +138,14 @@ mod tests {
 
     #[test]
     fn normalize_unsupported_sql_modal_tab_returns_sql() {
-        let caps = DbCapabilities::new_for_tests(true, false, vec![InspectorTab::Info]);
+        let caps = DbCapabilities::new(true, false, vec![InspectorTab::Info]);
 
         assert_eq!(
             caps.normalize_sql_modal_tab(SqlModalTab::Compare),
             SqlModalTab::Compare
         );
 
-        let no_explain_caps = DbCapabilities::new_for_tests(false, false, vec![InspectorTab::Info]);
+        let no_explain_caps = DbCapabilities::new(false, false, vec![InspectorTab::Info]);
         assert_eq!(
             no_explain_caps.normalize_sql_modal_tab(SqlModalTab::Plan),
             SqlModalTab::Sql

@@ -337,7 +337,7 @@ mod tests {
         AppServices {
             ddl_generator: Arc::new(NoopDdl),
             sql_dialect: Arc::new(NoopSql),
-            db_capabilities: DbCapabilities::new_for_tests(false, false, vec![InspectorTab::Info]),
+            db_capabilities: DbCapabilities::new(false, false, vec![InspectorTab::Info]),
         }
     }
 

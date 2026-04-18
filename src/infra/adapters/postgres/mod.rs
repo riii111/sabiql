@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 
+use crate::app::model::shared::db_capabilities::DbCapabilities;
+use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::ports::{DbOperationError, MetadataProvider, QueryExecutor};
 use crate::domain::{
     Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSignature, WriteExecutionResult,
@@ -20,6 +22,22 @@ impl PostgresAdapter {
 
     pub fn with_timeout(timeout_secs: u64) -> Self {
         Self { timeout_secs }
+    }
+
+    pub fn capabilities(&self) -> DbCapabilities {
+        DbCapabilities::new(
+            true,
+            true,
+            vec![
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+                InspectorTab::Rls,
+                InspectorTab::Triggers,
+                InspectorTab::Ddl,
+            ],
+        )
     }
 }
 
