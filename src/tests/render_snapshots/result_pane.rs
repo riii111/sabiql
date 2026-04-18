@@ -1,11 +1,12 @@
 use super::*;
+use crate::app::model::app_state::AppState;
 use crate::app::services::AppServices;
-use crate::app::update::action::Action;
+use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::app::update::browse::result::reduce_result;
 use crate::domain::{Column, QueryResult};
 use harness::{table_detail_loaded_state, with_current_result};
 
-fn jsonb_detail_state() -> (crate::app::model::app_state::AppState, std::time::Instant) {
+fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
     let mut state = create_test_state();
     state
@@ -233,8 +234,8 @@ fn result_pane_jsonb_edit_mode() {
     reduce_result(
         &mut state,
         &Action::TextMoveCursor {
-            target: crate::app::update::action::InputTarget::JsonbEdit,
-            direction: crate::app::update::action::CursorMove::Down,
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Down,
         },
         &AppServices::stub(),
         now,
@@ -242,8 +243,8 @@ fn result_pane_jsonb_edit_mode() {
     reduce_result(
         &mut state,
         &Action::TextMoveCursor {
-            target: crate::app::update::action::InputTarget::JsonbEdit,
-            direction: crate::app::update::action::CursorMove::Right,
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Right,
         },
         &AppServices::stub(),
         now,

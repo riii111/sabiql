@@ -10,7 +10,10 @@ use crate::app::services::AppServices;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::app::update::browse::result::reduce_result;
 use crate::domain::{Column, QueryResult, QuerySource};
-use crate::ui::theme::{DEFAULT_THEME, TEST_CONTRAST_THEME, ThemePalette};
+use crate::ui::theme::{
+    ComponentTokens, DEFAULT_THEME, EditorTokens, ModalTokens, SemanticTokens, SurfaceTokens,
+    TEST_CONTRAST_THEME, ThemePalette,
+};
 use harness::{
     TEST_HEIGHT, TEST_WIDTH, connected_state, create_test_terminal_sized, render_and_get_buffer,
     render_and_get_buffer_at_with_theme, render_and_get_cursor_position, table_detail_loaded_state,
@@ -895,20 +898,20 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     let (mut state, now) = connected_state();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
-        semantic: crate::ui::theme::SemanticTokens {
-            surface: crate::ui::theme::SurfaceTokens {
+        semantic: SemanticTokens {
+            surface: SurfaceTokens {
                 focus_border: Color::Rgb(0x11, 0x88, 0xdd),
                 ..DEFAULT_THEME.semantic.surface
             },
             ..DEFAULT_THEME.semantic
         },
-        component: crate::ui::theme::ComponentTokens {
-            modal: crate::ui::theme::ModalTokens {
+        component: ComponentTokens {
+            modal: ModalTokens {
                 hint: Color::Rgb(0xaa, 0xee, 0x22),
                 border: Color::Rgb(0xdd, 0x44, 0x11),
                 ..DEFAULT_THEME.component.modal
             },
-            editor: crate::ui::theme::EditorTokens {
+            editor: EditorTokens {
                 completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
                 ..DEFAULT_THEME.component.editor
             },
@@ -1065,12 +1068,12 @@ fn sql_completion_popup_uses_injected_theme_styles() {
     let (mut state, now) = connected_state();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
-        component: crate::ui::theme::ComponentTokens {
-            modal: crate::ui::theme::ModalTokens {
+        component: ComponentTokens {
+            modal: ModalTokens {
                 border: Color::Rgb(0xdd, 0x44, 0x11),
                 ..DEFAULT_THEME.component.modal
             },
-            editor: crate::ui::theme::EditorTokens {
+            editor: EditorTokens {
                 completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
                 ..DEFAULT_THEME.component.editor
             },
