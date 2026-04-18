@@ -140,10 +140,10 @@ pub(crate) async fn run(
                 };
                 let (services, service_file_path, service_load_warning) = match reader {
                     Some(reader) => match reader.read_services() {
-                            Ok((s, p)) => (s, Some(p), None),
-                            Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
-                            Err(e) => (vec![], None, Some(e.to_string())),
-                        },
+                        Ok((s, p)) => (s, Some(p), None),
+                        Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
+                        Err(e) => (vec![], None, Some(e.to_string())),
+                    },
                     None => (vec![], None, None),
                 };
 
