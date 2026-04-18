@@ -12,6 +12,8 @@ pub enum DbOperationError {
     EmptyResponse(String),
     #[error("CSV parse error: {0}")]
     CsvParse(#[source] Arc<csv::Error>),
+    #[error("Command tag parse failed: {0}")]
+    CommandTagParseFailed(String),
     #[error("Command not found: {0}")]
     CommandNotFound(String),
     #[error("Operation timed out: {0}")]

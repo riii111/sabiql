@@ -1,3 +1,4 @@
+use crate::app::ports::DbOperationError;
 use crate::domain::CommandTag;
 
 use super::super::super::PostgresAdapter;
@@ -10,6 +11,12 @@ pub enum ParseCommandTagError {
     Empty,
     #[error("invalid command tag: {input}")]
     Invalid { input: String },
+}
+
+impl From<ParseCommandTagError> for DbOperationError {
+    fn from(error: ParseCommandTagError) -> Self {
+        Self::CommandTagParseFailed(error.to_string())
+    }
 }
 
 impl FromStr for CommandTag {
@@ -106,12 +113,6 @@ impl FromStr for CommandTag {
 }
 
 impl PostgresAdapter {
-    pub(in crate::infra::adapters::postgres) fn parse_command_tag(
-        tag: &str,
-    ) -> Result<CommandTag, ParseCommandTagError> {
-        CommandTag::from_str(tag)
-    }
-
     pub(in crate::infra::adapters::postgres) fn extract_command_tag(
         stdout: &str,
     ) -> Option<CommandTag> {
@@ -119,7 +120,7 @@ impl PostgresAdapter {
             .lines()
             .rev()
             .find(|line| !line.trim().is_empty())
-            .and_then(|line| Self::parse_command_tag(line).ok())
+            .and_then(|line| line.parse::<CommandTag>().ok())
     }
 
     fn is_known_tcl_tag(s: &str) -> bool {
@@ -136,7 +137,7 @@ impl PostgresAdapter {
             if trimmed.is_empty() {
                 continue;
             }
-            let tag = Self::parse_command_tag(trimmed).ok()?;
+            let tag = trimmed.parse::<CommandTag>().ok()?;
             if let CommandTag::Other(ref raw) = tag
                 && !Self::is_known_tcl_tag(raw)
             {
@@ -388,8 +389,8 @@ mod tests {
         #[case("BEGIN", CommandTag::Begin)]
         #[case("COMMIT", CommandTag::Commit)]
         #[case("ROLLBACK", CommandTag::Rollback)]
-fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
-            assert_eq!(PostgresAdapter::parse_command_tag(input), Ok(expected));
+        fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
+            assert_eq!(input.parse::<CommandTag>(), Ok(expected));
         }
 
         #[rstest]
@@ -397,7 +398,7 @@ fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
         #[case("   ")]
         fn empty_or_whitespace_returns_none(#[case] input: &str) {
             assert!(matches!(
-                PostgresAdapter::parse_command_tag(input),
+                input.parse::<CommandTag>(),
                 Err(ParseCommandTagError::Empty)
             ));
         }
@@ -410,7 +411,7 @@ fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
         #[case("DELETE")]
         fn malformed_count_returns_none(#[case] input: &str) {
             assert!(matches!(
-                PostgresAdapter::parse_command_tag(input),
+                input.parse::<CommandTag>(),
                 Err(ParseCommandTagError::Invalid { .. })
             ));
         }
@@ -418,7 +419,7 @@ fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
         #[test]
         fn unknown_command_returns_other() {
             assert_eq!(
-                PostgresAdapter::parse_command_tag("VACUUM"),
+                "VACUUM".parse::<CommandTag>(),
                 Ok(CommandTag::Other("VACUUM".to_string()))
             );
         }

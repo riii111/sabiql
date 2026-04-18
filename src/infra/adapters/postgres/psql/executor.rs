@@ -807,7 +807,7 @@ mod tests {
         // psql returns "SELECT n" for CREATE TABLE AS SELECT
         #[test]
         fn select_tag_captured_for_ctas() {
-            let tag = PostgresAdapter::parse_command_tag("SELECT 5");
+            let tag = "SELECT 5".parse::<CommandTag>();
             assert_eq!(tag, Ok(CommandTag::Select(5)));
             let passes = tag
                 .ok()
@@ -821,7 +821,7 @@ mod tests {
         fn empty_select_header_not_captured_by_filter() {
             let cases = ["id,name", "id,name,email", "count"];
             for input in cases {
-                let tag = PostgresAdapter::parse_command_tag(input);
+                let tag = input.parse::<CommandTag>();
                 let passes = tag
                     .ok()
                     .as_ref()
