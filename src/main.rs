@@ -1,10 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    clippy::redundant_pub_crate,
-    reason = "binary crate keeps internal modules and test scaffolding"
-)]
-
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -14,13 +7,41 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
+#[allow(
+    dead_code,
+    unused_imports,
+    clippy::redundant_pub_crate,
+    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
+)]
 mod app;
+#[allow(
+    dead_code,
+    unused_imports,
+    clippy::redundant_pub_crate,
+    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
+)]
 mod domain;
+#[allow(
+    dead_code,
+    unused_imports,
+    clippy::redundant_pub_crate,
+    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
+)]
 mod error;
+#[allow(
+    dead_code,
+    unused_imports,
+    clippy::redundant_pub_crate,
+    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
+)]
 mod infra;
+#[allow(
+    dead_code,
+    unused_imports,
+    clippy::redundant_pub_crate,
+    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
+)]
 mod ui;
-
-extern crate self as sabiql;
 
 #[cfg(test)]
 mod tests;

@@ -1,8 +1,8 @@
 use super::*;
+use crate::app::model::shared::multi_line_input::MultiLineInputState;
 use harness::connected_state;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use sabiql::app::model::shared::multi_line_input::MultiLineInputState;
 
 #[test]
 fn sql_modal_with_completion() {
@@ -164,7 +164,7 @@ fn sql_modal_success_select() {
     });
     state
         .query
-        .set_current_result(Arc::new(sabiql::domain::QueryResult {
+        .set_current_result(Arc::new(crate::domain::QueryResult {
             query: "SELECT * FROM users".to_string(),
             columns: vec!["id".to_string(), "name".to_string()],
             rows: vec![
@@ -202,7 +202,7 @@ fn sql_modal_success_dml_with_command_tag() {
     });
     state
         .query
-        .set_current_result(Arc::new(sabiql::domain::QueryResult {
+        .set_current_result(Arc::new(crate::domain::QueryResult {
             query: "DELETE FROM users WHERE id = 1".to_string(),
             columns: vec![],
             rows: vec![],
@@ -237,7 +237,7 @@ fn sql_modal_success_ddl_create_table() {
     });
     state
         .query
-        .set_current_result(Arc::new(sabiql::domain::QueryResult {
+        .set_current_result(Arc::new(crate::domain::QueryResult {
             query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
             columns: vec![],
             rows: vec![],
@@ -406,8 +406,8 @@ fn command_line_input() {
 
 #[test]
 fn query_history_picker_with_entries() {
-    use sabiql::domain::ConnectionId;
-    use sabiql::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+    use crate::domain::ConnectionId;
+    use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -456,8 +456,8 @@ fn query_history_picker_empty() {
 
 #[test]
 fn query_history_picker_filter_mode() {
-    use sabiql::domain::ConnectionId;
-    use sabiql::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+    use crate::domain::ConnectionId;
+    use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

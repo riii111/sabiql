@@ -1,5 +1,5 @@
 use super::*;
-use sabiql::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
 
 fn three_connections() -> (ConnectionId, Vec<ConnectionProfile>) {
     let active_id = ConnectionId::new();
@@ -56,7 +56,7 @@ fn connection_selector_with_multiple_connections() {
 
 #[test]
 fn connection_selector_with_service_entries() {
-    use sabiql::domain::connection::ServiceEntry;
+    use crate::domain::connection::ServiceEntry;
 
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -92,7 +92,7 @@ fn connection_selector_with_service_entries() {
 
 #[test]
 fn connection_selector_with_long_service_name() {
-    use sabiql::domain::connection::ServiceEntry;
+    use crate::domain::connection::ServiceEntry;
 
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -123,7 +123,7 @@ fn connection_selector_with_long_service_name() {
 
 #[test]
 fn connection_selector_with_active_service() {
-    use sabiql::domain::connection::{ConnectionId, ServiceEntry};
+    use crate::domain::connection::{ConnectionId, ServiceEntry};
 
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -157,7 +157,7 @@ fn connection_selector_with_active_service() {
 
 #[test]
 fn connection_selector_with_multibyte_service_name() {
-    use sabiql::domain::connection::ServiceEntry;
+    use crate::domain::connection::ServiceEntry;
 
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -187,7 +187,7 @@ fn confirm_dialog_delete_active_connection() {
     state.confirm_dialog.open(
         "Delete Connection",
         "Delete \"Production\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::DeleteConnection(connection_id),
+        crate::app::model::shared::confirm_dialog::ConfirmIntent::DeleteConnection(connection_id),
     );
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -205,7 +205,7 @@ fn confirm_dialog_delete_inactive_connection() {
     state.confirm_dialog.open(
         "Delete Connection",
         "Delete \"Staging\"?\n\nThis action cannot be undone.",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::DeleteConnection(target_id),
+        crate::app::model::shared::confirm_dialog::ConfirmIntent::DeleteConnection(target_id),
     );
 
     let output = render_to_string(&mut terminal, &mut state);

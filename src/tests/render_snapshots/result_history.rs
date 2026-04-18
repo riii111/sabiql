@@ -1,10 +1,10 @@
 use super::*;
+use crate::app::model::shared::ui_state::FocusMode;
+use crate::domain::QuerySource;
 use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
-use sabiql::app::model::shared::ui_state::FocusMode;
-use sabiql::domain::QuerySource;
 
-fn adhoc_result(now: std::time::Instant, query: &str) -> sabiql::domain::QueryResult {
-    sabiql::domain::QueryResult {
+fn adhoc_result(now: std::time::Instant, query: &str) -> crate::domain::QueryResult {
+    crate::domain::QueryResult {
         query: query.to_string(),
         columns: vec!["count".to_string()],
         rows: vec![vec!["42".to_string()]],
@@ -56,8 +56,8 @@ fn result_pane_history_mode() {
     insta::assert_snapshot!(output);
 }
 
-fn wide_adhoc_result(now: std::time::Instant, query: &str) -> sabiql::domain::QueryResult {
-    sabiql::domain::QueryResult {
+fn wide_adhoc_result(now: std::time::Instant, query: &str) -> crate::domain::QueryResult {
+    crate::domain::QueryResult {
         query: query.to_string(),
         columns: (1..=10).map(|i| format!("column_{i}")).collect(),
         rows: vec![(1..=10).map(|i| format!("value_{i}")).collect()],

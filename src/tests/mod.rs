@@ -12,15 +12,7 @@ fn no_subcommand_returns_none() {
 }
 
 #[test]
-#[cfg(feature = "self-update")]
 fn update_subcommand_is_recognized() {
-    let args = Args::parse_from(["sabiql", "update"]);
-    assert!(matches!(args.command, Some(Command::Update)));
-}
-
-#[test]
-#[cfg(not(feature = "self-update"))]
-fn update_subcommand_available_but_self_update_disabled() {
     let args = Args::parse_from(["sabiql", "update"]);
     assert!(matches!(args.command, Some(Command::Update)));
 }
