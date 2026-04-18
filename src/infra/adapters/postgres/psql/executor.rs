@@ -808,8 +808,9 @@ mod tests {
         #[test]
         fn select_tag_captured_for_ctas() {
             let tag = PostgresAdapter::parse_command_tag("SELECT 5");
-            assert_eq!(tag, Some(CommandTag::Select(5)));
+            assert_eq!(tag, Ok(CommandTag::Select(5)));
             let passes = tag
+                .ok()
                 .as_ref()
                 .is_some_and(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
             assert!(passes);
@@ -822,6 +823,7 @@ mod tests {
             for input in cases {
                 let tag = PostgresAdapter::parse_command_tag(input);
                 let passes = tag
+                    .ok()
                     .as_ref()
                     .is_some_and(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
                 assert!(

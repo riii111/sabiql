@@ -2,51 +2,110 @@ use crate::domain::CommandTag;
 
 use super::super::super::PostgresAdapter;
 use super::lexer::{has_select_into, split_sql_statements};
+use std::str::FromStr;
 
-impl PostgresAdapter {
-    pub(in crate::infra::adapters::postgres) fn parse_command_tag(tag: &str) -> Option<CommandTag> {
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+pub enum ParseCommandTagError {
+    #[error("empty command tag")]
+    Empty,
+    #[error("invalid command tag: {input}")]
+    Invalid { input: String },
+}
+
+impl FromStr for CommandTag {
+    type Err = ParseCommandTagError;
+
+    fn from_str(tag: &str) -> Result<Self, Self::Err> {
         let trimmed = tag.trim();
         if trimmed.is_empty() {
-            return None;
+            return Err(ParseCommandTagError::Empty);
         }
 
         let parts: Vec<&str> = trimmed.split_whitespace().collect();
-        match parts.first().copied()? {
+        match parts.first().copied().ok_or(ParseCommandTagError::Invalid {
+            input: tag.to_string(),
+        })? {
             "SELECT" => {
-                let n = parts.get(1)?.parse::<u64>().ok()?;
-                Some(CommandTag::Select(n))
+                let n = parts
+                    .get(1)
+                    .ok_or_else(|| ParseCommandTagError::Invalid {
+                        input: tag.to_string(),
+                    })?
+                    .parse::<u64>()
+                    .map_err(|_| ParseCommandTagError::Invalid {
+                        input: tag.to_string(),
+                    })?;
+                Ok(CommandTag::Select(n))
             }
             "INSERT" => {
                 // INSERT oid count — count is at index 2
-                let n = parts.get(2)?.parse::<u64>().ok()?;
-                Some(CommandTag::Insert(n))
+                let n = parts
+                    .get(2)
+                    .ok_or_else(|| ParseCommandTagError::Invalid {
+                        input: tag.to_string(),
+                    })?
+                    .parse::<u64>()
+                    .map_err(|_| ParseCommandTagError::Invalid {
+                        input: tag.to_string(),
+                    })?;
+                Ok(CommandTag::Insert(n))
             }
             "UPDATE" => {
-                let n = parts.get(1)?.parse::<u64>().ok()?;
-                Some(CommandTag::Update(n))
+                let n = parts
+                    .get(1)
+                    .ok_or_else(|| ParseCommandTagError::Invalid {
+                        input: tag.to_string(),
+                    })?
+                    .parse::<u64>()
+                    .map_err(|_| ParseCommandTagError::Invalid {
+                        input: tag.to_string(),
+                    })?;
+                Ok(CommandTag::Update(n))
             }
             "DELETE" => {
-                let n = parts.get(1)?.parse::<u64>().ok()?;
-                Some(CommandTag::Delete(n))
+                let n = parts
+                    .get(1)
+                    .ok_or_else(|| ParseCommandTagError::Invalid {
+                        input: tag.to_string(),
+                    })?
+                    .parse::<u64>()
+                    .map_err(|_| ParseCommandTagError::Invalid {
+                        input: tag.to_string(),
+                    })?;
+                Ok(CommandTag::Delete(n))
             }
             "CREATE" => {
-                let obj = parts.get(1)?;
-                Some(CommandTag::Create(obj.to_string()))
+                let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
+                    input: tag.to_string(),
+                })?;
+                Ok(CommandTag::Create(obj.to_string()))
             }
             "DROP" => {
-                let obj = parts.get(1)?;
-                Some(CommandTag::Drop(obj.to_string()))
+                let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
+                    input: tag.to_string(),
+                })?;
+                Ok(CommandTag::Drop(obj.to_string()))
             }
             "ALTER" => {
-                let obj = parts.get(1)?;
-                Some(CommandTag::Alter(obj.to_string()))
+                let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
+                    input: tag.to_string(),
+                })?;
+                Ok(CommandTag::Alter(obj.to_string()))
             }
-            "TRUNCATE" => Some(CommandTag::Truncate),
-            "BEGIN" => Some(CommandTag::Begin),
-            "COMMIT" => Some(CommandTag::Commit),
-            "ROLLBACK" => Some(CommandTag::Rollback),
-            _ => Some(CommandTag::Other(trimmed.to_string())),
+            "TRUNCATE" => Ok(CommandTag::Truncate),
+            "BEGIN" => Ok(CommandTag::Begin),
+            "COMMIT" => Ok(CommandTag::Commit),
+            "ROLLBACK" => Ok(CommandTag::Rollback),
+            _ => Ok(CommandTag::Other(trimmed.to_string())),
         }
+    }
+}
+
+impl PostgresAdapter {
+    pub(in crate::infra::adapters::postgres) fn parse_command_tag(
+        tag: &str,
+    ) -> Result<CommandTag, ParseCommandTagError> {
+        CommandTag::from_str(tag)
     }
 
     pub(in crate::infra::adapters::postgres) fn extract_command_tag(
@@ -56,7 +115,7 @@ impl PostgresAdapter {
             .lines()
             .rev()
             .find(|line| !line.trim().is_empty())
-            .and_then(Self::parse_command_tag)
+            .and_then(|line| Self::parse_command_tag(line).ok())
     }
 
     fn is_known_tcl_tag(s: &str) -> bool {
@@ -73,7 +132,7 @@ impl PostgresAdapter {
             if trimmed.is_empty() {
                 continue;
             }
-            let tag = Self::parse_command_tag(trimmed)?;
+            let tag = Self::parse_command_tag(trimmed).ok()?;
             if let CommandTag::Other(ref raw) = tag
                 && !Self::is_known_tcl_tag(raw)
             {
@@ -324,15 +383,18 @@ mod tests {
         #[case("BEGIN", CommandTag::Begin)]
         #[case("COMMIT", CommandTag::Commit)]
         #[case("ROLLBACK", CommandTag::Rollback)]
-        fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
-            assert_eq!(PostgresAdapter::parse_command_tag(input), Some(expected));
+fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
+            assert_eq!(PostgresAdapter::parse_command_tag(input), Ok(expected));
         }
 
         #[rstest]
         #[case("")]
         #[case("   ")]
         fn empty_or_whitespace_returns_none(#[case] input: &str) {
-            assert_eq!(PostgresAdapter::parse_command_tag(input), None);
+            assert!(matches!(
+                PostgresAdapter::parse_command_tag(input),
+                Err(ParseCommandTagError::Empty)
+            ));
         }
 
         #[rstest]
@@ -342,14 +404,17 @@ mod tests {
         #[case("UPDATE")]
         #[case("DELETE")]
         fn malformed_count_returns_none(#[case] input: &str) {
-            assert_eq!(PostgresAdapter::parse_command_tag(input), None);
+            assert!(matches!(
+                PostgresAdapter::parse_command_tag(input),
+                Err(ParseCommandTagError::Invalid { .. })
+            ));
         }
 
         #[test]
         fn unknown_command_returns_other() {
             assert_eq!(
                 PostgresAdapter::parse_command_tag("VACUUM"),
-                Some(CommandTag::Other("VACUUM".to_string()))
+                Ok(CommandTag::Other("VACUUM".to_string()))
             );
         }
 
