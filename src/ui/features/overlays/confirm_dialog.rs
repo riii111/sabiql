@@ -1,9 +1,12 @@
+use std::cell::RefCell;
+
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
@@ -18,6 +21,18 @@ pub struct ConfirmPreviewMetrics {
     pub viewport_height: Option<u16>,
     pub content_height: Option<u16>,
     pub scroll: u16,
+}
+
+#[derive(Debug, Clone)]
+struct SqlPreviewLinesCache {
+    theme_id: ThemeId,
+    sql: String,
+    lines: Vec<Line<'static>>,
+}
+
+thread_local! {
+    static SQL_PREVIEW_LINES_CACHE: RefCell<Option<SqlPreviewLinesCache>> =
+        const { RefCell::new(None) };
 }
 
 impl ConfirmDialog {
@@ -194,10 +209,7 @@ impl ConfirmDialog {
             "SQL Preview",
             Style::default().fg(theme.semantic.text.secondary),
         )]));
-        for sql_line in preview.sql.lines() {
-            let indented = format!("  {sql_line}");
-            content_lines.push(Self::highlight_sql_line(&indented, theme));
-        }
+        content_lines.extend(Self::highlight_sql_lines(&preview.sql, theme, state.ui.theme_id()));
 
         content_lines.push(Line::from(""));
 
@@ -314,5 +326,34 @@ impl ConfirmDialog {
             .into_iter()
             .next()
             .unwrap_or_else(|| Line::from(""))
+    }
+
+    fn highlight_sql_lines(
+        sql: &str,
+        theme: &ThemePalette,
+        theme_id: ThemeId,
+    ) -> Vec<Line<'static>> {
+        SQL_PREVIEW_LINES_CACHE.with(|cache| {
+            if let Some(cached) = cache.borrow().as_ref()
+                && cached.theme_id == theme_id
+                && cached.sql == sql
+            {
+                return cached.lines.clone();
+            }
+
+            let mut lines = Vec::new();
+            for sql_line in sql.lines() {
+                let indented = format!("  {sql_line}");
+                lines.push(Self::highlight_sql_line(&indented, theme));
+            }
+
+            *cache.borrow_mut() = Some(SqlPreviewLinesCache {
+                theme_id,
+                sql: sql.to_string(),
+                lines: lines.clone(),
+            });
+
+            lines
+        })
     }
 }

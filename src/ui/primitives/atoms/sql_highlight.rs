@@ -22,27 +22,18 @@ pub fn highlight_sql_spans(text: &str, theme: &ThemePalette) -> Vec<Vec<Span<'st
 
     for token in tokens {
         let style = token_style(&token.kind, theme);
-        let mut segment = String::new();
+        let mut segments = token.text.split('\n').peekable();
 
-        for ch in token.text.chars() {
-            if ch == '\n' {
-                if !segment.is_empty() {
-                    lines
-                        .last_mut()
-                        .expect("sql highlight should always keep one line")
-                        .push(Span::styled(std::mem::take(&mut segment), style));
-                }
-                lines.push(Vec::new());
-            } else {
-                segment.push(ch);
+        while let Some(segment) = segments.next() {
+            if !segment.is_empty() {
+                lines
+                    .last_mut()
+                    .expect("sql highlight should always keep one line")
+                    .push(Span::styled(segment.to_string(), style));
             }
-        }
-
-        if !segment.is_empty() {
-            lines
-                .last_mut()
-                .expect("sql highlight should always keep one line")
-                .push(Span::styled(segment, style));
+            if segments.peek().is_some() {
+                lines.push(Vec::new());
+            }
         }
     }
 
