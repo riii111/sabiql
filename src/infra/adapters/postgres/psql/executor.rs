@@ -269,17 +269,11 @@ impl PostgresAdapter {
             .has_headers(true)
             .from_reader(csv_block.as_bytes());
 
-        let columns: Vec<String> = reader
-            .headers()
-            .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {e}")))?
-            .iter()
-            .map(ToString::to_string)
-            .collect();
+        let columns: Vec<String> = reader.headers()?.iter().map(ToString::to_string).collect();
 
         let mut rows = Vec::new();
         for result in reader.records() {
-            let record = result
-                .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {e}")))?;
+            let record = result?;
             let row: Vec<String> = record.iter().map(ToString::to_string).collect();
             rows.push(row);
         }
@@ -430,7 +424,7 @@ impl PostgresAdapter {
             return Ok(vec![]);
         }
 
-        serde_json::from_str(trimmed).map_err(|e| DbOperationError::InvalidJson(e.to_string()))
+        serde_json::from_str(trimmed).map_err(Into::into)
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {

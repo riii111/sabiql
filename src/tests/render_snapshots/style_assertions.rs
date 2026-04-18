@@ -2,6 +2,18 @@ use std::time::Duration;
 use std::time::Instant;
 
 use super::*;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::theme_id::ThemeId;
+use crate::app::model::sql_editor::modal::SqlModalStatus;
+use crate::app::services::AppServices;
+use crate::app::update::action::{Action, CursorMove, InputTarget};
+use crate::app::update::browse::result::reduce_result;
+use crate::domain::{Column, QueryResult, QuerySource};
+use crate::ui::theme::{
+    ComponentTokens, DEFAULT_THEME, EditorTokens, ModalTokens, SemanticTokens, SurfaceTokens,
+    TEST_CONTRAST_THEME, ThemePalette,
+};
 use harness::{
     TEST_HEIGHT, TEST_WIDTH, connected_state, create_test_terminal_sized, render_and_get_buffer,
     render_and_get_buffer_at_with_theme, render_and_get_cursor_position, table_detail_loaded_state,
@@ -9,15 +21,6 @@ use harness::{
 };
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier};
-use sabiql::app::model::app_state::AppState;
-use sabiql::app::model::shared::input_mode::InputMode;
-use sabiql::app::model::shared::theme_id::ThemeId;
-use sabiql::app::model::sql_editor::modal::SqlModalStatus;
-use sabiql::app::services::AppServices;
-use sabiql::app::update::action::{Action, CursorMove, InputTarget};
-use sabiql::app::update::browse::result::reduce_result;
-use sabiql::domain::{Column, QueryResult, QuerySource};
-use sabiql::ui::theme::{DEFAULT_THEME, TEST_CONTRAST_THEME, ThemePalette};
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
 fn help_modal_origin() -> (u16, u16) {
@@ -895,20 +898,20 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     let (mut state, now) = connected_state();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
-        semantic: sabiql::ui::theme::SemanticTokens {
-            surface: sabiql::ui::theme::SurfaceTokens {
+        semantic: SemanticTokens {
+            surface: SurfaceTokens {
                 focus_border: Color::Rgb(0x11, 0x88, 0xdd),
                 ..DEFAULT_THEME.semantic.surface
             },
             ..DEFAULT_THEME.semantic
         },
-        component: sabiql::ui::theme::ComponentTokens {
-            modal: sabiql::ui::theme::ModalTokens {
+        component: ComponentTokens {
+            modal: ModalTokens {
                 hint: Color::Rgb(0xaa, 0xee, 0x22),
                 border: Color::Rgb(0xdd, 0x44, 0x11),
                 ..DEFAULT_THEME.component.modal
             },
-            editor: sabiql::ui::theme::EditorTokens {
+            editor: EditorTokens {
                 completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
                 ..DEFAULT_THEME.component.editor
             },
@@ -1065,12 +1068,12 @@ fn sql_completion_popup_uses_injected_theme_styles() {
     let (mut state, now) = connected_state();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
-        component: sabiql::ui::theme::ComponentTokens {
-            modal: sabiql::ui::theme::ModalTokens {
+        component: ComponentTokens {
+            modal: ModalTokens {
                 border: Color::Rgb(0xdd, 0x44, 0x11),
                 ..DEFAULT_THEME.component.modal
             },
-            editor: sabiql::ui::theme::EditorTokens {
+            editor: EditorTokens {
                 completion_selected_bg: Color::Rgb(0x22, 0x66, 0x33),
                 ..DEFAULT_THEME.component.editor
             },

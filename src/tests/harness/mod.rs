@@ -9,10 +9,10 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Position;
 
-use sabiql::app::model::app_state::AppState;
-use sabiql::app::services::AppServices;
-use sabiql::ui::shell::layout::MainLayout;
-use sabiql::ui::theme::{ThemePalette, palette_for};
+use crate::app::model::app_state::AppState;
+use crate::app::services::AppServices;
+use crate::ui::shell::layout::MainLayout;
+use crate::ui::theme::{ThemePalette, palette_for};
 
 pub const TEST_WIDTH: u16 = 80;
 pub const TEST_HEIGHT: u16 = 24;
@@ -23,7 +23,6 @@ pub fn test_instant() -> Instant {
 
 pub fn create_test_state() -> AppState {
     let mut state = AppState::new("test_project".to_string());
-    // Set a default connection name for consistent test snapshots
     state.session.active_connection_name = Some("localhost:5432/test".to_string());
     state
 }

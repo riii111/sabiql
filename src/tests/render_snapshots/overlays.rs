@@ -1,8 +1,10 @@
 use super::*;
+use crate::app::model::shared::multi_line_input::MultiLineInputState;
+use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+use crate::domain::{ConnectionId, QueryResult};
 use harness::connected_state;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use sabiql::app::model::shared::multi_line_input::MultiLineInputState;
 
 #[test]
 fn sql_modal_with_completion() {
@@ -162,22 +164,20 @@ fn sql_modal_success_select() {
         row_count: 2,
         execution_time_ms: 15,
     });
-    state
-        .query
-        .set_current_result(Arc::new(sabiql::domain::QueryResult {
-            query: "SELECT * FROM users".to_string(),
-            columns: vec!["id".to_string(), "name".to_string()],
-            rows: vec![
-                vec!["1".to_string(), "Alice".to_string()],
-                vec!["2".to_string(), "Bob".to_string()],
-            ],
-            row_count: 2,
-            execution_time_ms: 15,
-            executed_at: now,
-            source: QuerySource::Adhoc,
-            error: None,
-            command_tag: None,
-        }));
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "SELECT * FROM users".to_string(),
+        columns: vec!["id".to_string(), "name".to_string()],
+        rows: vec![
+            vec!["1".to_string(), "Alice".to_string()],
+            vec!["2".to_string(), "Bob".to_string()],
+        ],
+        row_count: 2,
+        execution_time_ms: 15,
+        executed_at: now,
+        source: QuerySource::Adhoc,
+        error: None,
+        command_tag: None,
+    }));
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -200,19 +200,17 @@ fn sql_modal_success_dml_with_command_tag() {
         row_count: 3,
         execution_time_ms: 12,
     });
-    state
-        .query
-        .set_current_result(Arc::new(sabiql::domain::QueryResult {
-            query: "DELETE FROM users WHERE id = 1".to_string(),
-            columns: vec![],
-            rows: vec![],
-            row_count: 3,
-            execution_time_ms: 12,
-            executed_at: now,
-            source: QuerySource::Adhoc,
-            error: None,
-            command_tag: Some(CommandTag::Delete(3)),
-        }));
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "DELETE FROM users WHERE id = 1".to_string(),
+        columns: vec![],
+        rows: vec![],
+        row_count: 3,
+        execution_time_ms: 12,
+        executed_at: now,
+        source: QuerySource::Adhoc,
+        error: None,
+        command_tag: Some(CommandTag::Delete(3)),
+    }));
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -235,19 +233,17 @@ fn sql_modal_success_ddl_create_table() {
         row_count: 0,
         execution_time_ms: 45,
     });
-    state
-        .query
-        .set_current_result(Arc::new(sabiql::domain::QueryResult {
-            query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
-            columns: vec![],
-            rows: vec![],
-            row_count: 0,
-            execution_time_ms: 45,
-            executed_at: now,
-            source: QuerySource::Adhoc,
-            error: None,
-            command_tag: Some(CommandTag::Create("TABLE".to_string())),
-        }));
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
+        columns: vec![],
+        rows: vec![],
+        row_count: 0,
+        execution_time_ms: 45,
+        executed_at: now,
+        source: QuerySource::Adhoc,
+        error: None,
+        command_tag: Some(CommandTag::Create("TABLE".to_string())),
+    }));
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -406,9 +402,6 @@ fn command_line_input() {
 
 #[test]
 fn query_history_picker_with_entries() {
-    use sabiql::domain::ConnectionId;
-    use sabiql::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
-
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -456,9 +449,6 @@ fn query_history_picker_empty() {
 
 #[test]
 fn query_history_picker_filter_mode() {
-    use sabiql::domain::ConnectionId;
-    use sabiql::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
-
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 

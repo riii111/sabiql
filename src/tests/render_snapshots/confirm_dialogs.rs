@@ -1,4 +1,6 @@
 use super::*;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 use harness::connected_state;
 
 fn make_update_preview(diff: Vec<ColumnDiff>, sql: String) -> WritePreview {
@@ -24,12 +26,12 @@ fn make_update_preview_with_key(diff: Vec<ColumnDiff>, sql: String, id: &str) ->
     }
 }
 
-fn open_write_confirm(state: &mut sabiql::app::model::app_state::AppState, title: &str, sql: &str) {
+fn open_write_confirm(state: &mut AppState, title: &str, sql: &str) {
     state.modal.set_mode(InputMode::ConfirmDialog);
     state.confirm_dialog.open(
         title,
         "",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+        ConfirmIntent::ExecuteWrite {
             sql: sql.to_string(),
             blocked: false,
         },
@@ -45,7 +47,7 @@ fn confirm_dialog() {
     state.confirm_dialog.open(
         "Confirm",
         "No connection configured.\nAre you sure you want to quit?",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::QuitNoConnection,
+        ConfirmIntent::QuitNoConnection,
     );
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -65,7 +67,7 @@ fn confirm_dialog_update_preview() {
     state.confirm_dialog.open(
         "Confirm UPDATE: users",
         "email: \"bob@example.com\" -> \"new@example.com\"\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+        ConfirmIntent::ExecuteWrite {
             sql: "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string(),
             blocked: false,
         },
@@ -103,7 +105,7 @@ fn confirm_dialog_update_preview_rich() {
     state.confirm_dialog.open(
         "Confirm UPDATE: users",
         "email: \"bob@example.com\" -> \"new@example.com\"",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+        ConfirmIntent::ExecuteWrite {
             sql,
             blocked: false,
         },

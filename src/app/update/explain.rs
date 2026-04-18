@@ -277,7 +277,7 @@ pub fn reduce_explain_with_services(
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     reduce_explain_with_services(
         state,

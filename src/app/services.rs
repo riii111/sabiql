@@ -9,7 +9,7 @@ pub struct AppServices {
     pub db_capabilities: DbCapabilities,
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 impl AppServices {
     pub fn stub() -> Self {
         struct StubDdlGenerator;

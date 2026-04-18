@@ -28,7 +28,7 @@ impl DbCapabilities {
         &self.supported_inspector_tabs
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub fn new_for_tests(
         supports_explain: bool,
         supports_pg_service_entries: bool,

@@ -420,9 +420,9 @@ pub fn reduce_sql_modal_with_services(
                 Some(c) if !c.is_empty() => Some(vec![Effect::CopyToClipboard {
                     content: c,
                     on_success: Some(Action::SqlModalYankSuccess),
-                    on_failure: Some(Action::CopyFailed(ClipboardError {
-                        message: "Clipboard unavailable".into(),
-                    })),
+                    on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
+                        "Clipboard unavailable".into(),
+                    ))),
                 }]),
                 _ => Some(vec![]),
             }
@@ -436,7 +436,7 @@ pub fn reduce_sql_modal_with_services(
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 pub fn reduce_sql_modal(
     state: &mut AppState,
     action: &Action,

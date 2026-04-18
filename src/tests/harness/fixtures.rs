@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use sabiql::domain::{
+use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
     Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };

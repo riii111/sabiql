@@ -38,7 +38,6 @@ self_update = { version = "0.42", default-features = false, features = ["archive
 [features]
 default = []
 self-update = ["dep:self_update"]
-test-support = []
 
 [dev-dependencies]
 rstest = "0.19"
@@ -46,10 +45,6 @@ tempfile = "3"
 insta = "1"
 mockall = "0.13"
 tokio = { version = "1", features = ["test-util"] }
-
-[[test]]
-name = "render_snapshots"
-required-features = ["test-support"]
 
 [profile.release]
 lto = true

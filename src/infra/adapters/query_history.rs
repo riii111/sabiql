@@ -14,27 +14,22 @@ fn append_entry(path: &Path, dir: &Path, line: &str) -> Result<(), QueryHistoryE
     use std::io::Write;
 
     if !dir.exists() {
-        std::fs::create_dir_all(dir).map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
+        std::fs::create_dir_all(dir)?;
     }
 
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
-    writeln!(file, "{line}").map_err(|e| QueryHistoryError::IoError(e.to_string()))
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    writeln!(file, "{line}")?;
+    Ok(())
 }
 
 fn trim_if_exceeded(path: &Path, max: usize) -> Result<(), QueryHistoryError> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
+    let content = std::fs::read_to_string(path)?;
     let lines: Vec<&str> = content.lines().collect();
     if lines.len() > max {
         let trimmed = &lines[lines.len() - max..];
         let tmp_path = path.with_extension("jsonl.tmp");
-        std::fs::write(&tmp_path, trimmed.join("\n") + "\n")
-            .map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
-        std::fs::rename(&tmp_path, path).map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
+        std::fs::write(&tmp_path, trimmed.join("\n") + "\n")?;
+        std::fs::rename(&tmp_path, path)?;
     }
     Ok(())
 }
@@ -65,8 +60,7 @@ impl FileQueryHistoryStore {
         if let Some(base) = &self.base_dir {
             Ok(base.join("history"))
         } else {
-            let cache_dir = get_cache_dir(project_name)
-                .map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
+            let cache_dir = get_cache_dir(project_name).map_err(std::io::Error::other)?;
             Ok(cache_dir.join("history"))
         }
     }
@@ -82,8 +76,7 @@ impl QueryHistoryStore for FileQueryHistoryStore {
     ) -> Result<(), QueryHistoryError> {
         let history_dir = self.resolve_history_dir(project_name)?;
         let path = history_dir.join(format!("{connection_id}.jsonl"));
-        let line = serde_json::to_string(entry)
-            .map_err(|e| QueryHistoryError::SerializationError(e.to_string()))?;
+        let line = serde_json::to_string(entry)?;
 
         tokio::task::spawn_blocking(move || {
             append_entry(&path, &history_dir, &line)?;
@@ -91,8 +84,7 @@ impl QueryHistoryStore for FileQueryHistoryStore {
             if let Err(_err) = trim_if_exceeded(&path, MAX_HISTORY_ENTRIES) {}
             Ok(())
         })
-        .await
-        .map_err(|e| QueryHistoryError::JoinError(e.to_string()))?
+        .await?
     }
 
     async fn load(
@@ -108,8 +100,7 @@ impl QueryHistoryStore for FileQueryHistoryStore {
                 return Ok(Vec::new());
             }
 
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
+            let content = std::fs::read_to_string(&path)?;
             let entries: Vec<QueryHistoryEntry> = content
                 .lines()
                 .filter(|line| !line.trim().is_empty())
@@ -118,8 +109,7 @@ impl QueryHistoryStore for FileQueryHistoryStore {
 
             Ok(entries)
         })
-        .await
-        .map_err(|e| QueryHistoryError::JoinError(e.to_string()))?
+        .await?
     }
 }
 

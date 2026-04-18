@@ -337,9 +337,10 @@ mod tests {
         async fn error_returns_empty_connections_list() {
             let mut mock_store = MockConnectionStore::new();
             mock_store.expect_load_all().once().returning(|| {
-                Err(ConnectionStoreError::ReadError(
-                    "file not found".to_string(),
-                ))
+                Err(ConnectionStoreError::Io(Arc::new(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "file not found",
+                ))))
             });
 
             let cache = TtlCache::new(300);
