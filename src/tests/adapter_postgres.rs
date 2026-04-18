@@ -6,8 +6,8 @@
 //! DSN is read from `SABIQL_TEST_DSN` env var.
 //! Default: `postgres://postgres:postgres@localhost:5432/sabiql_test`
 
-use sabiql::app::ports::{DbOperationError, MetadataProvider, QueryExecutor};
-use sabiql::infra::adapters::postgres::PostgresAdapter;
+use crate::app::ports::{DbOperationError, MetadataProvider, QueryExecutor};
+use crate::infra::adapters::postgres::PostgresAdapter;
 
 fn test_dsn() -> String {
     std::env::var("SABIQL_TEST_DSN")

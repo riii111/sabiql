@@ -224,13 +224,13 @@ impl BrowseSession {
         self.dsn.as_ref().is_some_and(|d| d.starts_with("service="))
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     #[allow(dead_code, reason = "test-only transition override")]
     pub(crate) fn set_metadata_state(&mut self, state: MetadataState) {
         self.metadata_state = state;
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     #[allow(dead_code, reason = "test-only transition override")]
     pub(crate) fn set_connection_state(&mut self, state: ConnectionState) {
         self.connection_state = state;
@@ -244,8 +244,8 @@ impl BrowseSession {
         self.table_detail = detail;
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[allow(dead_code, reason = "test-support helper")]
+    #[cfg(test)]
+    #[allow(dead_code, reason = "test helper")]
     pub(crate) fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
     }

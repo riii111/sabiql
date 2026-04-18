@@ -52,7 +52,7 @@ impl ConnectionErrorKind {
         Self::Unknown
     }
 
-    pub fn summary(&self) -> &'static str {
+    pub fn summary(self) -> &'static str {
         match self {
             Self::CliNotFound => "Database CLI not found",
             Self::HostUnreachable => "Could not resolve host",
@@ -63,7 +63,7 @@ impl ConnectionErrorKind {
         }
     }
 
-    pub fn hint(&self) -> &'static str {
+    pub fn hint(self) -> &'static str {
         match self {
             Self::CliNotFound => "Install the database CLI (e.g. psql) and add it to PATH",
             Self::HostUnreachable => "Check the hostname",

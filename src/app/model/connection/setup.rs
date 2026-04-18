@@ -30,7 +30,7 @@ impl ConnectionField {
         ]
     }
 
-    pub fn next(&self) -> Option<Self> {
+    pub fn next(self) -> Option<Self> {
         match self {
             Self::Name => Some(Self::Host),
             Self::Host => Some(Self::Port),
@@ -42,7 +42,7 @@ impl ConnectionField {
         }
     }
 
-    pub fn prev(&self) -> Option<Self> {
+    pub fn prev(self) -> Option<Self> {
         match self {
             Self::Name => None,
             Self::Host => Some(Self::Name),
@@ -54,14 +54,14 @@ impl ConnectionField {
         }
     }
 
-    pub fn is_required(&self) -> bool {
+    pub fn is_required(self) -> bool {
         matches!(
             self,
             Self::Name | Self::Host | Self::Port | Self::Database | Self::User
         )
     }
 
-    pub fn label(&self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Name => "Name:",
             Self::Host => "Host:",

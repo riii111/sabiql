@@ -12,19 +12,19 @@ pub enum ConnectionState {
 }
 
 impl ConnectionState {
-    pub fn is_not_connected(&self) -> bool {
+    pub fn is_not_connected(self) -> bool {
         matches!(self, Self::NotConnected)
     }
 
-    pub fn is_connecting(&self) -> bool {
+    pub fn is_connecting(self) -> bool {
         matches!(self, Self::Connecting)
     }
 
-    pub fn is_connected(&self) -> bool {
+    pub fn is_connected(self) -> bool {
         matches!(self, Self::Connected)
     }
 
-    pub fn is_failed(&self) -> bool {
+    pub fn is_failed(self) -> bool {
         matches!(self, Self::Failed)
     }
 }

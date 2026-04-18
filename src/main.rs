@@ -7,29 +7,53 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
-use sabiql::app::cmd::cache::TtlCache;
-use sabiql::app::cmd::completion_engine::CompletionEngine;
-use sabiql::app::cmd::effect::Effect;
-use sabiql::app::cmd::render_schedule::next_animation_deadline;
-use sabiql::app::cmd::runner::EffectRunner;
-use sabiql::app::model::app_state::AppState;
-use sabiql::app::model::shared::input_mode::InputMode;
-use sabiql::app::ports::{
+macro_rules! internal_module {
+    ($name:ident) => {
+        #[allow(
+            dead_code,
+            unused_imports,
+            clippy::redundant_pub_crate,
+            reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
+        )]
+        mod $name;
+    };
+}
+
+internal_module!(app);
+internal_module!(domain);
+internal_module!(error);
+internal_module!(infra);
+internal_module!(ui);
+
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+#[path = "tests/render_snapshots/mod.rs"]
+mod render_snapshots;
+
+use crate::app::cmd::cache::TtlCache;
+use crate::app::cmd::completion_engine::CompletionEngine;
+use crate::app::cmd::effect::Effect;
+use crate::app::cmd::render_schedule::next_animation_deadline;
+use crate::app::cmd::runner::EffectRunner;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::ports::{
     ConnectionStore, ConnectionStoreError, ServiceFileError, ServiceFileReader,
 };
-use sabiql::app::services::AppServices;
-use sabiql::app::update::action::Action;
-use sabiql::app::update::reducer::reduce;
-use sabiql::error;
-use sabiql::infra::adapters::{
+use crate::app::services::AppServices;
+use crate::app::update::action::Action;
+use crate::app::update::reducer::reduce;
+use crate::infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
     PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
 };
-use sabiql::infra::config::project_root::{find_project_root, get_project_name};
-use sabiql::infra::export::DotExporter;
-use sabiql::ui::adapters::TuiAdapter;
-use sabiql::ui::event::handlers::handle_event;
-use sabiql::ui::tui::TuiRunner;
+use crate::infra::config::project_root::{find_project_root, get_project_name};
+use crate::infra::export::DotExporter;
+use crate::ui::adapters::TuiAdapter;
+use crate::ui::event::handlers::handle_event;
+use crate::ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -481,39 +505,4 @@ fn self_update_disabled_message() -> String {
          If installed via cargo:    cargo install sabiql",
         env!("CARGO_PKG_VERSION")
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::Parser;
-
-    #[test]
-    fn no_subcommand_returns_none() {
-        let args = Args::parse_from(["sabiql"]);
-        assert!(args.command.is_none());
-    }
-
-    #[test]
-    #[cfg(feature = "self-update")]
-    fn update_subcommand_is_recognized() {
-        let args = Args::parse_from(["sabiql", "update"]);
-        assert!(matches!(args.command, Some(Command::Update)));
-    }
-
-    #[test]
-    #[cfg(not(feature = "self-update"))]
-    fn update_subcommand_available_but_self_update_disabled() {
-        let args = Args::parse_from(["sabiql", "update"]);
-        assert!(matches!(args.command, Some(Command::Update)));
-    }
-
-    #[test]
-    #[cfg(not(feature = "self-update"))]
-    fn disabled_message_contains_version_and_upgrade_guidance() {
-        let msg = self_update_disabled_message();
-        assert!(msg.contains(env!("CARGO_PKG_VERSION")));
-        assert!(msg.contains("brew upgrade sabiql"));
-        assert!(msg.contains("cargo install sabiql"));
-    }
 }

@@ -48,7 +48,7 @@ impl MainLayout {
         )
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     // `render_with_theme` exists only as a test seam for injected palettes.
     // It is hidden from docs and omitted from production builds.
     #[doc(hidden)]

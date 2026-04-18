@@ -7,7 +7,7 @@ pub struct AppServices {
     pub sql_dialect: Arc<dyn SqlDialect>,
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 impl AppServices {
     pub fn stub() -> Self {
         struct StubDdlGenerator;

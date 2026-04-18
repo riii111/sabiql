@@ -12,9 +12,9 @@ pub enum KeySequenceState {
 }
 
 impl KeySequenceState {
-    pub fn pending_prefix(&self) -> Option<Prefix> {
+    pub fn pending_prefix(self) -> Option<Prefix> {
         match self {
-            Self::WaitingSecondKey(p) => Some(*p),
+            Self::WaitingSecondKey(p) => Some(p),
             Self::Idle => None,
         }
     }
