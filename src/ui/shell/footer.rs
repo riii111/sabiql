@@ -189,10 +189,10 @@ impl Footer {
                             list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
                         }
                     }
-                    if state.ui.focused_pane == FocusedPane::Inspector {
-                        if services.db_capabilities.supported_inspector_tabs().len() > 1 {
-                            list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
-                        }
+                    if state.ui.focused_pane == FocusedPane::Inspector
+                        && services.db_capabilities.supported_inspector_tabs().len() > 1
+                    {
+                        list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
