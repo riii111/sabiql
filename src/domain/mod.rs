@@ -18,6 +18,7 @@ pub mod write_result;
 
 pub use column::Column;
 pub use command_tag::CommandTag;
+pub use command_tag::ParseCommandTagError;
 #[cfg(test)]
 pub use er::ErFkInfo;
 pub use er::ErTableInfo;

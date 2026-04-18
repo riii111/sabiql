@@ -14,6 +14,14 @@ pub enum CommandTag {
     Other(String),
 }
 
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+pub enum ParseCommandTagError {
+    #[error("empty command tag")]
+    Empty,
+    #[error("invalid command tag: {input}")]
+    Invalid { input: String },
+}
+
 impl CommandTag {
     pub fn is_data_modifying(&self) -> bool {
         !matches!(self, Self::Select(_) | Self::Other(_))
