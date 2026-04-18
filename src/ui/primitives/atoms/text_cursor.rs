@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::cmp::Ordering;
 
 use ratatui::Frame;
@@ -318,6 +319,20 @@ fn placeholder_span(kind: CursorKind, theme: &ThemePalette) -> Span<'static> {
     }
 }
 
+#[derive(Debug, Clone)]
+struct VisualCursorCache {
+    content: String,
+    available_width: usize,
+    line_starts: Vec<usize>,
+    lines: Vec<String>,
+    ends_with_newline: bool,
+}
+
+thread_local! {
+    static VISUAL_CURSOR_POSITION_CACHE: RefCell<Option<VisualCursorCache>> =
+        const { RefCell::new(None) };
+}
+
 fn visual_cursor_position(
     content: &str,
     cursor_row: usize,
@@ -329,31 +344,92 @@ fn visual_cursor_position(
         return None;
     }
 
-    let mut wrapped_rows_before_cursor = 0;
-    let mut current_line = "";
-
-    for (row, line) in content.split('\n').enumerate() {
-        if row < scroll_row {
-            continue;
-        }
-
-        match row.cmp(&cursor_row) {
-            Ordering::Less => {
-                wrapped_rows_before_cursor += wrapped_visual_rows(line, available_width);
+    if let Some(result) = VISUAL_CURSOR_POSITION_CACHE.with(|cache| {
+        let cache = cache.borrow();
+        match cache.as_ref() {
+            Some(current)
+                if current.available_width == available_width && current.content == content =>
+            {
+                resolve_visual_cursor_position(current, cursor_row, cursor_col, scroll_row)
             }
-            Ordering::Equal => {
-                current_line = line;
-                break;
-            }
-            Ordering::Greater => return None,
+            _ => None,
         }
+    }) {
+        return Some(result);
     }
+
+    let mut line_starts = Vec::new();
+    let mut lines = Vec::new();
+    let mut wrapped_row_count = 0usize;
+
+    line_starts.push(0);
+    for line in content.split('\n') {
+        lines.push(line.to_string());
+        wrapped_row_count += wrapped_visual_rows(line, available_width);
+        line_starts.push(wrapped_row_count);
+    }
+
+    let cache_entry = VisualCursorCache {
+        content: content.to_string(),
+        available_width,
+        line_starts,
+        lines,
+        ends_with_newline: content.ends_with('\n'),
+    };
+
+    let computed = resolve_visual_cursor_position(&cache_entry, cursor_row, cursor_col, scroll_row);
+
+    if computed.is_some() {
+        VISUAL_CURSOR_POSITION_CACHE.with(|cache| {
+            *cache.borrow_mut() = Some(cache_entry);
+        });
+    }
+
+    computed
+}
+
+fn visual_cursor_position_for_cache(
+    cache: &VisualCursorCache,
+    cursor_row: usize,
+) -> Option<(usize, &str)> {
+    if cursor_row > cache.lines.len() {
+        return None;
+    }
+
+    if cursor_row < cache.lines.len() {
+        Some((
+            cache.line_starts.get(cursor_row).copied().unwrap_or_default(),
+            cache.lines.get(cursor_row).map_or("", |line| line.as_str()),
+        ))
+    } else if cache.ends_with_newline {
+        Some((*cache.line_starts.last().unwrap_or(&0), ""))
+    } else {
+        None
+    }
+}
+
+fn resolve_visual_cursor_position(
+    cache: &VisualCursorCache,
+    cursor_row: usize,
+    cursor_col: usize,
+    scroll_row: usize,
+) -> Option<(usize, usize)> {
+    let (wrapped_rows_before_cursor, current_line) =
+        visual_cursor_position_for_cache(cache, cursor_row)?;
+
+    let scroll_wrapped_row = cache
+        .line_starts
+        .get(scroll_row)
+        .copied()
+        .unwrap_or_else(|| *cache.line_starts.last().unwrap_or(&0));
 
     let cursor_display_width = display_width_up_to_char(current_line, cursor_col) as usize;
 
     Some((
-        wrapped_rows_before_cursor + cursor_display_width / available_width,
-        cursor_display_width % available_width,
+        wrapped_rows_before_cursor
+            .saturating_sub(scroll_wrapped_row)
+            + cursor_display_width / cache.available_width,
+        cursor_display_width % cache.available_width,
     ))
 }
 
