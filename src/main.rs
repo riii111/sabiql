@@ -7,41 +7,23 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
-#[allow(
-    dead_code,
-    unused_imports,
-    clippy::redundant_pub_crate,
-    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
-)]
-mod app;
-#[allow(
-    dead_code,
-    unused_imports,
-    clippy::redundant_pub_crate,
-    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
-)]
-mod domain;
-#[allow(
-    dead_code,
-    unused_imports,
-    clippy::redundant_pub_crate,
-    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
-)]
-mod error;
-#[allow(
-    dead_code,
-    unused_imports,
-    clippy::redundant_pub_crate,
-    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
-)]
-mod infra;
-#[allow(
-    dead_code,
-    unused_imports,
-    clippy::redundant_pub_crate,
-    reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
-)]
-mod ui;
+macro_rules! internal_module {
+    ($name:ident) => {
+        #[allow(
+            dead_code,
+            unused_imports,
+            clippy::redundant_pub_crate,
+            reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
+        )]
+        mod $name;
+    };
+}
+
+internal_module!(app);
+internal_module!(domain);
+internal_module!(error);
+internal_module!(infra);
+internal_module!(ui);
 
 #[cfg(test)]
 mod tests;
