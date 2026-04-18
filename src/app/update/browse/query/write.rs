@@ -390,12 +390,12 @@ mod tests {
 
         struct FakeSqlDialect;
         impl SqlDialect for FakeSqlDialect {
-            fn build_explain_sql(&self, query: &str) -> String {
-                format!("EXPLAIN {query}")
+            fn build_explain_sql(&self, query: &str) -> Option<String> {
+                Some(format!("EXPLAIN {query}"))
             }
 
-            fn build_explain_analyze_sql(&self, query: &str) -> String {
-                format!("EXPLAIN ANALYZE {query}")
+            fn build_explain_analyze_sql(&self, query: &str) -> Option<String> {
+                Some(format!("EXPLAIN ANALYZE {query}"))
             }
 
             fn build_update_sql(
