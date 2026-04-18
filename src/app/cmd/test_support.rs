@@ -119,7 +119,7 @@ pub fn make_runner_builder(
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 ) -> EffectRunnerBuilder {
-    EffectRunner::builder()
+    let builder = EffectRunner::builder()
         .metadata_provider(metadata_provider)
         .query_executor(query_executor)
         .dsn_builder(Arc::new(NoopDsnBuilder))
@@ -127,12 +127,13 @@ pub fn make_runner_builder(
         .config_writer(Arc::new(NoopConfigWriter))
         .er_log_writer(Arc::new(NoopErLogWriter))
         .connection_store(connection_store)
-        .pg_service_entry_reader(Arc::new(NoopPgServiceEntryReader))
         .clipboard(Arc::new(NoopClipboardWriter))
         .folder_opener(Arc::new(NoopFolderOpener))
         .query_history_store(Arc::new(NoopQueryHistoryStore))
         .metadata_cache(cache)
-        .action_tx(action_tx)
+        .action_tx(action_tx);
+
+    builder.pg_service_entry_reader(Arc::new(NoopPgServiceEntryReader))
 }
 
 pub fn sample_metadata() -> DatabaseMetadata {

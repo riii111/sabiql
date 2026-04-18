@@ -108,7 +108,8 @@ async fn main() -> Result<()> {
     let connection_store = Arc::new(connection_store);
 
     let db_capabilities = adapter.capabilities();
-    let service_file_reader: Arc<dyn PgServiceEntryReader> = Arc::new(PgServiceFileReader::new());
+    let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
+        Arc::new(PgServiceFileReader::new());
 
     let effect_runner = EffectRunner::builder()
         .metadata_provider(Arc::clone(&adapter) as _)
@@ -118,7 +119,7 @@ async fn main() -> Result<()> {
         .config_writer(Arc::new(FileConfigWriter::new()))
         .er_log_writer(Arc::new(FsErLogWriter))
         .connection_store(Arc::clone(&connection_store) as _)
-        .pg_service_entry_reader(Arc::clone(&service_file_reader))
+        .pg_service_entry_reader(Arc::clone(&pg_service_entry_reader))
         .clipboard(Arc::new(ArboardClipboard))
         .folder_opener(Arc::new(NativeFolderOpener))
         .query_history_store(Arc::new(FileQueryHistoryStore::new()))
@@ -136,7 +137,7 @@ async fn main() -> Result<()> {
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
-            load_service_entries(&mut state, &*service_file_reader);
+            load_service_entries(&mut state, Some(&*pg_service_entry_reader));
             if state.service_entries().is_empty() {
                 state.connection_setup.is_first_run = true;
                 state.modal.set_mode(InputMode::ConnectionSetup);
@@ -152,7 +153,7 @@ async fn main() -> Result<()> {
                     .cmp(&b.display_name().to_lowercase())
             });
             state.set_connections(profiles);
-            load_service_entries(&mut state, &*service_file_reader);
+            load_service_entries(&mut state, Some(&*pg_service_entry_reader));
 
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
@@ -460,7 +461,11 @@ async fn drain_and_process_terminal_events(
     Ok(())
 }
 
-fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
+fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntryReader>) {
+    let Some(reader) = reader else {
+        return;
+    };
+
     match reader.read_services() {
         Ok((services, path)) if !services.is_empty() => {
             state.set_service_entries(services);

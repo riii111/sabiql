@@ -31,7 +31,7 @@ use crate::domain::DatabaseMetadata;
 struct ConnectionDeps {
     dsn_builder: Arc<dyn DsnBuilder>,
     connection_store: Arc<dyn ConnectionStore>,
-    service_file_reader: Arc<dyn PgServiceEntryReader>,
+    pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
 }
 
 struct QueryDeps {
@@ -68,7 +68,7 @@ pub struct EffectRunnerBuilder {
     config_writer: Option<Arc<dyn ConfigWriter>>,
     er_log_writer: Option<Arc<dyn ErLogWriter>>,
     connection_store: Option<Arc<dyn ConnectionStore>>,
-    service_file_reader: Option<Arc<dyn PgServiceEntryReader>>,
+    pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
     clipboard: Option<Arc<dyn ClipboardWriter>>,
     folder_opener: Option<Arc<dyn FolderOpener>>,
     query_history_store: Option<Arc<dyn QueryHistoryStore>>,
@@ -114,7 +114,7 @@ impl EffectRunnerBuilder {
     }
     #[must_use]
     pub fn pg_service_entry_reader(mut self, v: Arc<dyn PgServiceEntryReader>) -> Self {
-        self.service_file_reader = Some(v);
+        self.pg_service_entry_reader = Some(v);
         self
     }
     #[must_use]
@@ -151,9 +151,7 @@ impl EffectRunnerBuilder {
             connection: ConnectionDeps {
                 dsn_builder: self.dsn_builder.expect("dsn_builder is required"),
                 connection_store: self.connection_store.expect("connection_store is required"),
-                service_file_reader: self
-                    .service_file_reader
-                    .expect("service_file_reader is required"),
+                pg_service_entry_reader: self.pg_service_entry_reader,
             },
             query: QueryDeps {
                 query_executor: self.query_executor.expect("query_executor is required"),
@@ -190,7 +188,7 @@ impl EffectRunner {
             config_writer: None,
             er_log_writer: None,
             connection_store: None,
-            service_file_reader: None,
+            pg_service_entry_reader: None,
             clipboard: None,
             folder_opener: None,
             query_history_store: None,
@@ -324,8 +322,7 @@ impl EffectRunner {
                     &self.metadata_provider,
                     &self.metadata_cache,
                     &self.connection.connection_store,
-                    &self.connection.service_file_reader,
-                    services.db_capabilities.supports_pg_service_entries,
+                    self.connection.pg_service_entry_reader.as_ref(),
                     state,
                 )
                 .await?;
