@@ -22,9 +22,13 @@ impl FromStr for CommandTag {
         }
 
         let parts: Vec<&str> = trimmed.split_whitespace().collect();
-        match parts.first().copied().ok_or(ParseCommandTagError::Invalid {
-            input: tag.to_string(),
-        })? {
+        match parts
+            .first()
+            .copied()
+            .ok_or_else(|| ParseCommandTagError::Invalid {
+                input: tag.to_string(),
+            })?
+        {
             "SELECT" => {
                 let n = parts
                     .get(1)
@@ -35,7 +39,7 @@ impl FromStr for CommandTag {
                     .map_err(|_| ParseCommandTagError::Invalid {
                         input: tag.to_string(),
                     })?;
-                Ok(CommandTag::Select(n))
+                Ok(Self::Select(n))
             }
             "INSERT" => {
                 // INSERT oid count — count is at index 2
@@ -48,7 +52,7 @@ impl FromStr for CommandTag {
                     .map_err(|_| ParseCommandTagError::Invalid {
                         input: tag.to_string(),
                     })?;
-                Ok(CommandTag::Insert(n))
+                Ok(Self::Insert(n))
             }
             "UPDATE" => {
                 let n = parts
@@ -60,7 +64,7 @@ impl FromStr for CommandTag {
                     .map_err(|_| ParseCommandTagError::Invalid {
                         input: tag.to_string(),
                     })?;
-                Ok(CommandTag::Update(n))
+                Ok(Self::Update(n))
             }
             "DELETE" => {
                 let n = parts
@@ -72,31 +76,31 @@ impl FromStr for CommandTag {
                     .map_err(|_| ParseCommandTagError::Invalid {
                         input: tag.to_string(),
                     })?;
-                Ok(CommandTag::Delete(n))
+                Ok(Self::Delete(n))
             }
             "CREATE" => {
                 let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
                     input: tag.to_string(),
                 })?;
-                Ok(CommandTag::Create(obj.to_string()))
+                Ok(Self::Create(obj.to_string()))
             }
             "DROP" => {
                 let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
                     input: tag.to_string(),
                 })?;
-                Ok(CommandTag::Drop(obj.to_string()))
+                Ok(Self::Drop(obj.to_string()))
             }
             "ALTER" => {
                 let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
                     input: tag.to_string(),
                 })?;
-                Ok(CommandTag::Alter(obj.to_string()))
+                Ok(Self::Alter(obj.to_string()))
             }
-            "TRUNCATE" => Ok(CommandTag::Truncate),
-            "BEGIN" => Ok(CommandTag::Begin),
-            "COMMIT" => Ok(CommandTag::Commit),
-            "ROLLBACK" => Ok(CommandTag::Rollback),
-            _ => Ok(CommandTag::Other(trimmed.to_string())),
+            "TRUNCATE" => Ok(Self::Truncate),
+            "BEGIN" => Ok(Self::Begin),
+            "COMMIT" => Ok(Self::Commit),
+            "ROLLBACK" => Ok(Self::Rollback),
+            _ => Ok(Self::Other(trimmed.to_string())),
         }
     }
 }
@@ -299,6 +303,7 @@ impl ResolvedTags {
 mod tests {
     use crate::domain::CommandTag;
     use crate::infra::adapters::postgres::PostgresAdapter;
+    use super::ParseCommandTagError;
 
     mod detect_create_as_kind {
         use super::*;
