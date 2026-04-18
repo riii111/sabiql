@@ -1,8 +1,23 @@
-use crate::domain::{CommandTag, ParseCommandTagError};
+use crate::app::ports::DbOperationError;
+use crate::domain::CommandTag;
 
 use super::super::super::PostgresAdapter;
 use super::lexer::{has_select_into, split_sql_statements};
 use std::str::FromStr;
+
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+pub enum ParseCommandTagError {
+    #[error("empty command tag")]
+    Empty,
+    #[error("invalid command tag: {input}")]
+    Invalid { input: String },
+}
+
+impl From<ParseCommandTagError> for DbOperationError {
+    fn from(error: ParseCommandTagError) -> Self {
+        Self::CommandTagParseFailed(error.to_string())
+    }
+}
 
 impl FromStr for CommandTag {
     type Err = ParseCommandTagError;

@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use crate::domain::ParseCommandTagError;
-
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum DbOperationError {
     #[error("Connection failed: {0}")]
@@ -15,7 +13,7 @@ pub enum DbOperationError {
     #[error("CSV parse error: {0}")]
     CsvParse(#[source] Arc<csv::Error>),
     #[error("Command tag parse failed: {0}")]
-    CommandTagParseFailed(#[from] ParseCommandTagError),
+    CommandTagParseFailed(String),
     #[error("Command not found: {0}")]
     CommandNotFound(String),
     #[error("Operation timed out: {0}")]
