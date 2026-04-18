@@ -24,6 +24,14 @@ impl AppServices {
 
         struct StubSqlDialect;
         impl SqlDialect for StubSqlDialect {
+            fn build_explain_sql(&self, _query: &str) -> String {
+                format!("EXPLAIN {}", _query)
+            }
+
+            fn build_explain_analyze_sql(&self, _query: &str) -> String {
+                format!("EXPLAIN ANALYZE {}", _query)
+            }
+
             fn build_update_sql(
                 &self,
                 _schema: &str,

@@ -58,7 +58,7 @@ pub fn reduce_explain_with_services(
                 return Some(vec![]);
             }
 
-            let query = format!("EXPLAIN {content}");
+            let query = services.sql_dialect.build_explain_sql(&content);
             state.sql_modal.set_status(SqlModalStatus::Running);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.explain.reset();
@@ -121,7 +121,7 @@ pub fn reduce_explain_with_services(
                     state.sql_modal.active_tab = SqlModalTab::Plan;
                 }
                 ConfirmationType::Immediate => {
-                    let explain_query = format!("EXPLAIN ANALYZE {content}");
+                    let explain_query = services.sql_dialect.build_explain_analyze_sql(&content);
                     state.sql_modal.set_status(SqlModalStatus::Running);
                     state.sql_modal.active_tab = SqlModalTab::Plan;
                     state.explain.reset();
@@ -156,7 +156,7 @@ pub fn reduce_explain_with_services(
             if let Some(query) = query
                 && let Some(dsn) = &state.session.dsn
             {
-                let explain_query = format!("EXPLAIN ANALYZE {query}");
+                let explain_query = services.sql_dialect.build_explain_analyze_sql(&query);
                 state.sql_modal.set_status(SqlModalStatus::Running);
                 state.explain.reset();
                 state.query.begin_running(now);
@@ -305,6 +305,14 @@ mod tests {
 
         struct NoopSql;
         impl SqlDialect for NoopSql {
+            fn build_explain_sql(&self, query: &str) -> String {
+                format!("EXPLAIN {query}")
+            }
+
+            fn build_explain_analyze_sql(&self, query: &str) -> String {
+                format!("EXPLAIN ANALYZE {query}")
+            }
+
             fn build_update_sql(
                 &self,
                 _schema: &str,

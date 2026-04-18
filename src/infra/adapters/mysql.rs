@@ -129,6 +129,14 @@ impl DdlGenerator for MySqlAdapter {
 }
 
 impl SqlDialect for MySqlAdapter {
+    fn build_explain_sql(&self, _query: &str) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
+    }
+
+    fn build_explain_analyze_sql(&self, _query: &str) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
+    }
+
     fn build_update_sql(
         &self,
         _schema: &str,

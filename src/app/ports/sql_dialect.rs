@@ -1,4 +1,6 @@
 pub trait SqlDialect: Send + Sync {
+    fn build_explain_sql(&self, query: &str) -> String;
+    fn build_explain_analyze_sql(&self, query: &str) -> String;
     fn build_update_sql(
         &self,
         schema: &str,
