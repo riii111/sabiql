@@ -151,7 +151,7 @@ impl SqlDialect for MySqlAdapter {
 
     fn build_explain_analyze_sql(&self, query: &str) -> String {
         // Fallback keeps behavior total for defensive coverage.
-        format!("EXPLAIN {query}")
+        format!("EXPLAIN ANALYZE {query}")
     }
 
     fn build_update_sql(
