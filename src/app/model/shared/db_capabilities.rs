@@ -4,7 +4,6 @@ use crate::app::model::sql_editor::modal::SqlModalTab;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
     pub supports_explain: bool,
-    pub supports_pg_service_entries: bool,
     supported_inspector_tabs: Vec<InspectorTab>,
 }
 
@@ -13,14 +12,9 @@ impl DbCapabilities {
         &self.supported_inspector_tabs
     }
 
-    pub fn new(
-        supports_explain: bool,
-        supports_pg_service_entries: bool,
-        supported_inspector_tabs: Vec<InspectorTab>,
-    ) -> Self {
+    pub fn new(supports_explain: bool, supported_inspector_tabs: Vec<InspectorTab>) -> Self {
         Self {
             supports_explain,
-            supports_pg_service_entries,
             supported_inspector_tabs,
         }
     }
@@ -104,7 +98,6 @@ mod tests {
     fn postgres_supports_all_inspector_tabs() {
         let caps = DbCapabilities::new(
             true,
-            true,
             vec![
                 InspectorTab::Info,
                 InspectorTab::Columns,
@@ -117,7 +110,6 @@ mod tests {
         );
 
         assert!(caps.supports_explain);
-        assert!(caps.supports_pg_service_entries);
         assert!(caps.supports_inspector_tab(InspectorTab::Ddl));
         assert_eq!(caps.supported_inspector_tabs().len(), 7);
     }
@@ -126,7 +118,6 @@ mod tests {
     fn normalize_unsupported_tab_returns_first_supported_tab() {
         let caps = DbCapabilities {
             supports_explain: false,
-            supports_pg_service_entries: false,
             supported_inspector_tabs: vec![InspectorTab::Info, InspectorTab::Columns],
         };
 
@@ -137,15 +128,18 @@ mod tests {
     }
 
     #[test]
-    fn normalize_unsupported_sql_modal_tab_returns_sql() {
-        let caps = DbCapabilities::new(true, false, vec![InspectorTab::Info]);
+    fn normalize_supported_sql_modal_tab_passes_through() {
+        let caps = DbCapabilities::new(true, vec![InspectorTab::Info]);
 
         assert_eq!(
             caps.normalize_sql_modal_tab(SqlModalTab::Compare),
             SqlModalTab::Compare
         );
+    }
 
-        let no_explain_caps = DbCapabilities::new(false, false, vec![InspectorTab::Info]);
+    #[test]
+    fn normalize_unsupported_sql_modal_tab_returns_sql() {
+        let no_explain_caps = DbCapabilities::new(false, vec![InspectorTab::Info]);
         assert_eq!(
             no_explain_caps.normalize_sql_modal_tab(SqlModalTab::Plan),
             SqlModalTab::Sql

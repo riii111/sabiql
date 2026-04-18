@@ -431,7 +431,6 @@ mod tests {
 
         fn fake_services() -> AppServices {
             let mut services = AppServices::stub();
-            services.ddl_generator = AppServices::stub().ddl_generator;
             services.sql_dialect = std::sync::Arc::new(FakeSqlDialect);
             services
         }

@@ -126,7 +126,6 @@ mod tests {
             services.db_capabilities =
                 crate::app::model::shared::db_capabilities::DbCapabilities::new(
                     false,
-                    false,
                     vec![crate::app::model::shared::inspector_tab::InspectorTab::Info],
                 );
 

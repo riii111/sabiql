@@ -27,7 +27,6 @@ impl PostgresAdapter {
     pub fn capabilities(&self) -> DbCapabilities {
         DbCapabilities::new(
             true,
-            true,
             vec![
                 InspectorTab::Info,
                 InspectorTab::Columns,

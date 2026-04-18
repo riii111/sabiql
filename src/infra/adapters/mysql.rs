@@ -18,7 +18,6 @@ impl MySqlAdapter {
     pub fn capabilities(&self) -> DbCapabilities {
         DbCapabilities::new(
             false,
-            false,
             vec![
                 InspectorTab::Info,
                 InspectorTab::Columns,
@@ -146,10 +145,12 @@ impl DdlGenerator for MySqlAdapter {
 
 impl SqlDialect for MySqlAdapter {
     fn build_explain_sql(&self, _query: &str) -> String {
+        // Keep MySQL EXPLAIN unavailable until the SQL modal flow is wired to its syntax.
         unimplemented!("MySQL adapter not yet implemented")
     }
 
     fn build_explain_analyze_sql(&self, _query: &str) -> String {
+        // Keep MySQL EXPLAIN unavailable until the SQL modal flow is wired to its syntax.
         unimplemented!("MySQL adapter not yet implemented")
     }
 

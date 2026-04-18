@@ -57,7 +57,6 @@ impl AppServices {
             sql_dialect: Arc::new(StubSqlDialect),
             db_capabilities: DbCapabilities::new(
                 true,
-                true,
                 vec![
                     crate::app::model::shared::inspector_tab::InspectorTab::Info,
                     crate::app::model::shared::inspector_tab::InspectorTab::Columns,

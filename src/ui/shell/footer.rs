@@ -378,8 +378,7 @@ mod tests {
     fn inspector_tabs_hint_hidden_when_only_one_tab_is_supported() {
         let state = inspector_state();
         let mut services = AppServices::stub();
-        services.db_capabilities =
-            DbCapabilities::new(true, true, vec![InspectorTab::Info]);
+        services.db_capabilities = DbCapabilities::new(true, vec![InspectorTab::Info]);
 
         let hints = Footer::get_context_hints(&state, &services);
 
@@ -391,7 +390,7 @@ mod tests {
         let state = inspector_state();
         let mut services = AppServices::stub();
         services.db_capabilities =
-            DbCapabilities::new(true, true, vec![InspectorTab::Info, InspectorTab::Columns]);
+            DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
 
         let hints = Footer::get_context_hints(&state, &services);
 
