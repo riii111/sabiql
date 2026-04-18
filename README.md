@@ -48,8 +48,6 @@ Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featur
 
 ## Installation
 
-`sabiql` is published as a CLI binary, not as a library crate.
-
 ```bash
 # macOS / Linux
 brew install riii111/sabiql/sabiql
