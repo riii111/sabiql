@@ -355,3 +355,46 @@ impl Footer {
         Line::from(spans)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Footer;
+    use crate::app::model::app_state::AppState;
+    use crate::app::model::shared::db_capabilities::DbCapabilities;
+    use crate::app::model::shared::focused_pane::FocusedPane;
+    use crate::app::model::shared::input_mode::InputMode;
+    use crate::app::model::shared::inspector_tab::InspectorTab;
+    use crate::app::services::AppServices;
+    use crate::app::update::input::keybindings::{GLOBAL_KEYS, idx};
+
+    fn inspector_state() -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::Normal);
+        state.ui.focused_pane = FocusedPane::Inspector;
+        state
+    }
+
+    #[test]
+    fn inspector_tabs_hint_hidden_when_only_one_tab_is_supported() {
+        let state = inspector_state();
+        let mut services = AppServices::stub();
+        services.db_capabilities =
+            DbCapabilities::new_for_tests(true, true, vec![InspectorTab::Info]);
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(!hints.contains(&GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint()));
+    }
+
+    #[test]
+    fn inspector_tabs_hint_shown_when_multiple_tabs_are_supported() {
+        let state = inspector_state();
+        let mut services = AppServices::stub();
+        services.db_capabilities =
+            DbCapabilities::new_for_tests(true, true, vec![InspectorTab::Info, InspectorTab::Columns]);
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(hints.contains(&GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint()));
+    }
+}

@@ -1,4 +1,5 @@
 use crate::app::model::shared::inspector_tab::InspectorTab;
+use crate::app::model::sql_editor::modal::SqlModalTab;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
@@ -45,6 +46,34 @@ impl DbCapabilities {
         self.supported_inspector_tabs.contains(&tab)
     }
 
+    pub fn supported_sql_modal_tabs(&self) -> &'static [SqlModalTab] {
+        if self.supports_explain {
+            &[
+                SqlModalTab::Sql,
+                SqlModalTab::Plan,
+                SqlModalTab::Compare,
+            ]
+        } else {
+            &[SqlModalTab::Sql]
+        }
+    }
+
+    pub fn normalize_sql_modal_tab(&self, tab: SqlModalTab) -> SqlModalTab {
+        if self.supported_sql_modal_tabs().contains(&tab) {
+            tab
+        } else {
+            SqlModalTab::Sql
+        }
+    }
+
+    pub fn next_sql_modal_tab(&self, current: SqlModalTab) -> SqlModalTab {
+        self.cycle_sql_modal_tab(current, 1)
+    }
+
+    pub fn prev_sql_modal_tab(&self, current: SqlModalTab) -> SqlModalTab {
+        self.cycle_sql_modal_tab(current, -1)
+    }
+
     pub fn normalize_inspector_tab(&self, tab: InspectorTab) -> InspectorTab {
         if self.supports_inspector_tab(tab) {
             tab
@@ -70,6 +99,14 @@ impl DbCapabilities {
             return current;
         }
 
+        let current_idx = tabs.iter().position(|tab| *tab == current).unwrap_or(0) as isize;
+        let next_idx = (current_idx + delta).rem_euclid(tabs.len() as isize) as usize;
+        tabs[next_idx]
+    }
+
+    fn cycle_sql_modal_tab(&self, current: SqlModalTab, delta: isize) -> SqlModalTab {
+        let tabs = self.supported_sql_modal_tabs();
+        let current = self.normalize_sql_modal_tab(current);
         let current_idx = tabs.iter().position(|tab| *tab == current).unwrap_or(0) as isize;
         let next_idx = (current_idx + delta).rem_euclid(tabs.len() as isize) as usize;
         tabs[next_idx]
@@ -101,6 +138,22 @@ mod tests {
         assert_eq!(
             caps.normalize_inspector_tab(InspectorTab::Triggers),
             InspectorTab::Info
+        );
+    }
+
+    #[test]
+    fn normalize_unsupported_sql_modal_tab_returns_sql() {
+        let caps = DbCapabilities::new_for_tests(true, false, vec![InspectorTab::Info]);
+
+        assert_eq!(
+            caps.normalize_sql_modal_tab(SqlModalTab::Compare),
+            SqlModalTab::Compare
+        );
+
+        let no_explain_caps = DbCapabilities::new_for_tests(false, false, vec![InspectorTab::Info]);
+        assert_eq!(
+            no_explain_caps.normalize_sql_modal_tab(SqlModalTab::Plan),
+            SqlModalTab::Sql
         );
     }
 }

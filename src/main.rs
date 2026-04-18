@@ -119,7 +119,7 @@ async fn main() -> Result<()> {
         .config_writer(Arc::new(FileConfigWriter::new()))
         .er_log_writer(Arc::new(FsErLogWriter))
         .connection_store(Arc::clone(&connection_store) as _)
-        .service_file_reader(Arc::clone(&service_file_reader))
+        .pg_service_entry_reader(Arc::clone(&service_file_reader))
         .clipboard(Arc::new(ArboardClipboard))
         .folder_opener(Arc::new(NativeFolderOpener))
         .query_history_store(Arc::new(FileQueryHistoryStore::new()))
@@ -201,7 +201,7 @@ async fn main() -> Result<()> {
 
         tokio::select! {
             Some(event) = tui.next_event() => {
-                let action = handle_event(event, &state);
+                let action = handle_event(event, &state, &services);
                 if !action.is_none() {
                     drain_and_process_terminal_events(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
                 }
@@ -393,7 +393,7 @@ async fn drain_and_process_terminal_events(
             break;
         };
         drained += 1;
-        let action = handle_event(event, state);
+        let action = handle_event(event, state, services);
         if action.is_none() {
             continue;
         }

@@ -37,7 +37,7 @@ mod tests {
             &mut state,
             &Action::Paste("hello".to_string()),
             Instant::now(),
-            &crate::app::services::AppServices::stub(),
+            &AppServices::stub(),
         );
 
         assert!(result.is_some());
@@ -52,7 +52,7 @@ mod tests {
             &mut state,
             &Action::Paste("hello".to_string()),
             Instant::now(),
-            &crate::app::services::AppServices::stub(),
+            &AppServices::stub(),
         );
 
         assert!(result.is_none());
@@ -66,7 +66,7 @@ mod tests {
             &mut state,
             &Action::Quit,
             Instant::now(),
-            &crate::app::services::AppServices::stub(),
+            &AppServices::stub(),
         );
 
         assert!(result.is_none());

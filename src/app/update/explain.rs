@@ -15,6 +15,20 @@ fn is_multi_statement(content: &str) -> bool {
     split_statements(content).len() > 1
 }
 
+fn reject_unsupported_explain(state: &mut AppState, services: &AppServices) -> bool {
+    if services.db_capabilities.supports_explain {
+        return false;
+    }
+
+    state
+        .explain
+        .set_error("EXPLAIN is unavailable for this database".to_string());
+    state.sql_modal.active_tab = services
+        .db_capabilities
+        .normalize_sql_modal_tab(state.sql_modal.active_tab);
+    true
+}
+
 pub fn reduce_explain_with_services(
     state: &mut AppState,
     action: &Action,
@@ -23,6 +37,9 @@ pub fn reduce_explain_with_services(
 ) -> Option<Vec<Effect>> {
     match action {
         Action::ExplainRequest => {
+            if reject_unsupported_explain(state, services) {
+                return Some(vec![]);
+            }
             let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
                 return Some(vec![]);
@@ -30,13 +47,6 @@ pub fn reduce_explain_with_services(
             let Some(dsn) = &state.session.dsn else {
                 return Some(vec![]);
             };
-            if !services.db_capabilities.supports_explain {
-                state
-                    .explain
-                    .set_error("EXPLAIN is unavailable for this database".to_string());
-                state.sql_modal.active_tab = SqlModalTab::Sql;
-                return Some(vec![]);
-            }
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return Some(vec![]);
             }
@@ -63,6 +73,9 @@ pub fn reduce_explain_with_services(
         }
 
         Action::ExplainAnalyzeRequest => {
+            if reject_unsupported_explain(state, services) {
+                return Some(vec![]);
+            }
             let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
                 return Some(vec![]);
@@ -72,13 +85,6 @@ pub fn reduce_explain_with_services(
             };
             let dsn = dsn.clone();
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
-                return Some(vec![]);
-            }
-            if !services.db_capabilities.supports_explain {
-                state
-                    .explain
-                    .set_error("EXPLAIN is unavailable for this database".to_string());
-                state.sql_modal.active_tab = SqlModalTab::Sql;
                 return Some(vec![]);
             }
             if is_multi_statement(&content) {
@@ -133,11 +139,7 @@ pub fn reduce_explain_with_services(
         }
 
         Action::ExplainAnalyzeConfirm => {
-            if !services.db_capabilities.supports_explain {
-                state
-                    .explain
-                    .set_error("EXPLAIN is unavailable for this database".to_string());
-                state.sql_modal.active_tab = SqlModalTab::Sql;
+            if reject_unsupported_explain(state, services) {
                 return Some(vec![]);
             }
             let query = match state.sql_modal.status() {
@@ -248,28 +250,16 @@ pub fn reduce_explain_with_services(
         }
 
         Action::SqlModalNextTab => {
-            state.sql_modal.active_tab = if services.db_capabilities.supports_explain {
-                match state.sql_modal.active_tab {
-                    SqlModalTab::Sql => SqlModalTab::Plan,
-                    SqlModalTab::Plan => SqlModalTab::Compare,
-                    SqlModalTab::Compare => SqlModalTab::Sql,
-                }
-            } else {
-                SqlModalTab::Sql
-            };
+            state.sql_modal.active_tab = services
+                .db_capabilities
+                .next_sql_modal_tab(state.sql_modal.active_tab);
             Some(vec![])
         }
 
         Action::SqlModalPrevTab => {
-            state.sql_modal.active_tab = if services.db_capabilities.supports_explain {
-                match state.sql_modal.active_tab {
-                    SqlModalTab::Sql => SqlModalTab::Compare,
-                    SqlModalTab::Compare => SqlModalTab::Plan,
-                    SqlModalTab::Plan => SqlModalTab::Sql,
-                }
-            } else {
-                SqlModalTab::Sql
-            };
+            state.sql_modal.active_tab = services
+                .db_capabilities
+                .prev_sql_modal_tab(state.sql_modal.active_tab);
             Some(vec![])
         }
 

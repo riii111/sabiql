@@ -113,7 +113,7 @@ impl EffectRunnerBuilder {
         self
     }
     #[must_use]
-    pub fn service_file_reader(mut self, v: Arc<dyn PgServiceEntryReader>) -> Self {
+    pub fn pg_service_entry_reader(mut self, v: Arc<dyn PgServiceEntryReader>) -> Self {
         self.service_file_reader = Some(v);
         self
     }

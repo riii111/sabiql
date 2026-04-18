@@ -40,11 +40,9 @@ impl SqlModal {
             state.sql_modal.status(),
             SqlModalStatus::ConfirmingHigh { .. }
         );
-        let active_tab = if services.db_capabilities.supports_explain {
-            state.sql_modal.active_tab
-        } else {
-            SqlModalTab::Sql
-        };
+        let active_tab = services
+            .db_capabilities
+            .normalize_sql_modal_tab(state.sql_modal.active_tab);
 
         let (area, inner) = if is_confirming {
             match state.sql_modal.status() {
@@ -79,9 +77,7 @@ impl SqlModal {
             }
         } else {
             let hint: &str = match state.sql_modal.status() {
-                SqlModalStatus::Editing => {
-                    Self::editing_hint(services.db_capabilities.supports_explain)
-                }
+                SqlModalStatus::Editing => Self::editing_hint(services),
                 SqlModalStatus::Running => " Running\u{2026} ",
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     input, target_name, ..
@@ -101,17 +97,11 @@ impl SqlModal {
                     Self::border_hint(
                         active_tab,
                         compare_can_yank,
-                        services.db_capabilities.supports_explain,
+                        services,
                     )
                 }
             };
-            Self::render_modal_with_tabs(
-                frame,
-                active_tab,
-                hint,
-                services.db_capabilities.supports_explain,
-                theme,
-            )
+            Self::render_modal_with_tabs(frame, active_tab, hint, services, theme)
         };
 
         // Add 1-char horizontal padding for breathing room inside the modal
@@ -155,10 +145,9 @@ impl SqlModal {
                 completion::render_completion_popup(frame, area, main_area, state, theme);
             }
         } else if active_tab == SqlModalTab::Plan {
-            let compare_viewport_height =
-                explain::render(frame, main_area, state, services, now, theme);
+            let plan_viewport_height = explain::render(frame, main_area, state, services, now, theme);
             status::render_status(frame, status_area, state, theme);
-            return Some(compare_viewport_height);
+            return Some(plan_viewport_height);
         } else {
             let compare_viewport_height = compare::render(frame, main_area, state, now, theme);
             status::render_status(frame, status_area, state, theme);
@@ -172,7 +161,7 @@ impl SqlModal {
         frame: &mut Frame,
         active_tab: SqlModalTab,
         hint: &str,
-        supports_explain: bool,
+        services: &AppServices,
         theme: &ThemePalette,
     ) -> (Rect, Rect) {
         let area = centered_rect(
@@ -183,7 +172,7 @@ impl SqlModal {
         render_scrim(frame, theme);
         frame.render_widget(Clear, area);
 
-        let title = Self::build_title_with_tabs(active_tab, supports_explain, theme);
+        let title = Self::build_title_with_tabs(active_tab, services, theme);
         let block = Block::default()
             .title(title)
             .title_bottom(Line::styled(hint.to_string(), theme.modal_hint_style()))
@@ -199,7 +188,7 @@ impl SqlModal {
 
     fn build_title_with_tabs(
         active_tab: SqlModalTab,
-        supports_explain: bool,
+        services: &AppServices,
         theme: &ThemePalette,
     ) -> Line<'static> {
         let title_style = theme.modal_title_style();
@@ -222,10 +211,16 @@ impl SqlModal {
             Span::styled("[SQL]", style_for(SqlModalTab::Sql)),
             Span::raw(" "),
         ];
-        if supports_explain {
-            spans.push(Span::styled("[Plan]", style_for(SqlModalTab::Plan)));
-            spans.push(Span::raw(" "));
-            spans.push(Span::styled("[Compare]", style_for(SqlModalTab::Compare)));
+        for tab in services.db_capabilities.supported_sql_modal_tabs() {
+            if *tab == SqlModalTab::Sql {
+                continue;
+            }
+            let label = match tab {
+                SqlModalTab::Plan => "[Plan]",
+                SqlModalTab::Compare => "[Compare]",
+                SqlModalTab::Sql => unreachable!(),
+            };
+            spans.push(Span::styled(label, style_for(*tab)));
             spans.push(Span::raw(" "));
         }
         Line::from(spans)
@@ -234,7 +229,7 @@ impl SqlModal {
     fn border_hint(
         tab: SqlModalTab,
         compare_can_yank: bool,
-        supports_explain: bool,
+        services: &AppServices,
     ) -> &'static str {
         static PLAN: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
@@ -290,7 +285,9 @@ impl SqlModal {
             ])
         });
         match tab {
-            SqlModalTab::Sql if !supports_explain => &SQL_NO_TABS,
+            SqlModalTab::Sql if services.db_capabilities.supported_sql_modal_tabs().len() == 1 => {
+                &SQL_NO_TABS
+            }
             SqlModalTab::Plan => &PLAN,
             SqlModalTab::Compare if compare_can_yank => &COMPARE_WITH_YANK,
             SqlModalTab::Compare => &COMPARE_NO_YANK,
@@ -298,7 +295,7 @@ impl SqlModal {
         }
     }
 
-    fn editing_hint(supports_explain: bool) -> &'static str {
+    fn editing_hint(services: &AppServices) -> &'static str {
         static HINT: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
@@ -316,7 +313,7 @@ impl SqlModal {
                 SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
             ])
         });
-        if supports_explain {
+        if services.db_capabilities.supports_explain {
             &HINT
         } else {
             &HINT_NO_EXPLAIN

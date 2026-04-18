@@ -5,12 +5,13 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::services::AppServices;
 use crate::app::update::action::Action;
 
 pub fn reduce(
     state: &mut AppState,
     action: &Action,
-    services: &crate::app::services::AppServices,
+    services: &AppServices,
     _now: Instant,
 ) -> Option<Vec<Effect>> {
     match action {
@@ -65,6 +66,8 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::model::shared::db_capabilities::DbCapabilities;
+    use crate::app::model::shared::inspector_tab::InspectorTab;
     use crate::app::services::AppServices;
     use crate::app::update::browse::navigation::reduce_navigation;
 
@@ -105,6 +108,47 @@ mod tests {
                 state.confirm_dialog.intent(),
                 Some(ConfirmIntent::DisableReadOnly)
             ));
+        }
+    }
+
+    mod inspector_tabs {
+        use super::*;
+
+        fn services_with_two_tabs() -> AppServices {
+            let mut services = AppServices::stub();
+            services.db_capabilities =
+                DbCapabilities::new_for_tests(true, true, vec![InspectorTab::Info, InspectorTab::Columns]);
+            services
+        }
+
+        #[test]
+        fn next_tab_skips_unsupported_tabs() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.inspector_tab = InspectorTab::Info;
+
+            reduce_navigation(
+                &mut state,
+                &Action::InspectorNextTab,
+                &services_with_two_tabs(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Columns);
+        }
+
+        #[test]
+        fn prev_tab_skips_unsupported_tabs() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.inspector_tab = InspectorTab::Info;
+
+            reduce_navigation(
+                &mut state,
+                &Action::InspectorPrevTab,
+                &services_with_two_tabs(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Columns);
         }
     }
 }
