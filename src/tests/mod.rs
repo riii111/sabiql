@@ -1,9 +1,12 @@
-pub mod adapter_postgres;
+mod adapter_postgres;
 pub mod harness;
 
 use clap::Parser;
 
-use super::{Args, Command, self_update_disabled_message};
+use super::{Args, Command};
+
+#[cfg(not(feature = "self-update"))]
+use super::self_update_disabled_message;
 
 #[test]
 fn no_subcommand_returns_none() {
