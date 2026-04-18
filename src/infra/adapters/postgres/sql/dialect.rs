@@ -12,12 +12,12 @@ fn sql_literal_or_null(value: &str) -> String {
 }
 
 impl SqlDialect for PostgresAdapter {
-    fn build_explain_sql(&self, query: &str) -> String {
-        format!("EXPLAIN {query}")
+    fn build_explain_sql(&self, query: &str) -> Option<String> {
+        Some(format!("EXPLAIN {query}"))
     }
 
-    fn build_explain_analyze_sql(&self, query: &str) -> String {
-        format!("EXPLAIN ANALYZE {query}")
+    fn build_explain_analyze_sql(&self, query: &str) -> Option<String> {
+        Some(format!("EXPLAIN ANALYZE {query}"))
     }
 
     fn build_update_sql(
@@ -147,7 +147,10 @@ mod tests {
         fn explain_sql_uses_postgres_prefix() {
             let adapter = PostgresAdapter::new();
 
-            assert_eq!(adapter.build_explain_sql("SELECT 1"), "EXPLAIN SELECT 1");
+            assert_eq!(
+                adapter.build_explain_sql("SELECT 1"),
+                Some("EXPLAIN SELECT 1".to_string())
+            );
         }
 
         #[test]
@@ -156,7 +159,7 @@ mod tests {
 
             assert_eq!(
                 adapter.build_explain_analyze_sql("SELECT 1"),
-                "EXPLAIN ANALYZE SELECT 1"
+                Some("EXPLAIN ANALYZE SELECT 1".to_string())
             );
         }
     }

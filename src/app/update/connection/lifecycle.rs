@@ -120,6 +120,29 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_cached_inspector_tab_when_capability_is_missing() {
+        let mut state = AppState::new("test".to_string());
+        let target_id = ConnectionId::new();
+        let mut services = AppServices::stub();
+        services.db_capabilities = crate::app::model::shared::db_capabilities::DbCapabilities::new(
+            true,
+            vec![InspectorTab::Info],
+        );
+
+        let cached = ConnectionCache {
+            explorer_selected: 42,
+            inspector_tab: InspectorTab::Ddl,
+            ..Default::default()
+        };
+        state.connection_caches.save(&target_id, cached);
+
+        let action = create_switch_action(&target_id, "cached_db");
+        reduce(&mut state, &action, Instant::now(), &services);
+
+        assert_eq!(state.ui.inspector_tab, InspectorTab::Info);
+    }
+
+    #[test]
     fn fetches_metadata_when_no_cache_exists() {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();

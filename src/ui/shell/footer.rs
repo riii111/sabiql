@@ -148,6 +148,9 @@ impl Footer {
                     list
                 } else {
                     // Actions → Navigation → Help → Close/Cancel → Quit
+                    let active_inspector_tab = services
+                        .db_capabilities
+                        .normalize_inspector_tab(state.ui.inspector_tab);
                     let mut list = vec![
                         GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
                         GLOBAL_KEYS[idx::global::SQL].as_hint(),
@@ -172,7 +175,7 @@ impl Footer {
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         use crate::app::model::shared::inspector_tab::InspectorTab;
-                        if state.ui.inspector_tab == InspectorTab::Ddl {
+                        if active_inspector_tab == InspectorTab::Ddl {
                             list.push(INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK].as_hint());
                         }
                     }
@@ -240,7 +243,7 @@ impl Footer {
                     // Hints are shown on the modal's bottom border, not the main footer.
                     vec![]
                 } else {
-                    // Editing mode
+                    // Editing / Running
                     let mut hints = vec![
                         SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
                         SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
@@ -366,6 +369,7 @@ mod tests {
     use crate::app::model::shared::inspector_tab::InspectorTab;
     use crate::app::services::AppServices;
     use crate::app::update::input::keybindings::{GLOBAL_KEYS, idx};
+    use rstest::rstest;
 
     fn inspector_state() -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -374,26 +378,25 @@ mod tests {
         state
     }
 
-    #[test]
-    fn inspector_tabs_hint_hidden_when_only_one_tab_is_supported() {
+    #[rstest]
+    #[case(DbCapabilities::new(true, vec![InspectorTab::Info]), false)]
+    #[case(
+        DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]),
+        true
+    )]
+    fn inspector_tabs_hint_visibility_tracks_supported_tab_count(
+        #[case] db_capabilities: DbCapabilities,
+        #[case] expected_visible: bool,
+    ) {
         let state = inspector_state();
         let mut services = AppServices::stub();
-        services.db_capabilities = DbCapabilities::new(true, vec![InspectorTab::Info]);
+        services.db_capabilities = db_capabilities;
 
         let hints = Footer::get_context_hints(&state, &services);
 
-        assert!(!hints.contains(&GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint()));
-    }
-
-    #[test]
-    fn inspector_tabs_hint_shown_when_multiple_tabs_are_supported() {
-        let state = inspector_state();
-        let mut services = AppServices::stub();
-        services.db_capabilities =
-            DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
-
-        let hints = Footer::get_context_hints(&state, &services);
-
-        assert!(hints.contains(&GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint()));
+        assert_eq!(
+            hints.contains(&GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint()),
+            expected_visible
+        );
     }
 }

@@ -23,7 +23,6 @@ impl MySqlAdapter {
                 InspectorTab::Columns,
                 InspectorTab::Indexes,
                 InspectorTab::ForeignKeys,
-                InspectorTab::Ddl,
             ],
         )
     }
@@ -144,14 +143,12 @@ impl DdlGenerator for MySqlAdapter {
 }
 
 impl SqlDialect for MySqlAdapter {
-    fn build_explain_sql(&self, query: &str) -> String {
-        // Fallback that keeps behavior total even when capability checks are missed.
-        format!("EXPLAIN {query}")
+    fn build_explain_sql(&self, _query: &str) -> Option<String> {
+        None
     }
 
-    fn build_explain_analyze_sql(&self, query: &str) -> String {
-        // Fallback keeps behavior total for defensive coverage.
-        format!("EXPLAIN ANALYZE {query}")
+    fn build_explain_analyze_sql(&self, _query: &str) -> Option<String> {
+        None
     }
 
     fn build_update_sql(

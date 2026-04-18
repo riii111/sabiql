@@ -13,6 +13,10 @@ impl DbCapabilities {
     }
 
     pub fn new(supports_explain: bool, supported_inspector_tabs: Vec<InspectorTab>) -> Self {
+        assert!(
+            !supported_inspector_tabs.is_empty(),
+            "DbCapabilities requires at least one supported inspector tab"
+        );
         Self {
             supports_explain,
             supported_inspector_tabs,
@@ -144,5 +148,11 @@ mod tests {
             no_explain_caps.normalize_sql_modal_tab(SqlModalTab::Plan),
             SqlModalTab::Sql
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "DbCapabilities requires at least one supported inspector tab")]
+    fn rejects_empty_supported_inspector_tabs() {
+        let _ = DbCapabilities::new(false, vec![]);
     }
 }

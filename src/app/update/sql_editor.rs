@@ -22,12 +22,16 @@ use crate::app::ports::ClipboardError;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 
-pub fn reduce_sql_modal_with_services(
+pub fn reduce_sql_modal(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    _services: &crate::app::services::AppServices,
+    services: &crate::app::services::AppServices,
 ) -> Option<Vec<Effect>> {
+    state.sql_modal.active_tab = services
+        .db_capabilities
+        .normalize_sql_modal_tab(state.sql_modal.active_tab);
+
     match action {
         // Completion navigation
         Action::CompletionNext => {
@@ -436,20 +440,6 @@ pub fn reduce_sql_modal_with_services(
     }
 }
 
-#[cfg(test)]
-pub fn reduce_sql_modal(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> Option<Vec<Effect>> {
-    reduce_sql_modal_with_services(
-        state,
-        action,
-        now,
-        &crate::app::services::AppServices::stub(),
-    )
-}
-
 fn high_risk_input_mut(
     sql_modal: &mut SqlModalContext,
     target: InputTarget,
@@ -491,6 +481,19 @@ fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
 mod tests {
     use super::*;
     use std::time::Instant;
+
+    fn reduce_sql_modal(
+        state: &mut AppState,
+        action: &Action,
+        now: Instant,
+    ) -> Option<Vec<Effect>> {
+        super::reduce_sql_modal(
+            state,
+            action,
+            now,
+            &crate::app::services::AppServices::stub(),
+        )
+    }
 
     fn sql_modal_state() -> AppState {
         let mut state = AppState::new("test".to_string());

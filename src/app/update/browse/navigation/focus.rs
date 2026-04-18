@@ -122,7 +122,7 @@ mod tests {
         }
 
         #[test]
-        fn next_tab_skips_unsupported_tabs() {
+        fn next_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_tab = InspectorTab::Info;
 
@@ -137,7 +137,7 @@ mod tests {
         }
 
         #[test]
-        fn prev_tab_skips_unsupported_tabs() {
+        fn prev_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_tab = InspectorTab::Info;
 

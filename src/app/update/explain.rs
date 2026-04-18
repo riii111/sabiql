@@ -58,7 +58,10 @@ pub fn reduce_explain_with_services(
                 return Some(vec![]);
             }
 
-            let query = services.sql_dialect.build_explain_sql(&content);
+            let Some(query) = services.sql_dialect.build_explain_sql(&content) else {
+                reject_unsupported_explain(state, services);
+                return Some(vec![]);
+            };
             state.sql_modal.set_status(SqlModalStatus::Running);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.explain.reset();
@@ -121,7 +124,12 @@ pub fn reduce_explain_with_services(
                     state.sql_modal.active_tab = SqlModalTab::Plan;
                 }
                 ConfirmationType::Immediate => {
-                    let explain_query = services.sql_dialect.build_explain_analyze_sql(&content);
+                    let Some(explain_query) =
+                        services.sql_dialect.build_explain_analyze_sql(&content)
+                    else {
+                        reject_unsupported_explain(state, services);
+                        return Some(vec![]);
+                    };
                     state.sql_modal.set_status(SqlModalStatus::Running);
                     state.sql_modal.active_tab = SqlModalTab::Plan;
                     state.explain.reset();
@@ -156,7 +164,11 @@ pub fn reduce_explain_with_services(
             if let Some(query) = query
                 && let Some(dsn) = &state.session.dsn
             {
-                let explain_query = services.sql_dialect.build_explain_analyze_sql(&query);
+                let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
+                else {
+                    reject_unsupported_explain(state, services);
+                    return Some(vec![]);
+                };
                 state.sql_modal.set_status(SqlModalStatus::Running);
                 state.explain.reset();
                 state.query.begin_running(now);
@@ -305,12 +317,12 @@ mod tests {
 
         struct NoopSql;
         impl SqlDialect for NoopSql {
-            fn build_explain_sql(&self, query: &str) -> String {
-                format!("EXPLAIN {query}")
+            fn build_explain_sql(&self, query: &str) -> Option<String> {
+                Some(format!("EXPLAIN {query}"))
             }
 
-            fn build_explain_analyze_sql(&self, query: &str) -> String {
-                format!("EXPLAIN ANALYZE {query}")
+            fn build_explain_analyze_sql(&self, query: &str) -> Option<String> {
+                Some(format!("EXPLAIN ANALYZE {query}"))
             }
 
             fn build_update_sql(
@@ -1152,6 +1164,21 @@ mod tests {
         }
 
         #[test]
+        fn next_tab_normalizes_stale_plan_to_sql_when_explain_is_unsupported() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Plan;
+
+            reduce_explain_with_services(
+                &mut state,
+                &Action::SqlModalNextTab,
+                Instant::now(),
+                &services_without_explain(),
+            );
+
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
+        }
+
+        #[test]
         fn prev_tab_switches_sql_to_compare() {
             let mut state = sql_modal_state();
             state.sql_modal.active_tab = SqlModalTab::Sql;
@@ -1185,6 +1212,21 @@ mod tests {
         fn prev_tab_stays_on_sql_when_explain_is_unsupported() {
             let mut state = sql_modal_state();
             state.sql_modal.active_tab = SqlModalTab::Sql;
+
+            reduce_explain_with_services(
+                &mut state,
+                &Action::SqlModalPrevTab,
+                Instant::now(),
+                &services_without_explain(),
+            );
+
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
+        }
+
+        #[test]
+        fn prev_tab_normalizes_stale_compare_to_sql_when_explain_is_unsupported() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
 
             reduce_explain_with_services(
                 &mut state,

@@ -204,6 +204,11 @@ impl SqlModal {
                 inactive_style
             }
         };
+        let supported_tabs = services.db_capabilities.supported_sql_modal_tabs();
+
+        if supported_tabs.len() == 1 {
+            return Line::from(vec![Span::styled(" SQL Editor ", title_style)]);
+        }
 
         let mut spans = vec![
             Span::styled(" SQL Editor ", title_style),
@@ -211,7 +216,7 @@ impl SqlModal {
             Span::styled("[SQL]", style_for(SqlModalTab::Sql)),
             Span::raw(" "),
         ];
-        for tab in services.db_capabilities.supported_sql_modal_tabs() {
+        for tab in supported_tabs {
             if *tab == SqlModalTab::Sql {
                 continue;
             }
