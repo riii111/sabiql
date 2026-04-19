@@ -21,7 +21,7 @@ pub fn initialize_connection_state(
     match profiles_result {
         Ok(profiles) => {
             let (service_entries, service_file_path, service_load_warning) = match service_result {
-                Some(Ok((services, path))) if !services.is_empty() => (services, Some(path), None),
+                Some(Ok((entries, path))) if !entries.is_empty() => (entries, Some(path), None),
                 Some(Ok(_)) | Some(Err(ServiceFileError::NotFound(_))) | None => {
                     (Vec::new(), None, None)
                 }
