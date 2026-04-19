@@ -4,7 +4,7 @@ use super::super::super::PostgresAdapter;
 use super::lexer::{has_select_into, split_sql_statements};
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
-pub(crate) enum ParseCommandTagError {
+pub(in crate::infra::adapters::postgres) enum ParseCommandTagError {
     #[error("empty command tag")]
     Empty,
     #[error("invalid command tag: {input}")]
@@ -19,78 +19,54 @@ impl PostgresAdapter {
         }
 
         let parts: Vec<&str> = trimmed.split_whitespace().collect();
-        match parts
-            .first()
-            .copied()
-            .ok_or_else(|| ParseCommandTagError::Invalid {
-                input: tag.to_string(),
-            })?
-        {
+        let invalid = || ParseCommandTagError::Invalid {
+            input: tag.to_string(),
+        };
+
+        match parts[0] {
             "SELECT" => {
                 let n = parts
                     .get(1)
-                    .ok_or_else(|| ParseCommandTagError::Invalid {
-                        input: tag.to_string(),
-                    })?
+                    .ok_or_else(&invalid)?
                     .parse::<u64>()
-                    .map_err(|_| ParseCommandTagError::Invalid {
-                        input: tag.to_string(),
-                    })?;
+                    .map_err(|_| invalid())?;
                 Ok(CommandTag::Select(n))
             }
             "INSERT" => {
                 // INSERT oid count — count is at index 2
                 let n = parts
                     .get(2)
-                    .ok_or_else(|| ParseCommandTagError::Invalid {
-                        input: tag.to_string(),
-                    })?
+                    .ok_or_else(&invalid)?
                     .parse::<u64>()
-                    .map_err(|_| ParseCommandTagError::Invalid {
-                        input: tag.to_string(),
-                    })?;
+                    .map_err(|_| invalid())?;
                 Ok(CommandTag::Insert(n))
             }
             "UPDATE" => {
                 let n = parts
                     .get(1)
-                    .ok_or_else(|| ParseCommandTagError::Invalid {
-                        input: tag.to_string(),
-                    })?
+                    .ok_or_else(&invalid)?
                     .parse::<u64>()
-                    .map_err(|_| ParseCommandTagError::Invalid {
-                        input: tag.to_string(),
-                    })?;
+                    .map_err(|_| invalid())?;
                 Ok(CommandTag::Update(n))
             }
             "DELETE" => {
                 let n = parts
                     .get(1)
-                    .ok_or_else(|| ParseCommandTagError::Invalid {
-                        input: tag.to_string(),
-                    })?
+                    .ok_or_else(&invalid)?
                     .parse::<u64>()
-                    .map_err(|_| ParseCommandTagError::Invalid {
-                        input: tag.to_string(),
-                    })?;
+                    .map_err(|_| invalid())?;
                 Ok(CommandTag::Delete(n))
             }
             "CREATE" => {
-                let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
-                    input: tag.to_string(),
-                })?;
+                let obj = parts.get(1).ok_or_else(&invalid)?;
                 Ok(CommandTag::Create(obj.to_string()))
             }
             "DROP" => {
-                let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
-                    input: tag.to_string(),
-                })?;
+                let obj = parts.get(1).ok_or_else(&invalid)?;
                 Ok(CommandTag::Drop(obj.to_string()))
             }
             "ALTER" => {
-                let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
-                    input: tag.to_string(),
-                })?;
+                let obj = parts.get(1).ok_or_else(&invalid)?;
                 Ok(CommandTag::Alter(obj.to_string()))
             }
             "TRUNCATE" => Ok(CommandTag::Truncate),
@@ -391,7 +367,7 @@ mod tests {
         #[rstest]
         #[case("")]
         #[case("   ")]
-        fn empty_or_whitespace_returns_none(#[case] input: &str) {
+        fn empty_or_whitespace_returns_empty_error(#[case] input: &str) {
             assert!(matches!(
                 PostgresAdapter::parse_command_tag(input),
                 Err(ParseCommandTagError::Empty)
@@ -404,7 +380,7 @@ mod tests {
         #[case("INSERT 0 abc")]
         #[case("UPDATE")]
         #[case("DELETE")]
-        fn malformed_count_returns_none(#[case] input: &str) {
+        fn malformed_count_returns_invalid_error(#[case] input: &str) {
             assert!(matches!(
                 PostgresAdapter::parse_command_tag(input),
                 Err(ParseCommandTagError::Invalid { .. })
