@@ -23,20 +23,19 @@ mod render_snapshots;
 
 use crate::app::cmd::cache::TtlCache;
 use crate::app::cmd::completion_engine::CompletionEngine;
-use crate::app::cmd::effect::Effect;
 use crate::app::cmd::render_schedule::next_animation_deadline;
 use crate::app::cmd::runner::EffectRunner;
 use crate::app::input::handle_event;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::runtime::AppRuntime;
 use crate::app::ports::{
     ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
     ServiceFileError,
 };
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
-use crate::app::update::reducer::reduce;
 use crate::infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
     PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
@@ -170,15 +169,14 @@ async fn main() -> Result<()> {
 
     let initial_size = tui.terminal().size()?;
     state.ui.terminal_height = initial_size.height;
+    let runtime = AppRuntime::new(&effect_runner, &completion_engine, &services);
 
     if state.session.dsn.is_some() && state.input_mode() == InputMode::Normal {
-        process_action(
+        dispatch_action(
             Action::TryConnect,
             &mut state,
             &mut tui,
-            &effect_runner,
-            &completion_engine,
-            &services,
+            &runtime,
         )
         .await?;
     }
@@ -194,11 +192,11 @@ async fn main() -> Result<()> {
             Some(event) = tui.next_event() => {
                 let action = handle_event(event.into(), &state, &services);
                 if !action.is_none() {
-                    drain_and_process_terminal_events(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
+                    drain_and_process_terminal_events(action, &mut state, &mut tui, &runtime).await?;
                 }
             }
             Some(action) = action_rx.recv() => {
-                process_action(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
+                dispatch_action(action, &mut state, &mut tui, &runtime).await?;
             }
             // Animation deadline reached (spinner, cursor blink, message timeout)
             () = async {
@@ -207,7 +205,7 @@ async fn main() -> Result<()> {
                     None => std::future::pending::<()>().await,
                 }
             } => {
-                process_action(Action::Render, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
+                dispatch_action(Action::Render, &mut state, &mut tui, &runtime).await?;
             }
         }
 
@@ -215,13 +213,11 @@ async fn main() -> Result<()> {
             && Instant::now() >= debounce_until
         {
             state.sql_modal.completion_debounce = None;
-            process_action(
+            dispatch_action(
                 Action::CompletionTrigger,
                 &mut state,
                 &mut tui,
-                &effect_runner,
-                &completion_engine,
-                &services,
+                &runtime,
             )
             .await?;
         }
@@ -240,102 +236,14 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn process_action(
+async fn dispatch_action(
     action: Action,
     state: &mut AppState,
     tui: &mut TuiRunner,
-    effect_runner: &EffectRunner,
-    completion_engine: &RefCell<CompletionEngine>,
-    services: &AppServices,
-) -> Result<()> {
-    let now = Instant::now();
-    let is_animation_tick = matches!(action, Action::Render);
-    if is_animation_tick {
-        state.clear_expired_timers(now);
-    }
-    let mut effects = reduce(state, action, now, services);
-    if state.render_dirty {
-        if !is_animation_tick {
-            state.clear_expired_timers(now);
-        }
-        effects.push(Effect::Render);
-    }
-    flush_effects(
-        effects,
-        state,
-        tui,
-        effect_runner,
-        completion_engine,
-        services,
-    )
-    .await
-}
-
-#[allow(
-    clippy::print_stderr,
-    reason = "last-resort fallback when effect dispatch exceeds recursion limit"
-)]
-async fn flush_effects(
-    effects: Vec<Effect>,
-    state: &mut AppState,
-    tui: &mut TuiRunner,
-    effect_runner: &EffectRunner,
-    completion_engine: &RefCell<CompletionEngine>,
-    services: &AppServices,
+    runtime: &AppRuntime<'_>,
 ) -> Result<()> {
     let mut tui_adapter = TuiAdapter::new(tui);
-    let mut pending = effect_runner
-        .run(
-            effects,
-            &mut tui_adapter,
-            state,
-            completion_engine,
-            services,
-        )
-        .await?;
-    state.clear_dirty();
-
-    const MAX_DEPTH: usize = 16;
-    let mut depth = 0;
-    while !pending.is_empty() && depth < MAX_DEPTH {
-        depth += 1;
-        let mut next = Vec::new();
-        for action in pending {
-            let now = Instant::now();
-            let mut effects = reduce(state, action, now, services);
-            if state.render_dirty {
-                state.clear_expired_timers(now);
-                effects.push(Effect::Render);
-            }
-            let mut tui_adapter = TuiAdapter::new(tui);
-            next.extend(
-                effect_runner
-                    .run(
-                        effects,
-                        &mut tui_adapter,
-                        state,
-                        completion_engine,
-                        services,
-                    )
-                    .await?,
-            );
-            state.clear_dirty();
-        }
-        pending = next;
-    }
-    if depth >= MAX_DEPTH && !pending.is_empty() {
-        eprintln!(
-            "DispatchActions recursion depth exceeded ({MAX_DEPTH}), \
-             falling back to channel for {} remaining actions",
-            pending.len()
-        );
-        for action in pending {
-            if let Err(e) = effect_runner.action_tx().try_send(action) {
-                eprintln!("DispatchActions fallback: channel full, dropping action: {e}");
-            }
-        }
-    }
-    Ok(())
+    runtime.dispatch(action, state, &mut tui_adapter).await
 }
 
 const MAX_DRAIN: usize = 32;
@@ -344,38 +252,21 @@ async fn drain_and_process_terminal_events(
     first_action: Action,
     state: &mut AppState,
     tui: &mut TuiRunner,
-    effect_runner: &EffectRunner,
-    completion_engine: &RefCell<CompletionEngine>,
-    services: &AppServices,
+    runtime: &AppRuntime<'_>,
 ) -> Result<()> {
     if !first_action.is_scroll() {
-        return process_action(
-            first_action,
-            state,
-            tui,
-            effect_runner,
-            completion_engine,
-            services,
-        )
-        .await;
+        return dispatch_action(first_action, state, tui, runtime).await;
     }
 
     let now = Instant::now();
-    let mut effects = reduce(state, first_action, now, services);
+    let mut effects = app::update::reducer::reduce(state, first_action, now, runtime.services());
     if !effects.is_empty() {
         if state.render_dirty {
             state.clear_expired_timers(now);
-            effects.push(Effect::Render);
+            effects.push(app::cmd::effect::Effect::Render);
         }
-        return flush_effects(
-            effects,
-            state,
-            tui,
-            effect_runner,
-            completion_engine,
-            services,
-        )
-        .await;
+        let mut tui_adapter = TuiAdapter::new(tui);
+        return runtime.flush(effects, state, &mut tui_adapter).await;
     }
 
     let mut drained = 0;
@@ -384,52 +275,30 @@ async fn drain_and_process_terminal_events(
             break;
         };
         drained += 1;
-        let action = handle_event(event.into(), state, services);
+        let action = handle_event(event.into(), state, runtime.services());
         if action.is_none() {
             continue;
         }
 
         if action.is_scroll() {
             let now = Instant::now();
-            let mut effects = reduce(state, action, now, services);
+            let mut effects =
+                app::update::reducer::reduce(state, action, now, runtime.services());
             if !effects.is_empty() {
                 if state.render_dirty {
                     state.clear_expired_timers(now);
-                    effects.push(Effect::Render);
+                    effects.push(app::cmd::effect::Effect::Render);
                 }
-                flush_effects(
-                    effects,
-                    state,
-                    tui,
-                    effect_runner,
-                    completion_engine,
-                    services,
-                )
-                .await?;
+                let mut tui_adapter = TuiAdapter::new(tui);
+                runtime.flush(effects, state, &mut tui_adapter).await?;
                 break;
             }
         } else {
             if state.render_dirty {
                 state.clear_dirty();
-                process_action(
-                    Action::Render,
-                    state,
-                    tui,
-                    effect_runner,
-                    completion_engine,
-                    services,
-                )
-                .await?;
+                dispatch_action(Action::Render, state, tui, runtime).await?;
             }
-            process_action(
-                action,
-                state,
-                tui,
-                effect_runner,
-                completion_engine,
-                services,
-            )
-            .await?;
+            dispatch_action(action, state, tui, runtime).await?;
             if state.should_quit {
                 return Ok(());
             }
@@ -438,15 +307,7 @@ async fn drain_and_process_terminal_events(
 
     if state.render_dirty {
         state.clear_dirty();
-        process_action(
-            Action::Render,
-            state,
-            tui,
-            effect_runner,
-            completion_engine,
-            services,
-        )
-        .await?;
+        dispatch_action(Action::Render, state, tui, runtime).await?;
     }
 
     Ok(())

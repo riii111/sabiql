@@ -2,6 +2,7 @@ pub mod cmd;
 pub mod input;
 pub mod model;
 pub mod policy;
+pub mod runtime;
 pub mod update;
 
 pub mod ports;
@@ -15,6 +16,7 @@ pub mod app {
     pub use crate::model;
     pub use crate::policy;
     pub use crate::ports;
+    pub use crate::runtime;
     pub use crate::services;
     pub use crate::update;
 }
