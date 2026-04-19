@@ -58,6 +58,25 @@ impl<'a> AppRuntime<'a> {
         self.services
     }
 
+    pub async fn flush_reduced<T: Renderer>(
+        &self,
+        action: Action,
+        state: &mut AppState,
+        renderer: &mut T,
+    ) -> Result<bool> {
+        let now = Instant::now();
+        let mut effects = reduce(state, action, now, self.services);
+        if effects.is_empty() && !state.render_dirty {
+            return Ok(false);
+        }
+        if state.render_dirty {
+            state.clear_expired_timers(now);
+            effects.push(Effect::Render);
+        }
+        self.flush(effects, state, renderer).await?;
+        Ok(true)
+    }
+
     #[allow(
         clippy::print_stderr,
         reason = "last-resort fallback when effect dispatch exceeds recursion limit"

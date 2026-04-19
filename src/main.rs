@@ -229,15 +229,14 @@ async fn drain_and_process_terminal_events(
         return dispatch_action(first_action, state, tui, runtime).await;
     }
 
-    let now = Instant::now();
-    let mut effects = app::update::reducer::reduce(state, first_action, now, runtime.services());
-    if !effects.is_empty() {
-        if state.render_dirty {
-            state.clear_expired_timers(now);
-            effects.push(app::cmd::effect::Effect::Render);
-        }
+    {
         let mut tui_adapter = TuiAdapter::new(tui);
-        return runtime.flush(effects, state, &mut tui_adapter).await;
+        if runtime
+            .flush_reduced(first_action, state, &mut tui_adapter)
+            .await?
+        {
+            return Ok(());
+        }
     }
 
     let mut drained = 0;
@@ -252,16 +251,11 @@ async fn drain_and_process_terminal_events(
         }
 
         if action.is_scroll() {
-            let now = Instant::now();
-            let mut effects =
-                app::update::reducer::reduce(state, action, now, runtime.services());
-            if !effects.is_empty() {
-                if state.render_dirty {
-                    state.clear_expired_timers(now);
-                    effects.push(app::cmd::effect::Effect::Render);
-                }
-                let mut tui_adapter = TuiAdapter::new(tui);
-                runtime.flush(effects, state, &mut tui_adapter).await?;
+            let mut tui_adapter = TuiAdapter::new(tui);
+            if runtime
+                .flush_reduced(action, state, &mut tui_adapter)
+                .await?
+            {
                 break;
             }
         } else {
