@@ -24,7 +24,18 @@ impl PostgresAdapter {
     pub fn with_timeout(timeout_secs: u64) -> Self {
         Self { timeout_secs }
     }
-
+    fn extract_primary_key(columns: &[Column]) -> Option<Vec<String>> {
+        let pk_cols: Vec<String> = columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
+            .collect();
+        if pk_cols.is_empty() {
+            None
+        } else {
+            Some(pk_cols)
+        }
+    }
 }
 
 impl DatabaseCapabilityProvider for PostgresAdapter {
@@ -47,21 +58,6 @@ impl DatabaseCapabilityProvider for PostgresAdapter {
 impl Default for PostgresAdapter {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl PostgresAdapter {
-    fn extract_primary_key(columns: &[Column]) -> Option<Vec<String>> {
-        let pk_cols: Vec<String> = columns
-            .iter()
-            .filter(|c| c.is_primary_key)
-            .map(|c| c.name.clone())
-            .collect();
-        if pk_cols.is_empty() {
-            None
-        } else {
-            Some(pk_cols)
-        }
     }
 }
 

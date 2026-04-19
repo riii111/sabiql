@@ -138,14 +138,12 @@ pub(crate) async fn run(
                     Ok(p) => (p, None),
                     Err(e) => (vec![], Some(e.to_string())),
                 };
-                let (services, service_file_path, service_load_warning) = match reader {
-                    Some(reader) => match reader.read_services() {
-                        Ok((s, p)) => (s, Some(p), None),
-                        Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
-                        Err(e) => (vec![], None, Some(e.to_string())),
-                    },
-                    None => (vec![], None, None),
-                };
+                let (services, service_file_path, service_load_warning) =
+                    match reader.as_ref().map(|reader| reader.read_services()) {
+                        Some(Ok((s, p))) => (s, Some(p), None),
+                        Some(Err(ServiceFileError::NotFound(_))) | None => (vec![], None, None),
+                        Some(Err(e)) => (vec![], None, Some(e.to_string())),
+                    };
 
                 tx.blocking_send(Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,

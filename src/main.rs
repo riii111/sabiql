@@ -40,10 +40,9 @@ use crate::app::cmd::runner::EffectRunner;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::ports::{
-    ConnectionStore, ConnectionStoreError, DatabaseCapabilities, DatabaseCapabilityProvider,
-    InspectorFeature, PgServiceEntryReader, ServiceFileError,
+    ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
+    ServiceFileError,
 };
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
@@ -57,25 +56,6 @@ use crate::infra::export::DotExporter;
 use crate::ui::adapters::TuiAdapter;
 use crate::ui::event::handlers::handle_event;
 use crate::ui::tui::TuiRunner;
-
-fn to_app_db_capabilities(capabilities: DatabaseCapabilities) -> DbCapabilities {
-    DbCapabilities::new(
-        capabilities.supports_explain,
-        capabilities
-            .supported_inspector_features
-            .into_iter()
-            .map(|feature| match feature {
-                InspectorFeature::Info => InspectorTab::Info,
-                InspectorFeature::Columns => InspectorTab::Columns,
-                InspectorFeature::Indexes => InspectorTab::Indexes,
-                InspectorFeature::ForeignKeys => InspectorTab::ForeignKeys,
-                InspectorFeature::Rls => InspectorTab::Rls,
-                InspectorFeature::Triggers => InspectorTab::Triggers,
-                InspectorFeature::Ddl => InspectorTab::Ddl,
-            })
-            .collect(),
-    )
-}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -129,7 +109,7 @@ async fn main() -> Result<()> {
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
-    let db_capabilities = to_app_db_capabilities(adapter.capabilities());
+    let db_capabilities: DbCapabilities = adapter.capabilities().into();
     let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
         Arc::new(PgServiceFileReader::new());
 

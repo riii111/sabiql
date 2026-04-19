@@ -15,17 +15,21 @@ fn is_multi_statement(content: &str) -> bool {
     split_statements(content).len() > 1
 }
 
-fn reject_unsupported_explain(state: &mut AppState, services: &AppServices) -> bool {
-    if services.db_capabilities.supports_explain {
-        return false;
-    }
-
+fn mark_explain_unavailable(state: &mut AppState, services: &AppServices) {
     state
         .explain
         .set_error("EXPLAIN is unavailable for this database".to_string());
     state.sql_modal.active_tab = services
         .db_capabilities
         .normalize_sql_modal_tab(state.sql_modal.active_tab);
+}
+
+fn reject_unsupported_explain(state: &mut AppState, services: &AppServices) -> bool {
+    if services.db_capabilities.supports_explain() {
+        return false;
+    }
+
+    mark_explain_unavailable(state, services);
     true
 }
 
@@ -59,7 +63,7 @@ pub fn reduce_explain_with_services(
             }
 
             let Some(query) = services.sql_dialect.build_explain_sql(&content) else {
-                reject_unsupported_explain(state, services);
+                mark_explain_unavailable(state, services);
                 return Some(vec![]);
             };
             state.sql_modal.set_status(SqlModalStatus::Running);
@@ -127,7 +131,7 @@ pub fn reduce_explain_with_services(
                     let Some(explain_query) =
                         services.sql_dialect.build_explain_analyze_sql(&content)
                     else {
-                        reject_unsupported_explain(state, services);
+                        mark_explain_unavailable(state, services);
                         return Some(vec![]);
                     };
                     state.sql_modal.set_status(SqlModalStatus::Running);
@@ -166,7 +170,7 @@ pub fn reduce_explain_with_services(
             {
                 let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
                 else {
-                    reject_unsupported_explain(state, services);
+                    mark_explain_unavailable(state, services);
                     return Some(vec![]);
                 };
                 state.sql_modal.set_status(SqlModalStatus::Running);

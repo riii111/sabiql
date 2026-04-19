@@ -21,7 +21,7 @@ pub fn render(
     now: Instant,
     theme: &ThemePalette,
 ) -> u16 {
-    if !services.db_capabilities.supports_explain {
+    if !services.db_capabilities.supports_explain() {
         let placeholder = Line::from(Span::styled(
             " EXPLAIN is unavailable for this database",
             Style::default().fg(theme.semantic.text.placeholder),

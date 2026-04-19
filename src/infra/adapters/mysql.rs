@@ -13,7 +13,6 @@ impl MySqlAdapter {
     pub fn new() -> Self {
         Self
     }
-
 }
 
 impl DatabaseCapabilityProvider for MySqlAdapter {

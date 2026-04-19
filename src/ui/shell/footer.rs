@@ -249,7 +249,7 @@ impl Footer {
                         SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
                         SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
                     ];
-                    if services.db_capabilities.supports_explain
+                    if services.db_capabilities.supports_explain()
                         && state.sql_modal.status() == &SqlModalStatus::Editing
                     {
                         hints.insert(

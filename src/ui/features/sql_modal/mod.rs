@@ -318,7 +318,7 @@ impl SqlModal {
                 SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
             ])
         });
-        if services.db_capabilities.supports_explain {
+        if services.db_capabilities.supports_explain() {
             &HINT
         } else {
             &HINT_NO_EXPLAIN

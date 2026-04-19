@@ -55,18 +55,7 @@ impl AppServices {
         Self {
             ddl_generator: Arc::new(StubDdlGenerator),
             sql_dialect: Arc::new(StubSqlDialect),
-            db_capabilities: DbCapabilities::new(
-                true,
-                vec![
-                    crate::app::model::shared::inspector_tab::InspectorTab::Info,
-                    crate::app::model::shared::inspector_tab::InspectorTab::Columns,
-                    crate::app::model::shared::inspector_tab::InspectorTab::Indexes,
-                    crate::app::model::shared::inspector_tab::InspectorTab::ForeignKeys,
-                    crate::app::model::shared::inspector_tab::InspectorTab::Rls,
-                    crate::app::model::shared::inspector_tab::InspectorTab::Triggers,
-                    crate::app::model::shared::inspector_tab::InspectorTab::Ddl,
-                ],
-            ),
+            db_capabilities: DbCapabilities::postgres_like(),
         }
     }
 }

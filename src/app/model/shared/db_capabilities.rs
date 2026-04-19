@@ -1,13 +1,34 @@
+use crate::app::ports::{DatabaseCapabilities, InspectorFeature};
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::sql_editor::modal::SqlModalTab;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
-    pub supports_explain: bool,
+    supports_explain: bool,
     supported_inspector_tabs: Vec<InspectorTab>,
 }
 
 impl DbCapabilities {
+    pub fn postgres_like() -> Self {
+        DatabaseCapabilities::new(
+            true,
+            vec![
+                InspectorFeature::Info,
+                InspectorFeature::Columns,
+                InspectorFeature::Indexes,
+                InspectorFeature::ForeignKeys,
+                InspectorFeature::Rls,
+                InspectorFeature::Triggers,
+                InspectorFeature::Ddl,
+            ],
+        )
+        .into()
+    }
+
+    pub fn supports_explain(&self) -> bool {
+        self.supports_explain
+    }
+
     pub fn supported_inspector_tabs(&self) -> &[InspectorTab] {
         &self.supported_inspector_tabs
     }
@@ -28,7 +49,7 @@ impl DbCapabilities {
     }
 
     pub fn supported_sql_modal_tabs(&self) -> &'static [SqlModalTab] {
-        if self.supports_explain {
+        if self.supports_explain() {
             &[
                 SqlModalTab::Sql,
                 SqlModalTab::Plan,
@@ -62,7 +83,7 @@ impl DbCapabilities {
             self.supported_inspector_tabs
                 .first()
                 .copied()
-                .unwrap_or_default()
+                .expect("supported_inspector_tabs must be non-empty (enforced by new())")
         }
     }
 
@@ -94,6 +115,27 @@ impl DbCapabilities {
     }
 }
 
+impl From<DatabaseCapabilities> for DbCapabilities {
+    fn from(capabilities: DatabaseCapabilities) -> Self {
+        Self::new(
+            capabilities.supports_explain,
+            capabilities
+                .supported_inspector_features
+                .into_iter()
+                .map(|feature| match feature {
+                    InspectorFeature::Info => InspectorTab::Info,
+                    InspectorFeature::Columns => InspectorTab::Columns,
+                    InspectorFeature::Indexes => InspectorTab::Indexes,
+                    InspectorFeature::ForeignKeys => InspectorTab::ForeignKeys,
+                    InspectorFeature::Rls => InspectorTab::Rls,
+                    InspectorFeature::Triggers => InspectorTab::Triggers,
+                    InspectorFeature::Ddl => InspectorTab::Ddl,
+                })
+                .collect(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,17 +155,14 @@ mod tests {
             ],
         );
 
-        assert!(caps.supports_explain);
+        assert!(caps.supports_explain());
         assert!(caps.supports_inspector_tab(InspectorTab::Ddl));
         assert_eq!(caps.supported_inspector_tabs().len(), 7);
     }
 
     #[test]
     fn normalize_unsupported_tab_returns_first_supported_tab() {
-        let caps = DbCapabilities {
-            supports_explain: false,
-            supported_inspector_tabs: vec![InspectorTab::Info, InspectorTab::Columns],
-        };
+        let caps = DbCapabilities::new(false, vec![InspectorTab::Info, InspectorTab::Columns]);
 
         assert_eq!(
             caps.normalize_inspector_tab(InspectorTab::Triggers),
