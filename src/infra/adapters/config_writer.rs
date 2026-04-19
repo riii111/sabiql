@@ -32,3 +32,32 @@ impl ConfigWriter for FileConfigWriter {
         get_cache_dir(project_name).map_err(map_cache_dir_error)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::*;
+
+    #[test]
+    fn unavailable_cache_base_maps_to_missing_cache_dir() {
+        let error = map_cache_dir_error(CacheDirError::BaseDirUnavailable);
+
+        assert!(matches!(error, ConfigWriterError::MissingCacheDir));
+    }
+
+    #[test]
+    fn io_not_found_remains_io_error() {
+        let error = map_cache_dir_error(CacheDirError::Io(io::Error::new(
+            io::ErrorKind::NotFound,
+            "missing parent",
+        )));
+
+        match error {
+            ConfigWriterError::Io(source) => {
+                assert_eq!(source.kind(), io::ErrorKind::NotFound);
+            }
+            ConfigWriterError::MissingCacheDir => panic!("expected io error"),
+        }
+    }
+}
