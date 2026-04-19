@@ -9,7 +9,7 @@ use crate::app::ports::DbOperationError;
 use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
-use super::parser::split_sql_statements;
+use super::parser::{ParseCommandTagError, split_sql_statements};
 
 fn csv_field_count(line: &str) -> usize {
     let mut count = 1;
@@ -305,9 +305,10 @@ impl PostgresAdapter {
             ));
         }
 
-        let affected_rows = Self::parse_affected_rows(&output.stdout).ok_or_else(|| {
-            DbOperationError::QueryFailed("Failed to parse affected row count".to_string())
-        })?;
+        let affected_rows = Self::parse_affected_rows_with_source(&output.stdout)
+            .map_err(|error: ParseCommandTagError| {
+                DbOperationError::CommandTagParseFailed(error.to_string())
+            })?;
 
         Ok(WriteExecutionResult {
             affected_rows,
@@ -427,10 +428,19 @@ impl PostgresAdapter {
         serde_json::from_str(trimmed).map_err(Into::into)
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
-        Self::extract_command_tag(stdout)
-            .and_then(|tag| tag.affected_rows())
+    fn parse_affected_rows_with_source(
+        stdout: &str,
+    ) -> Result<usize, ParseCommandTagError> {
+        let tag = Self::parse_command_tag(stdout)?;
+        tag.affected_rows()
             .map(|n| n as usize)
+            .ok_or_else(|| ParseCommandTagError::Invalid {
+                input: format!("{tag:?}"),
+            })
+    }
+
+    pub(in crate::infra::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
+        Self::parse_affected_rows_with_source(stdout).ok()
     }
 }
 
@@ -808,8 +818,9 @@ mod tests {
         #[test]
         fn select_tag_captured_for_ctas() {
             let tag = PostgresAdapter::parse_command_tag("SELECT 5");
-            assert_eq!(tag, Some(CommandTag::Select(5)));
+            assert_eq!(tag, Ok(CommandTag::Select(5)));
             let passes = tag
+                .ok()
                 .as_ref()
                 .is_some_and(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
             assert!(passes);
@@ -822,6 +833,7 @@ mod tests {
             for input in cases {
                 let tag = PostgresAdapter::parse_command_tag(input);
                 let passes = tag
+                    .ok()
                     .as_ref()
                     .is_some_and(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
                 assert!(
