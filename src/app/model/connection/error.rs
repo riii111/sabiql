@@ -1,9 +1,13 @@
+use crate::app::policy::password_masking::mask_password;
+use crate::app::ports::DbOperationError;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
     CliNotFound,
     HostUnreachable,
     AuthFailed,
     DatabaseNotFound,
+    ConnectionLost,
     Timeout,
     #[default]
     Unknown,
@@ -49,6 +53,10 @@ impl ConnectionErrorKind {
             return Self::Timeout;
         }
 
+        if is_connection_lost_message(&stderr_lower) {
+            return Self::ConnectionLost;
+        }
+
         Self::Unknown
     }
 
@@ -58,6 +66,7 @@ impl ConnectionErrorKind {
             Self::HostUnreachable => "Could not resolve host",
             Self::AuthFailed => "Authentication failed",
             Self::DatabaseNotFound => "Database does not exist",
+            Self::ConnectionLost => "Connection lost during operation",
             Self::Timeout => "Connection timed out",
             Self::Unknown => "Connection failed",
         }
@@ -69,6 +78,7 @@ impl ConnectionErrorKind {
             Self::HostUnreachable => "Check the hostname",
             Self::AuthFailed => "Check username and password",
             Self::DatabaseNotFound => "Check database name",
+            Self::ConnectionLost => "Reconnect and retry the operation",
             Self::Timeout => "Check network connectivity",
             Self::Unknown => "See details for more information",
         }
@@ -78,32 +88,41 @@ impl ConnectionErrorKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionErrorInfo {
     pub kind: ConnectionErrorKind,
-    pub raw_details: String,
-    pub masked_details: String,
+    masked_details: String,
 }
 
 impl ConnectionErrorInfo {
     pub fn new(raw_stderr: impl Into<String>) -> Self {
         let raw_details = raw_stderr.into();
         let kind = ConnectionErrorKind::classify(&raw_details);
-        let masked_details = Self::mask_password(&raw_details);
+        let masked_details = mask_password(&raw_details);
 
         Self {
             kind,
-            raw_details,
             masked_details,
         }
     }
 
     pub fn with_kind(kind: ConnectionErrorKind, raw_stderr: impl Into<String>) -> Self {
         let raw_details = raw_stderr.into();
-        let masked_details = Self::mask_password(&raw_details);
+        let masked_details = mask_password(&raw_details);
 
         Self {
             kind,
-            raw_details,
             masked_details,
         }
+    }
+
+    pub fn from_db_operation_error(error: &DbOperationError) -> Self {
+        let raw_details = error.raw_details().into_owned();
+        let kind = match error {
+            DbOperationError::CommandNotFound(_) => ConnectionErrorKind::CliNotFound,
+            DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
+            DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
+            DbOperationError::ConnectionFailed(_) => ConnectionErrorKind::classify(&raw_details),
+            _ => ConnectionErrorKind::Unknown,
+        };
+        Self::with_kind(kind, raw_details)
     }
 
     pub fn summary(&self) -> &'static str {
@@ -114,98 +133,23 @@ impl ConnectionErrorInfo {
         self.kind.hint()
     }
 
-    fn mask_password(text: &str) -> String {
-        let result = Self::mask_url_passwords(text);
-        let result = Self::mask_kv_passwords(&result);
-        Self::mask_env_passwords(&result)
+    pub fn masked_details(&self) -> &str {
+        &self.masked_details
     }
+}
 
-    fn mask_url_passwords(text: &str) -> String {
-        let lower = text.to_lowercase();
-        let mut result = String::with_capacity(text.len());
-        let mut i = 0;
-
-        while i < text.len() {
-            let remaining = &lower[i..];
-            let scheme_len = if remaining.starts_with("postgresql://") {
-                "postgresql://".len()
-            } else if remaining.starts_with("postgres://") {
-                "postgres://".len()
-            } else if remaining.starts_with("mysql://") {
-                "mysql://".len()
-            } else {
-                0
-            };
-
-            if scheme_len > 0 {
-                let after_scheme = i + scheme_len;
-                if let Some(colon_off) = text[after_scheme..].find(':') {
-                    let colon = after_scheme + colon_off;
-                    if let Some(at_off) = text[(colon + 1)..].find('@') {
-                        let at = colon + 1 + at_off;
-                        result.push_str(&text[i..=colon]);
-                        result.push_str("****");
-                        i = at; // '@' will be pushed next iteration
-                        continue;
-                    }
-                }
-            }
-
-            let ch = text[i..].chars().next().unwrap();
-            result.push(ch);
-            i += ch.len_utf8();
-        }
-
-        result
-    }
-
-    fn mask_kv_passwords(text: &str) -> String {
-        let lower = text.to_lowercase();
-        Self::mask_after_prefix(text, |pos| {
-            let needle = "password=";
-            lower[pos..].starts_with(needle).then_some(needle.len())
-        })
-    }
-
-    fn mask_env_passwords(text: &str) -> String {
-        const PREFIXES: &[&str] = &["PGPASSWORD=", "MYSQL_PASSWORD=", "MYSQL_PWD="];
-        Self::mask_after_prefix(text, |pos| {
-            PREFIXES
-                .iter()
-                .find_map(|p| text[pos..].starts_with(p).then_some(p.len()))
-        })
-    }
-
-    fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -> String {
-        let mut result = String::with_capacity(text.len());
-        let mut i = 0;
-
-        while i < text.len() {
-            if let Some(prefix_len) = find_prefix(i) {
-                let eq_end = i + prefix_len;
-                result.push_str(&text[i..eq_end]);
-                result.push_str("****");
-                let mut j = eq_end;
-                while j < text.len() && !text.as_bytes()[j].is_ascii_whitespace() {
-                    j += 1;
-                }
-                i = j;
-            } else {
-                let ch = text[i..].chars().next().unwrap();
-                result.push(ch);
-                i += ch.len_utf8();
-            }
-        }
-
-        result
-    }
+fn is_connection_lost_message(lower: &str) -> bool {
+    lower.contains("server closed the connection unexpectedly")
+        || lower.contains("connection to server was lost")
+        || lower.contains("terminating connection")
+        || lower.contains("connection not open")
+        || lower.contains("broken pipe")
 }
 
 impl Default for ConnectionErrorInfo {
     fn default() -> Self {
         Self {
             kind: ConnectionErrorKind::Unknown,
-            raw_details: String::new(),
             masked_details: String::new(),
         }
     }
@@ -270,6 +214,16 @@ mod tests {
         }
 
         #[rstest]
+        #[case("psql: error: connection to server was lost")]
+        #[case("server closed the connection unexpectedly")]
+        fn stderr_as_connection_lost(#[case] stderr: &str) {
+            assert_eq!(
+                ConnectionErrorKind::classify(stderr),
+                ConnectionErrorKind::ConnectionLost
+            );
+        }
+
+        #[rstest]
         #[case("Connection refused")]
         #[case("Some random error")]
         #[case("")]
@@ -289,6 +243,7 @@ mod tests {
         #[case(ConnectionErrorKind::HostUnreachable)]
         #[case(ConnectionErrorKind::AuthFailed)]
         #[case(ConnectionErrorKind::DatabaseNotFound)]
+        #[case(ConnectionErrorKind::ConnectionLost)]
         #[case(ConnectionErrorKind::Timeout)]
         #[case(ConnectionErrorKind::Unknown)]
         fn has_non_empty_summary_and_hint(#[case] kind: ConnectionErrorKind) {
@@ -313,6 +268,29 @@ mod tests {
         }
 
         #[test]
+        fn from_db_operation_error_classifies_from_raw_details() {
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
+                    r#"FATAL: database "nonexistent" does not exist"#.to_string(),
+                ));
+
+            assert_eq!(info.kind, ConnectionErrorKind::DatabaseNotFound);
+            assert_eq!(
+                info.masked_details(),
+                "FATAL: database \"nonexistent\" does not exist"
+            );
+        }
+
+        #[test]
+        fn from_db_operation_error_preserves_connection_lost_kind() {
+            let info = ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::ConnectionLost("connection to server was lost".to_string()),
+            );
+
+            assert_eq!(info.kind, ConnectionErrorKind::ConnectionLost);
+        }
+
+        #[test]
         fn delegates_summary_and_hint() {
             let info = ConnectionErrorInfo::new("psql: command not found");
             assert_eq!(info.summary(), "Database CLI not found");
@@ -332,15 +310,16 @@ mod tests {
         #[case("POSTGRES://user:secret@host", "POSTGRES://user:****@host")]
         #[case("PostgreSQL://user:secret@host", "PostgreSQL://user:****@host")]
         fn masks_postgres_url_scheme(#[case] input: &str, #[case] expected: &str) {
-            assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
+            assert_eq!(mask_password(input), expected);
         }
 
         #[rstest]
         #[case("password=mysecret host=localhost", "password=**** host=localhost")]
         #[case("PASSWORD=mysecret host=localhost", "PASSWORD=**** host=localhost")]
         #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
+        #[case("pgpassword=secret123 psql", "pgpassword=**** psql")]
         fn masks_key_value_dsn(#[case] input: &str, #[case] expected: &str) {
-            assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
+            assert_eq!(mask_password(input), expected);
         }
 
         #[rstest]
@@ -348,22 +327,19 @@ mod tests {
         #[case("MYSQL_PASSWORD=secret123 mysql", "MYSQL_PASSWORD=**** mysql")]
         #[case("MYSQL_PWD=secret123 mysql", "MYSQL_PWD=**** mysql")]
         fn masks_mysql_credentials(#[case] input: &str, #[case] expected: &str) {
-            assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
+            assert_eq!(mask_password(input), expected);
         }
 
         #[test]
         fn passthrough_when_no_password() {
-            assert_eq!(
-                ConnectionErrorInfo::mask_password("no password here"),
-                "no password here"
-            );
+            assert_eq!(mask_password("no password here"), "no password here");
         }
 
         #[test]
-        fn info_stores_both_raw_and_masked() {
+        fn info_keeps_only_masked_details() {
             let info = ConnectionErrorInfo::new("postgres://user:secret@host");
-            assert!(info.raw_details.contains("secret"));
-            assert!(!info.masked_details.contains("secret"));
+            assert!(!info.masked_details().contains("secret"));
+            assert_eq!(info.masked_details(), "postgres://user:****@host");
         }
     }
 }

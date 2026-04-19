@@ -125,10 +125,10 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             Some(effects)
         }
         Action::MetadataFailed(error) => {
-            let error_info = ConnectionErrorInfo::new(error.to_string());
+            let error_info = ConnectionErrorInfo::from_db_operation_error(error);
             state.connection_error.set_error(error_info);
             let was_connected = state.session.connection_state().is_connected();
-            state.session.mark_connection_failed(error.to_string());
+            state.session.mark_connection_failed(error.masked_details());
             if !was_connected {
                 state.modal.replace_mode(InputMode::ConnectionError);
             }
@@ -145,7 +145,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
         Action::TableDetailFailed(error, generation) => {
             if *generation == state.session.selection_generation() {
-                state.set_error(error.to_string());
+                state.set_error(error.user_message());
             }
             Some(vec![])
         }
@@ -406,13 +406,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 qualified_name.clone(),
                 FailedPrefetchEntry {
                     failed_at: now,
-                    error: error.to_string(),
+                    error: error.user_message(),
                     retry_count: prev_count + 1,
                 },
             );
             state
                 .er_preparation
-                .on_table_failed(&qualified_name, error.to_string());
+                .on_table_failed(&qualified_name, error.user_message());
 
             let mut effects = Vec::new();
 
@@ -684,7 +684,10 @@ mod tests {
                 .get(&qualified)
                 .unwrap();
             assert_eq!(entry.retry_count, 2);
-            assert_eq!(entry.error, "Query failed: new error");
+            assert_eq!(
+                entry.error,
+                "Query failed: new error. Review the database error details and SQL."
+            );
         }
 
         #[test]

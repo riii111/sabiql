@@ -1,15 +1,16 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Instant, SystemTime};
+use std::time::SystemTime;
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::ports::{DbOperationError, QueryExecutor, QueryHistoryStore};
+use crate::app::ports::{QueryExecutor, QueryHistoryStore};
 use crate::app::update::action::Action;
 use crate::domain::ConnectionId;
+use crate::domain::QuerySource;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -128,7 +129,13 @@ pub async fn run(
                         .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::QueryFailed(e, generation)).await.ok();
+                        tx.send(Action::QueryFailed {
+                            error: e,
+                            generation,
+                            source: QuerySource::Preview,
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -145,44 +152,22 @@ pub async fn run(
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
-                let start = Instant::now();
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
-                        let elapsed = start.elapsed().as_millis() as u64;
-                        if result.is_error() {
-                            let error_text = result
-                                .rows
-                                .iter()
-                                .filter_map(|row| row.first())
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join("\n");
-                            let error_text = if error_text.is_empty() {
-                                "EXPLAIN failed".to_string()
-                            } else {
-                                error_text
-                            };
-                            tx.send(Action::ExplainFailed(DbOperationError::QueryFailed(
-                                error_text,
-                            )))
-                            .await
-                            .ok();
-                        } else {
-                            let plan_text = result
-                                .rows
-                                .iter()
-                                .filter_map(|row| row.first())
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join("\n");
-                            tx.send(Action::ExplainCompleted {
-                                plan_text,
-                                is_analyze,
-                                execution_time_ms: elapsed,
-                            })
-                            .await
-                            .ok();
-                        }
+                        let plan_text = result
+                            .rows
+                            .iter()
+                            .filter_map(|row| row.first())
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        tx.send(Action::ExplainCompleted {
+                            plan_text,
+                            is_analyze,
+                            execution_time_ms: result.execution_time_ms,
+                        })
+                        .await
+                        .ok();
                     }
                     Err(e) => {
                         tx.send(Action::ExplainFailed(e)).await.ok();
@@ -209,21 +194,17 @@ pub async fn run(
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
                         if let Some(cid) = &conn_id {
-                            let (status, rows) = if result.is_error() {
-                                (QueryResultStatus::Failed, None)
-                            } else {
-                                let rows = result.command_tag.as_ref().and_then(
-                                    crate::domain::command_tag::CommandTag::affected_rows,
-                                );
-                                (QueryResultStatus::Success, rows)
-                            };
+                            let rows = result
+                                .command_tag
+                                .as_ref()
+                                .and_then(crate::domain::command_tag::CommandTag::affected_rows);
                             save_query_history(
                                 &history_store,
                                 &history_tx,
                                 &project,
                                 cid,
                                 &query_for_history,
-                                status,
+                                QueryResultStatus::Success,
                                 rows,
                             );
                         }
@@ -247,7 +228,13 @@ pub async fn run(
                                 None,
                             );
                         }
-                        tx.send(Action::QueryFailed(e, 0)).await.ok();
+                        tx.send(Action::QueryFailed {
+                            error: e,
+                            generation: 0,
+                            source: QuerySource::Adhoc,
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -436,6 +423,7 @@ mod tests {
         use crate::app::ports::{DbOperationError, RenderOutput, RenderResult, Renderer};
         use crate::app::services::AppServices;
         use crate::app::update::action::Action;
+        use crate::domain::QuerySource;
 
         struct NoopRenderer;
         impl Renderer for NoopRenderer {
@@ -550,7 +538,13 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             assert!(
-                matches!(action, Action::QueryFailed(_, _)),
+                matches!(
+                    action,
+                    Action::QueryFailed {
+                        source: QuerySource::Preview,
+                        ..
+                    }
+                ),
                 "expected QueryFailed, got {action:?}"
             );
         }

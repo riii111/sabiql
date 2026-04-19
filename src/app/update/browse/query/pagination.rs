@@ -132,7 +132,7 @@ pub fn reduce(
         }
 
         Action::CsvExportFailed(error) => {
-            state.messages.set_error_at(error.to_string(), now);
+            state.messages.set_error_at(error.user_message(), now);
             Some(vec![])
         }
 
@@ -653,7 +653,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("Query failed: psql error")
+                Some("Query failed: psql error. Review the database error details and SQL.")
             );
         }
 

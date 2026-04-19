@@ -212,7 +212,7 @@ pub fn reduce_explain_with_services(
         }
 
         Action::ExplainFailed(error) => {
-            state.explain.set_error(error.to_string());
+            state.explain.set_error(error.user_message());
             state.sql_modal.set_status(SqlModalStatus::Normal);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.query.mark_idle();
@@ -823,7 +823,7 @@ mod tests {
 
             assert_eq!(
                 state.explain.error.as_deref(),
-                Some("Query failed: syntax error")
+                Some("Query failed: syntax error. Review the database error details and SQL.")
             );
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);

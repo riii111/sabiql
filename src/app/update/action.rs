@@ -13,7 +13,7 @@ use crate::app::ports::query_history::QueryHistoryError;
 use crate::domain::connection::{ConnectionNameError, ConnectionProfile, ServiceEntry};
 use std::collections::HashMap;
 
-use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
+use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Table};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
@@ -440,7 +440,11 @@ pub enum Action {
         generation: u64,
         target_page: Option<usize>,
     },
-    QueryFailed(DbOperationError, u64),
+    QueryFailed {
+        error: DbOperationError,
+        generation: u64,
+        source: QuerySource,
+    },
     ExecuteWriteSucceeded {
         affected_rows: usize,
     },
