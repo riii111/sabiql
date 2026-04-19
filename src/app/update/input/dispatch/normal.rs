@@ -1566,7 +1566,7 @@ mod tests {
         }
 
         #[test]
-        fn shift_g_event_translates_to_select_last() {
+        fn capital_g_selects_last() {
             let state = explorer_ctx();
 
             let result = handle_normal_mode(combo(Key::Char('G')), &state);

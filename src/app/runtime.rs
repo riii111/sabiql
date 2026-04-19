@@ -37,17 +37,8 @@ impl<'a> AppRuntime<'a> {
         state: &mut AppState,
         renderer: &mut T,
     ) -> Result<()> {
-        let now = Instant::now();
-        let is_animation_tick = matches!(action, Action::Render);
-        if is_animation_tick {
-            state.clear_expired_timers(now);
-        }
-
-        let mut effects = reduce(state, action, now, self.services);
-        if state.render_dirty {
-            if !is_animation_tick {
-                state.clear_expired_timers(now);
-            }
+        let (mut effects, should_render) = self.reduce_action(action, state);
+        if should_render {
             effects.push(Effect::Render);
         }
 
@@ -58,29 +49,39 @@ impl<'a> AppRuntime<'a> {
         self.services
     }
 
+    pub fn reduce_action(&self, action: Action, state: &mut AppState) -> (Vec<Effect>, bool) {
+        let now = Instant::now();
+        let is_animation_tick = matches!(action, Action::Render);
+        if is_animation_tick {
+            state.clear_expired_timers(now);
+        }
+
+        let effects = reduce(state, action, now, self.services);
+        let should_render = state.render_dirty;
+        if should_render && !is_animation_tick {
+            state.clear_expired_timers(now);
+        }
+
+        (effects, should_render)
+    }
+
     pub async fn flush_reduced<T: Renderer>(
         &self,
         action: Action,
         state: &mut AppState,
         renderer: &mut T,
     ) -> Result<bool> {
-        let now = Instant::now();
-        let mut effects = reduce(state, action, now, self.services);
-        if effects.is_empty() && !state.render_dirty {
+        let (mut effects, should_render) = self.reduce_action(action, state);
+        if effects.is_empty() && !should_render {
             return Ok(false);
         }
-        if state.render_dirty {
-            state.clear_expired_timers(now);
+        if should_render {
             effects.push(Effect::Render);
         }
         self.flush(effects, state, renderer).await?;
         Ok(true)
     }
 
-    #[allow(
-        clippy::print_stderr,
-        reason = "last-resort fallback when effect dispatch exceeds recursion limit"
-    )]
     pub async fn flush<T: Renderer>(
         &self,
         effects: Vec<Effect>,
@@ -105,10 +106,8 @@ impl<'a> AppRuntime<'a> {
             depth += 1;
             let mut next = Vec::new();
             for action in pending {
-                let now = Instant::now();
-                let mut effects = reduce(state, action, now, self.services);
-                if state.render_dirty {
-                    state.clear_expired_timers(now);
+                let (mut effects, should_render) = self.reduce_action(action, state);
+                if should_render {
                     effects.push(Effect::Render);
                 }
                 next.extend(
@@ -128,15 +127,24 @@ impl<'a> AppRuntime<'a> {
         }
 
         if depth >= MAX_DEPTH && !pending.is_empty() {
-            eprintln!(
-                "DispatchActions recursion depth exceeded ({MAX_DEPTH}), \
-                 falling back to channel for {} remaining actions",
-                pending.len()
+            state.messages.set_error_at(
+                format!(
+                    "DispatchActions recursion depth exceeded ({MAX_DEPTH}); retrying {} pending action(s) via queue",
+                    pending.len()
+                ),
+                Instant::now(),
             );
+            let mut dropped = 0usize;
             for action in pending {
-                if let Err(error) = self.effect_runner.action_tx().try_send(action) {
-                    eprintln!("DispatchActions fallback: channel full, dropping action: {error}");
+                if self.effect_runner.action_tx().try_send(action).is_err() {
+                    dropped += 1;
                 }
+            }
+            if dropped > 0 {
+                state.messages.set_error_at(
+                    format!("DispatchActions fallback queue was full; dropped {dropped} action(s)"),
+                    Instant::now(),
+                );
             }
         }
 

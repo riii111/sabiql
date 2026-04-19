@@ -22,6 +22,7 @@ mod tests;
 mod render_snapshots;
 
 use crate::app::AppServices;
+use crate::app::cmd::effect::Effect;
 use crate::app::ports::{
     ConnectionStore, DatabaseCapabilityProvider, PgServiceEntryReader, handle_input,
 };
@@ -121,17 +122,18 @@ async fn main() -> Result<()> {
         Ok(_) => Some(pg_service_entry_reader.read_services()),
         Err(_) => None,
     };
-    if let Err(StartupLoadError::VersionMismatch { found, expected }) =
-        initialize_connection_state(&mut state, &services, all_profiles, service_result)
-    {
-        eprintln!(
-            "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
-             Please delete {} and reconfigure.",
-            found,
-            expected,
-            connection_store.storage_path().display()
-        );
-        std::process::exit(1);
+    match initialize_connection_state(&mut state, &services, all_profiles, service_result) {
+        Ok(()) => {}
+        Err(StartupLoadError::VersionMismatch { found, expected }) => {
+            eprintln!(
+                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
+                 Please delete {} and reconfigure.",
+                found,
+                expected,
+                connection_store.storage_path().display()
+            );
+            std::process::exit(1);
+        }
     }
 
     let mut tui = TuiRunner::new()?;
@@ -154,7 +156,7 @@ async fn main() -> Result<()> {
 
         tokio::select! {
             Some(event) = tui.next_event() => {
-                let action = handle_input(event.into(), &state, &services);
+                let action = handle_input(event.into(), &state, runtime.services());
                 if !action.is_none() {
                     drain_and_process_terminal_events(action, &mut state, &mut tui, &runtime).await?;
                 }
@@ -216,14 +218,14 @@ async fn drain_and_process_terminal_events(
         return dispatch_action(first_action, state, tui, runtime).await;
     }
 
-    {
-        let mut tui_adapter = TuiAdapter::new(tui);
-        if runtime
-            .flush_reduced(first_action, state, &mut tui_adapter)
-            .await?
-        {
-            return Ok(());
+    let (mut effects, should_render) = runtime.reduce_action(first_action, state);
+    if !effects.is_empty() {
+        if should_render {
+            effects.push(Effect::Render);
         }
+        let mut tui_adapter = TuiAdapter::new(tui);
+        runtime.flush(effects, state, &mut tui_adapter).await?;
+        return Ok(());
     }
 
     let mut drained = 0;
@@ -238,11 +240,13 @@ async fn drain_and_process_terminal_events(
         }
 
         if action.is_scroll() {
-            let mut tui_adapter = TuiAdapter::new(tui);
-            if runtime
-                .flush_reduced(action, state, &mut tui_adapter)
-                .await?
-            {
+            let (mut effects, should_render) = runtime.reduce_action(action, state);
+            if !effects.is_empty() {
+                if should_render {
+                    effects.push(Effect::Render);
+                }
+                let mut tui_adapter = TuiAdapter::new(tui);
+                runtime.flush(effects, state, &mut tui_adapter).await?;
                 break;
             }
         } else {

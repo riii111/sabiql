@@ -47,7 +47,8 @@ impl Footer {
         time_ms: u128,
         theme: &ThemePalette,
     ) -> Line<'static> {
-        let text = footer_status_text(state, time_ms).unwrap_or_default();
+        let text = footer_status_text(state, time_ms)
+            .expect("build_er_waiting_line is only used while ER preparation is waiting");
         Line::from(Span::styled(
             text,
             Style::default().fg(theme.semantic.text.accent),
@@ -108,14 +109,19 @@ mod tests {
         #[case] db_capabilities: DbCapabilities,
         #[case] expected_visible: bool,
     ) {
+        use crate::app::update::input::keybindings::{GLOBAL_KEYS, idx};
+
         let state = inspector_state();
         let mut services = AppServices::stub();
         services.db_capabilities = db_capabilities;
 
         let hints = footer_hints(&state, &services);
+        let inspector_tabs_description = GLOBAL_KEYS[idx::global::INSPECTOR_TABS].description;
 
         assert_eq!(
-            hints.iter().any(|hint| hint.description == "InsTabs"),
+            hints
+                .iter()
+                .any(|hint| hint.description == inspector_tabs_description),
             expected_visible
         );
     }

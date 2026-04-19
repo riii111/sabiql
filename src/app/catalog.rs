@@ -64,16 +64,20 @@ fn dedup_adjacent_bindings(bindings: &[KeyBinding]) -> Vec<HelpEntry> {
     let mut entries = Vec::new();
     let mut i = 0;
     while i < bindings.len() {
-        if i + 1 < bindings.len() && bindings[i].key == bindings[i + 1].key {
+        let run_end = bindings[i..]
+            .iter()
+            .position(|binding| binding.key != bindings[i].key)
+            .map_or(bindings.len(), |offset| i + offset);
+
+        if run_end - i >= 2 {
             entries.push(HelpEntry {
                 key: bindings[i].key,
                 description: Cow::Owned(format!("Toggle {}", bindings[i].desc_short)),
             });
-            i += 2;
         } else {
             entries.push(help_entry_from_binding(&bindings[i]));
-            i += 1;
         }
+        i = run_end;
     }
     entries
 }
@@ -244,7 +248,8 @@ pub fn footer_status_text(state: &AppState, time_ms: u128) -> Option<String> {
 
 fn spinner_char(time_ms: u128) -> &'static str {
     const SPINNER_FRAMES: [&str; 4] = ["◐", "◓", "◑", "◒"];
-    SPINNER_FRAMES[(time_ms / 300) as usize % SPINNER_FRAMES.len()]
+    let idx = (time_ms / 300) % SPINNER_FRAMES.len() as u128;
+    SPINNER_FRAMES[idx as usize]
 }
 
 pub fn footer_hints(state: &AppState, services: &AppServices) -> Vec<Hint> {
@@ -657,13 +662,22 @@ mod tests {
     fn inspector_tabs_footer_hint_tracks_supported_tab_count() {
         let state = inspector_state();
         let mut services = AppServices::stub();
+        let inspector_tabs_description = GLOBAL_KEYS[idx::global::INSPECTOR_TABS].description;
         services.db_capabilities = DbCapabilities::new(true, vec![InspectorTab::Info]);
         let hidden = footer_hints(&state, &services);
-        assert!(!hidden.iter().any(|hint| hint.description == "InsTabs"));
+        assert!(
+            !hidden
+                .iter()
+                .any(|hint| hint.description == inspector_tabs_description)
+        );
 
         services.db_capabilities =
             DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
         let visible = footer_hints(&state, &services);
-        assert!(visible.iter().any(|hint| hint.description == "InsTabs"));
+        assert!(
+            visible
+                .iter()
+                .any(|hint| hint.description == inspector_tabs_description)
+        );
     }
 }

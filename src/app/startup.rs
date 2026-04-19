@@ -26,10 +26,9 @@ pub fn initialize_connection_state(
     match profiles_result {
         Ok(profiles) => {
             let (service_entries, service_file_path, service_load_warning) = match service_result {
-                Some(Ok((entries, path))) if !entries.is_empty() => (entries, Some(path), None),
-                Some(Ok(_)) | Some(Err(ServiceFileError::NotFound(_))) | None => {
-                    (Vec::new(), None, None)
-                }
+                Some(Ok((entries, path))) if entries.is_empty() => (Vec::new(), Some(path), None),
+                Some(Ok((entries, path))) => (entries, Some(path), None),
+                Some(Err(ServiceFileError::NotFound(_))) | None => (Vec::new(), None, None),
                 Some(Err(error)) => (Vec::new(), None, Some(error.to_string())),
             };
 
@@ -60,7 +59,20 @@ pub fn initialize_connection_state(
         Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
             Err(StartupLoadError::VersionMismatch { found, expected })
         }
-        Err(_) => {
+        Err(error) => {
+            let payload = ConnectionsLoadedPayload {
+                profiles: Vec::new(),
+                services: Vec::new(),
+                service_file_path: None,
+                profile_load_warning: Some(error.to_string()),
+                service_load_warning: None,
+            };
+            reduce(
+                state,
+                crate::update::action::Action::ConnectionsLoaded(payload),
+                std::time::Instant::now(),
+                services,
+            );
             state.connection_setup.is_first_run = true;
             state.modal.set_mode(InputMode::ConnectionSetup);
             Ok(())
@@ -131,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn sorts_profiles_before_presenting_selector() {
+    fn presents_profiles_in_sorted_order_after_connections_loaded() {
         let mut state = AppState::new("test".to_string());
 
         initialize_connection_state(
@@ -147,6 +159,24 @@ mod tests {
         assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
         assert_eq!(state.connections()[0].display_name(), "alpha");
         assert_eq!(state.connections()[1].display_name(), "zeta");
+    }
+
+    #[test]
+    fn preserves_empty_service_file_path() {
+        let mut state = AppState::new("test".to_string());
+
+        initialize_connection_state(
+            &mut state,
+            &crate::services::AppServices::stub(),
+            Ok(vec![]),
+            Some(Ok((vec![], "/tmp/pg_service.conf".into()))),
+        )
+        .unwrap();
+
+        assert_eq!(
+            state.runtime.service_file_path.as_deref(),
+            Some(std::path::Path::new("/tmp/pg_service.conf"))
+        );
     }
 
     #[test]
@@ -171,5 +201,24 @@ mod tests {
                 expected: 2
             }
         ));
+    }
+
+    #[test]
+    fn surfaces_profile_load_warning_when_profiles_cannot_be_loaded() {
+        let mut state = AppState::new("test".to_string());
+
+        initialize_connection_state(
+            &mut state,
+            &crate::services::AppServices::stub(),
+            Err(ConnectionStoreError::Io(std::sync::Arc::new(
+                std::io::Error::other("broken config"),
+            ))),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
+        assert!(state.connection_setup.is_first_run);
+        assert_eq!(state.messages.last_error.as_deref(), Some("broken config"));
     }
 }
