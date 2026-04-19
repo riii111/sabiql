@@ -4,6 +4,9 @@
 //! via `#[source]` to preserve `Error::source()` chains. Method signatures stay
 //! free of adapter-specific types; only error sources are exposed.
 
+pub mod inbound;
+pub mod outbound;
+
 pub mod clipboard;
 pub mod config_writer;
 pub mod connection_store;
@@ -15,7 +18,6 @@ pub mod er_exporter;
 pub mod er_log_writer;
 pub mod folder_opener;
 pub mod graphviz;
-pub mod input;
 pub mod metadata;
 pub mod query_executor;
 pub mod query_history;
@@ -23,21 +25,39 @@ pub mod renderer;
 pub mod service_file;
 pub mod sql_dialect;
 
-pub use clipboard::{ClipboardError, ClipboardWriter};
-pub use config_writer::{ConfigWriter, ConfigWriterError};
-pub use connection_store::{ConnectionStore, ConnectionStoreError};
-pub use db_capabilities::{DatabaseCapabilities, DatabaseCapabilityProvider, InspectorFeature};
-pub use db_operation_error::DbOperationError;
-pub use ddl_generator::DdlGenerator;
-pub use dsn_builder::DsnBuilder;
-pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};
-pub use er_log_writer::ErLogWriter;
-pub use folder_opener::{FolderOpenError, FolderOpener};
-pub use graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
-pub use input::{InputEvent, InputKeyCombo, Key, Modifiers, handle_input};
-pub use metadata::MetadataProvider;
-pub use query_executor::QueryExecutor;
-pub use query_history::{QueryHistoryError, QueryHistoryStore};
-pub use renderer::{RenderError, RenderOutput, RenderResult, Renderer};
-pub use service_file::{PgServiceEntryReader, ServiceFileError};
-pub use sql_dialect::SqlDialect;
+pub use inbound::{handle_input, InputEvent, InputKeyCombo, Key, Modifiers};
+pub use outbound::{
+    ClipboardError,
+    ClipboardWriter,
+    ConfigWriter,
+    ConfigWriterError,
+    ConnectionStore,
+    ConnectionStoreError,
+    DatabaseCapabilities,
+    DatabaseCapabilityProvider,
+    DbOperationError,
+    DdlGenerator,
+    DsnBuilder,
+    ErDiagramExporter,
+    ErExportError,
+    ErExportResult,
+    ErLogWriter,
+    FolderOpenError,
+    FolderOpener,
+    GraphvizError,
+    GraphvizRunner,
+    InspectorFeature,
+    MetadataProvider,
+    QueryExecutor,
+    QueryHistoryError,
+    QueryHistoryStore,
+    PgServiceEntryReader,
+    RenderError,
+    RenderOutput,
+    RenderResult,
+    Renderer,
+    ServiceFileError,
+    SqlDialect,
+    ViewerError,
+    ViewerLauncher,
+};

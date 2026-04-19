@@ -8,7 +8,7 @@ mod sql_modal;
 
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::ports::input::InputEvent;
+use crate::ports::InputEvent;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::input::keybindings::KeyCombo;
