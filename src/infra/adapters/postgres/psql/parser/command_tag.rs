@@ -1,28 +1,18 @@
-use crate::app::ports::DbOperationError;
 use crate::domain::CommandTag;
 
 use super::super::super::PostgresAdapter;
 use super::lexer::{has_select_into, split_sql_statements};
-use std::str::FromStr;
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
-pub enum ParseCommandTagError {
+pub(crate) enum ParseCommandTagError {
     #[error("empty command tag")]
     Empty,
     #[error("invalid command tag: {input}")]
     Invalid { input: String },
 }
 
-impl From<ParseCommandTagError> for DbOperationError {
-    fn from(error: ParseCommandTagError) -> Self {
-        Self::CommandTagParseFailed(error.to_string())
-    }
-}
-
-impl FromStr for CommandTag {
-    type Err = ParseCommandTagError;
-
-    fn from_str(tag: &str) -> Result<Self, Self::Err> {
+impl PostgresAdapter {
+    fn parse_command_tag_str(tag: &str) -> Result<CommandTag, ParseCommandTagError> {
         let trimmed = tag.trim();
         if trimmed.is_empty() {
             return Err(ParseCommandTagError::Empty);
@@ -46,7 +36,7 @@ impl FromStr for CommandTag {
                     .map_err(|_| ParseCommandTagError::Invalid {
                         input: tag.to_string(),
                     })?;
-                Ok(Self::Select(n))
+                Ok(CommandTag::Select(n))
             }
             "INSERT" => {
                 // INSERT oid count — count is at index 2
@@ -59,7 +49,7 @@ impl FromStr for CommandTag {
                     .map_err(|_| ParseCommandTagError::Invalid {
                         input: tag.to_string(),
                     })?;
-                Ok(Self::Insert(n))
+                Ok(CommandTag::Insert(n))
             }
             "UPDATE" => {
                 let n = parts
@@ -71,7 +61,7 @@ impl FromStr for CommandTag {
                     .map_err(|_| ParseCommandTagError::Invalid {
                         input: tag.to_string(),
                     })?;
-                Ok(Self::Update(n))
+                Ok(CommandTag::Update(n))
             }
             "DELETE" => {
                 let n = parts
@@ -83,44 +73,49 @@ impl FromStr for CommandTag {
                     .map_err(|_| ParseCommandTagError::Invalid {
                         input: tag.to_string(),
                     })?;
-                Ok(Self::Delete(n))
+                Ok(CommandTag::Delete(n))
             }
             "CREATE" => {
                 let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
                     input: tag.to_string(),
                 })?;
-                Ok(Self::Create(obj.to_string()))
+                Ok(CommandTag::Create(obj.to_string()))
             }
             "DROP" => {
                 let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
                     input: tag.to_string(),
                 })?;
-                Ok(Self::Drop(obj.to_string()))
+                Ok(CommandTag::Drop(obj.to_string()))
             }
             "ALTER" => {
                 let obj = parts.get(1).ok_or_else(|| ParseCommandTagError::Invalid {
                     input: tag.to_string(),
                 })?;
-                Ok(Self::Alter(obj.to_string()))
+                Ok(CommandTag::Alter(obj.to_string()))
             }
-            "TRUNCATE" => Ok(Self::Truncate),
-            "BEGIN" => Ok(Self::Begin),
-            "COMMIT" => Ok(Self::Commit),
-            "ROLLBACK" => Ok(Self::Rollback),
-            _ => Ok(Self::Other(trimmed.to_string())),
+            "TRUNCATE" => Ok(CommandTag::Truncate),
+            "BEGIN" => Ok(CommandTag::Begin),
+            "COMMIT" => Ok(CommandTag::Commit),
+            "ROLLBACK" => Ok(CommandTag::Rollback),
+            _ => Ok(CommandTag::Other(trimmed.to_string())),
         }
     }
-}
 
-impl PostgresAdapter {
-    pub(in crate::infra::adapters::postgres) fn extract_command_tag(
+    pub(in crate::infra::adapters::postgres) fn parse_command_tag(
         stdout: &str,
-    ) -> Option<CommandTag> {
+    ) -> Result<CommandTag, ParseCommandTagError> {
         stdout
             .lines()
             .rev()
             .find(|line| !line.trim().is_empty())
-            .and_then(|line| line.parse::<CommandTag>().ok())
+            .ok_or(ParseCommandTagError::Empty)
+            .and_then(Self::parse_command_tag_str)
+    }
+
+    pub(in crate::infra::adapters::postgres) fn extract_command_tag(
+        stdout: &str,
+    ) -> Option<CommandTag> {
+        Self::parse_command_tag(stdout).ok()
     }
 
     fn is_known_tcl_tag(s: &str) -> bool {
@@ -137,7 +132,7 @@ impl PostgresAdapter {
             if trimmed.is_empty() {
                 continue;
             }
-            let tag = trimmed.parse::<CommandTag>().ok()?;
+            let tag = Self::parse_command_tag_str(trimmed).ok()?;
             if let CommandTag::Other(ref raw) = tag
                 && !Self::is_known_tcl_tag(raw)
             {
@@ -390,7 +385,7 @@ mod tests {
         #[case("COMMIT", CommandTag::Commit)]
         #[case("ROLLBACK", CommandTag::Rollback)]
         fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
-            assert_eq!(input.parse::<CommandTag>(), Ok(expected));
+            assert_eq!(PostgresAdapter::parse_command_tag(input), Ok(expected));
         }
 
         #[rstest]
@@ -398,7 +393,7 @@ mod tests {
         #[case("   ")]
         fn empty_or_whitespace_returns_none(#[case] input: &str) {
             assert!(matches!(
-                input.parse::<CommandTag>(),
+                PostgresAdapter::parse_command_tag(input),
                 Err(ParseCommandTagError::Empty)
             ));
         }
@@ -411,7 +406,7 @@ mod tests {
         #[case("DELETE")]
         fn malformed_count_returns_none(#[case] input: &str) {
             assert!(matches!(
-                input.parse::<CommandTag>(),
+                PostgresAdapter::parse_command_tag(input),
                 Err(ParseCommandTagError::Invalid { .. })
             ));
         }
@@ -419,7 +414,7 @@ mod tests {
         #[test]
         fn unknown_command_returns_other() {
             assert_eq!(
-                "VACUUM".parse::<CommandTag>(),
+                PostgresAdapter::parse_command_tag("VACUUM"),
                 Ok(CommandTag::Other("VACUUM".to_string()))
             );
         }
