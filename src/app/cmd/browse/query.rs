@@ -150,13 +150,15 @@ pub async fn run(
                     Ok(result) => {
                         let elapsed = start.elapsed().as_millis() as u64;
                         if result.is_error() {
-                            let error_text = result
-                                .rows
-                                .iter()
-                                .filter_map(|row| row.first())
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join("\n");
+                            let error_text = result.error.clone().unwrap_or_else(|| {
+                                result
+                                    .rows
+                                    .iter()
+                                    .filter_map(|row| row.first())
+                                    .cloned()
+                                    .collect::<Vec<_>>()
+                                    .join("\n")
+                            });
                             let error_text = if error_text.is_empty() {
                                 "EXPLAIN failed".to_string()
                             } else {

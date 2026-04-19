@@ -151,9 +151,9 @@ pub fn reduce(
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
                 }
-                state.set_error(error.to_string());
+                state.set_error(error.user_message());
                 if is_adhoc {
-                    state.sql_modal.mark_adhoc_error(error.to_string());
+                    state.sql_modal.mark_adhoc_error(error.user_message());
                 }
             }
             Some(vec![])

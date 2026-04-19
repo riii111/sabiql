@@ -360,7 +360,7 @@ pub fn reduce(
                 .map_or(WriteOperation::Update, |p| p.operation);
             state.result_interaction.clear_write_preview();
             state.query.clear_delete_refresh_target();
-            state.messages.set_error_at(error.to_string(), now);
+            state.messages.set_error_at(error.user_message(), now);
             state.modal.set_mode(match operation {
                 WriteOperation::Update => InputMode::CellEdit,
                 WriteOperation::Delete => InputMode::Normal,
@@ -868,10 +868,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("Query failed: boom")
-            );
+            assert_eq!(state.messages.last_error.as_deref(), Some("boom"));
         }
 
         #[test]
