@@ -27,7 +27,7 @@ fn mask_url_passwords(text: &str) -> String {
             let authority = &text[authority_start..authority_end];
 
             if let Some(at) = authority.rfind('@') {
-                let userinfo = &authority[..at];
+                let userinfo = authority.get(..at).unwrap_or_default();
                 if let Some(colon) = userinfo.find(':') {
                     let password_start = authority_start + colon + 1;
                     let password_end = authority_start + at;
@@ -91,7 +91,7 @@ fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -
             result.push_str(&text[i..eq_end]);
             result.push_str("****");
             let mut j = eq_end;
-            while j < text.len() && !text.as_bytes()[j].is_ascii_whitespace() {
+            while j < text.len() && !is_assignment_terminator(text.as_bytes()[j]) {
                 j += 1;
             }
             i = j;
@@ -103,6 +103,10 @@ fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -
     }
 
     result
+}
+
+fn is_assignment_terminator(byte: u8) -> bool {
+    byte.is_ascii_whitespace() || matches!(byte, b';' | b'\'' | b'"' | b',')
 }
 
 #[cfg(test)]
@@ -125,6 +129,15 @@ mod tests {
     #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
     #[case("pgpassword=secret123 psql", "pgpassword=**** psql")]
     fn masks_password_assignments(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(mask_password(input), expected);
+    }
+
+    #[rstest]
+    #[case("password=secret;host=localhost", "password=****;host=localhost")]
+    #[case("password=secret,host=localhost", "password=****,host=localhost")]
+    #[case("password=secret' host=localhost", "password=****' host=localhost")]
+    #[case("password=secret\" host=localhost", "password=****\" host=localhost")]
+    fn stops_at_common_assignment_terminators(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
     }
 

@@ -93,7 +93,6 @@ impl ConnectionErrorKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionErrorInfo {
     pub kind: ConnectionErrorKind,
-    raw_details: String,
     masked_details: String,
 }
 
@@ -103,22 +102,14 @@ impl ConnectionErrorInfo {
         let kind = ConnectionErrorKind::classify(&raw_details);
         let masked_details = mask_password(&raw_details);
 
-        Self {
-            kind,
-            raw_details,
-            masked_details,
-        }
+        Self { kind, masked_details }
     }
 
     pub fn with_kind(kind: ConnectionErrorKind, raw_stderr: impl Into<String>) -> Self {
         let raw_details = raw_stderr.into();
         let masked_details = mask_password(&raw_details);
 
-        Self {
-            kind,
-            raw_details,
-            masked_details,
-        }
+        Self { kind, masked_details }
     }
 
     pub fn from_db_operation_error(error: &DbOperationError) -> Self {
@@ -150,7 +141,6 @@ impl Default for ConnectionErrorInfo {
     fn default() -> Self {
         Self {
             kind: ConnectionErrorKind::Unknown,
-            raw_details: String::new(),
             masked_details: String::new(),
         }
     }
@@ -269,7 +259,7 @@ mod tests {
         }
 
         #[test]
-        fn from_db_operation_error_uses_raw_details() {
+        fn from_db_operation_error_classifies_from_raw_details() {
             let info = ConnectionErrorInfo::from_db_operation_error(
                 &DbOperationError::ConnectionFailed(
                     r#"FATAL: database "nonexistent" does not exist"#.to_string(),
@@ -277,7 +267,10 @@ mod tests {
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::DatabaseNotFound);
-            assert_eq!(info.raw_details, r#"FATAL: database "nonexistent" does not exist"#);
+            assert_eq!(
+                info.masked_details(),
+                r#"FATAL: database "nonexistent" does not exist"#
+            );
         }
 
         #[test]
@@ -338,10 +331,10 @@ mod tests {
         }
 
         #[test]
-        fn info_stores_both_raw_and_masked() {
+        fn info_keeps_only_masked_details() {
             let info = ConnectionErrorInfo::new("postgres://user:secret@host");
-            assert!(info.raw_details.contains("secret"));
             assert!(!info.masked_details().contains("secret"));
+            assert_eq!(info.masked_details(), "postgres://user:****@host");
         }
     }
 }
