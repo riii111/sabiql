@@ -15,7 +15,6 @@ async-trait.workspace = true
 color-eyre.workspace = true
 crossterm.workspace = true
 csv.workspace = true
-futures.workspace = true
 lru.workspace = true
 nucleo-matcher.workspace = true
 serde.workspace = true

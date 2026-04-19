@@ -5,10 +5,7 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use color_eyre::eyre::Result;
 use sabiql_app as app;
-#[allow(
-    unused_imports,
-    reason = "binary-root test modules import crate::domain during all-targets verification"
-)]
+#[cfg(test)]
 pub(crate) use sabiql_domain as domain;
 use sabiql_infra as infra;
 use sabiql_ui as ui;

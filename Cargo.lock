@@ -2568,19 +2568,12 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "sabiql"
 version = "1.11.0"
 dependencies = [
- "arboard",
- "async-trait",
  "clap",
  "color-eyre",
  "crossterm",
- "csv",
- "dirs",
  "dotenvy",
- "futures",
  "insta",
- "lru",
  "mockall",
- "nucleo-matcher",
  "ratatui",
  "rstest",
  "sabiql-app",
@@ -2588,17 +2581,8 @@ dependencies = [
  "sabiql-infra",
  "sabiql-ui",
  "self_update",
- "serde",
- "serde_json",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
- "tokio-util",
- "toml",
- "unicode-casefold",
- "unicode-width",
- "urlencoding",
- "uuid",
 ]
 
 [[package]]
@@ -2611,7 +2595,6 @@ dependencies = [
  "crossterm",
  "csv",
  "dirs",
- "futures",
  "lru",
  "mockall",
  "nucleo-matcher",
