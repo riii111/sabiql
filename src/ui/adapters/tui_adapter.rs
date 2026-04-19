@@ -37,14 +37,14 @@ impl Renderer for TuiAdapter<'_> {
         })?;
         let uses_insert = uses_insert_cursor(state);
         if self.last_cursor_insert != Some(uses_insert) {
-            let _ = execute!(
+            execute!(
                 std::io::stdout(),
                 if uses_insert {
                     SetCursorStyle::SteadyBar
                 } else {
                     SetCursorStyle::SteadyBlock
                 }
-            );
+            )?;
             self.last_cursor_insert = Some(uses_insert);
         }
         Ok(output)
