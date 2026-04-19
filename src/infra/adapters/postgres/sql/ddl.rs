@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use crate::app::ports::DdlGenerator;
+use crate::app::ports::outbound::DdlGenerator;
 use crate::domain::Table;
 
 use super::super::PostgresAdapter;
@@ -78,7 +78,7 @@ impl DdlGenerator for PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use crate::adapters::postgres::PostgresAdapter;
-    use crate::app::ports::DdlGenerator;
+    use crate::app::ports::outbound::DdlGenerator;
     use crate::domain::{Column, Table};
 
     fn make_column(name: &str, data_type: &str, nullable: bool) -> Column {

@@ -662,22 +662,14 @@ mod tests {
     fn inspector_tabs_footer_hint_tracks_supported_tab_count() {
         let state = inspector_state();
         let mut services = AppServices::stub();
-        let inspector_tabs_description = GLOBAL_KEYS[idx::global::INSPECTOR_TABS].description;
+        let inspector_tabs_hint = hint_from_binding(&GLOBAL_KEYS[idx::global::INSPECTOR_TABS]);
         services.db_capabilities = DbCapabilities::new(true, vec![InspectorTab::Info]);
         let hidden = footer_hints(&state, &services);
-        assert!(
-            !hidden
-                .iter()
-                .any(|hint| hint.description == inspector_tabs_description)
-        );
+        assert!(!hidden.contains(&inspector_tabs_hint));
 
         services.db_capabilities =
             DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
         let visible = footer_hints(&state, &services);
-        assert!(
-            visible
-                .iter()
-                .any(|hint| hint.description == inspector_tabs_description)
-        );
+        assert!(visible.contains(&inspector_tabs_hint));
     }
 }

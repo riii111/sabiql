@@ -1,4 +1,4 @@
-use crate::app::ports::DbOperationError;
+use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
     Column, FkAction, ForeignKey, Index, IndexType, RlsCommand, RlsInfo, RlsPolicy, Schema,
     TableSignature, TableSummary, Trigger, TriggerEvent, TriggerTiming,
@@ -422,7 +422,7 @@ impl PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use crate::adapters::postgres::PostgresAdapter;
-    use crate::app::ports::DbOperationError;
+    use crate::app::ports::outbound::DbOperationError;
 
     mod table_signature_parsing {
         use super::*;

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::app::ports::{ConnectionStore, ConnectionStoreError};
+use crate::app::ports::outbound::{ConnectionStore, ConnectionStoreError};
 use crate::domain::connection::{ConnectionId, ConnectionProfile};
 use crate::infra::config::connection_config::{
     CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile,

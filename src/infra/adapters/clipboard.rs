@@ -1,4 +1,4 @@
-use crate::app::ports::{ClipboardError, ClipboardWriter};
+use crate::app::ports::outbound::{ClipboardError, ClipboardWriter};
 
 pub struct ArboardClipboard;
 

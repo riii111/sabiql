@@ -23,8 +23,9 @@ mod render_snapshots;
 
 use crate::app::AppServices;
 use crate::app::cmd::effect::Effect;
-use crate::app::ports::{
-    ConnectionStore, DatabaseCapabilityProvider, PgServiceEntryReader, handle_input,
+use crate::app::ports::inbound::handle_input;
+use crate::app::ports::outbound::{
+    ConnectionStore, DatabaseCapabilityProvider, PgServiceEntryReader,
 };
 use crate::app::{
     Action, AppRuntime, AppState, CompletionEngine, DbCapabilities, EffectRunner, InputMode,

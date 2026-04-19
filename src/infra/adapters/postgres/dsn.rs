@@ -1,4 +1,4 @@
-use crate::app::ports::DsnBuilder;
+use crate::app::ports::outbound::DsnBuilder;
 use crate::domain::connection::ConnectionProfile;
 
 use super::PostgresAdapter;
