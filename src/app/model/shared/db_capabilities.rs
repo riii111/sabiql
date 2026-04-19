@@ -97,6 +97,7 @@ impl DbCapabilities {
 
     fn cycle_inspector_tab(&self, current: InspectorTab, delta: isize) -> InspectorTab {
         let tabs = &self.supported_inspector_tabs;
+        let current = self.normalize_inspector_tab(current);
         let current_idx = tabs.iter().position(|tab| *tab == current).unwrap_or(0) as isize;
         let next_idx = (current_idx + delta).rem_euclid(tabs.len() as isize) as usize;
         tabs[next_idx]
@@ -114,10 +115,11 @@ impl DbCapabilities {
 impl From<DatabaseCapabilities> for DbCapabilities {
     fn from(capabilities: DatabaseCapabilities) -> Self {
         Self::new(
-            capabilities.supports_explain,
+            capabilities.supports_explain(),
             capabilities
-                .supported_inspector_features
-                .into_iter()
+                .supported_inspector_features()
+                .iter()
+                .copied()
                 .map(|feature| match feature {
                     InspectorFeature::Info => InspectorTab::Info,
                     InspectorFeature::Columns => InspectorTab::Columns,

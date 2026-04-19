@@ -11,8 +11,8 @@ pub enum InspectorFeature {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseCapabilities {
-    pub supports_explain: bool,
-    pub supported_inspector_features: Vec<InspectorFeature>,
+    supports_explain: bool,
+    supported_inspector_features: Vec<InspectorFeature>,
 }
 
 impl DatabaseCapabilities {
@@ -28,6 +28,14 @@ impl DatabaseCapabilities {
             supports_explain,
             supported_inspector_features,
         }
+    }
+
+    pub fn supports_explain(&self) -> bool {
+        self.supports_explain
+    }
+
+    pub fn supported_inspector_features(&self) -> &[InspectorFeature] {
+        &self.supported_inspector_features
     }
 }
 

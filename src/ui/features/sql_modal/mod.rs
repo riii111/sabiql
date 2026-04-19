@@ -213,17 +213,12 @@ impl SqlModal {
         let mut spans = vec![
             Span::styled(" SQL Editor ", title_style),
             Span::styled("\u{2500}\u{2500} ", theme.modal_border_style()),
-            Span::styled("[SQL]", style_for(SqlModalTab::Sql)),
-            Span::raw(" "),
         ];
         for tab in supported_tabs {
-            if *tab == SqlModalTab::Sql {
-                continue;
-            }
             let label = match tab {
+                SqlModalTab::Sql => "[SQL]",
                 SqlModalTab::Plan => "[Plan]",
                 SqlModalTab::Compare => "[Compare]",
-                SqlModalTab::Sql => unreachable!(),
             };
             spans.push(Span::styled(label, style_for(*tab)));
             spans.push(Span::raw(" "));

@@ -299,10 +299,8 @@ mod tests {
     use crate::app::model::shared::db_capabilities::DbCapabilities;
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::inspector_tab::InspectorTab;
-    use crate::app::ports::{DdlGenerator, SqlDialect};
     use crate::app::services::AppServices;
     use crate::app::update::action::ScrollDirection;
-    use std::sync::Arc;
     use std::time::Instant;
 
     fn sql_modal_state() -> AppState {
@@ -312,49 +310,9 @@ mod tests {
     }
 
     fn services_without_explain() -> AppServices {
-        struct NoopDdl;
-        impl DdlGenerator for NoopDdl {
-            fn generate_ddl(&self, _table: &crate::domain::Table) -> String {
-                String::new()
-            }
-        }
-
-        struct NoopSql;
-        impl SqlDialect for NoopSql {
-            fn build_explain_sql(&self, query: &str) -> Option<String> {
-                Some(format!("EXPLAIN {query}"))
-            }
-
-            fn build_explain_analyze_sql(&self, query: &str) -> Option<String> {
-                Some(format!("EXPLAIN ANALYZE {query}"))
-            }
-
-            fn build_update_sql(
-                &self,
-                _schema: &str,
-                _table: &str,
-                _column: &str,
-                _new_value: &str,
-                _pk_pairs: &[(String, String)],
-            ) -> String {
-                String::new()
-            }
-
-            fn build_bulk_delete_sql(
-                &self,
-                _schema: &str,
-                _table: &str,
-                _pk_pairs_per_row: &[Vec<(String, String)>],
-            ) -> String {
-                String::new()
-            }
-        }
-
-        AppServices {
-            ddl_generator: Arc::new(NoopDdl),
-            sql_dialect: Arc::new(NoopSql),
-            db_capabilities: DbCapabilities::new(false, vec![InspectorTab::Info]),
-        }
+        let mut services = AppServices::stub();
+        services.db_capabilities = DbCapabilities::new(false, vec![InspectorTab::Info]);
+        services
     }
 
     mod explain_request {
