@@ -167,10 +167,9 @@ pub fn reduce(
                         0,
                         QuerySource::Preview,
                     )));
-                }
-                let user_message = error.user_message();
-                state.set_error(user_message.clone());
-                if *source == QuerySource::Adhoc {
+                } else {
+                    let user_message = error.user_message();
+                    state.set_error(user_message.clone());
                     state.sql_modal.mark_adhoc_error(user_message);
                 }
             }
@@ -663,6 +662,7 @@ mod tests {
                     .as_deref()
                     .is_some_and(|message| message.contains("Permission denied"))
             );
+            assert!(state.messages.last_error.is_none());
         }
 
         #[test]

@@ -145,10 +145,9 @@ fn extract_verbose_sqlstate(line: &str) -> Option<&str> {
         };
         let rest = &line[(prefix_pos + prefix.len())..];
         let rest = rest.trim_start();
-        if rest.len() < 6 {
+        let Some(code) = rest.get(..5) else {
             continue;
-        }
-        let code = &rest[..5];
+        };
         if is_sqlstate(code) && rest.as_bytes().get(5) == Some(&b':') {
             return Some(code);
         }
@@ -194,6 +193,14 @@ mod tests {
         #[case("SQL state: 42P01", "42P01")]
         fn extracts_codes(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(extract_sqlstate(input), Some(expected));
+        }
+
+        #[test]
+        fn non_ascii_message_does_not_panic() {
+            assert_eq!(
+                extract_verbose_sqlstate("ERROR:  エラーが発生しました"),
+                None
+            );
         }
     }
 
