@@ -2,6 +2,7 @@ mod compare;
 mod explain;
 mod plan_highlight;
 
+use std::borrow::Cow;
 use std::time::Instant;
 
 use ratatui::Frame;
@@ -76,7 +77,7 @@ impl SqlModal {
             }
         } else {
             let hint = match state.sql_modal.status() {
-                SqlModalStatus::Running => " Running\u{2026} ".to_owned(),
+                SqlModalStatus::Running => Cow::Borrowed(" Running\u{2026} "),
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     input, target_name, ..
                 } => {
@@ -84,9 +85,9 @@ impl SqlModal {
                         .as_ref()
                         .is_some_and(|name| input.content() == name);
                     if is_match {
-                        " Enter: Confirm \u{2502} Esc: Cancel ".to_owned()
+                        Cow::Borrowed(" Enter: Confirm \u{2502} Esc: Cancel ")
                     } else {
-                        " Esc: Cancel ".to_owned()
+                        Cow::Borrowed(" Esc: Cancel ")
                     }
                 }
                 _ => sql_modal_border_hint(state, active_tab, services),
@@ -151,7 +152,7 @@ impl SqlModal {
     fn render_modal_with_tabs(
         frame: &mut Frame,
         active_tab: SqlModalTab,
-        hint: String,
+        hint: Cow<'static, str>,
         services: &AppServices,
         theme: &ThemePalette,
     ) -> (Rect, Rect) {

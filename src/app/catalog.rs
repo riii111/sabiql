@@ -42,6 +42,13 @@ fn hint_from_binding(binding: &KeyBinding) -> Hint {
     Hint { key, description }
 }
 
+fn tab_pair_hint(binding: &KeyBinding) -> Hint {
+    Hint {
+        key: "Tab/⇧Tab",
+        description: binding.as_hint().1,
+    }
+}
+
 fn hint_from_row(row: &ModeRow) -> Hint {
     let (key, description) = row.as_hint();
     Hint { key, description }
@@ -351,90 +358,107 @@ pub fn sql_modal_border_hint(
     state: &AppState,
     active_tab: crate::model::sql_editor::modal::SqlModalTab,
     services: &AppServices,
-) -> String {
+) -> Cow<'static, str> {
+    static INSERT_HINT: LazyLock<String> = LazyLock::new(|| {
+        join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::RUN]),
+                hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::CLEAR]),
+                hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY]),
+                hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL]),
+            ],
+            true,
+        )
+    });
+    static INSERT_WITH_EXPLAIN_HINT: LazyLock<String> = LazyLock::new(|| {
+        join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::RUN]),
+                hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN]),
+                hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::CLEAR]),
+                hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY]),
+                hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL]),
+            ],
+            true,
+        )
+    });
+    static SINGLE_TAB_SQL_HINT: LazyLock<String> = LazyLock::new(|| {
+        join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN]),
+                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT]),
+                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE]),
+            ],
+            true,
+        )
+    });
+    static PLAN_TAB_HINT: LazyLock<String> = LazyLock::new(|| {
+        join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::YANK]),
+                tab_pair_hint(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB]),
+                hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::CLOSE]),
+            ],
+            true,
+        )
+    });
+    static COMPARE_TAB_HINT: LazyLock<String> = LazyLock::new(|| {
+        join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY]),
+                tab_pair_hint(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]),
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE]),
+            ],
+            true,
+        )
+    });
+    static COMPARE_TAB_WITH_YANK_HINT: LazyLock<String> = LazyLock::new(|| {
+        join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY]),
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK]),
+                tab_pair_hint(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]),
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE]),
+            ],
+            true,
+        )
+    });
+    static SQL_TAB_HINT: LazyLock<String> = LazyLock::new(|| {
+        join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN]),
+                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT]),
+                tab_pair_hint(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB]),
+                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE]),
+            ],
+            true,
+        )
+    });
+
     let compare_can_yank = state.explain.left.is_some() && state.explain.right.is_some();
 
     if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
-        let mut hints = vec![
-            hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::RUN]),
-            hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::CLEAR]),
-            hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY]),
-            hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL]),
-        ];
-        if services.db_capabilities.supports_explain() {
-            hints.insert(
-                1,
-                hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN]),
-            );
-        }
-        return join_hint_text(&hints, true);
+        return Cow::Borrowed(if services.db_capabilities.supports_explain() {
+            INSERT_WITH_EXPLAIN_HINT.as_str()
+        } else {
+            INSERT_HINT.as_str()
+        });
     }
 
     match active_tab {
         crate::model::sql_editor::modal::SqlModalTab::Sql
             if services.db_capabilities.supported_sql_modal_tabs().len() == 1 =>
         {
-            join_hint_text(
-                &[
-                    hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN]),
-                    hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT]),
-                    hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE]),
-                ],
-                true,
-            )
+            Cow::Borrowed(SINGLE_TAB_SQL_HINT.as_str())
         }
-        crate::model::sql_editor::modal::SqlModalTab::Plan => join_hint_text(
-            &[
-                hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::YANK]),
-                Hint {
-                    key: "Tab/⇧Tab",
-                    description: SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
-                },
-                hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::CLOSE]),
-            ],
-            true,
-        ),
+        crate::model::sql_editor::modal::SqlModalTab::Plan => Cow::Borrowed(PLAN_TAB_HINT.as_str()),
         crate::model::sql_editor::modal::SqlModalTab::Compare if compare_can_yank => {
-            join_hint_text(
-                &[
-                    hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY]),
-                    hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK]),
-                    Hint {
-                        key: "Tab/⇧Tab",
-                        description: SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
-                            .as_hint()
-                            .1,
-                    },
-                    hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE]),
-                ],
-                true,
-            )
+            Cow::Borrowed(COMPARE_TAB_WITH_YANK_HINT.as_str())
         }
-        crate::model::sql_editor::modal::SqlModalTab::Compare => join_hint_text(
-            &[
-                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY]),
-                Hint {
-                    key: "Tab/⇧Tab",
-                    description: SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
-                        .as_hint()
-                        .1,
-                },
-                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE]),
-            ],
-            true,
-        ),
-        crate::model::sql_editor::modal::SqlModalTab::Sql => join_hint_text(
-            &[
-                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN]),
-                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT]),
-                Hint {
-                    key: "Tab/⇧Tab",
-                    description: SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
-                },
-                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE]),
-            ],
-            true,
-        ),
+        crate::model::sql_editor::modal::SqlModalTab::Compare => {
+            Cow::Borrowed(COMPARE_TAB_HINT.as_str())
+        }
+        crate::model::sql_editor::modal::SqlModalTab::Sql => Cow::Borrowed(SQL_TAB_HINT.as_str()),
     }
 }
 
