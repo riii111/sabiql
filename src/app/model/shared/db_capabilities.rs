@@ -97,10 +97,6 @@ impl DbCapabilities {
 
     fn cycle_inspector_tab(&self, current: InspectorTab, delta: isize) -> InspectorTab {
         let tabs = &self.supported_inspector_tabs;
-        if tabs.is_empty() {
-            return current;
-        }
-
         let current_idx = tabs.iter().position(|tab| *tab == current).unwrap_or(0) as isize;
         let next_idx = (current_idx + delta).rem_euclid(tabs.len() as isize) as usize;
         tabs[next_idx]

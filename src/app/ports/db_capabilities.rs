@@ -20,6 +20,10 @@ impl DatabaseCapabilities {
         supports_explain: bool,
         supported_inspector_features: Vec<InspectorFeature>,
     ) -> Self {
+        assert!(
+            !supported_inspector_features.is_empty(),
+            "DatabaseCapabilities requires at least one supported inspector feature"
+        );
         Self {
             supports_explain,
             supported_inspector_features,
