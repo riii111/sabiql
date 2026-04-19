@@ -1,4 +1,5 @@
 pub mod cmd;
+pub mod catalog;
 pub mod input;
 pub mod model;
 pub mod palette;
@@ -14,6 +15,7 @@ pub use sabiql_domain as domain;
 
 pub mod app {
     pub use crate::cmd;
+    pub use crate::catalog;
     pub use crate::input;
     pub use crate::model;
     pub use crate::palette;
