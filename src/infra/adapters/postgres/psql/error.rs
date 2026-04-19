@@ -1,5 +1,4 @@
 use crate::app::ports::DbOperationError;
-use crate::app::ports::db_operation_error::is_connection_lost_message;
 
 pub(in crate::adapters::postgres) fn classify_query_error(stderr: &str) -> DbOperationError {
     let trimmed = stderr.trim();
@@ -77,10 +76,14 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
 
     if lower.contains("canceling statement due to statement timeout")
         || lower.contains("statement timeout")
-        || lower.contains("query canceled")
-        || lower.contains("canceling statement due to user request")
+        || lower.contains("query timed out")
     {
         return DbOperationError::Timeout(details.to_string());
+    }
+
+    if lower.contains("canceling statement due to user request") || lower.contains("query canceled")
+    {
+        return DbOperationError::Canceled(details.to_string());
     }
 
     if is_missing_object(&lower) {
@@ -113,9 +116,19 @@ fn classify_query_canceled(details: &str) -> DbOperationError {
     let lower = details.to_lowercase();
     if lower.contains("lock timeout") || lower.contains("lock not available") {
         DbOperationError::LockTimeout(details.to_string())
+    } else if lower.contains("user request") || lower.contains("query canceled") {
+        DbOperationError::Canceled(details.to_string())
     } else {
         DbOperationError::Timeout(details.to_string())
     }
+}
+
+fn is_connection_lost_message(lower: &str) -> bool {
+    lower.contains("server closed the connection unexpectedly")
+        || lower.contains("connection to server was lost")
+        || lower.contains("terminating connection")
+        || lower.contains("connection not open")
+        || lower.contains("broken pipe")
 }
 
 fn extract_sqlstate(details: &str) -> Option<&str> {

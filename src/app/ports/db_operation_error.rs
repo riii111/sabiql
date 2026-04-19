@@ -1,17 +1,10 @@
 use std::borrow::Cow;
+use std::fmt;
 use std::sync::Arc;
 
-use crate::app::ports::password_masking::mask_password;
+use crate::app::policy::password_masking::mask_password;
 
-pub fn is_connection_lost_message(lower: &str) -> bool {
-    lower.contains("server closed the connection unexpectedly")
-        || lower.contains("connection to server was lost")
-        || lower.contains("terminating connection")
-        || lower.contains("connection not open")
-        || lower.contains("broken pipe")
-}
-
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Clone, thiserror::Error)]
 // Keep Display summary-only to avoid leaking raw command output.
 pub enum DbOperationError {
     #[error("Connection failed")]
@@ -44,6 +37,8 @@ pub enum DbOperationError {
     CommandNotFound(String),
     #[error("Operation timed out")]
     Timeout(String),
+    #[error("Operation canceled")]
+    Canceled(String),
 }
 
 impl DbOperationError {
@@ -64,6 +59,7 @@ impl DbOperationError {
             Self::CommandTagParseFailed(_) => "Failed to parse database command tag",
             Self::CommandNotFound(_) => "Database CLI not found",
             Self::Timeout(_) => "Operation timed out",
+            Self::Canceled(_) => "Operation canceled",
         }
     }
 
@@ -90,6 +86,7 @@ impl DbOperationError {
             Self::CommandTagParseFailed(_) => "Check whether the command output format changed",
             Self::CommandNotFound(_) => "Install the database client and add it to PATH",
             Self::Timeout(_) => "Retry the operation or increase the timeout",
+            Self::Canceled(_) => "Retry the operation if needed",
         }
     }
 
@@ -107,7 +104,8 @@ impl DbOperationError {
             | Self::EmptyResponse(details)
             | Self::CommandTagParseFailed(details)
             | Self::CommandNotFound(details)
-            | Self::Timeout(details) => Cow::Borrowed(details.as_str()),
+            | Self::Timeout(details)
+            | Self::Canceled(details) => Cow::Borrowed(details.as_str()),
             Self::InvalidJson(err) => Cow::Owned(err.to_string()),
             Self::CsvParse(err) => Cow::Owned(err.to_string()),
         }
@@ -141,6 +139,20 @@ impl DbOperationError {
             (false, true) => format!("{summary}\n\nDetails:\n{details}"),
             (false, false) => format!("{summary}. {hint}.\n\nDetails:\n{details}"),
         }
+    }
+}
+
+impl fmt::Debug for DbOperationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = f.debug_struct("DbOperationError");
+        debug.field("kind", &self.summary());
+
+        let details = self.masked_details();
+        if !details.trim().is_empty() {
+            debug.field("details", &details);
+        }
+
+        debug.finish()
     }
 }
 
@@ -184,6 +196,7 @@ mod tests {
         #[case(DbOperationError::CommandTagParseFailed("boom".to_string()))]
         #[case(DbOperationError::CommandNotFound("boom".to_string()))]
         #[case(DbOperationError::Timeout("boom".to_string()))]
+        #[case(DbOperationError::Canceled("boom".to_string()))]
         fn non_empty(#[case] error: DbOperationError) {
             assert!(!error.summary().is_empty());
             assert!(!error.hint().is_empty());
@@ -210,6 +223,10 @@ mod tests {
         #[case(
             DbOperationError::ConnectionFailed("pgpassword=secret123 psql".to_string()),
             "pgpassword=**** psql"
+        )]
+        #[case(
+            DbOperationError::ConnectionFailed("sslpassword=mysecret host=localhost".to_string()),
+            "sslpassword=**** host=localhost"
         )]
         #[case(
             DbOperationError::ConnectionFailed("postgres://user:p@ss@host".to_string()),
@@ -262,6 +279,17 @@ mod tests {
                     .count(),
                 1
             );
+        }
+
+        #[test]
+        fn debug_uses_masked_details() {
+            let error =
+                DbOperationError::ConnectionFailed("postgres://user:secret@host".to_string());
+
+            let debug = format!("{error:?}");
+
+            assert!(debug.contains("****"));
+            assert!(!debug.contains("secret"));
         }
     }
 }

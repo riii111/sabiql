@@ -16,7 +16,6 @@ pub mod er_log_writer;
 pub mod folder_opener;
 pub mod graphviz;
 pub mod metadata;
-pub(crate) mod password_masking;
 pub mod query_executor;
 pub mod query_history;
 pub mod renderer;

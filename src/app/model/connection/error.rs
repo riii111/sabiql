@@ -1,6 +1,5 @@
+use crate::app::policy::password_masking::mask_password;
 use crate::app::ports::DbOperationError;
-use crate::app::ports::db_operation_error::is_connection_lost_message;
-use crate::app::ports::password_masking::mask_password;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
@@ -137,6 +136,14 @@ impl ConnectionErrorInfo {
     pub fn masked_details(&self) -> &str {
         &self.masked_details
     }
+}
+
+fn is_connection_lost_message(lower: &str) -> bool {
+    lower.contains("server closed the connection unexpectedly")
+        || lower.contains("connection to server was lost")
+        || lower.contains("terminating connection")
+        || lower.contains("connection not open")
+        || lower.contains("broken pipe")
 }
 
 impl Default for ConnectionErrorInfo {

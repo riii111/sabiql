@@ -91,10 +91,11 @@ fn has_assignment_boundary(text: &str, pos: usize) -> bool {
 }
 
 fn password_assignment_prefix_len(text: &str, pos: usize) -> Option<usize> {
-    let key = "password";
-    if !has_assignment_boundary(text, pos) || !starts_with_ascii_ignore_case(text, pos, key) {
-        return None;
-    }
+    const KEYS: &[&str] = &["password", "sslpassword"];
+
+    let key = KEYS.iter().find(|key| {
+        has_assignment_boundary(text, pos) && starts_with_ascii_ignore_case(text, pos, key)
+    })?;
 
     let bytes = text.as_bytes();
     let mut i = pos + key.len();
@@ -208,6 +209,14 @@ mod tests {
     #[case("password=mysecret host=localhost", "password=**** host=localhost")]
     #[case("password = mysecret host=localhost", "password = **** host=localhost")]
     #[case("password= secret host=localhost", "password= **** host=localhost")]
+    #[case(
+        "sslpassword=mysecret host=localhost",
+        "sslpassword=**** host=localhost"
+    )]
+    #[case(
+        "sslpassword = mysecret host=localhost",
+        "sslpassword = **** host=localhost"
+    )]
     #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
     #[case("pgpassword=secret123 psql", "pgpassword=**** psql")]
     fn masks_password_assignments(#[case] input: &str, #[case] expected: &str) {
@@ -243,12 +252,12 @@ mod tests {
         "old_password=secret host=localhost"
     )]
     #[case("xPGPASSWORD=secret psql", "xPGPASSWORD=secret psql")]
-    fn preserves_non_secret_compound_words(#[case] input: &str, #[case] expected: &str) {
+    fn ignores_non_password_boundaries(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
     }
 
     #[test]
-    fn handles_multibyte_prefix_without_panicking() {
+    fn handles_multibyte_input_without_boundary_mismatch() {
         assert_eq!(
             mask_password("接続先İ password=secret"),
             "接続先İ password=****"
