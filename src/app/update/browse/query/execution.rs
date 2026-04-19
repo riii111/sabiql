@@ -165,9 +165,10 @@ pub fn reduce(
                         QuerySource::Preview,
                     )));
                 }
-                state.set_error(error.user_message());
+                let user_message = error.user_message();
+                state.set_error(user_message.clone());
                 if is_adhoc {
-                    state.sql_modal.mark_adhoc_error(error.user_message());
+                    state.sql_modal.mark_adhoc_error(user_message);
                 }
             }
             Some(vec![])

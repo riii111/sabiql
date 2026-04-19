@@ -145,10 +145,8 @@ pub async fn run(
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
-                let start = Instant::now();
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
-                        let elapsed = start.elapsed().as_millis() as u64;
                         let plan_text = result
                             .rows
                             .iter()
@@ -159,7 +157,7 @@ pub async fn run(
                         tx.send(Action::ExplainCompleted {
                             plan_text,
                             is_analyze,
-                            execution_time_ms: elapsed,
+                            execution_time_ms: result.execution_time_ms,
                         })
                         .await
                         .ok();

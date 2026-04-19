@@ -128,7 +128,15 @@ fn skip_masked_assignment_value(text: &str, value_start: usize, result: &mut Str
         let mut i = value_start + 1;
         while i < text.len() {
             let byte = bytes[i];
+            if byte == b'\\' && bytes.get(i + 1).is_some() {
+                i += 2;
+                continue;
+            }
             if byte == quote {
+                if quote == b'\'' && bytes.get(i + 1) == Some(&b'\'') {
+                    i += 2;
+                    continue;
+                }
                 result.push(quote as char);
                 return i + 1;
             }
@@ -194,6 +202,11 @@ mod tests {
     #[case("password='secret' host=localhost", "password='****' host=localhost")]
     #[case(
         "password=\"secret\" host=localhost",
+        "password=\"****\" host=localhost"
+    )]
+    #[case("password='se''cret' host=localhost", "password='****' host=localhost")]
+    #[case(
+        "password=\"sec\\\"ret\" host=localhost",
         "password=\"****\" host=localhost"
     )]
     fn stops_at_common_assignment_terminators(#[case] input: &str, #[case] expected: &str) {

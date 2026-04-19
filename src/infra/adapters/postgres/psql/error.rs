@@ -1,4 +1,5 @@
 use crate::app::ports::DbOperationError;
+use crate::app::ports::db_operation_error::is_connection_lost_message;
 
 pub(in crate::infra::adapters::postgres) fn classify_query_error(stderr: &str) -> DbOperationError {
     let trimmed = stderr.trim();
@@ -56,8 +57,7 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return DbOperationError::ConnectionFailed(details.to_string());
     }
 
-    if lower.contains("violates foreign key constraint")
-        || lower.contains("foreign key constraint")
+    if lower.contains("violates foreign key constraint") || lower.contains("foreign key constraint")
     {
         return DbOperationError::ForeignKeyViolation(details.to_string());
     }
@@ -69,7 +69,8 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return DbOperationError::UniqueViolation(details.to_string());
     }
 
-    if lower.contains("lock not available") || lower.contains("canceling statement due to lock timeout")
+    if lower.contains("lock not available")
+        || lower.contains("canceling statement due to lock timeout")
     {
         return DbOperationError::LockTimeout(details.to_string());
     }
@@ -94,8 +95,7 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
 }
 
 fn is_missing_database_or_role(lower: &str) -> bool {
-    lower.contains("does not exist")
-        && (lower.contains("database") || lower.contains("role"))
+    lower.contains("does not exist") && (lower.contains("database") || lower.contains("role"))
 }
 
 fn is_missing_object(lower: &str) -> bool {
@@ -114,14 +114,6 @@ fn classify_query_canceled(details: &str) -> DbOperationError {
     } else {
         DbOperationError::Timeout(details.to_string())
     }
-}
-
-fn is_connection_lost_message(lower: &str) -> bool {
-    lower.contains("server closed the connection unexpectedly")
-        || lower.contains("connection to server was lost")
-        || lower.contains("terminating connection")
-        || lower.contains("connection not open")
-        || lower.contains("broken pipe")
 }
 
 fn extract_sqlstate(details: &str) -> Option<&str> {
@@ -163,7 +155,10 @@ fn extract_named_sqlstate(line: &str) -> Option<&str> {
 }
 
 fn is_sqlstate(code: &str) -> bool {
-    code.len() == 5 && code.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+    code.len() == 5
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -176,7 +171,10 @@ mod tests {
 
         #[rstest]
         #[case("ERROR:  42501: permission denied for table users", "42501")]
-        #[case("FATAL:  23505: duplicate key value violates unique constraint", "23505")]
+        #[case(
+            "FATAL:  23505: duplicate key value violates unique constraint",
+            "23505"
+        )]
         #[case("psql:/tmp/f.sql:1: ERROR:  42501: permission denied", "42501")]
         #[case("SQL state: 42P01", "42P01")]
         fn extracts_codes(#[case] input: &str, #[case] expected: &str) {
@@ -188,10 +186,7 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case(
-            "ERROR:  42501: permission denied for table users",
-            "PermissionDenied"
-        )]
+        #[case("ERROR:  42501: permission denied for table users", "PermissionDenied")]
         #[case(
             "ERROR:  23503: insert or update on table violates foreign key constraint",
             "ForeignKeyViolation"
@@ -201,8 +196,14 @@ mod tests {
             "UniqueViolation"
         )]
         #[case("ERROR:  55P03: lock not available", "LockTimeout")]
-        #[case("ERROR:  57014: canceling statement due to statement timeout", "Timeout")]
-        #[case("ERROR:  57014: canceling statement due to lock timeout", "LockTimeout")]
+        #[case(
+            "ERROR:  57014: canceling statement due to statement timeout",
+            "Timeout"
+        )]
+        #[case(
+            "ERROR:  57014: canceling statement due to lock timeout",
+            "LockTimeout"
+        )]
         #[case("ERROR:  42P01: relation \"users\" does not exist", "ObjectMissing")]
         #[case("ERROR:  08006: connection to server was lost", "ConnectionLost")]
         #[case("ERROR:  08006: could not receive data from server", "ConnectionLost")]
@@ -225,26 +226,14 @@ mod tests {
         }
 
         #[rstest]
-        #[case(
-            "ERROR: permission denied for table users",
-            "PermissionDenied"
-        )]
+        #[case("ERROR: permission denied for table users", "PermissionDenied")]
         #[case(
             "ERROR: duplicate key value violates unique constraint",
             "UniqueViolation"
         )]
-        #[case(
-            "ERROR: relation \"users\" does not exist",
-            "ObjectMissing"
-        )]
-        #[case(
-            "server closed the connection unexpectedly",
-            "ConnectionLost"
-        )]
-        #[case(
-            "ERROR: canceling statement due to statement timeout",
-            "Timeout"
-        )]
+        #[case("ERROR: relation \"users\" does not exist", "ObjectMissing")]
+        #[case("server closed the connection unexpectedly", "ConnectionLost")]
+        #[case("ERROR: canceling statement due to statement timeout", "Timeout")]
         #[case(r#"FATAL: role "alice" does not exist"#, "ConnectionFailed")]
         fn falls_back_to_stderr_matching(#[case] input: &str, #[case] expected: &str) {
             let error = classify_query_error(input);

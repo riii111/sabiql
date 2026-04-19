@@ -3,6 +3,14 @@ use std::sync::Arc;
 
 use crate::app::ports::password_masking::mask_password;
 
+pub(crate) fn is_connection_lost_message(lower: &str) -> bool {
+    lower.contains("server closed the connection unexpectedly")
+        || lower.contains("connection to server was lost")
+        || lower.contains("terminating connection")
+        || lower.contains("connection not open")
+        || lower.contains("broken pipe")
+}
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum DbOperationError {
     #[error("Connection failed: {0}")]

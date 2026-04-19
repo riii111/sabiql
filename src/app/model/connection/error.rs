@@ -1,4 +1,5 @@
 use crate::app::ports::DbOperationError;
+use crate::app::ports::db_operation_error::is_connection_lost_message;
 use crate::app::ports::password_masking::mask_password;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -53,12 +54,7 @@ impl ConnectionErrorKind {
             return Self::Timeout;
         }
 
-        if stderr_lower.contains("server closed the connection unexpectedly")
-            || stderr_lower.contains("connection to server was lost")
-            || stderr_lower.contains("terminating connection")
-            || stderr_lower.contains("connection not open")
-            || stderr_lower.contains("broken pipe")
-        {
+        if is_connection_lost_message(&stderr_lower) {
             return Self::ConnectionLost;
         }
 
