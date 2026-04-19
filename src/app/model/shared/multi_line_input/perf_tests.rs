@@ -1,12 +1,82 @@
 use std::time::Instant;
 
-use super::{MultiLineInputState, TextInputState, next_word_start, previous_word_start};
+use super::{MultiLineInputState, next_word_start, previous_word_start};
 use crate::app::update::action::CursorMove;
 
 // Snapshot of the pre-cache implementation, kept only for local perf comparison.
 #[derive(Clone)]
+struct BaselineTextInputState {
+    content: String,
+    cursor: usize,
+}
+
+impl BaselineTextInputState {
+    fn new(content: impl Into<String>, cursor: usize) -> Self {
+        let content = content.into();
+        let char_count = content.chars().count();
+        Self {
+            content,
+            cursor: cursor.min(char_count),
+        }
+    }
+
+    fn content(&self) -> &str {
+        &self.content
+    }
+
+    fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    fn char_count(&self) -> usize {
+        self.content.chars().count()
+    }
+
+    fn set_cursor(&mut self, pos: usize) {
+        self.cursor = pos.min(self.char_count());
+    }
+
+    fn move_cursor(&mut self, movement: CursorMove) {
+        match movement {
+            CursorMove::Left => {
+                self.cursor = self.cursor.saturating_sub(1);
+            }
+            CursorMove::Right => {
+                if self.cursor < self.char_count() {
+                    self.cursor += 1;
+                }
+            }
+            CursorMove::Home
+            | CursorMove::LineStart
+            | CursorMove::BufferStart
+            | CursorMove::FirstLine => {
+                self.cursor = 0;
+            }
+            CursorMove::End
+            | CursorMove::LineEnd
+            | CursorMove::BufferEnd
+            | CursorMove::LastLine => {
+                self.cursor = self.char_count();
+            }
+            CursorMove::WordForward => {
+                self.cursor = next_word_start(&self.content, self.cursor);
+            }
+            CursorMove::WordBackward => {
+                self.cursor = previous_word_start(&self.content, self.cursor);
+            }
+            CursorMove::Up
+            | CursorMove::Down
+            | CursorMove::ViewportTop
+            | CursorMove::ViewportMiddle
+            | CursorMove::ViewportBottom => {}
+        }
+    }
+}
+
+// Snapshot of the pre-cache multi-line implementation, including its uncached inner text input.
+#[derive(Clone)]
 struct BaselineMultiLineInputState {
-    inner: TextInputState,
+    inner: BaselineTextInputState,
     scroll_row: usize,
     preferred_col: Option<usize>,
 }
@@ -14,7 +84,7 @@ struct BaselineMultiLineInputState {
 impl BaselineMultiLineInputState {
     fn new(content: impl Into<String>, cursor: usize) -> Self {
         Self {
-            inner: TextInputState::new(content, cursor),
+            inner: BaselineTextInputState::new(content, cursor),
             scroll_row: 0,
             preferred_col: None,
         }
