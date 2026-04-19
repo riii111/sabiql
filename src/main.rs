@@ -30,9 +30,9 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::runtime::AppRuntime;
+use crate::app::startup::{StartupLoadError, initialize_connection_state};
 use crate::app::ports::{
-    ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
-    ServiceFileError,
+    ConnectionStore, DatabaseCapabilityProvider, PgServiceEntryReader,
 };
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
@@ -124,44 +124,21 @@ async fn main() -> Result<()> {
     };
 
     let mut state = AppState::new(project_name);
-
-    match all_profiles {
-        Ok(profiles) if profiles.is_empty() => {
-            load_service_entries(&mut state, Some(&*pg_service_entry_reader));
-            if state.service_entries().is_empty() {
-                state.connection_setup.is_first_run = true;
-                state.modal.set_mode(InputMode::ConnectionSetup);
-            } else {
-                state.modal.set_mode(InputMode::ConnectionSelector);
-                state.ui.set_connection_list_selection(Some(0));
-            }
-        }
-        Ok(mut profiles) => {
-            profiles.sort_by(|a, b| {
-                a.display_name()
-                    .to_lowercase()
-                    .cmp(&b.display_name().to_lowercase())
-            });
-            state.set_connections(profiles);
-            load_service_entries(&mut state, Some(&*pg_service_entry_reader));
-
-            state.modal.set_mode(InputMode::ConnectionSelector);
-            state.ui.set_connection_list_selection(Some(0));
-        }
-        Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
-            eprintln!(
-                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
-                 Please delete {} and reconfigure.",
-                found,
-                expected,
-                connection_store.storage_path().display()
-            );
-            std::process::exit(1);
-        }
-        Err(_) => {
-            state.connection_setup.is_first_run = true;
-            state.modal.set_mode(InputMode::ConnectionSetup);
-        }
+    let service_result = match &all_profiles {
+        Ok(_) => Some(pg_service_entry_reader.read_services()),
+        Err(_) => None,
+    };
+    if let Err(StartupLoadError::VersionMismatch { found, expected }) =
+        initialize_connection_state(&mut state, all_profiles, service_result)
+    {
+        eprintln!(
+            "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
+             Please delete {} and reconfigure.",
+            found,
+            expected,
+            connection_store.storage_path().display()
+        );
+        std::process::exit(1);
     }
 
     let mut tui = TuiRunner::new()?;
@@ -312,24 +289,6 @@ async fn drain_and_process_terminal_events(
 
     Ok(())
 }
-
-fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntryReader>) {
-    let Some(reader) = reader else {
-        return;
-    };
-
-    match reader.read_services() {
-        Ok((services, path)) if !services.is_empty() => {
-            state.set_service_entries(services);
-            state.runtime.service_file_path = Some(path);
-        }
-        Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
-        Err(e) => {
-            state.messages.set_error(e.to_string());
-        }
-    }
-}
-
 #[cfg(feature = "self-update")]
 #[allow(clippy::print_stdout, reason = "CLI subcommand output, TUI not active")]
 fn run_update() -> Result<()> {
