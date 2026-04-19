@@ -23,11 +23,11 @@ mod render_snapshots;
 
 use crate::app::{
     Action, AppRuntime, AppState, CompletionEngine, DbCapabilities, EffectRunner, InputMode,
-    StartupLoadError, TtlCache, handle_event, initialize_connection_state,
+    StartupLoadError, TtlCache, initialize_connection_state,
     next_animation_deadline,
 };
 use crate::app::ports::{
-    ConnectionStore, DatabaseCapabilityProvider, PgServiceEntryReader,
+    ConnectionStore, DatabaseCapabilityProvider, PgServiceEntryReader, handle_input,
 };
 use crate::app::AppServices;
 use crate::infra::adapters::{
@@ -161,7 +161,7 @@ async fn main() -> Result<()> {
 
         tokio::select! {
             Some(event) = tui.next_event() => {
-                let action = handle_event(event.into(), &state, &services);
+                let action = handle_input(event.into(), &state, &services);
                 if !action.is_none() {
                     drain_and_process_terminal_events(action, &mut state, &mut tui, &runtime).await?;
                 }
@@ -245,7 +245,7 @@ async fn drain_and_process_terminal_events(
             break;
         };
         drained += 1;
-        let action = handle_event(event.into(), state, runtime.services());
+        let action = handle_input(event.into(), state, runtime.services());
         if action.is_none() {
             continue;
         }

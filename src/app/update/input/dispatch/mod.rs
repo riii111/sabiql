@@ -1,0 +1,198 @@
+mod connections;
+mod editors;
+mod jsonb;
+mod normal;
+mod overlays;
+mod pickers;
+mod sql_modal;
+
+use crate::model::app_state::AppState;
+use crate::model::shared::input_mode::InputMode;
+use crate::ports::input::InputEvent;
+use crate::services::AppServices;
+use crate::update::action::Action;
+use crate::update::input::keybindings::KeyCombo;
+
+pub fn resolve_input(event: InputEvent, state: &AppState, services: &AppServices) -> Action {
+    match event {
+        InputEvent::Init => Action::Render,
+        InputEvent::Resize(w, h) => Action::Resize(w, h),
+        InputEvent::Key(combo) => handle_key_event(combo, state, services),
+        InputEvent::Paste(text) => handle_paste_event(text, state),
+    }
+}
+
+fn handle_paste_event(text: String, state: &AppState) -> Action {
+    match state.input_mode() {
+        InputMode::TablePicker
+        | InputMode::ErTablePicker
+        | InputMode::CommandLine
+        | InputMode::CellEdit
+        | InputMode::ConnectionSetup
+        | InputMode::SqlModal
+        | InputMode::QueryHistoryPicker
+        | InputMode::JsonbEdit
+        | InputMode::JsonbDetail => Action::Paste(text),
+        _ => Action::None,
+    }
+}
+
+fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -> Action {
+    match state.input_mode() {
+        InputMode::Normal => normal::handle_normal_mode(combo, state),
+        InputMode::CommandLine => editors::handle_command_line_mode(combo),
+        InputMode::CellEdit => editors::handle_cell_edit_keys(combo),
+        InputMode::TablePicker => pickers::handle_table_picker_keys(combo),
+        InputMode::CommandPalette => pickers::handle_command_palette_keys(combo),
+        InputMode::Help => overlays::handle_help_keys(combo),
+        InputMode::SqlModal => {
+            let completion_visible = state.sql_modal.completion.visible
+                && !state.sql_modal.completion.candidates.is_empty();
+            sql_modal::handle_sql_modal_keys_with_prefix(
+                combo,
+                completion_visible,
+                state.sql_modal.status(),
+                services
+                    .db_capabilities
+                    .normalize_sql_modal_tab(state.sql_modal.active_tab),
+                state.ui.key_sequence.pending_prefix(),
+            )
+        }
+        InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
+        InputMode::ConnectionError => connections::handle_connection_error_keys(combo),
+        InputMode::ConfirmDialog => overlays::handle_confirm_dialog_keys(combo),
+        InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
+        InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo),
+        InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
+        InputMode::JsonbDetail => {
+            let is_searching = state.jsonb_detail.search().active;
+            jsonb::handle_jsonb_detail_keys(
+                combo,
+                is_searching,
+                state.ui.key_sequence.pending_prefix(),
+            )
+        }
+        InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::update::input::keybindings::{Key, KeyCombo};
+
+    fn combo(k: Key) -> KeyCombo {
+        KeyCombo::plain(k)
+    }
+
+    mod mode_dispatch {
+        use super::*;
+
+        fn make_state(mode: InputMode) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(mode);
+            state
+        }
+
+        #[test]
+        fn normal_mode_routes_to_normal_handler() {
+            let state = make_state(InputMode::Normal);
+            let services = AppServices::stub();
+
+            let result = handle_key_event(combo(Key::Char('q')), &state, &services);
+
+            assert!(matches!(result, Action::Quit));
+        }
+
+        #[test]
+        fn sql_modal_mode_routes_to_sql_modal_handler() {
+            let state = make_state(InputMode::SqlModal);
+            let services = AppServices::stub();
+
+            let result = handle_key_event(combo(Key::Esc), &state, &services);
+
+            assert!(matches!(result, Action::CloseSqlModal));
+        }
+
+        #[test]
+        fn sql_modal_normalizes_unsupported_tab_before_handling_keys() {
+            let mut state = make_state(InputMode::SqlModal);
+            state.sql_modal.active_tab = crate::model::sql_editor::modal::SqlModalTab::Plan;
+
+            let mut services = AppServices::stub();
+            services.db_capabilities =
+                crate::model::shared::db_capabilities::DbCapabilities::new(
+                    false,
+                    vec![crate::model::shared::inspector_tab::InspectorTab::Info],
+                );
+
+            let result = handle_key_event(combo(Key::Char('i')), &state, &services);
+
+            assert!(matches!(result, Action::SqlModalEnterInsert));
+        }
+    }
+
+    mod paste_event {
+        use super::*;
+
+        fn make_state(mode: InputMode) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(mode);
+            state
+        }
+
+        #[test]
+        fn sql_modal_pastes_text() {
+            let state = make_state(InputMode::SqlModal);
+
+            let result = handle_paste_event("hello".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "hello"));
+        }
+
+        #[test]
+        fn table_picker_pastes_text() {
+            let state = make_state(InputMode::TablePicker);
+
+            let result = handle_paste_event("world".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "world"));
+        }
+
+        #[test]
+        fn er_table_picker_pastes_text() {
+            let state = make_state(InputMode::ErTablePicker);
+
+            let result = handle_paste_event("public.users".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "public.users"));
+        }
+
+        #[test]
+        fn query_history_picker_pastes_text() {
+            let state = make_state(InputMode::QueryHistoryPicker);
+
+            let result = handle_paste_event("users".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "users"));
+        }
+
+        #[test]
+        fn normal_mode_ignores_paste() {
+            let state = make_state(InputMode::Normal);
+
+            let result = handle_paste_event("text".to_string(), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn help_mode_ignores_paste() {
+            let state = make_state(InputMode::Help);
+
+            let result = handle_paste_event("text".to_string(), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+    }
+}

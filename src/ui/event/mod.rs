@@ -1,6 +1,6 @@
 pub mod key_translator;
 
-use crate::app::input::{InputEvent, InputKeyCombo};
+use crate::app::ports::{InputEvent, InputKeyCombo};
 
 #[derive(Clone, Debug)]
 pub enum Event {

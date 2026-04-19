@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::input::{InputKeyCombo, Key, Modifiers};
+use crate::app::ports::{InputKeyCombo, Key, Modifiers};
 
 pub fn translate(event: KeyEvent) -> InputKeyCombo {
     let key = match event.code {
