@@ -141,14 +141,7 @@ impl PostgresAdapter {
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
         }
-        cmd.arg(dsn)
-            .arg("-X")
-            .arg("-v")
-            .arg("ON_ERROR_STOP=1")
-            .arg("-v")
-            .arg("VERBOSITY=verbose")
-            .arg("-v")
-            .arg("SHOW_CONTEXT=never");
+        Self::apply_psql_base_args(&mut cmd, dsn);
 
         for arg in extra_args {
             cmd.arg(arg);
@@ -165,6 +158,17 @@ impl PostgresAdapter {
             Err(_) => Self::PGOPTIONS_READ_ONLY.to_string(),
         };
         cmd.env("PGOPTIONS", merged);
+    }
+
+    fn apply_psql_base_args(cmd: &mut Command, dsn: &str) {
+        cmd.arg(dsn)
+            .arg("-X")
+            .arg("-v")
+            .arg("ON_ERROR_STOP=1")
+            .arg("-v")
+            .arg("VERBOSITY=verbose")
+            .arg("-v")
+            .arg("SHOW_CONTEXT=never");
     }
 
     async fn collect_output(
@@ -344,13 +348,8 @@ impl PostgresAdapter {
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
         }
-        cmd.arg(dsn)
-            .arg("-X")
-            .arg("-v")
-            .arg("ON_ERROR_STOP=1")
-            .arg("--csv")
-            .arg("-c")
-            .arg(query);
+        Self::apply_psql_base_args(&mut cmd, dsn);
+        cmd.arg("--csv").arg("-c").arg(query);
 
         let mut child = cmd
             .stdout(Stdio::piped())

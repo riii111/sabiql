@@ -117,11 +117,15 @@ impl DbOperationError {
     }
 
     pub fn result_message(&self) -> String {
+        let summary = self.summary();
+        let hint = self.hint();
         let details = self.masked_details();
-        if details.trim().is_empty() {
-            self.user_message()
-        } else {
-            format!("{}\n\nDetails:\n{}", self.user_message(), details)
+
+        match (details.trim().is_empty(), hint.is_empty()) {
+            (true, true) => summary.to_string(),
+            (true, false) => format!("{summary}. {hint}."),
+            (false, true) => format!("{summary}\n\nDetails:\n{details}"),
+            (false, false) => format!("{summary}. {hint}.\n\nDetails:\n{details}"),
         }
     }
 }
@@ -226,8 +230,15 @@ mod tests {
                 "ERROR: duplicate key value violates unique constraint".to_string(),
             );
 
-            assert!(error.result_message().contains("Unique constraint violation:"));
+            assert!(error.result_message().contains("Unique constraint violation."));
             assert!(error.result_message().contains("Details:"));
+            assert_eq!(
+                error
+                    .result_message()
+                    .matches("ERROR: duplicate key value violates unique constraint")
+                    .count(),
+                1
+            );
         }
     }
 }
