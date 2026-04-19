@@ -8,7 +8,7 @@ struct LineSpan {
     len: usize,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct MultiLineDerivedState {
     line_spans: Vec<LineSpan>,
     cursor_row: usize,
@@ -289,6 +289,14 @@ impl TextInputLike for MultiLineInputState {
 }
 
 impl MultiLineDerivedState {
+    fn default_empty_line() -> Self {
+        Self {
+            line_spans: vec![LineSpan::default()],
+            cursor_row: 0,
+            cursor_col: 0,
+        }
+    }
+
     fn new(content: &str, cursor: usize) -> Self {
         let line_spans = build_line_spans(content);
         let (cursor_row, cursor_col) = find_cursor_position(&line_spans, cursor);
@@ -297,6 +305,12 @@ impl MultiLineDerivedState {
             cursor_row,
             cursor_col,
         }
+    }
+}
+
+impl Default for MultiLineDerivedState {
+    fn default() -> Self {
+        Self::default_empty_line()
     }
 }
 
@@ -900,6 +914,16 @@ mod tests {
 
     mod content_management {
         use super::*;
+
+        #[test]
+        fn default_preserves_single_empty_line_invariant() {
+            let mut s = MultiLineInputState::default();
+
+            s.move_cursor(CursorMove::LineEnd);
+
+            assert_eq!(s.cursor(), 0);
+            assert_eq!(s.cursor_to_position(), (0, 0));
+        }
 
         #[test]
         fn set_content_resets_scroll_and_sets_cursor_to_end() {
