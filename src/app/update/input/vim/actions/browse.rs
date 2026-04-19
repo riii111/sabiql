@@ -10,7 +10,7 @@ use crate::app::update::input::vim::types::{
     VimOperator,
 };
 
-pub(in crate::app::update::input::vim) fn navigation(
+pub(in crate::update::input::vim) fn navigation(
     navigation: VimNavigation,
     ctx: BrowseVimContext,
 ) -> Action {
@@ -21,7 +21,7 @@ pub(in crate::app::update::input::vim) fn navigation(
     }
 }
 
-pub(in crate::app::update::input::vim) fn mode_transition(
+pub(in crate::update::input::vim) fn mode_transition(
     transition: VimModeTransition,
     ctx: BrowseVimContext,
 ) -> Action {
@@ -59,7 +59,7 @@ pub(in crate::app::update::input::vim) fn mode_transition(
     }
 }
 
-pub(in crate::app::update::input::vim) fn operator(
+pub(in crate::update::input::vim) fn operator(
     operator: VimOperator,
     ctx: BrowseVimContext,
 ) -> Option<Action> {

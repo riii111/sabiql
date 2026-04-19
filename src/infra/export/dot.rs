@@ -216,7 +216,7 @@ impl<G: GraphvizRunner + 'static, V: ViewerLauncher + 'static> ErDiagramExporter
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::ErFkInfo;
+    use crate::domain::er::ErFkInfo;
 
     fn make_test_tables() -> Vec<ErTableInfo> {
         vec![

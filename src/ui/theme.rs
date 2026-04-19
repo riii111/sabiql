@@ -265,7 +265,8 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     },
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
 pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
     semantic: SemanticTokens {
         surface: SurfaceTokens {
@@ -342,7 +343,7 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
 pub fn palette_for(theme_id: ThemeId) -> &'static ThemePalette {
     match theme_id {
         ThemeId::Default => &DEFAULT_THEME,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         ThemeId::TestContrast => &TEST_CONTRAST_THEME,
     }
 }

@@ -36,15 +36,18 @@ def rerun_command(profile: str, test_name: str) -> str:
     quoted_test_name = shlex.quote(test_name)
     if profile == "ci-all":
         return (
-            "cargo nextest run --profile ci-all --all-features"
+            "cargo nextest run --workspace --profile ci-all --all-features"
             f" -- {quoted_test_name} --exact"
         )
     if profile == "ci-no-default":
         return (
-            "cargo nextest run --profile ci-no-default --no-default-features"
+            "cargo nextest run --workspace --profile ci-no-default --no-default-features"
             f" -- {quoted_test_name} --exact"
         )
-    return f"cargo nextest run --profile {profile} -- {quoted_test_name} --exact"
+    return (
+        f"cargo nextest run --workspace --profile {profile}"
+        f" -- {quoted_test_name} --exact"
+    )
 
 
 def collect_failures(report_path: Path) -> tuple[str, list[dict[str, str]]]:

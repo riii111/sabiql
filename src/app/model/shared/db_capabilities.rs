@@ -1,6 +1,6 @@
-use crate::app::ports::{DatabaseCapabilities, InspectorFeature};
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::sql_editor::modal::SqlModalTab;
+use crate::app::ports::{DatabaseCapabilities, InspectorFeature};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
@@ -50,11 +50,7 @@ impl DbCapabilities {
 
     pub fn supported_sql_modal_tabs(&self) -> &'static [SqlModalTab] {
         if self.supports_explain() {
-            &[
-                SqlModalTab::Sql,
-                SqlModalTab::Plan,
-                SqlModalTab::Compare,
-            ]
+            &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
         } else {
             &[SqlModalTab::Sql]
         }

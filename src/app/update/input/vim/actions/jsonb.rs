@@ -5,7 +5,7 @@ use crate::app::update::input::vim::types::{
     VimOperator,
 };
 
-pub(in crate::app::update::input::vim) fn command(
+pub(in crate::update::input::vim) fn command(
     command: VimCommand,
     ctx: JsonbDetailVimContext,
 ) -> Option<Action> {

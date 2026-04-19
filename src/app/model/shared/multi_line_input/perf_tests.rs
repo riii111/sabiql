@@ -200,9 +200,7 @@ impl BaselineMultiLineInputState {
                 }
                 self.preferred_col = Some(preferred_col);
             }
-            CursorMove::ViewportTop
-            | CursorMove::ViewportMiddle
-            | CursorMove::ViewportBottom => {}
+            CursorMove::ViewportTop | CursorMove::ViewportMiddle | CursorMove::ViewportBottom => {}
         }
     }
 

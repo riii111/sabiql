@@ -5,12 +5,12 @@ lefthook = "1.10.10"
 
 [tasks.build]
 description = "Build the project"
-run = "cargo build -q"
-sources = ["Cargo.toml", "src/**/*.rs"]
+run = "cargo build --workspace -q"
+sources = ["Cargo.toml", "Cargo.lock", "src/**/*.rs", "crates/**/*.rs", "crates/**/Cargo.toml"]
 
 [tasks."build:release"]
 description = "Build release binary"
-run = "cargo build --release -q"
+run = "cargo build --workspace --release -q"
 
 [tasks.fmt]
 description = "Format code"
@@ -18,7 +18,7 @@ run = "cargo fmt"
 
 [tasks.clippy]
 description = "Run lints"
-run = "cargo clippy -q --all-targets -- -D warnings"
+run = "cargo clippy -q --workspace --all-targets -- -D warnings"
 
 [tasks."lint:all"]
 description = "Run all custom lints in parallel"
@@ -26,19 +26,19 @@ run = "./scripts/lint_all.sh"
 
 [tasks."clippy:fix"]
 description = "Auto-fix clippy warnings"
-run = "cargo clippy --all-targets --fix --allow-dirty --allow-staged"
+run = "cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged"
 
 [tasks.test]
 description = "Run tests"
-run = "cargo test -q"
+run = "cargo test -q --workspace"
 
 [tasks."test:debug"]
 description = "Run specific test with output (e.g., mise run test:debug test_name)"
-run = "cargo test $1 -- --nocapture"
+run = "cargo test --workspace $1 -- --nocapture"
 
 [tasks."test:ignored"]
 description = "Run #[ignore] integration tests (requires PostgreSQL)"
-run = "cargo test -- --ignored"
+run = "cargo test --workspace -- --ignored"
 
 [tasks.run]
 description = "Run application"

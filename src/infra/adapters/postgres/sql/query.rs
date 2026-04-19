@@ -2,7 +2,7 @@ use super::super::PostgresAdapter;
 use super::{quote_ident, quote_literal};
 
 impl PostgresAdapter {
-    pub(in crate::infra::adapters::postgres) fn tables_query() -> &'static str {
+    pub(in crate::adapters::postgres) fn tables_query() -> &'static str {
         r"
         SELECT json_agg(row_to_json(t))
         FROM (
@@ -29,7 +29,7 @@ impl PostgresAdapter {
         "
     }
 
-    pub(in crate::infra::adapters::postgres) fn table_signatures_query() -> &'static str {
+    pub(in crate::adapters::postgres) fn table_signatures_query() -> &'static str {
         r"
         SELECT json_agg(row_to_json(t))
         FROM (
@@ -79,7 +79,7 @@ impl PostgresAdapter {
         "
     }
 
-    pub(in crate::infra::adapters::postgres) fn schemas_query() -> &'static str {
+    pub(in crate::adapters::postgres) fn schemas_query() -> &'static str {
         r"
         SELECT json_agg(row_to_json(s))
         FROM (
@@ -93,7 +93,7 @@ impl PostgresAdapter {
         "
     }
 
-    pub(in crate::infra::adapters::postgres) fn columns_query(schema: &str, table: &str) -> String {
+    pub(in crate::adapters::postgres) fn columns_query(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT json_agg(row_to_json(c) ORDER BY c.ordinal_position)
@@ -134,7 +134,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn preview_pk_columns_query(
+    pub(in crate::adapters::postgres) fn preview_pk_columns_query(
         schema: &str,
         table: &str,
     ) -> String {
@@ -154,7 +154,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn build_preview_query(
+    pub(in crate::adapters::postgres) fn build_preview_query(
         schema: &str,
         table: &str,
         order_columns: &[String],
@@ -182,7 +182,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn indexes_query(schema: &str, table: &str) -> String {
+    pub(in crate::adapters::postgres) fn indexes_query(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT json_agg(row_to_json(i))
@@ -211,10 +211,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn foreign_keys_query(
-        schema: &str,
-        table: &str,
-    ) -> String {
+    pub(in crate::adapters::postgres) fn foreign_keys_query(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT json_agg(row_to_json(fk))
@@ -247,7 +244,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn rls_query(schema: &str, table: &str) -> String {
+    pub(in crate::adapters::postgres) fn rls_query(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT json_build_object(
@@ -280,10 +277,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn triggers_query(
-        schema: &str,
-        table: &str,
-    ) -> String {
+    pub(in crate::adapters::postgres) fn triggers_query(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT json_agg(row_to_json(t) ORDER BY t.name)
@@ -317,10 +311,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn table_info_query(
-        schema: &str,
-        table: &str,
-    ) -> String {
+    pub(in crate::adapters::postgres) fn table_info_query(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT row_to_json(t)
@@ -340,7 +331,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn table_columns_and_fks_query(
+    pub(in crate::adapters::postgres) fn table_columns_and_fks_query(
         schema: &str,
         table: &str,
     ) -> String {
@@ -356,10 +347,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn table_detail_query(
-        schema: &str,
-        table: &str,
-    ) -> String {
+    pub(in crate::adapters::postgres) fn table_detail_query(schema: &str, table: &str) -> String {
         format!(
             r"
             SELECT json_build_object(
@@ -383,7 +371,7 @@ impl PostgresAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::infra::adapters::postgres::PostgresAdapter;
+    use crate::adapters::postgres::PostgresAdapter;
 
     mod preview_query {
         use super::*;

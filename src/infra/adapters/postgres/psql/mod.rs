@@ -1,2 +1,2 @@
-pub(in crate::infra::adapters::postgres) mod executor;
-pub(in crate::infra::adapters::postgres) mod parser;
+pub(in crate::adapters::postgres) mod executor;
+pub(in crate::adapters::postgres) mod parser;

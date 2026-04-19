@@ -6,9 +6,9 @@ fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-pub(in crate::infra::adapters::postgres) mod ddl;
-pub(in crate::infra::adapters::postgres) mod dialect;
-pub(in crate::infra::adapters::postgres) mod query;
+pub(in crate::adapters::postgres) mod ddl;
+pub(in crate::adapters::postgres) mod dialect;
+pub(in crate::adapters::postgres) mod query;
 
 #[cfg(test)]
 mod tests {

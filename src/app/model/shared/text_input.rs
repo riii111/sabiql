@@ -832,5 +832,4 @@ mod tests {
             assert_eq!(s.viewport_offset(), 0);
         }
     }
-
 }

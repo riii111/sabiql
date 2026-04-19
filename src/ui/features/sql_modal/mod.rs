@@ -94,11 +94,7 @@ impl SqlModal {
                 _ => {
                     let compare_can_yank =
                         state.explain.left.is_some() && state.explain.right.is_some();
-                    Self::border_hint(
-                        active_tab,
-                        compare_can_yank,
-                        services,
-                    )
+                    Self::border_hint(active_tab, compare_can_yank, services)
                 }
             };
             Self::render_modal_with_tabs(frame, active_tab, hint, services, theme)
@@ -145,7 +141,8 @@ impl SqlModal {
                 completion::render_completion_popup(frame, area, main_area, state, theme);
             }
         } else if active_tab == SqlModalTab::Plan {
-            let plan_viewport_height = explain::render(frame, main_area, state, services, now, theme);
+            let plan_viewport_height =
+                explain::render(frame, main_area, state, services, now, theme);
             status::render_status(frame, status_area, state, theme);
             return Some(plan_viewport_height);
         } else {

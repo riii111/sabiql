@@ -403,10 +403,10 @@ impl EffectRunner {
 mod tests {
     use super::*;
     use crate::app::cmd::test_support::*;
-    use crate::app::ports::{RenderOutput, RenderResult};
     use crate::app::ports::connection_store::MockConnectionStore;
     use crate::app::ports::metadata::MockMetadataProvider;
     use crate::app::ports::query_executor::MockQueryExecutor;
+    use crate::app::ports::{RenderOutput, RenderResult};
     use crate::app::services::AppServices;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use tokio::sync::mpsc;
