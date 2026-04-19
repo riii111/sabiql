@@ -10,12 +10,14 @@ use crate::infra::config::cache::{CacheDirError, get_cache_dir};
 
 const MAX_HISTORY_ENTRIES: usize = 1000;
 
-fn map_cache_dir_error(error: CacheDirError) -> QueryHistoryError {
-    match error {
-        CacheDirError::BaseDirUnavailable => {
-            io::Error::new(io::ErrorKind::NotFound, "cache directory is unavailable").into()
+impl From<CacheDirError> for QueryHistoryError {
+    fn from(error: CacheDirError) -> Self {
+        match error {
+            CacheDirError::BaseDirUnavailable => {
+                io::Error::new(io::ErrorKind::NotFound, "cache directory is unavailable").into()
+            }
+            CacheDirError::Io(error) => error.into(),
         }
-        CacheDirError::Io(error) => error.into(),
     }
 }
 
@@ -70,7 +72,7 @@ impl FileQueryHistoryStore {
         if let Some(base) = &self.base_dir {
             Ok(base.join("history"))
         } else {
-            let cache_dir = get_cache_dir(project_name).map_err(map_cache_dir_error)?;
+            let cache_dir = get_cache_dir(project_name)?;
             Ok(cache_dir.join("history"))
         }
     }
