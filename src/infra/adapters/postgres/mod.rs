@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 
-use crate::app::ports::{DbOperationError, MetadataProvider, QueryExecutor};
+use crate::app::ports::{
+    DatabaseCapabilities, DatabaseCapabilityProvider, DbOperationError, InspectorFeature,
+    MetadataProvider, QueryExecutor,
+};
 use crate::domain::{
     Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSignature, WriteExecutionResult,
 };
@@ -21,15 +24,6 @@ impl PostgresAdapter {
     pub fn with_timeout(timeout_secs: u64) -> Self {
         Self { timeout_secs }
     }
-}
-
-impl Default for PostgresAdapter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl PostgresAdapter {
     fn extract_primary_key(columns: &[Column]) -> Option<Vec<String>> {
         let pk_cols: Vec<String> = columns
             .iter()
@@ -41,6 +35,29 @@ impl PostgresAdapter {
         } else {
             Some(pk_cols)
         }
+    }
+}
+
+impl DatabaseCapabilityProvider for PostgresAdapter {
+    fn capabilities(&self) -> DatabaseCapabilities {
+        DatabaseCapabilities::new(
+            true,
+            vec![
+                InspectorFeature::Info,
+                InspectorFeature::Columns,
+                InspectorFeature::Indexes,
+                InspectorFeature::ForeignKeys,
+                InspectorFeature::Rls,
+                InspectorFeature::Triggers,
+                InspectorFeature::Ddl,
+            ],
+        )
+    }
+}
+
+impl Default for PostgresAdapter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

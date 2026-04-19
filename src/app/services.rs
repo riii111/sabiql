@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use super::ports::{DdlGenerator, SqlDialect};
+use crate::app::model::shared::db_capabilities::DbCapabilities;
 
 pub struct AppServices {
     pub ddl_generator: Arc<dyn DdlGenerator>,
     pub sql_dialect: Arc<dyn SqlDialect>,
+    pub db_capabilities: DbCapabilities,
 }
 
 #[cfg(test)]
@@ -22,6 +24,14 @@ impl AppServices {
 
         struct StubSqlDialect;
         impl SqlDialect for StubSqlDialect {
+            fn build_explain_sql(&self, query: &str) -> Option<String> {
+                Some(format!("EXPLAIN {query}"))
+            }
+
+            fn build_explain_analyze_sql(&self, query: &str) -> Option<String> {
+                Some(format!("EXPLAIN ANALYZE {query}"))
+            }
+
             fn build_update_sql(
                 &self,
                 _schema: &str,
@@ -45,6 +55,7 @@ impl AppServices {
         Self {
             ddl_generator: Arc::new(StubDdlGenerator),
             sql_dialect: Arc::new(StubSqlDialect),
+            db_capabilities: DbCapabilities::postgres_like(),
         }
     }
 }

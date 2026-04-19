@@ -2,9 +2,9 @@ use std::fmt::Write as _;
 
 use crate::app::ports::DdlGenerator;
 use crate::domain::Table;
-use crate::infra::utils::{quote_ident, quote_literal};
 
 use super::super::PostgresAdapter;
+use super::{quote_ident, quote_literal};
 
 impl DdlGenerator for PostgresAdapter {
     fn generate_ddl(&self, table: &Table) -> String {

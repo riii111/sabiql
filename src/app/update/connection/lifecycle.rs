@@ -3,11 +3,17 @@ use std::time::Instant;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::services::AppServices;
 use crate::app::update::action::{Action, ConnectionTarget};
 
 use super::helpers::{restore_cache, save_current_cache};
 
-pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce(
+    state: &mut AppState,
+    action: &Action,
+    _now: Instant,
+    services: &AppServices,
+) -> Option<Vec<Effect>> {
     match action {
         Action::TryConnect => {
             if state.session.connection_state().is_not_connected()
@@ -32,7 +38,7 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
 
             // Try to restore from cache
             if let Some(cached) = state.connection_caches.get(id).cloned() {
-                restore_cache(state, &cached);
+                restore_cache(state, &cached, services);
                 state.session.active_connection_id = Some(id.clone());
                 state.session.dsn = Some(dsn.clone());
                 state.session.active_connection_name = Some(name.clone());
@@ -79,13 +85,14 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let current_id = ConnectionId::new();
         let new_id = ConnectionId::new();
+        let services = AppServices::stub();
 
         state.session.active_connection_id = Some(current_id.clone());
         state.ui.explorer_selected = 5;
         state.ui.inspector_tab = InspectorTab::Indexes;
 
         let action = create_switch_action(&new_id, "new_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action, Instant::now(), &services);
 
         let saved = state.connection_caches.get(&current_id).unwrap();
         assert_eq!(saved.explorer_selected, 5);
@@ -96,6 +103,7 @@ mod tests {
     fn restores_cached_state_when_available() {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();
+        let services = AppServices::stub();
 
         let cached = ConnectionCache {
             explorer_selected: 42,
@@ -105,19 +113,43 @@ mod tests {
         state.connection_caches.save(&target_id, cached);
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(state.ui.explorer_selected, 42);
         assert_eq!(state.ui.inspector_tab, InspectorTab::ForeignKeys);
     }
 
     #[test]
+    fn normalizes_cached_inspector_tab_when_capability_is_missing() {
+        let mut state = AppState::new("test".to_string());
+        let target_id = ConnectionId::new();
+        let mut services = AppServices::stub();
+        services.db_capabilities = crate::app::model::shared::db_capabilities::DbCapabilities::new(
+            true,
+            vec![InspectorTab::Info],
+        );
+
+        let cached = ConnectionCache {
+            explorer_selected: 42,
+            inspector_tab: InspectorTab::Ddl,
+            ..Default::default()
+        };
+        state.connection_caches.save(&target_id, cached);
+
+        let action = create_switch_action(&target_id, "cached_db");
+        reduce(&mut state, &action, Instant::now(), &services);
+
+        assert_eq!(state.ui.inspector_tab, InspectorTab::Info);
+    }
+
+    #[test]
     fn fetches_metadata_when_no_cache_exists() {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
+        let services = AppServices::stub();
 
         let action = create_switch_action(&new_id, "fresh_db");
-        let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+        let effects = reduce(&mut state, &action, Instant::now(), &services).unwrap();
 
         assert!(
             effects
@@ -134,9 +166,10 @@ mod tests {
     fn updates_active_connection_fields() {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
+        let services = AppServices::stub();
 
         let action = create_switch_action(&new_id, "target_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(state.session.active_connection_id, Some(new_id));
         assert_eq!(
@@ -153,13 +186,14 @@ mod tests {
     fn sets_connected_state_when_cache_exists() {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();
+        let services = AppServices::stub();
 
         state
             .connection_caches
             .save(&target_id, ConnectionCache::default());
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(state.session.connection_state(), ConnectionState::Connected);
     }
@@ -168,6 +202,7 @@ mod tests {
     fn resets_result_selection_when_restoring_cache() {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();
+        let services = AppServices::stub();
 
         state
             .connection_caches
@@ -175,7 +210,7 @@ mod tests {
         state.result_interaction.activate_cell(3, 2);
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(
             state.result_interaction.selection().mode(),
@@ -187,11 +222,12 @@ mod tests {
     fn resets_result_selection_when_no_cache() {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
+        let services = AppServices::stub();
 
         state.result_interaction.activate_cell(5, 0);
 
         let action = create_switch_action(&new_id, "fresh_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(
             state.result_interaction.selection().mode(),
@@ -203,10 +239,11 @@ mod tests {
     fn resets_read_only_on_switch() {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
+        let services = AppServices::stub();
         state.session.read_only = true;
 
         let action = create_switch_action(&new_id, "fresh_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action, Instant::now(), &services);
 
         assert!(!state.session.read_only);
     }
@@ -215,9 +252,10 @@ mod tests {
     fn clears_completion_cache_on_switch() {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
+        let services = AppServices::stub();
 
         let action = create_switch_action(&new_id, "any_db");
-        let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+        let effects = reduce(&mut state, &action, Instant::now(), &services).unwrap();
 
         assert!(
             effects

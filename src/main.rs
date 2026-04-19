@@ -38,9 +38,11 @@ use crate::app::cmd::effect::Effect;
 use crate::app::cmd::render_schedule::next_animation_deadline;
 use crate::app::cmd::runner::EffectRunner;
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::ports::{
-    ConnectionStore, ConnectionStoreError, ServiceFileError, ServiceFileReader,
+    ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
+    ServiceFileError,
 };
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
@@ -107,7 +109,9 @@ async fn main() -> Result<()> {
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
-    let service_file_reader: Arc<dyn ServiceFileReader> = Arc::new(PgServiceFileReader::new());
+    let db_capabilities: DbCapabilities = adapter.capabilities().into();
+    let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
+        Arc::new(PgServiceFileReader::new());
 
     let effect_runner = EffectRunner::builder()
         .metadata_provider(Arc::clone(&adapter) as _)
@@ -117,7 +121,7 @@ async fn main() -> Result<()> {
         .config_writer(Arc::new(FileConfigWriter::new()))
         .er_log_writer(Arc::new(FsErLogWriter))
         .connection_store(Arc::clone(&connection_store) as _)
-        .service_file_reader(Arc::clone(&service_file_reader))
+        .pg_service_entry_reader(Arc::clone(&pg_service_entry_reader))
         .clipboard(Arc::new(ArboardClipboard))
         .folder_opener(Arc::new(NativeFolderOpener))
         .query_history_store(Arc::new(FileQueryHistoryStore::new()))
@@ -128,13 +132,14 @@ async fn main() -> Result<()> {
     let services = AppServices {
         ddl_generator: Arc::clone(&adapter) as _,
         sql_dialect: Arc::clone(&adapter) as _,
+        db_capabilities,
     };
 
     let mut state = AppState::new(project_name);
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
-            load_service_entries(&mut state, &*service_file_reader);
+            load_service_entries(&mut state, Some(&*pg_service_entry_reader));
             if state.service_entries().is_empty() {
                 state.connection_setup.is_first_run = true;
                 state.modal.set_mode(InputMode::ConnectionSetup);
@@ -150,7 +155,7 @@ async fn main() -> Result<()> {
                     .cmp(&b.display_name().to_lowercase())
             });
             state.set_connections(profiles);
-            load_service_entries(&mut state, &*service_file_reader);
+            load_service_entries(&mut state, Some(&*pg_service_entry_reader));
 
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
@@ -198,7 +203,7 @@ async fn main() -> Result<()> {
 
         tokio::select! {
             Some(event) = tui.next_event() => {
-                let action = handle_event(event, &state);
+                let action = handle_event(event, &state, &services);
                 if !action.is_none() {
                     drain_and_process_terminal_events(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
                 }
@@ -390,7 +395,7 @@ async fn drain_and_process_terminal_events(
             break;
         };
         drained += 1;
-        let action = handle_event(event, state);
+        let action = handle_event(event, state, services);
         if action.is_none() {
             continue;
         }
@@ -458,7 +463,11 @@ async fn drain_and_process_terminal_events(
     Ok(())
 }
 
-fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
+fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntryReader>) {
+    let Some(reader) = reader else {
+        return;
+    };
+
     match reader.read_services() {
         Ok((services, path)) if !services.is_empty() => {
             state.set_service_entries(services);

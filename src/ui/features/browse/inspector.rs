@@ -36,17 +36,37 @@ impl Inspector {
         let is_focused = state.ui.focused_pane == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+        let active_tab = services
+            .db_capabilities
+            .normalize_inspector_tab(state.ui.inspector_tab);
 
-        Self::render_tab_bar(frame, tab_area, state, theme);
-        Self::render_content(frame, content_area, state, is_focused, services, now, theme)
+        Self::render_tab_bar(frame, tab_area, active_tab, services, theme);
+        Self::render_content(
+            frame,
+            content_area,
+            state,
+            active_tab,
+            is_focused,
+            services,
+            now,
+            theme,
+        )
     }
 
-    fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
-        let tabs: Vec<Span> = InspectorTab::all()
+    fn render_tab_bar(
+        frame: &mut Frame,
+        area: Rect,
+        active_tab: InspectorTab,
+        services: &AppServices,
+        theme: &ThemePalette,
+    ) {
+        let tabs: Vec<Span> = services
+            .db_capabilities
+            .supported_inspector_tabs()
             .iter()
             .enumerate()
             .flat_map(|(i, tab)| {
-                let is_selected = *tab == state.ui.inspector_tab;
+                let is_selected = *tab == active_tab;
                 let style = if is_selected {
                     Style::default()
                         .fg(theme.component.navigation.tab_active)
@@ -73,6 +93,7 @@ impl Inspector {
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
+        active_tab: InspectorTab,
         is_focused: bool,
         services: &AppServices,
         now: Instant,
@@ -84,7 +105,7 @@ impl Inspector {
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            match state.ui.inspector_tab {
+            match active_tab {
                 InspectorTab::Info => {
                     Self::render_info(frame, inner, table, state.ui.inspector_scroll_offset, theme);
                     ViewportPlan::default()

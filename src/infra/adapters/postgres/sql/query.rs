@@ -1,6 +1,5 @@
-use crate::infra::utils::{quote_ident, quote_literal};
-
 use super::super::PostgresAdapter;
+use super::{quote_ident, quote_literal};
 
 impl PostgresAdapter {
     pub(in crate::infra::adapters::postgres) fn tables_query() -> &'static str {

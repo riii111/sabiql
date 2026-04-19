@@ -8,14 +8,16 @@ use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
+use crate::app::services::AppServices;
 use crate::app::update::action::Action;
 
 pub fn reduce_connection(
     state: &mut AppState,
     action: &Action,
     now: Instant,
+    services: &AppServices,
 ) -> Option<Vec<Effect>> {
-    lifecycle::reduce(state, action, now)
+    lifecycle::reduce(state, action, now, services)
         .or_else(|| setup::reduce(state, action, now))
         .or_else(|| error::reduce(state, action, now))
         .or_else(|| selector::reduce(state, action, now))
@@ -35,6 +37,7 @@ mod tests {
             &mut state,
             &Action::Paste("hello".to_string()),
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert!(result.is_some());
@@ -49,6 +52,7 @@ mod tests {
             &mut state,
             &Action::Paste("hello".to_string()),
             Instant::now(),
+            &AppServices::stub(),
         );
 
         assert!(result.is_none());
@@ -58,7 +62,12 @@ mod tests {
     fn unknown_action_returns_none() {
         let mut state = AppState::new("test".to_string());
 
-        let result = reduce_connection(&mut state, &Action::Quit, Instant::now());
+        let result = reduce_connection(
+            &mut state,
+            &Action::Quit,
+            Instant::now(),
+            &AppServices::stub(),
+        );
 
         assert!(result.is_none());
     }

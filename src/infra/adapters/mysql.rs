@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 
 use crate::app::ports::{
-    DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
+    DatabaseCapabilities, DatabaseCapabilityProvider, DbOperationError, DdlGenerator, DsnBuilder,
+    InspectorFeature, MetadataProvider, QueryExecutor, SqlDialect,
 };
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
@@ -11,6 +12,20 @@ pub struct MySqlAdapter;
 impl MySqlAdapter {
     pub fn new() -> Self {
         Self
+    }
+}
+
+impl DatabaseCapabilityProvider for MySqlAdapter {
+    fn capabilities(&self) -> DatabaseCapabilities {
+        DatabaseCapabilities::new(
+            false,
+            vec![
+                InspectorFeature::Info,
+                InspectorFeature::Columns,
+                InspectorFeature::Indexes,
+                InspectorFeature::ForeignKeys,
+            ],
+        )
     }
 }
 
@@ -129,6 +144,14 @@ impl DdlGenerator for MySqlAdapter {
 }
 
 impl SqlDialect for MySqlAdapter {
+    fn build_explain_sql(&self, _query: &str) -> Option<String> {
+        None
+    }
+
+    fn build_explain_analyze_sql(&self, _query: &str) -> Option<String> {
+        None
+    }
+
     fn build_update_sql(
         &self,
         _schema: &str,

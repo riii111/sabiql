@@ -8,16 +8,17 @@ mod sql_modal;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::services::AppServices;
 use crate::app::update::action::Action;
 use crate::app::update::input::keybindings::KeyCombo;
 
 use super::Event;
 
-pub fn handle_event(event: Event, state: &AppState) -> Action {
+pub fn handle_event(event: Event, state: &AppState, services: &AppServices) -> Action {
     match event {
         Event::Init => Action::Render,
         Event::Resize(w, h) => Action::Resize(w, h),
-        Event::Key(combo) => handle_key_event(combo, state),
+        Event::Key(combo) => handle_key_event(combo, state, services),
         Event::Paste(text) => handle_paste_event(text, state),
     }
 }
@@ -37,7 +38,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
     }
 }
 
-fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
+fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -> Action {
     match state.input_mode() {
         InputMode::Normal => normal::handle_normal_mode(combo, state),
         InputMode::CommandLine => editors::handle_command_line_mode(combo),
@@ -52,7 +53,9 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
                 combo,
                 completion_visible,
                 state.sql_modal.status(),
-                state.sql_modal.active_tab,
+                services
+                    .db_capabilities
+                    .normalize_sql_modal_tab(state.sql_modal.active_tab),
                 state.ui.key_sequence.pending_prefix(),
             )
         }
@@ -95,9 +98,10 @@ mod tests {
         #[test]
         fn normal_mode_routes_to_normal_handler() {
             let state = make_state(InputMode::Normal);
+            let services = AppServices::stub();
 
             // 'q' in Normal mode should quit
-            let result = handle_key_event(combo(Key::Char('q')), &state);
+            let result = handle_key_event(combo(Key::Char('q')), &state, &services);
 
             assert!(matches!(result, Action::Quit));
         }
@@ -105,11 +109,29 @@ mod tests {
         #[test]
         fn sql_modal_mode_routes_to_sql_modal_handler() {
             let state = make_state(InputMode::SqlModal);
+            let services = AppServices::stub();
 
             // Esc in SqlModal (Normal mode, the default) should close modal
-            let result = handle_key_event(combo(Key::Esc), &state);
+            let result = handle_key_event(combo(Key::Esc), &state, &services);
 
             assert!(matches!(result, Action::CloseSqlModal));
+        }
+
+        #[test]
+        fn sql_modal_normalizes_unsupported_tab_before_handling_keys() {
+            let mut state = make_state(InputMode::SqlModal);
+            state.sql_modal.active_tab = crate::app::model::sql_editor::modal::SqlModalTab::Plan;
+
+            let mut services = AppServices::stub();
+            services.db_capabilities =
+                crate::app::model::shared::db_capabilities::DbCapabilities::new(
+                    false,
+                    vec![crate::app::model::shared::inspector_tab::InspectorTab::Info],
+                );
+
+            let result = handle_key_event(combo(Key::Char('i')), &state, &services);
+
+            assert!(matches!(result, Action::SqlModalEnterInsert));
         }
     }
 

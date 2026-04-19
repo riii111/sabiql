@@ -84,7 +84,7 @@ impl MainLayout {
         Header::render(frame, header_area, state, theme);
         let output = Self::render_browse_mode(frame, main_area, state, services, now, theme);
 
-        Footer::render(frame, footer_area, state, time_ms, theme);
+        Footer::render(frame, footer_area, state, services, time_ms, theme);
         let command_line_visible_width = CommandLine::render(frame, cmdline_area, state, theme);
         let connection_list_pane_height = match state.input_mode() {
             InputMode::ConnectionSelector => Some(ConnectionSelector::render(frame, state, theme)),
@@ -136,7 +136,7 @@ impl MainLayout {
         };
 
         let explain_compare_viewport_height = if matches!(state.input_mode(), InputMode::SqlModal) {
-            SqlModal::render(frame, state, now, theme)
+            SqlModal::render(frame, state, services, now, theme)
         } else {
             None
         };

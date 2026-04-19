@@ -1,7 +1,7 @@
 use crate::app::ports::SqlDialect;
-use crate::infra::utils::{quote_ident, quote_literal};
 
 use super::super::PostgresAdapter;
+use super::{quote_ident, quote_literal};
 
 fn sql_literal_or_null(value: &str) -> String {
     if value == "NULL" {
@@ -12,6 +12,14 @@ fn sql_literal_or_null(value: &str) -> String {
 }
 
 impl SqlDialect for PostgresAdapter {
+    fn build_explain_sql(&self, query: &str) -> Option<String> {
+        Some(format!("EXPLAIN {query}"))
+    }
+
+    fn build_explain_analyze_sql(&self, query: &str) -> Option<String> {
+        Some(format!("EXPLAIN ANALYZE {query}"))
+    }
+
     fn build_update_sql(
         &self,
         schema: &str,
@@ -128,6 +136,30 @@ mod tests {
             assert_eq!(
                 sql,
                 "UPDATE \"s\".\"t\"\nSET \"name\" = 'new'\nWHERE \"id\" = '1' AND \"tenant_id\" = '7';"
+            );
+        }
+    }
+
+    mod sql_dialect_explain {
+        use super::*;
+
+        #[test]
+        fn explain_sql_uses_postgres_prefix() {
+            let adapter = PostgresAdapter::new();
+
+            assert_eq!(
+                adapter.build_explain_sql("SELECT 1"),
+                Some("EXPLAIN SELECT 1".to_string())
+            );
+        }
+
+        #[test]
+        fn explain_analyze_sql_uses_postgres_prefix() {
+            let adapter = PostgresAdapter::new();
+
+            assert_eq!(
+                adapter.build_explain_analyze_sql("SELECT 1"),
+                Some("EXPLAIN ANALYZE SELECT 1".to_string())
             );
         }
     }

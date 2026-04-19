@@ -9,6 +9,7 @@ use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
+use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
@@ -28,6 +29,7 @@ impl Footer {
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
+        services: &AppServices,
         time_ms: Option<u128>,
         theme: &ThemePalette,
     ) {
@@ -40,7 +42,7 @@ impl Footer {
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
-            let hints = Self::get_context_hints(state);
+            let hints = Self::get_context_hints(state, services);
             let line = Self::build_hint_line_with_success(
                 &hints,
                 state.messages.last_success.as_deref(),
@@ -77,7 +79,10 @@ impl Footer {
     }
 
     // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
-    fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
+    fn get_context_hints(
+        state: &AppState,
+        services: &AppServices,
+    ) -> Vec<(&'static str, &'static str)> {
         use crate::app::model::shared::focused_pane::FocusedPane;
 
         match state.input_mode() {
@@ -143,6 +148,9 @@ impl Footer {
                     list
                 } else {
                     // Actions → Navigation → Help → Close/Cancel → Quit
+                    let active_inspector_tab = services
+                        .db_capabilities
+                        .normalize_inspector_tab(state.ui.inspector_tab);
                     let mut list = vec![
                         GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
                         GLOBAL_KEYS[idx::global::SQL].as_hint(),
@@ -167,7 +175,7 @@ impl Footer {
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         use crate::app::model::shared::inspector_tab::InspectorTab;
-                        if state.ui.inspector_tab == InspectorTab::Ddl {
+                        if active_inspector_tab == InspectorTab::Ddl {
                             list.push(INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK].as_hint());
                         }
                     }
@@ -184,7 +192,9 @@ impl Footer {
                             list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
                         }
                     }
-                    if state.ui.focused_pane == FocusedPane::Inspector {
+                    if state.ui.focused_pane == FocusedPane::Inspector
+                        && services.db_capabilities.supported_inspector_tabs().len() > 1
+                    {
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
@@ -233,13 +243,21 @@ impl Footer {
                     // Hints are shown on the modal's bottom border, not the main footer.
                     vec![]
                 } else {
-                    // Editing mode
-                    vec![
+                    // Editing / Running
+                    let mut hints = vec![
                         SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
-                        SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
                         SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
                         SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
-                    ]
+                    ];
+                    if services.db_capabilities.supports_explain()
+                        && state.sql_modal.status() == &SqlModalStatus::Editing
+                    {
+                        hints.insert(
+                            1,
+                            SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
+                        );
+                    }
+                    hints
                 }
             }
             InputMode::ConnectionSetup => vec![
@@ -338,5 +356,47 @@ impl Footer {
         }
 
         Line::from(spans)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Footer;
+    use crate::app::model::app_state::AppState;
+    use crate::app::model::shared::db_capabilities::DbCapabilities;
+    use crate::app::model::shared::focused_pane::FocusedPane;
+    use crate::app::model::shared::input_mode::InputMode;
+    use crate::app::model::shared::inspector_tab::InspectorTab;
+    use crate::app::services::AppServices;
+    use crate::app::update::input::keybindings::{GLOBAL_KEYS, idx};
+    use rstest::rstest;
+
+    fn inspector_state() -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::Normal);
+        state.ui.focused_pane = FocusedPane::Inspector;
+        state
+    }
+
+    #[rstest]
+    #[case(DbCapabilities::new(true, vec![InspectorTab::Info]), false)]
+    #[case(
+        DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]),
+        true
+    )]
+    fn inspector_tabs_hint_visibility_tracks_supported_tab_count(
+        #[case] db_capabilities: DbCapabilities,
+        #[case] expected_visible: bool,
+    ) {
+        let state = inspector_state();
+        let mut services = AppServices::stub();
+        services.db_capabilities = db_capabilities;
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert_eq!(
+            hints.contains(&GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint()),
+            expected_visible
+        );
     }
 }

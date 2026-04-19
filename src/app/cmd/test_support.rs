@@ -8,8 +8,8 @@ use crate::app::cmd::cache::TtlCache;
 use crate::app::cmd::runner::{EffectRunner, EffectRunnerBuilder};
 use crate::app::ports::{
     ClipboardError, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter,
-    ErExportResult, ErLogWriter, FolderOpenError, FolderOpener, MetadataProvider, QueryExecutor,
-    QueryHistoryError, QueryHistoryStore, ServiceFileError, ServiceFileReader,
+    ErExportResult, ErLogWriter, FolderOpenError, FolderOpener, MetadataProvider,
+    PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, ServiceFileError,
 };
 use crate::app::update::action::Action;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
@@ -53,8 +53,8 @@ impl DsnBuilder for NoopDsnBuilder {
     }
 }
 
-pub struct NoopServiceFileReader;
-impl ServiceFileReader for NoopServiceFileReader {
+pub struct NoopPgServiceEntryReader;
+impl PgServiceEntryReader for NoopPgServiceEntryReader {
     fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError> {
         Ok((vec![], PathBuf::new()))
     }
@@ -127,12 +127,12 @@ pub fn make_runner_builder(
         .config_writer(Arc::new(NoopConfigWriter))
         .er_log_writer(Arc::new(NoopErLogWriter))
         .connection_store(connection_store)
-        .service_file_reader(Arc::new(NoopServiceFileReader))
         .clipboard(Arc::new(NoopClipboardWriter))
         .folder_opener(Arc::new(NoopFolderOpener))
         .query_history_store(Arc::new(NoopQueryHistoryStore))
         .metadata_cache(cache)
         .action_tx(action_tx)
+        .pg_service_entry_reader(Arc::new(NoopPgServiceEntryReader))
 }
 
 pub fn sample_metadata() -> DatabaseMetadata {

@@ -390,6 +390,14 @@ mod tests {
 
         struct FakeSqlDialect;
         impl SqlDialect for FakeSqlDialect {
+            fn build_explain_sql(&self, query: &str) -> Option<String> {
+                Some(format!("EXPLAIN {query}"))
+            }
+
+            fn build_explain_analyze_sql(&self, query: &str) -> Option<String> {
+                Some(format!("EXPLAIN ANALYZE {query}"))
+            }
+
             fn build_update_sql(
                 &self,
                 schema: &str,
@@ -422,10 +430,9 @@ mod tests {
         }
 
         fn fake_services() -> AppServices {
-            AppServices {
-                ddl_generator: AppServices::stub().ddl_generator,
-                sql_dialect: std::sync::Arc::new(FakeSqlDialect),
-            }
+            let mut services = AppServices::stub();
+            services.sql_dialect = std::sync::Arc::new(FakeSqlDialect);
+            services
         }
 
         fn editable_state() -> AppState {

@@ -18,6 +18,6 @@ pub enum ServiceFileError {
 }
 
 #[cfg_attr(test, mockall::automock)]
-pub trait ServiceFileReader: Send + Sync {
+pub trait PgServiceEntryReader: Send + Sync {
     fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError>;
 }
