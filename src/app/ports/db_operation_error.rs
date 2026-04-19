@@ -12,6 +12,7 @@ pub fn is_connection_lost_message(lower: &str) -> bool {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
+// Keep Display summary-only to avoid leaking raw command output.
 pub enum DbOperationError {
     #[error("Connection failed")]
     ConnectionFailed(String),
