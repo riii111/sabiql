@@ -1,4 +1,5 @@
 use std::fmt;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TriggerTiming {
@@ -36,6 +37,49 @@ impl fmt::Display for TriggerEvent {
     }
 }
 
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+pub enum ParseTriggerTimingError {
+    #[error("invalid trigger timing: {input}")]
+    Invalid { input: String },
+}
+
+impl FromStr for TriggerTiming {
+    type Err = ParseTriggerTimingError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            input if input.eq_ignore_ascii_case("BEFORE") => Ok(Self::Before),
+            input if input.eq_ignore_ascii_case("AFTER") => Ok(Self::After),
+            input if input.eq_ignore_ascii_case("INSTEAD OF") => Ok(Self::InsteadOf),
+            _ => Err(ParseTriggerTimingError::Invalid {
+                input: s.to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+pub enum ParseTriggerEventError {
+    #[error("invalid trigger event: {input}")]
+    Invalid { input: String },
+}
+
+impl FromStr for TriggerEvent {
+    type Err = ParseTriggerEventError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            input if input.eq_ignore_ascii_case("INSERT") => Ok(Self::Insert),
+            input if input.eq_ignore_ascii_case("UPDATE") => Ok(Self::Update),
+            input if input.eq_ignore_ascii_case("DELETE") => Ok(Self::Delete),
+            input if input.eq_ignore_ascii_case("TRUNCATE") => Ok(Self::Truncate),
+            _ => Err(ParseTriggerEventError::Invalid {
+                input: s.to_string(),
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Trigger {
     pub name: String,
@@ -48,6 +92,7 @@ pub struct Trigger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     mod trigger_timing_display {
         use super::*;
@@ -65,6 +110,22 @@ mod tests {
         #[test]
         fn instead_of_displays_with_space() {
             assert_eq!(TriggerTiming::InsteadOf.to_string(), "INSTEAD OF");
+        }
+
+        #[rstest]
+        #[case(TriggerTiming::Before)]
+        #[case(TriggerTiming::After)]
+        #[case(TriggerTiming::InsteadOf)]
+        fn display_round_trips(#[case] timing: TriggerTiming) {
+            assert_eq!(timing.to_string().parse::<TriggerTiming>().unwrap(), timing);
+        }
+
+        #[test]
+        fn from_str_rejects_unknown_timing() {
+            assert!(matches!(
+                "unknown".parse::<TriggerTiming>(),
+                Err(ParseTriggerTimingError::Invalid { .. })
+            ));
         }
     }
 
@@ -89,6 +150,23 @@ mod tests {
         #[test]
         fn truncate_displays_uppercase() {
             assert_eq!(TriggerEvent::Truncate.to_string(), "TRUNCATE");
+        }
+
+        #[rstest]
+        #[case(TriggerEvent::Insert)]
+        #[case(TriggerEvent::Update)]
+        #[case(TriggerEvent::Delete)]
+        #[case(TriggerEvent::Truncate)]
+        fn display_round_trips(#[case] event: TriggerEvent) {
+            assert_eq!(event.to_string().parse::<TriggerEvent>().unwrap(), event);
+        }
+
+        #[test]
+        fn from_str_rejects_unknown_event() {
+            assert!(matches!(
+                "merge".parse::<TriggerEvent>(),
+                Err(ParseTriggerEventError::Invalid { .. })
+            ));
         }
     }
 }

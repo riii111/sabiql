@@ -15,6 +15,24 @@ pub(in crate::infra::adapters::postgres) type TableDetailCombined = (
     TableInfo,
 );
 
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+enum MetadataParseError {
+    #[error("foreign key action parse failed: {0}")]
+    ForeignKeyAction(String),
+    #[error("RLS command parse failed: {0}")]
+    RlsCommand(String),
+    #[error("trigger timing parse failed: {0}")]
+    TriggerTiming(String),
+    #[error("trigger event parse failed: {0}")]
+    TriggerEvent(String),
+}
+
+impl From<MetadataParseError> for DbOperationError {
+    fn from(error: MetadataParseError) -> Self {
+        Self::MetadataParseFailed(error.to_string())
+    }
+}
+
 fn non_empty_json(raw: &str) -> Option<&str> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed == "null" {
@@ -184,22 +202,22 @@ impl PostgresAdapter {
 
         Ok(raw
             .into_iter()
-            .map(|i| Index {
-                name: i.name,
-                columns: i.columns,
-                is_unique: i.is_unique,
-                is_primary: i.is_primary,
-                index_type: match i.index_type.as_str() {
-                    "btree" => IndexType::BTree,
-                    "hash" => IndexType::Hash,
-                    "gist" => IndexType::Gist,
-                    "gin" => IndexType::Gin,
-                    "brin" => IndexType::Brin,
-                    other => IndexType::Other(other.to_string()),
-                },
-                definition: i.definition,
+            .map(|i| {
+                let index_type = i
+                    .index_type
+                    .parse::<IndexType>()
+                    .map_err(|never| match never {})?;
+                Ok(Index {
+                    name: i.name,
+                    columns: i.columns,
+                    is_unique: i.is_unique,
+                    is_primary: i.is_primary,
+                    index_type,
+                    definition: i.definition,
+                })
             })
-            .collect())
+            .collect::<Result<Vec<_>, std::convert::Infallible>>()
+            .map_err(|never| match never {})?)
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_foreign_keys(
@@ -222,32 +240,33 @@ impl PostgresAdapter {
             on_update: String,
         }
 
-        fn parse_fk_action(code: &str) -> FkAction {
-            match code {
-                "r" => FkAction::Restrict,
-                "c" => FkAction::Cascade,
-                "n" => FkAction::SetNull,
-                "d" => FkAction::SetDefault,
-                _ => FkAction::NoAction,
-            }
-        }
-
         let raw: Vec<RawForeignKey> = serde_json::from_str(trimmed)?;
 
         Ok(raw
             .into_iter()
-            .map(|fk| ForeignKey {
-                name: fk.name,
-                from_schema: fk.from_schema,
-                from_table: fk.from_table,
-                from_columns: fk.from_columns,
-                to_schema: fk.to_schema,
-                to_table: fk.to_table,
-                to_columns: fk.to_columns,
-                on_delete: parse_fk_action(&fk.on_delete),
-                on_update: parse_fk_action(&fk.on_update),
+            .map(|fk| {
+                let on_delete = fk
+                    .on_delete
+                    .parse::<FkAction>()
+                    .map_err(|error| MetadataParseError::ForeignKeyAction(error.to_string()))?;
+                let on_update = fk
+                    .on_update
+                    .parse::<FkAction>()
+                    .map_err(|error| MetadataParseError::ForeignKeyAction(error.to_string()))?;
+                Ok(ForeignKey {
+                    name: fk.name,
+                    from_schema: fk.from_schema,
+                    from_table: fk.from_table,
+                    from_columns: fk.from_columns,
+                    to_schema: fk.to_schema,
+                    to_table: fk.to_table,
+                    to_columns: fk.to_columns,
+                    on_delete,
+                    on_update,
+                })
             })
-            .collect())
+            .collect::<Result<Vec<_>, MetadataParseError>>()
+            .map_err(DbOperationError::from)?)
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_rls(
@@ -279,21 +298,22 @@ impl PostgresAdapter {
         let policies = raw
             .policies
             .into_iter()
-            .map(|p| RlsPolicy {
-                name: p.name,
-                permissive: p.permissive,
-                roles: p.roles.unwrap_or_default(),
-                cmd: match p.cmd.as_str() {
-                    "r" => RlsCommand::Select,
-                    "a" => RlsCommand::Insert,
-                    "w" => RlsCommand::Update,
-                    "d" => RlsCommand::Delete,
-                    _ => RlsCommand::All,
-                },
-                qual: p.qual,
-                with_check: p.with_check,
+            .map(|p| {
+                let cmd = p
+                    .cmd
+                    .parse::<RlsCommand>()
+                    .map_err(|error| MetadataParseError::RlsCommand(error.to_string()))?;
+                Ok(RlsPolicy {
+                    name: p.name,
+                    permissive: p.permissive,
+                    roles: p.roles.unwrap_or_default(),
+                    cmd,
+                    qual: p.qual,
+                    with_check: p.with_check,
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, MetadataParseError>>()
+            .map_err(DbOperationError::from)?;
 
         Ok(Some(RlsInfo {
             enabled: raw.enabled,
@@ -322,28 +342,30 @@ impl PostgresAdapter {
 
         Ok(raw
             .into_iter()
-            .map(|t| Trigger {
-                name: t.name,
-                timing: match t.timing.as_str() {
-                    "BEFORE" => TriggerTiming::Before,
-                    "INSTEAD OF" => TriggerTiming::InsteadOf,
-                    _ => TriggerTiming::After,
-                },
-                events: t
+            .map(|t| {
+                let timing = t
+                    .timing
+                    .parse::<TriggerTiming>()
+                    .map_err(|error| MetadataParseError::TriggerTiming(error.to_string()))?;
+                let events = t
                     .events
-                    .iter()
-                    .filter_map(|e| match e.as_str() {
-                        "INSERT" => Some(TriggerEvent::Insert),
-                        "UPDATE" => Some(TriggerEvent::Update),
-                        "DELETE" => Some(TriggerEvent::Delete),
-                        "TRUNCATE" => Some(TriggerEvent::Truncate),
-                        _ => None,
+                    .into_iter()
+                    .map(|event| {
+                        event
+                            .parse::<TriggerEvent>()
+                            .map_err(|error| MetadataParseError::TriggerEvent(error.to_string()))
                     })
-                    .collect(),
-                function_name: t.function_name,
-                security_definer: t.security_definer,
+                    .collect::<Result<Vec<_>, MetadataParseError>>()?;
+                Ok(Trigger {
+                    name: t.name,
+                    timing,
+                    events,
+                    function_name: t.function_name,
+                    security_definer: t.security_definer,
+                })
             })
-            .collect())
+            .collect::<Result<Vec<_>, MetadataParseError>>()
+            .map_err(DbOperationError::from)?)
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_table_detail_combined(
@@ -542,7 +564,6 @@ mod tests {
         #[case("a", RlsCommand::Insert)]
         #[case("w", RlsCommand::Update)]
         #[case("d", RlsCommand::Delete)]
-        #[case("x", RlsCommand::All)] // unknown defaults to All
         fn cmd_code_maps_to_rls_command(#[case] cmd: &str, #[case] expected: RlsCommand) {
             let json = format!(
                 r#"{{"enabled": true, "force": false, "policies": [{{
@@ -555,6 +576,29 @@ mod tests {
             let rls = result.unwrap();
 
             assert_eq!(rls.policies[0].cmd, expected);
+        }
+
+        #[test]
+        fn unknown_command_returns_metadata_parse_error() {
+            let json = r#"{
+                "enabled": true,
+                "force": false,
+                "policies": [{
+                    "name": "test",
+                    "permissive": true,
+                    "roles": null,
+                    "cmd": "x",
+                    "qual": null,
+                    "with_check": null
+                }]
+            }"#;
+
+            let result = PostgresAdapter::parse_rls(json);
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::MetadataParseFailed(_))
+            ));
         }
 
         #[test]
@@ -582,6 +626,7 @@ mod tests {
 
     mod json_parse_errors {
         use super::*;
+        use crate::domain::IndexType;
 
         #[test]
         fn parse_tables_with_malformed_json_returns_error() {
@@ -608,6 +653,25 @@ mod tests {
                 r#"[{"name": "idx_test", "columns": "id", "unique": false, "primary": false}]"#;
             let result = PostgresAdapter::parse_indexes(json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn parse_indexes_with_unknown_access_method_preserves_other() {
+            let json = r#"[{
+                "name": "idx_custom",
+                "columns": ["id"],
+                "is_unique": false,
+                "is_primary": false,
+                "index_type": "ivfflat",
+                "definition": null
+            }]"#;
+
+            let result = PostgresAdapter::parse_indexes(json).unwrap();
+
+            assert_eq!(
+                result[0].index_type,
+                IndexType::Other("ivfflat".to_string())
+            );
         }
 
         #[test]
@@ -729,7 +793,6 @@ mod tests {
         #[case("BEFORE", TriggerTiming::Before)]
         #[case("AFTER", TriggerTiming::After)]
         #[case("INSTEAD OF", TriggerTiming::InsteadOf)]
-        #[case("UNKNOWN", TriggerTiming::After)] // unknown defaults to After
         fn timing_code_maps_to_trigger_timing(
             #[case] timing: &str,
             #[case] expected: TriggerTiming,
@@ -743,6 +806,24 @@ mod tests {
 
             let result = PostgresAdapter::parse_triggers(&json).unwrap();
             assert_eq!(result[0].timing, expected);
+        }
+
+        #[test]
+        fn unknown_timing_returns_metadata_parse_error() {
+            let json = r#"[{
+                "name": "test",
+                "timing": "UNKNOWN",
+                "events": ["INSERT"],
+                "function_name": "func",
+                "security_definer": false
+            }]"#;
+
+            let result = PostgresAdapter::parse_triggers(json);
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::MetadataParseFailed(_))
+            ));
         }
 
         #[test]
@@ -792,6 +873,24 @@ mod tests {
 
             let result = PostgresAdapter::parse_triggers(json).unwrap();
             assert!(!result[0].security_definer);
+        }
+
+        #[test]
+        fn unknown_event_returns_metadata_parse_error() {
+            let json = r#"[{
+                "name": "test",
+                "timing": "AFTER",
+                "events": ["INSERT", "MERGE"],
+                "function_name": "func",
+                "security_definer": false
+            }]"#;
+
+            let result = PostgresAdapter::parse_triggers(json);
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::MetadataParseFailed(_))
+            ));
         }
     }
 
@@ -905,7 +1004,6 @@ mod tests {
         #[case("c", FkAction::Cascade)]
         #[case("n", FkAction::SetNull)]
         #[case("d", FkAction::SetDefault)]
-        #[case("x", FkAction::NoAction)]
         fn fk_code_maps_to_fk_action(#[case] action_code: &str, #[case] expected: FkAction) {
             let json = format!(
                 r#"[{{
@@ -923,6 +1021,28 @@ mod tests {
 
             let result = PostgresAdapter::parse_foreign_keys(&json).unwrap();
             assert_eq!(result[0].on_delete, expected);
+        }
+
+        #[test]
+        fn unknown_action_returns_metadata_parse_error() {
+            let json = r#"[{
+                "name": "test_fk",
+                "from_schema": "public",
+                "from_table": "t1",
+                "from_columns": ["id"],
+                "to_schema": "public",
+                "to_table": "t2",
+                "to_columns": ["id"],
+                "on_delete": "x",
+                "on_update": "a"
+            }]"#;
+
+            let result = PostgresAdapter::parse_foreign_keys(json);
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::MetadataParseFailed(_))
+            ));
         }
 
         #[test]
