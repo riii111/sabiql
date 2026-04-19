@@ -3,7 +3,7 @@ use std::time::Instant;
 use crossterm::cursor::SetCursorStyle;
 use crossterm::execute;
 
-use crate::app::services::AppServices;
+use crate::app::ui::AppServices;
 use crate::app::ui::model::app_state::AppState;
 use crate::app::ui::model::shared::input_mode::InputMode;
 use crate::app::ui::ports::{RenderOutput, RenderResult, Renderer};

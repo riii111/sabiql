@@ -36,6 +36,7 @@ pub use sabiql_domain as domain;
 /// ports the UI layer actually consumes.
 pub mod ui {
     pub use crate::model;
+    pub use crate::services::AppServices;
     pub mod ports {
         pub use crate::ports::outbound::{DdlGenerator, RenderOutput, RenderResult, Renderer};
     }

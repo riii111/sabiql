@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::catalog::{Hint, footer_hints, footer_status_text};
-use crate::app::services::AppServices;
+use crate::app::ui::AppServices;
 use crate::app::ui::model::app_state::AppState;
 use crate::app::ui::model::er_state::ErStatus;
 use crate::ui::primitives::atoms::key_text;
@@ -84,7 +84,7 @@ impl Footer {
 #[cfg(test)]
 mod tests {
     use crate::app::catalog::footer_hints;
-    use crate::app::services::AppServices;
+    use crate::app::ui::AppServices;
     use crate::app::ui::model::app_state::AppState;
     use crate::app::ui::model::shared::db_capabilities::DbCapabilities;
     use crate::app::ui::model::shared::focused_pane::FocusedPane;
@@ -116,13 +116,11 @@ mod tests {
         services.db_capabilities = db_capabilities;
 
         let hints = footer_hints(&state, &services);
-        let inspector_tabs_description = GLOBAL_KEYS[idx::global::INSPECTOR_TABS].description;
+        let inspector_tabs_hint = {
+            let (key, description) = GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint();
+            super::Hint { key, description }
+        };
 
-        assert_eq!(
-            hints
-                .iter()
-                .any(|hint| hint.description == inspector_tabs_description),
-            expected_visible
-        );
+        assert_eq!(hints.contains(&inspector_tabs_hint), expected_visible);
     }
 }

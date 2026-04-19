@@ -8,10 +8,9 @@ mod sql_modal;
 
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::ports::InputEvent;
+use crate::ports::{InputEvent, InputKeyCombo};
 use crate::services::AppServices;
 use crate::update::action::Action;
-use crate::update::input::keybindings::KeyCombo;
 
 pub fn resolve_input(event: InputEvent, state: &AppState, services: &AppServices) -> Action {
     match event {
@@ -37,7 +36,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
     }
 }
 
-fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -> Action {
+fn handle_key_event(combo: InputKeyCombo, state: &AppState, services: &AppServices) -> Action {
     match state.input_mode() {
         InputMode::Normal => normal::handle_normal_mode(combo, state),
         InputMode::CommandLine => editors::handle_command_line_mode(combo),
@@ -79,10 +78,11 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::input::keybindings::{Key, KeyCombo};
+    use crate::ports::InputKeyCombo;
+    use crate::update::input::keybindings::Key;
 
-    fn combo(k: Key) -> KeyCombo {
-        KeyCombo::plain(k)
+    fn combo(k: Key) -> InputKeyCombo {
+        InputKeyCombo::plain(k)
     }
 
     mod mode_dispatch {

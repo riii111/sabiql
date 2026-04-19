@@ -134,6 +134,7 @@ impl<'a> AppRuntime<'a> {
                 ),
                 Instant::now(),
             );
+            state.mark_dirty();
             let mut dropped = 0usize;
             for action in pending {
                 if self.effect_runner.action_tx().try_send(action).is_err() {
@@ -145,6 +146,7 @@ impl<'a> AppRuntime<'a> {
                     format!("DispatchActions fallback queue was full; dropped {dropped} action(s)"),
                     Instant::now(),
                 );
+                state.mark_dirty();
             }
         }
 

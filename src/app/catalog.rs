@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::sync::LazyLock;
 
 use crate::model::app_state::AppState;
 use crate::model::er_state::ErStatus;
@@ -82,7 +83,7 @@ fn dedup_adjacent_bindings(bindings: &[KeyBinding]) -> Vec<HelpEntry> {
     entries
 }
 
-pub fn help_sections() -> Vec<HelpSection> {
+static HELP_SECTIONS: LazyLock<Vec<HelpSection>> = LazyLock::new(|| {
     vec![
         HelpSection {
             title: "Global Keys",
@@ -230,6 +231,10 @@ pub fn help_sections() -> Vec<HelpSection> {
                 .collect(),
         },
     ]
+});
+
+pub fn help_sections() -> &'static [HelpSection] {
+    HELP_SECTIONS.as_slice()
 }
 
 pub fn footer_status_text(state: &AppState, time_ms: u128) -> Option<String> {
@@ -435,17 +440,21 @@ pub fn sql_modal_border_hint(
 
 fn join_hint_text(hints: &[Hint], bordered: bool) -> String {
     let separator = if bordered { " │ " } else { "  " };
-    let parts: Vec<String> = hints
-        .iter()
-        .map(|hint| {
-            if bordered {
-                format!("{}: {}", hint.key, hint.description)
-            } else {
-                format!("{} {}", hint.key, hint.description)
-            }
-        })
-        .collect();
-    format!(" {} ", parts.join(separator))
+    let mut text = String::from(" ");
+    for (idx, hint) in hints.iter().enumerate() {
+        if idx > 0 {
+            text.push_str(separator);
+        }
+        text.push_str(hint.key);
+        if bordered {
+            text.push_str(": ");
+        } else {
+            text.push(' ');
+        }
+        text.push_str(hint.description);
+    }
+    text.push(' ');
+    text
 }
 
 fn sql_modal_footer_hints(state: &AppState, services: &AppServices) -> Vec<Hint> {
@@ -469,9 +478,7 @@ fn sql_modal_footer_hints(state: &AppState, services: &AppServices) -> Vec<Hint>
         hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::MOVE]),
         hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL]),
     ];
-    if services.db_capabilities.supports_explain()
-        && state.sql_modal.status() == &SqlModalStatus::Editing
-    {
+    if services.db_capabilities.supports_explain() {
         hints.insert(
             1,
             hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN]),

@@ -29,12 +29,12 @@ impl HelpOverlay {
         );
 
         let mut help_lines = Vec::new();
-        for (index, section) in help_sections().into_iter().enumerate() {
+        for (index, section) in help_sections().iter().enumerate() {
             if index > 0 {
                 help_lines.push(Line::from(""));
             }
             help_lines.push(Self::section(section.title, theme));
-            for entry in section.entries {
+            for entry in &section.entries {
                 help_lines.push(Self::key_line(entry, theme));
             }
         }
@@ -79,7 +79,7 @@ impl HelpOverlay {
         ])
     }
 
-    fn key_line(entry: HelpEntry, theme: &ThemePalette) -> Line<'static> {
+    fn key_line(entry: &HelpEntry, theme: &ThemePalette) -> Line<'static> {
         Line::from(vec![
             Span::styled(
                 format!("  {:<20}", entry.key),
@@ -88,7 +88,7 @@ impl HelpOverlay {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                entry.description.into_owned(),
+                entry.description.as_ref().to_string(),
                 Style::default().fg(theme.semantic.text.secondary),
             ),
         ])

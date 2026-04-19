@@ -3,7 +3,7 @@ use std::time::Instant;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 
-use crate::app::services::AppServices;
+use crate::app::ui::AppServices;
 use crate::app::ui::model::app_state::AppState;
 use crate::app::ui::model::shared::input_mode::InputMode;
 use crate::app::ui::model::shared::ui_state::explorer_content_width_from_pane_width;

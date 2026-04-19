@@ -12,7 +12,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::catalog::sql_modal_border_hint;
-use crate::app::services::AppServices;
+use crate::app::ui::AppServices;
 use crate::app::ui::model::app_state::AppState;
 use crate::app::ui::model::sql_editor::modal::{
     SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab,
@@ -91,7 +91,7 @@ impl SqlModal {
                 }
                 _ => sql_modal_border_hint(state, active_tab, services),
             };
-            Self::render_modal_with_tabs(frame, active_tab, &hint, services, theme)
+            Self::render_modal_with_tabs(frame, active_tab, hint, services, theme)
         };
 
         // Add 1-char horizontal padding for breathing room inside the modal
@@ -151,7 +151,7 @@ impl SqlModal {
     fn render_modal_with_tabs(
         frame: &mut Frame,
         active_tab: SqlModalTab,
-        hint: &str,
+        hint: String,
         services: &AppServices,
         theme: &ThemePalette,
     ) -> (Rect, Rect) {
@@ -166,7 +166,7 @@ impl SqlModal {
         let title = Self::build_title_with_tabs(active_tab, services, theme);
         let block = Block::default()
             .title(title)
-            .title_bottom(Line::styled(hint.to_string(), theme.modal_hint_style()))
+            .title_bottom(Line::styled(hint, theme.modal_hint_style()))
             .borders(Borders::ALL)
             .border_set(border::ROUNDED)
             .border_style(theme.modal_border_style())

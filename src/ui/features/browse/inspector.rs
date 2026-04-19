@@ -6,7 +6,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
-use crate::app::services::AppServices;
+use crate::app::ui::AppServices;
 use crate::app::ui::model::app_state::AppState;
 use crate::app::ui::model::shared::flash_timer::FlashId;
 use crate::app::ui::model::shared::focused_pane::FocusedPane;
