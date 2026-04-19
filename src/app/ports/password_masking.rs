@@ -53,7 +53,12 @@ fn find_userinfo_terminator(text: &str, authority_start: usize) -> Option<usize>
         let host_end = host
             .find(['/', '?', '#', ' ', '\t', '\'', '"', ','])
             .unwrap_or(host.len());
-        (host_end > 0).then_some(at)
+
+        if host_end > 0 || host.starts_with(['/', '?', '#']) || host.is_empty() {
+            Some(at)
+        } else {
+            None
+        }
     })
 }
 
@@ -69,8 +74,7 @@ fn mask_env_passwords(text: &str) -> String {
     const PREFIXES: &[&str] = &["PGPASSWORD=", "MYSQL_PASSWORD=", "MYSQL_PWD="];
     mask_after_prefix(text, |pos| {
         PREFIXES.iter().find_map(|prefix| {
-            (has_assignment_boundary(text, pos)
-                && starts_with_ascii_ignore_case(text, pos, prefix))
+            (has_assignment_boundary(text, pos) && starts_with_ascii_ignore_case(text, pos, prefix))
                 .then_some(prefix.len())
         })
     })
@@ -98,12 +102,7 @@ fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -
         if let Some(prefix_len) = find_prefix(i) {
             let eq_end = i + prefix_len;
             result.push_str(&text[i..eq_end]);
-            result.push_str("****");
-            let mut j = eq_end;
-            while j < text.len() && !is_assignment_terminator(text.as_bytes()[j]) {
-                j += 1;
-            }
-            i = j;
+            i = skip_masked_assignment_value(text, eq_end, &mut result);
         } else {
             let ch = text[i..].chars().next().unwrap();
             result.push(ch);
@@ -118,6 +117,38 @@ fn is_assignment_terminator(byte: u8) -> bool {
     byte.is_ascii_whitespace() || matches!(byte, b';' | b'\'' | b'"' | b',')
 }
 
+fn skip_masked_assignment_value(text: &str, value_start: usize, result: &mut String) -> usize {
+    let bytes = text.as_bytes();
+
+    if let Some(b'\'' | b'"') = bytes.get(value_start) {
+        let quote = bytes[value_start];
+        result.push(quote as char);
+        result.push_str("****");
+
+        let mut i = value_start + 1;
+        while i < text.len() {
+            let byte = bytes[i];
+            if byte == quote {
+                result.push(quote as char);
+                return i + 1;
+            }
+            if byte == b'\n' || byte == b'\r' {
+                return i;
+            }
+            i += 1;
+        }
+
+        i
+    } else {
+        result.push_str("****");
+        let mut i = value_start;
+        while i < text.len() && !is_assignment_terminator(bytes[i]) {
+            i += 1;
+        }
+        i
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,12 +157,22 @@ mod tests {
     #[rstest]
     #[case("postgres://user:secret@host", "postgres://user:****@host")]
     #[case("postgres://user:p@ss@host", "postgres://user:****@host")]
-    #[case("postgres://user:p@ss@host:5432/db", "postgres://user:****@host:5432/db")]
+    #[case(
+        "postgres://user:p@ss@host:5432/db",
+        "postgres://user:****@host:5432/db"
+    )]
     #[case("postgres://user:p/w@host/db", "postgres://user:****@host/db")]
-    #[case("postgres://user:p?w@host:5432/db", "postgres://user:****@host:5432/db")]
+    #[case(
+        "postgres://user:p?w@host:5432/db",
+        "postgres://user:****@host:5432/db"
+    )]
     #[case("postgres://user:p#w@host", "postgres://user:****@host")]
     #[case("postgres://user:p w@host", "postgres://user:****@host")]
     #[case("postgresql://user:secret@host", "postgresql://user:****@host")]
+    #[case(
+        "postgresql://user:secret@/db?host=/var/run/postgresql",
+        "postgresql://user:****@/db?host=/var/run/postgresql"
+    )]
     #[case("mysql://user:secret@host", "mysql://user:****@host")]
     fn masks_passwords_in_urls(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
@@ -150,13 +191,24 @@ mod tests {
     #[case("password=secret,host=localhost", "password=****,host=localhost")]
     #[case("password=secret' host=localhost", "password=****' host=localhost")]
     #[case("password=secret\" host=localhost", "password=****\" host=localhost")]
+    #[case("password='secret' host=localhost", "password='****' host=localhost")]
+    #[case(
+        "password=\"secret\" host=localhost",
+        "password=\"****\" host=localhost"
+    )]
     fn stops_at_common_assignment_terminators(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
     }
 
     #[rstest]
-    #[case("newpassword=secret host=localhost", "newpassword=secret host=localhost")]
-    #[case("old_password=secret host=localhost", "old_password=secret host=localhost")]
+    #[case(
+        "newpassword=secret host=localhost",
+        "newpassword=secret host=localhost"
+    )]
+    #[case(
+        "old_password=secret host=localhost",
+        "old_password=secret host=localhost"
+    )]
     #[case("xPGPASSWORD=secret psql", "xPGPASSWORD=secret psql")]
     fn preserves_non_secret_compound_words(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
