@@ -118,10 +118,7 @@ impl MultiLineInputState {
                 let preferred_col = self.preferred_col.unwrap_or(current_col);
                 if current_line > 0 {
                     let previous = self.line_spans()[current_line - 1];
-                    self.set_cursor_from_line(
-                        current_line - 1,
-                        preferred_col.min(previous.len),
-                    );
+                    self.set_cursor_from_line(current_line - 1, preferred_col.min(previous.len));
                 }
                 self.preferred_col = Some(preferred_col);
             }
@@ -130,10 +127,7 @@ impl MultiLineInputState {
                 let preferred_col = self.preferred_col.unwrap_or(current_col);
                 if current_line + 1 < self.line_spans().len() {
                     let next = self.line_spans()[current_line + 1];
-                    self.set_cursor_from_line(
-                        current_line + 1,
-                        preferred_col.min(next.len),
-                    );
+                    self.set_cursor_from_line(current_line + 1, preferred_col.min(next.len));
                 }
                 self.preferred_col = Some(preferred_col);
             }
@@ -1033,5 +1027,4 @@ mod tests {
             assert_eq!(s.char_to_byte_index(100), 3);
         }
     }
-
 }

@@ -27,10 +27,7 @@ impl From<CacheDirError> for ConfigWriterError {
 }
 
 impl ConfigWriter for FileConfigWriter {
-    fn get_cache_dir(
-        &self,
-        project_name: &str,
-    ) -> Result<PathBuf, ConfigWriterError> {
+    fn get_cache_dir(&self, project_name: &str) -> Result<PathBuf, ConfigWriterError> {
         Ok(get_cache_dir(project_name)?)
     }
 }
@@ -50,11 +47,8 @@ mod tests {
 
     #[test]
     fn io_not_found_remains_io_error() {
-        let error: ConfigWriterError = CacheDirError::Io(io::Error::new(
-            io::ErrorKind::NotFound,
-            "missing parent",
-        ))
-        .into();
+        let error: ConfigWriterError =
+            CacheDirError::Io(io::Error::new(io::ErrorKind::NotFound, "missing parent")).into();
 
         match error {
             ConfigWriterError::Io(source) => {

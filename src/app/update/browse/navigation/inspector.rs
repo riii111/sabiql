@@ -263,10 +263,8 @@ mod tests {
 
         fn services_without_ddl() -> AppServices {
             let mut services = AppServices::stub();
-            services.db_capabilities = DbCapabilities::new(
-                true,
-                vec![InspectorTab::Info, InspectorTab::Columns],
-            );
+            services.db_capabilities =
+                DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
             services
         }
 
