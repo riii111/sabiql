@@ -1,8 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 
-use crate::app::ports::ConfigWriter;
-use crate::app::ports::ConfigWriterError;
+use crate::app::ports::{ConfigWriter, ConfigWriterError};
 use crate::infra::config::cache::get_cache_dir;
 
 pub struct FileConfigWriter;

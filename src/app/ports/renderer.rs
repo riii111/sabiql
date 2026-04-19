@@ -1,5 +1,9 @@
-use std::time::Instant;
 use std::sync::Arc;
+use std::time::Instant;
+
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::viewport::{ColumnWidthsCache, ViewportPlan};
+use crate::app::services::AppServices;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum RenderError {
@@ -14,10 +18,6 @@ impl From<std::io::Error> for RenderError {
 }
 
 pub type RenderResult<T> = Result<T, RenderError>;
-
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::viewport::{ColumnWidthsCache, ViewportPlan};
-use crate::app::services::AppServices;
 
 #[derive(Default)]
 pub struct RenderOutput {
