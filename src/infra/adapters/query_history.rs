@@ -13,7 +13,7 @@ const MAX_HISTORY_ENTRIES: usize = 1000;
 fn map_cache_dir_error(error: CacheDirError) -> QueryHistoryError {
     match error {
         CacheDirError::BaseDirUnavailable => {
-            io::Error::new(io::ErrorKind::NotFound, "Could not find cache directory").into()
+            io::Error::new(io::ErrorKind::NotFound, "cache directory is unavailable").into()
         }
         CacheDirError::Io(error) => error.into(),
     }

@@ -17,8 +17,7 @@ impl From<io::Error> for CacheDirError {
 }
 
 pub fn get_cache_dir(project_name: &str) -> Result<PathBuf, CacheDirError> {
-    let cache_base = dirs::cache_dir()
-        .ok_or(CacheDirError::BaseDirUnavailable)?;
+    let cache_base = dirs::cache_dir().ok_or(CacheDirError::BaseDirUnavailable)?;
     let cache_dir = cache_base.join("sabiql").join(project_name);
 
     if !cache_dir.exists() {
