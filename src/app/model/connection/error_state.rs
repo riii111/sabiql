@@ -66,7 +66,9 @@ impl ConnectionErrorState {
     }
 
     pub fn masked_details(&self) -> Option<&str> {
-        self.error_info.as_ref().map(ConnectionErrorInfo::masked_details)
+        self.error_info
+            .as_ref()
+            .map(ConnectionErrorInfo::masked_details)
     }
 
     pub fn detail_line_count(&self) -> usize {

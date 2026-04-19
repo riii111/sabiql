@@ -1,7 +1,7 @@
 use crate::app::ports::DbOperationError;
 use crate::app::ports::db_operation_error::is_connection_lost_message;
 
-pub(in crate::infra::adapters::postgres) fn classify_query_error(stderr: &str) -> DbOperationError {
+pub(in crate::adapters::postgres) fn classify_query_error(stderr: &str) -> DbOperationError {
     let trimmed = stderr.trim();
     let Some(details) = (!trimmed.is_empty()).then_some(trimmed) else {
         return DbOperationError::QueryFailed(String::new());
