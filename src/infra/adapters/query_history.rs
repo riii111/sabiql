@@ -13,9 +13,7 @@ const MAX_HISTORY_ENTRIES: usize = 1000;
 impl From<CacheDirError> for QueryHistoryError {
     fn from(error: CacheDirError) -> Self {
         match error {
-            CacheDirError::BaseDirUnavailable => {
-                io::Error::new(io::ErrorKind::NotFound, "cache directory is unavailable").into()
-            }
+            CacheDirError::BaseDirUnavailable => Self::MissingCacheDir,
             CacheDirError::Io(error) => error.into(),
         }
     }

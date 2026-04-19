@@ -7,6 +7,8 @@ use crate::domain::query_history::QueryHistoryEntry;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum QueryHistoryError {
+    #[error("cache directory is unavailable")]
+    MissingCacheDir,
     #[error("IO error: {0}")]
     Io(#[source] Arc<std::io::Error>),
     #[error("Serialization error: {0}")]
@@ -53,6 +55,14 @@ pub trait QueryHistoryStore: Send + Sync {
 mod tests {
     use super::*;
     use std::error::Error;
+
+    #[test]
+    fn missing_cache_dir_has_clear_display() {
+        assert_eq!(
+            QueryHistoryError::MissingCacheDir.to_string(),
+            "cache directory is unavailable"
+        );
+    }
 
     #[test]
     fn io_variant_preserves_source_chain() {
