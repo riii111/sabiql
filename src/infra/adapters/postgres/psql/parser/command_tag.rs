@@ -4,7 +4,7 @@ use super::super::super::PostgresAdapter;
 use super::lexer::{has_select_into, split_sql_statements};
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
-pub(in crate::infra::adapters::postgres) enum ParseCommandTagError {
+pub(in crate::adapters::postgres) enum ParseCommandTagError {
     #[error("empty command tag")]
     Empty,
     #[error("invalid command tag: {input}")]
@@ -77,7 +77,7 @@ impl PostgresAdapter {
         }
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_command_tag(
+    pub(in crate::adapters::postgres) fn parse_command_tag(
         stdout: &str,
     ) -> Result<CommandTag, ParseCommandTagError> {
         stdout
@@ -88,9 +88,8 @@ impl PostgresAdapter {
             .and_then(Self::parse_command_tag_str)
     }
 
-    pub(in crate::infra::adapters::postgres) fn extract_command_tag(
-        stdout: &str,
-    ) -> Option<CommandTag> {
+    #[cfg(test)]
+    pub(in crate::adapters::postgres) fn extract_command_tag(stdout: &str) -> Option<CommandTag> {
         Self::parse_command_tag(stdout).ok()
     }
 
@@ -182,7 +181,7 @@ impl PostgresAdapter {
 
     // -- CTAS / SELECT INTO correction (newspaper style: high→low) --
 
-    pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
+    pub(in crate::adapters::postgres) fn parse_aggregate_command_tag(
         stdout: &str,
         sql: &str,
     ) -> Option<CommandTag> {
@@ -238,13 +237,13 @@ impl PostgresAdapter {
 }
 
 #[cfg_attr(test, derive(Debug))]
-pub(in crate::infra::adapters::postgres) struct ResolvedTags {
+pub(in crate::adapters::postgres) struct ResolvedTags {
     all: Vec<CommandTag>,
     effective: Vec<CommandTag>,
 }
 
 impl ResolvedTags {
-    pub(in crate::infra::adapters::postgres) fn resolve(stdout: &str, sql: &str) -> Option<Self> {
+    pub(in crate::adapters::postgres) fn resolve(stdout: &str, sql: &str) -> Option<Self> {
         let parsed = PostgresAdapter::parse_all_tags(stdout)?;
         let corrected = PostgresAdapter::correct_ctas_tags(sql, parsed);
         let effective = PostgresAdapter::discard_rolled_back(&corrected);
@@ -254,7 +253,7 @@ impl ResolvedTags {
         })
     }
 
-    pub(in crate::infra::adapters::postgres) fn aggregate(&self) -> Option<CommandTag> {
+    pub(in crate::adapters::postgres) fn aggregate(&self) -> Option<CommandTag> {
         if let Some(tag) = self.effective.iter().find(|t| t.is_schema_modifying()) {
             return Some(tag.clone());
         }
@@ -273,9 +272,9 @@ impl ResolvedTags {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::CommandTag;
-    use crate::infra::adapters::postgres::PostgresAdapter;
     use super::ParseCommandTagError;
+    use crate::adapters::postgres::PostgresAdapter;
+    use crate::domain::CommandTag;
 
     mod detect_create_as_kind {
         use super::*;

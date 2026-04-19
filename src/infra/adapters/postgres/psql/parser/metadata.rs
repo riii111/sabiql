@@ -6,7 +6,7 @@ use crate::domain::{
 
 use super::super::super::PostgresAdapter;
 
-pub(in crate::infra::adapters::postgres) type TableDetailCombined = (
+pub(in crate::adapters::postgres) type TableDetailCombined = (
     Vec<Column>,
     Vec<Index>,
     Vec<ForeignKey>,
@@ -42,14 +42,14 @@ fn non_empty_json(raw: &str) -> Option<&str> {
     }
 }
 
-pub(in crate::infra::adapters::postgres) struct TableInfo {
+pub(in crate::adapters::postgres) struct TableInfo {
     pub owner: Option<String>,
     pub comment: Option<String>,
     pub row_count_estimate: Option<i64>,
 }
 
 impl PostgresAdapter {
-    pub(in crate::infra::adapters::postgres) fn parse_table_info(
+    pub(in crate::adapters::postgres) fn parse_table_info(
         json: &str,
     ) -> Result<TableInfo, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -79,7 +79,7 @@ impl PostgresAdapter {
         })
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_tables(
+    pub(in crate::adapters::postgres) fn parse_tables(
         json: &str,
     ) -> Result<Vec<TableSummary>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -102,7 +102,7 @@ impl PostgresAdapter {
             .collect())
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_table_signatures(
+    pub(in crate::adapters::postgres) fn parse_table_signatures(
         json: &str,
     ) -> Result<Vec<TableSignature>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -128,7 +128,7 @@ impl PostgresAdapter {
             .collect())
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_schemas(
+    pub(in crate::adapters::postgres) fn parse_schemas(
         json: &str,
     ) -> Result<Vec<Schema>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -145,7 +145,7 @@ impl PostgresAdapter {
         Ok(raw.into_iter().map(|s| Schema::new(s.name)).collect())
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_columns(
+    pub(in crate::adapters::postgres) fn parse_columns(
         json: &str,
     ) -> Result<Vec<Column>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -181,7 +181,7 @@ impl PostgresAdapter {
             .collect())
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_indexes(
+    pub(in crate::adapters::postgres) fn parse_indexes(
         json: &str,
     ) -> Result<Vec<Index>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -216,7 +216,7 @@ impl PostgresAdapter {
             .collect())
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_foreign_keys(
+    pub(in crate::adapters::postgres) fn parse_foreign_keys(
         json: &str,
     ) -> Result<Vec<ForeignKey>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -264,7 +264,7 @@ impl PostgresAdapter {
             .map_err(DbOperationError::from)
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_rls(
+    pub(in crate::adapters::postgres) fn parse_rls(
         json: &str,
     ) -> Result<Option<RlsInfo>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -317,7 +317,7 @@ impl PostgresAdapter {
         }))
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_triggers(
+    pub(in crate::adapters::postgres) fn parse_triggers(
         json: &str,
     ) -> Result<Vec<Trigger>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -362,7 +362,7 @@ impl PostgresAdapter {
             .map_err(DbOperationError::from)
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_table_detail_combined(
+    pub(in crate::adapters::postgres) fn parse_table_detail_combined(
         json: &str,
     ) -> Result<TableDetailCombined, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -394,7 +394,7 @@ impl PostgresAdapter {
         Ok((columns, indexes, foreign_keys, rls, triggers, table_info))
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_table_columns_and_fks(
+    pub(in crate::adapters::postgres) fn parse_table_columns_and_fks(
         json: &str,
     ) -> Result<(Vec<Column>, Vec<ForeignKey>), DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
@@ -421,8 +421,8 @@ impl PostgresAdapter {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::postgres::PostgresAdapter;
     use crate::app::ports::DbOperationError;
-    use crate::infra::adapters::postgres::PostgresAdapter;
 
     mod table_signature_parsing {
         use super::*;

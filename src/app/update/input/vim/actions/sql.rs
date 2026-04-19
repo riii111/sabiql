@@ -7,7 +7,7 @@ use crate::app::update::input::vim::types::{
     SqlModalVimContext, VimCommand, VimModeTransition, VimNavigation, VimOperator,
 };
 
-pub(in crate::app::update::input::vim) fn command(
+pub(in crate::update::input::vim) fn command(
     command: VimCommand,
     ctx: SqlModalVimContext,
 ) -> Option<Action> {

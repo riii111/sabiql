@@ -2583,6 +2583,10 @@ dependencies = [
  "nucleo-matcher",
  "ratatui",
  "rstest",
+ "sabiql-app",
+ "sabiql-domain",
+ "sabiql-infra",
+ "sabiql-ui",
  "self_update",
  "serde",
  "serde_json",
@@ -2595,6 +2599,82 @@ dependencies = [
  "unicode-width",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "sabiql-app"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "async-trait",
+ "color-eyre",
+ "crossterm",
+ "csv",
+ "dirs",
+ "futures",
+ "lru",
+ "mockall",
+ "nucleo-matcher",
+ "rstest",
+ "sabiql-domain",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "unicode-casefold",
+ "unicode-width",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "sabiql-domain"
+version = "0.1.0"
+dependencies = [
+ "rstest",
+ "serde",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
+name = "sabiql-infra"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "async-trait",
+ "csv",
+ "dirs",
+ "rstest",
+ "sabiql-app",
+ "sabiql-domain",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "urlencoding",
+]
+
+[[package]]
+name = "sabiql-ui"
+version = "0.1.0"
+dependencies = [
+ "color-eyre",
+ "crossterm",
+ "futures",
+ "insta",
+ "ratatui",
+ "rstest",
+ "sabiql-app",
+ "sabiql-domain",
+ "tokio",
+ "tokio-util",
+ "unicode-width",
 ]
 
 [[package]]

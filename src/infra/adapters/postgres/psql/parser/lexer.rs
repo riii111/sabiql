@@ -73,7 +73,7 @@ pub(super) fn skip_block_comment(bytes: &[u8], mut i: usize) -> usize {
     i
 }
 
-pub(in crate::infra::adapters::postgres) fn split_sql_statements(sql: &str) -> Vec<&str> {
+pub(in crate::adapters::postgres) fn split_sql_statements(sql: &str) -> Vec<&str> {
     let bytes = sql.as_bytes();
     let mut stmts = Vec::new();
     let mut start = 0;

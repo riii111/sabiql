@@ -4,26 +4,18 @@ use std::time::{Duration, Instant};
 
 use clap::Parser;
 use color_eyre::eyre::Result;
+use sabiql_app as app;
+#[allow(
+    unused_imports,
+    reason = "binary-root test modules import crate::domain during all-targets verification"
+)]
+pub(crate) use sabiql_domain as domain;
+use sabiql_infra as infra;
+use sabiql_ui as ui;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
-macro_rules! internal_module {
-    ($name:ident) => {
-        #[allow(
-            dead_code,
-            unused_imports,
-            clippy::redundant_pub_crate,
-            reason = "binary-only packaging keeps internal module APIs wider than the CLI entrypoint uses directly"
-        )]
-        mod $name;
-    };
-}
-
-internal_module!(app);
-internal_module!(domain);
-internal_module!(error);
-internal_module!(infra);
-internal_module!(ui);
+mod error;
 
 #[cfg(test)]
 mod tests;

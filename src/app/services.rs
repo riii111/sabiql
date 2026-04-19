@@ -9,8 +9,8 @@ pub struct AppServices {
     pub db_capabilities: DbCapabilities,
 }
 
-#[cfg(test)]
 impl AppServices {
+    #[doc(hidden)]
     pub fn stub() -> Self {
         struct StubDdlGenerator;
         impl DdlGenerator for StubDdlGenerator {

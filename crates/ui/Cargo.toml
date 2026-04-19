@@ -1,0 +1,22 @@
+[package]
+name = "sabiql-ui"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "../../src/ui/mod.rs"
+
+[dependencies]
+color-eyre.workspace = true
+crossterm.workspace = true
+futures.workspace = true
+ratatui.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+unicode-width.workspace = true
+sabiql-app = { path = "../app" }
+sabiql-domain = { path = "../domain" }
+
+[dev-dependencies]
+insta.workspace = true
+rstest.workspace = true

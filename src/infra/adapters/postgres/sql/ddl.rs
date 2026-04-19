@@ -77,9 +77,9 @@ impl DdlGenerator for PostgresAdapter {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::postgres::PostgresAdapter;
     use crate::app::ports::DdlGenerator;
     use crate::domain::{Column, Table};
-    use crate::infra::adapters::postgres::PostgresAdapter;
 
     fn make_column(name: &str, data_type: &str, nullable: bool) -> Column {
         Column {

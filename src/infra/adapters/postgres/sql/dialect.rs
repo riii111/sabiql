@@ -97,8 +97,8 @@ impl SqlDialect for PostgresAdapter {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::postgres::PostgresAdapter;
     use crate::app::ports::SqlDialect;
-    use crate::infra::adapters::postgres::PostgresAdapter;
 
     mod sql_dialect_update {
         use super::*;

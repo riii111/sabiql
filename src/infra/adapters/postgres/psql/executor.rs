@@ -209,7 +209,7 @@ impl PostgresAdapter {
         })
     }
 
-    pub(in crate::infra::adapters::postgres) async fn execute_query(
+    pub(in crate::adapters::postgres) async fn execute_query(
         &self,
         dsn: &str,
         query: &str,
@@ -223,7 +223,7 @@ impl PostgresAdapter {
         Ok(output.stdout)
     }
 
-    pub(in crate::infra::adapters::postgres) async fn execute_query_raw(
+    pub(in crate::adapters::postgres) async fn execute_query_raw(
         &self,
         dsn: &str,
         query: &str,
@@ -287,7 +287,7 @@ impl PostgresAdapter {
         ))
     }
 
-    pub(in crate::infra::adapters::postgres) async fn execute_write_raw(
+    pub(in crate::adapters::postgres) async fn execute_write_raw(
         &self,
         dsn: &str,
         query: &str,
@@ -305,10 +305,11 @@ impl PostgresAdapter {
             ));
         }
 
-        let affected_rows = Self::parse_affected_rows_with_source(&output.stdout)
-            .map_err(|error: ParseCommandTagError| {
+        let affected_rows = Self::parse_affected_rows_with_source(&output.stdout).map_err(
+            |error: ParseCommandTagError| {
                 DbOperationError::CommandTagParseFailed(error.to_string())
-            })?;
+            },
+        )?;
 
         Ok(WriteExecutionResult {
             affected_rows,
@@ -316,7 +317,7 @@ impl PostgresAdapter {
         })
     }
 
-    pub(in crate::infra::adapters::postgres) async fn count_rows(
+    pub(in crate::adapters::postgres) async fn count_rows(
         &self,
         dsn: &str,
         query: &str,
@@ -331,7 +332,7 @@ impl PostgresAdapter {
         })
     }
 
-    pub(in crate::infra::adapters::postgres) async fn export_csv_to_file(
+    pub(in crate::adapters::postgres) async fn export_csv_to_file(
         &self,
         dsn: &str,
         query: &str,
@@ -412,7 +413,7 @@ impl PostgresAdapter {
         Ok(row_count)
     }
 
-    pub(in crate::infra::adapters::postgres) async fn fetch_preview_order_columns(
+    pub(in crate::adapters::postgres) async fn fetch_preview_order_columns(
         &self,
         dsn: &str,
         schema: &str,
@@ -428,9 +429,7 @@ impl PostgresAdapter {
         serde_json::from_str(trimmed).map_err(Into::into)
     }
 
-    fn parse_affected_rows_with_source(
-        stdout: &str,
-    ) -> Result<usize, ParseCommandTagError> {
+    fn parse_affected_rows_with_source(stdout: &str) -> Result<usize, ParseCommandTagError> {
         let tag = Self::parse_command_tag(stdout)?;
         tag.affected_rows()
             .map(|n| n as usize)
@@ -439,14 +438,15 @@ impl PostgresAdapter {
             })
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
+    #[cfg(test)]
+    pub(in crate::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
         Self::parse_affected_rows_with_source(stdout).ok()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::infra::adapters::postgres::PostgresAdapter;
+    use crate::adapters::postgres::PostgresAdapter;
 
     mod extract_last_csv_block {
         use super::super::extract_last_csv_block;
@@ -755,8 +755,8 @@ mod tests {
     }
 
     mod execute_query_raw_command_tag {
+        use crate::adapters::postgres::PostgresAdapter;
         use crate::domain::CommandTag;
-        use crate::infra::adapters::postgres::PostgresAdapter;
 
         fn dml_stdout_returns_command_tag(
             stdout: &str,
