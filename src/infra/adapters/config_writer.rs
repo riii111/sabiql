@@ -1,8 +1,8 @@
+use std::io;
 use std::path::PathBuf;
 
-use color_eyre::eyre::Result;
-
 use crate::app::ports::ConfigWriter;
+use crate::app::ports::ConfigWriterError;
 use crate::infra::config::cache::get_cache_dir;
 
 pub struct FileConfigWriter;
@@ -20,7 +20,16 @@ impl Default for FileConfigWriter {
 }
 
 impl ConfigWriter for FileConfigWriter {
-    fn get_cache_dir(&self, project_name: &str) -> Result<PathBuf> {
-        get_cache_dir(project_name)
+    fn get_cache_dir(
+        &self,
+        project_name: &str,
+    ) -> Result<PathBuf, ConfigWriterError> {
+        get_cache_dir(project_name).map_err(|error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                ConfigWriterError::MissingCacheDir
+            } else {
+                error.into()
+            }
+        })
     }
 }

@@ -1,9 +1,8 @@
 use std::env;
+use std::io;
 use std::path::{Path, PathBuf};
 
-use color_eyre::eyre::Result;
-
-pub fn find_project_root() -> Result<PathBuf> {
+pub fn find_project_root() -> io::Result<PathBuf> {
     let cwd = env::current_dir()?;
 
     if let Some(root) = find_dir_upward(&cwd, ".git") {

@@ -1,12 +1,11 @@
 use std::time::Instant;
 
-use color_eyre::eyre::Result;
 use crossterm::cursor::SetCursorStyle;
 use crossterm::execute;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::ports::renderer::{RenderOutput, Renderer};
+use crate::app::ports::renderer::{RenderOutput, RenderResult, Renderer};
 use crate::app::services::AppServices;
 use crate::ui::shell::layout::MainLayout;
 use crate::ui::tui::TuiRunner;
@@ -31,7 +30,7 @@ impl Renderer for TuiAdapter<'_> {
         state: &AppState,
         services: &AppServices,
         now: Instant,
-    ) -> Result<RenderOutput> {
+    ) -> RenderResult<RenderOutput> {
         let mut output = RenderOutput::default();
         self.tui.terminal().draw(|frame| {
             output = MainLayout::render(frame, state, None, services, now);

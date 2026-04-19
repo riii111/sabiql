@@ -1,6 +1,19 @@
 use std::time::Instant;
+use std::sync::Arc;
 
-use color_eyre::eyre::Result;
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum RenderError {
+    #[error("I/O error: {0}")]
+    Io(#[source] Arc<std::io::Error>),
+}
+
+impl From<std::io::Error> for RenderError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(Arc::new(error))
+    }
+}
+
+pub type RenderResult<T> = Result<T, RenderError>;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::viewport::{ColumnWidthsCache, ViewportPlan};
@@ -35,5 +48,5 @@ pub trait Renderer {
         state: &AppState,
         services: &AppServices,
         now: Instant,
-    ) -> Result<RenderOutput>;
+    ) -> RenderResult<RenderOutput>;
 }
