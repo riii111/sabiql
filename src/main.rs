@@ -21,21 +21,15 @@ mod tests;
 #[path = "tests/render_snapshots/mod.rs"]
 mod render_snapshots;
 
-use crate::app::cmd::cache::TtlCache;
-use crate::app::cmd::completion_engine::CompletionEngine;
-use crate::app::cmd::render_schedule::next_animation_deadline;
-use crate::app::cmd::runner::EffectRunner;
-use crate::app::input::handle_event;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::db_capabilities::DbCapabilities;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::runtime::AppRuntime;
-use crate::app::startup::{StartupLoadError, initialize_connection_state};
+use crate::app::{
+    Action, AppRuntime, AppState, CompletionEngine, DbCapabilities, EffectRunner, InputMode,
+    StartupLoadError, TtlCache, handle_event, initialize_connection_state,
+    next_animation_deadline,
+};
 use crate::app::ports::{
     ConnectionStore, DatabaseCapabilityProvider, PgServiceEntryReader,
 };
-use crate::app::services::AppServices;
-use crate::app::update::action::Action;
+use crate::app::AppServices;
 use crate::infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
     PgServiceFileReader, PostgresAdapter, TomlConnectionStore,

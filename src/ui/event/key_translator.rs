@@ -1,8 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::update::input::keybindings::{Key, KeyCombo, Modifiers};
+use crate::app::input::{InputKeyCombo, Key, Modifiers};
 
-pub fn translate(event: KeyEvent) -> KeyCombo {
+pub fn translate(event: KeyEvent) -> InputKeyCombo {
     let key = match event.code {
         KeyCode::Char(c) => Key::Char(c),
         KeyCode::Enter => Key::Enter,
@@ -38,7 +38,7 @@ pub fn translate(event: KeyEvent) -> KeyCombo {
         shift,
     };
 
-    KeyCombo { key, modifiers }
+    InputKeyCombo { key, modifiers }
 }
 
 #[cfg(test)]
@@ -51,7 +51,7 @@ mod tests {
 
         let combo = translate(event);
 
-        assert_eq!(combo, KeyCombo::plain(Key::Char('a')));
+        assert_eq!(combo, InputKeyCombo::plain(Key::Char('a')));
     }
 
     #[test]
@@ -60,7 +60,7 @@ mod tests {
 
         let combo = translate(event);
 
-        assert_eq!(combo, KeyCombo::ctrl(Key::Char('p')));
+        assert_eq!(combo, InputKeyCombo::ctrl(Key::Char('p')));
     }
 
     #[test]
@@ -69,7 +69,7 @@ mod tests {
 
         let combo = translate(event);
 
-        assert_eq!(combo, KeyCombo::alt(Key::Enter));
+        assert_eq!(combo, InputKeyCombo::alt(Key::Enter));
     }
 
     #[test]
@@ -80,7 +80,7 @@ mod tests {
 
         assert_eq!(
             combo,
-            KeyCombo {
+            InputKeyCombo {
                 key: Key::BackTab,
                 modifiers: Modifiers {
                     ctrl: false,
@@ -97,7 +97,7 @@ mod tests {
 
         let combo = translate(event);
 
-        assert_eq!(combo, KeyCombo::plain(Key::Null));
+        assert_eq!(combo, InputKeyCombo::plain(Key::Null));
     }
 
     #[test]
@@ -106,26 +106,26 @@ mod tests {
 
         let combo = translate(event);
 
-        assert_eq!(combo, KeyCombo::plain(Key::Other));
+        assert_eq!(combo, InputKeyCombo::plain(Key::Other));
     }
 
     #[test]
     fn arrow_keys_translate_correctly() {
         assert_eq!(
             translate(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)),
-            KeyCombo::plain(Key::Up)
+            InputKeyCombo::plain(Key::Up)
         );
         assert_eq!(
             translate(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
-            KeyCombo::plain(Key::Down)
+            InputKeyCombo::plain(Key::Down)
         );
         assert_eq!(
             translate(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)),
-            KeyCombo::plain(Key::Left)
+            InputKeyCombo::plain(Key::Left)
         );
         assert_eq!(
             translate(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)),
-            KeyCombo::plain(Key::Right)
+            InputKeyCombo::plain(Key::Right)
         );
     }
 
@@ -135,7 +135,7 @@ mod tests {
 
         let combo = translate(event);
 
-        assert_eq!(combo, KeyCombo::plain(Key::F(1)));
+        assert_eq!(combo, InputKeyCombo::plain(Key::F(1)));
     }
 
     #[test]
@@ -147,7 +147,7 @@ mod tests {
 
             assert_eq!(
                 combo,
-                KeyCombo::plain(Key::Char(c)),
+                InputKeyCombo::plain(Key::Char(c)),
                 "Shift+{c} should normalize to plain {c}"
             );
         }
@@ -159,6 +159,6 @@ mod tests {
 
         let combo = translate(event);
 
-        assert_eq!(combo, KeyCombo::shift(Key::Char('j')),);
+        assert_eq!(combo, InputKeyCombo::shift(Key::Char('j')),);
     }
 }

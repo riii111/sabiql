@@ -12,6 +12,8 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::input::keybindings::KeyCombo;
 
+pub use crate::update::input::keybindings::{Key, KeyCombo as InputKeyCombo, Modifiers};
+
 #[derive(Clone, Debug)]
 pub enum InputEvent {
     Init,

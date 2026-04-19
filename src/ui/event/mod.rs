@@ -1,12 +1,11 @@
 pub mod key_translator;
 
-use crate::app::input::InputEvent;
-use crate::app::update::input::keybindings::KeyCombo;
+use crate::app::input::{InputEvent, InputKeyCombo};
 
 #[derive(Clone, Debug)]
 pub enum Event {
     Init,
-    Key(KeyCombo),
+    Key(InputKeyCombo),
     Paste(String),
     Resize(u16, u16),
 }
