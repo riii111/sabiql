@@ -9,10 +9,10 @@ use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 
 use crate::ui::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
-use crate::app::model::shared::viewport::{
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::shared::focused_pane::FocusedPane;
+use crate::app::ui::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
+use crate::app::ui::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
     select_viewport_columns,
 };
@@ -72,7 +72,7 @@ impl ResultPane {
                             state.result_interaction.cell_edit().col.unwrap_or_default(),
                             state.result_interaction.cell_edit().draft_value(),
                             state.input_mode()
-                                == crate::app::model::shared::input_mode::InputMode::CellEdit,
+                                == crate::app::ui::model::shared::input_mode::InputMode::CellEdit,
                             state.result_interaction.cell_edit().input.cursor(),
                         ))
                     } else {
@@ -694,7 +694,7 @@ mod tests {
     #[ignore = "local-only dev benchmark, not tied to a CI issue"]
     #[allow(clippy::print_stderr, reason = "benchmark result output")]
     fn bench_ideal_widths_cache_speedup() {
-        use crate::app::model::shared::viewport::ColumnWidthsCache;
+        use crate::app::ui::model::shared::viewport::ColumnWidthsCache;
         use crate::ui::primitives::utils::text_utils::calculate_header_min_widths;
         use std::time::Instant;
 

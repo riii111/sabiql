@@ -4,9 +4,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
 use unicode_width::UnicodeWidthChar;
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::ui_state::{
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::shared::focused_pane::FocusedPane;
+use crate::app::ui::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
 use crate::domain::MetadataState;

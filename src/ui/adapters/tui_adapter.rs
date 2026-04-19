@@ -3,9 +3,9 @@ use std::time::Instant;
 use crossterm::cursor::SetCursorStyle;
 use crossterm::execute;
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::ports::renderer::{RenderOutput, RenderResult, Renderer};
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::shared::input_mode::InputMode;
+use crate::app::ui::ports::renderer::{RenderOutput, RenderResult, Renderer};
 use crate::app::services::AppServices;
 use crate::ui::shell::layout::MainLayout;
 use crate::ui::tui::TuiRunner;
@@ -57,7 +57,7 @@ fn uses_insert_cursor(state: &AppState) -> bool {
         InputMode::JsonbDetail => state.jsonb_detail.search().active,
         InputMode::SqlModal => matches!(
             state.sql_modal.status(),
-            crate::app::model::sql_editor::modal::SqlModalStatus::Editing
+            crate::app::ui::model::sql_editor::modal::SqlModalStatus::Editing
         ),
         _ => false,
     }

@@ -4,8 +4,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::ui::primitives::atoms::{spinner_char, text_cursor_spans};
 use crate::ui::theme::ThemePalette;
 
@@ -129,7 +129,7 @@ fn render_confirming_high_status(
     frame: &mut Frame,
     area: Rect,
     decision: &crate::app::policy::write::write_guardrails::AdhocRiskDecision,
-    input: &crate::app::model::shared::text_input::TextInputState,
+    input: &crate::app::ui::model::shared::text_input::TextInputState,
     target_name: Option<&String>,
     theme: &ThemePalette,
 ) {

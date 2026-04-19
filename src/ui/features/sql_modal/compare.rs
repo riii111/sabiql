@@ -6,9 +6,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::explain_context::CompareSlot;
-use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::explain_context::CompareSlot;
+use crate::app::ui::model::shared::flash_timer::FlashId;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::ui::theme::ThemePalette;
 
@@ -407,7 +407,7 @@ pub(super) fn pad_or_truncate(s: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::explain_context::SlotSource;
+    use crate::app::ui::model::explain_context::SlotSource;
     use crate::domain::explain_plan::ExplainPlan;
     use crate::ui::theme::DEFAULT_THEME;
 

@@ -7,8 +7,8 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::catalog::{HelpEntry, help_sections};
 use crate::ui::theme::ThemePalette;
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::ui_state::HELP_MODAL_HEIGHT_PERCENT;
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::shared::ui_state::HELP_MODAL_HEIGHT_PERCENT;
 
 use crate::ui::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,

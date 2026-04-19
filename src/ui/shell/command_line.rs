@@ -4,8 +4,8 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::input_mode::InputMode;
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::shared::input_mode::InputMode;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::ThemePalette;
 

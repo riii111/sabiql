@@ -5,8 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::catalog::connection_selector_hint_string;
-use crate::app::model::app_state::AppState;
-use crate::app::model::connection::list::ConnectionListItem;
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::connection::list::ConnectionListItem;
 use crate::domain::connection::ConnectionId;
 use crate::ui::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,

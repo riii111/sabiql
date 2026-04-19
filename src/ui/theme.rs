@@ -1,6 +1,6 @@
 use ratatui::style::{Color, Modifier, Style};
 
-use crate::app::model::shared::theme_id::ThemeId;
+use crate::app::ui::model::shared::theme_id::ThemeId;
 use crate::app::policy::write::write_guardrails::RiskLevel;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

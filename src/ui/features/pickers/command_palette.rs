@@ -3,7 +3,7 @@ use ratatui::layout::Constraint;
 use ratatui::style::Style;
 use ratatui::widgets::{List, ListItem};
 
-use crate::app::model::app_state::AppState;
+use crate::app::ui::model::app_state::AppState;
 use crate::app::palette::palette_commands;
 use crate::ui::theme::ThemePalette;
 

@@ -5,8 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::catalog::{Hint, footer_hints, footer_status_text};
-use crate::app::model::app_state::AppState;
-use crate::app::model::er_state::ErStatus;
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::er_state::ErStatus;
 use crate::app::services::AppServices;
 use crate::ui::primitives::atoms::key_text;
 use crate::ui::primitives::atoms::status_message::{MessageType, StatusMessage};
@@ -84,11 +84,11 @@ impl Footer {
 mod tests {
     use super::Footer;
     use crate::app::catalog::footer_hints;
-    use crate::app::model::app_state::AppState;
-    use crate::app::model::shared::db_capabilities::DbCapabilities;
-    use crate::app::model::shared::focused_pane::FocusedPane;
-    use crate::app::model::shared::input_mode::InputMode;
-    use crate::app::model::shared::inspector_tab::InspectorTab;
+    use crate::app::ui::model::app_state::AppState;
+    use crate::app::ui::model::shared::db_capabilities::DbCapabilities;
+    use crate::app::ui::model::shared::focused_pane::FocusedPane;
+    use crate::app::ui::model::shared::input_mode::InputMode;
+    use crate::app::ui::model::shared::inspector_tab::InspectorTab;
     use crate::app::services::AppServices;
     use rstest::rstest;
 

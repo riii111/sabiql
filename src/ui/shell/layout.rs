@@ -3,11 +3,11 @@ use std::time::Instant;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::ui_state::explorer_content_width_from_pane_width;
-use crate::app::model::shared::viewport::ViewportPlan;
-use crate::app::ports::RenderOutput;
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::shared::input_mode::InputMode;
+use crate::app::ui::model::shared::ui_state::explorer_content_width_from_pane_width;
+use crate::app::ui::model::shared::viewport::ViewportPlan;
+use crate::app::ui::ports::RenderOutput;
 use crate::app::services::AppServices;
 use crate::ui::features::browse::explorer::Explorer;
 use crate::ui::features::browse::inspector::Inspector;

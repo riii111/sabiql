@@ -6,9 +6,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::shared::flash_timer::FlashId;
+use crate::app::ui::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::services::AppServices;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::ThemePalette;
@@ -127,7 +127,7 @@ fn render_scrolled(frame: &mut Frame, area: Rect, lines: Vec<Line>, scroll_offse
 fn build_analyze_confirm_lines<'a>(
     area: Rect,
     query: &'a str,
-    input: &'a crate::app::model::shared::text_input::TextInputState,
+    input: &'a crate::app::ui::model::shared::text_input::TextInputState,
     target_name: Option<&'a str>,
     theme: &ThemePalette,
 ) -> Vec<Line<'a>> {

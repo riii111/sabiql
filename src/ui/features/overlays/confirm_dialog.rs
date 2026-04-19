@@ -2,8 +2,8 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::shared::confirm_dialog::ConfirmIntent;
 use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;

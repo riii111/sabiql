@@ -6,14 +6,14 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::inspector_tab::InspectorTab;
-use crate::app::model::shared::viewport::{
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::shared::flash_timer::FlashId;
+use crate::app::ui::model::shared::focused_pane::FocusedPane;
+use crate::app::ui::model::shared::inspector_tab::InspectorTab;
+use crate::app::ui::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
-use crate::app::ports::DdlGenerator;
+use crate::app::ui::ports::DdlGenerator;
 use crate::app::services::AppServices;
 use crate::domain::Table;
 use crate::ui::primitives::atoms::panel_block;
@@ -682,7 +682,7 @@ impl Inspector {
         table: &Table,
         scroll_offset: usize,
         ddl_gen: &dyn DdlGenerator,
-        flash_timers: &crate::app::model::shared::flash_timer::FlashTimerStore,
+        flash_timers: &crate::app::ui::model::shared::flash_timer::FlashTimerStore,
         now: Instant,
         theme: &ThemePalette,
     ) {

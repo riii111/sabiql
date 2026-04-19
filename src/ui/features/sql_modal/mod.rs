@@ -12,8 +12,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::catalog::sql_modal_border_hint;
-use crate::app::model::app_state::AppState;
-use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
 use crate::app::services::AppServices;
 use crate::ui::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::ui::primitives::molecules::render_modal_with_border_color;

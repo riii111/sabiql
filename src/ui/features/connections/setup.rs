@@ -2,8 +2,8 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::connection::setup::{
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
 use crate::domain::connection::SslMode;

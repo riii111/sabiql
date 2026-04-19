@@ -5,10 +5,10 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
-use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::text_input::TextInputLike;
+use crate::app::ui::model::app_state::AppState;
+use crate::app::ui::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::app::ui::model::shared::flash_timer::FlashId;
+use crate::app::ui::model::shared::text_input::TextInputLike;
 use crate::ui::primitives::atoms::{
     CursorKind, ModalTextSurface, build_modal_text_surface_lines, render_modal_text_surface,
     set_terminal_cursor, text_cursor_spans_with_kind,

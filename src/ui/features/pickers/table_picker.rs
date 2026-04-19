@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
-use crate::app::model::app_state::AppState;
+use crate::app::ui::model::app_state::AppState;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::ThemePalette;

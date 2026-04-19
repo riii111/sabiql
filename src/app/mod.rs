@@ -26,6 +26,11 @@ pub use update::action::Action;
 
 pub use sabiql_domain as domain;
 
+pub mod ui {
+    pub use crate::model;
+    pub use crate::ports;
+}
+
 pub mod app {
     pub use crate::cmd;
     pub use crate::catalog;
