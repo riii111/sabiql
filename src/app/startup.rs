@@ -219,6 +219,9 @@ mod tests {
 
         assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         assert!(state.connection_setup.is_first_run);
-        assert_eq!(state.messages.last_error.as_deref(), Some("broken config"));
+        assert_eq!(
+            state.messages.last_error.as_deref(),
+            Some("IO error: broken config")
+        );
     }
 }
