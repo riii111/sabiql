@@ -150,8 +150,16 @@ pub fn reduce(
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
+                    let preview_query = if state.query.pagination.schema.is_empty() {
+                        state.query.pagination.table.clone()
+                    } else {
+                        format!(
+                            "{}.{}",
+                            state.query.pagination.schema, state.query.pagination.table
+                        )
+                    };
                     state.query.set_current_result(Arc::new(QueryResult::error(
-                        state.query.pagination.table.clone(),
+                        preview_query,
                         error.result_message(),
                         0,
                         QuerySource::Preview,
@@ -628,7 +636,10 @@ mod tests {
 
             reduce_query(
                 &mut state,
-                &Action::QueryFailed(DbOperationError::PermissionDenied("forbidden".to_string()), 1),
+                &Action::QueryFailed(
+                    DbOperationError::PermissionDenied("forbidden".to_string()),
+                    1,
+                ),
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -636,10 +647,13 @@ mod tests {
             let result = state.query.current_result().expect("result");
             assert!(result.is_error());
             assert_eq!(result.source, QuerySource::Preview);
-            assert!(result
-                .error
-                .as_deref()
-                .is_some_and(|message| message.contains("Permission denied")));
+            assert_eq!(result.query, "public.users");
+            assert!(
+                result
+                    .error
+                    .as_deref()
+                    .is_some_and(|message| message.contains("Permission denied"))
+            );
         }
     }
 

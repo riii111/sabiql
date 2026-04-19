@@ -102,14 +102,20 @@ impl ConnectionErrorInfo {
         let kind = ConnectionErrorKind::classify(&raw_details);
         let masked_details = mask_password(&raw_details);
 
-        Self { kind, masked_details }
+        Self {
+            kind,
+            masked_details,
+        }
     }
 
     pub fn with_kind(kind: ConnectionErrorKind, raw_stderr: impl Into<String>) -> Self {
         let raw_details = raw_stderr.into();
         let masked_details = mask_password(&raw_details);
 
-        Self { kind, masked_details }
+        Self {
+            kind,
+            masked_details,
+        }
     }
 
     pub fn from_db_operation_error(error: &DbOperationError) -> Self {
@@ -260,16 +266,15 @@ mod tests {
 
         #[test]
         fn from_db_operation_error_classifies_from_raw_details() {
-            let info = ConnectionErrorInfo::from_db_operation_error(
-                &DbOperationError::ConnectionFailed(
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
                     r#"FATAL: database "nonexistent" does not exist"#.to_string(),
-                ),
-            );
+                ));
 
             assert_eq!(info.kind, ConnectionErrorKind::DatabaseNotFound);
             assert_eq!(
                 info.masked_details(),
-                r#"FATAL: database "nonexistent" does not exist"#
+                "FATAL: database \"nonexistent\" does not exist"
             );
         }
 
@@ -324,10 +329,7 @@ mod tests {
 
         #[test]
         fn passthrough_when_no_password() {
-            assert_eq!(
-                mask_password("no password here"),
-                "no password here"
-            );
+            assert_eq!(mask_password("no password here"), "no password here");
         }
 
         #[test]
