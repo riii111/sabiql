@@ -3,6 +3,7 @@ use crate::app::update::action::CursorMove;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextInputState {
     content: String,
+    char_count: usize,
     cursor: usize,
     viewport_offset: usize,
 }
@@ -43,10 +44,11 @@ pub trait TextInputLike {
 impl TextInputState {
     pub fn new(content: impl Into<String>, cursor: usize) -> Self {
         let content = content.into();
-        let len = content.chars().count();
+        let char_count = content.chars().count();
         Self {
             content,
-            cursor: cursor.min(len),
+            char_count,
+            cursor: cursor.min(char_count),
             viewport_offset: 0,
         }
     }
@@ -57,10 +59,11 @@ impl TextInputState {
         viewport_offset: usize,
     ) -> Self {
         let content = content.into();
-        let len = content.chars().count();
+        let char_count = content.chars().count();
         Self {
             content,
-            cursor: cursor.min(len),
+            char_count,
+            cursor: cursor.min(char_count),
             viewport_offset,
         }
     }
@@ -78,7 +81,7 @@ impl TextInputState {
     }
 
     pub fn set_cursor(&mut self, pos: usize) {
-        self.cursor = pos.min(self.char_count());
+        self.cursor = pos.min(self.char_count);
         self.viewport_offset = 0;
     }
 
@@ -86,12 +89,15 @@ impl TextInputState {
         let byte_idx = char_to_byte_index(&self.content, self.cursor);
         self.content.insert(byte_idx, c);
         self.cursor += 1;
+        self.char_count += 1;
     }
 
     pub fn insert_str(&mut self, text: &str) {
         let byte_idx = char_to_byte_index(&self.content, self.cursor);
+        let inserted_chars = text.chars().count();
         self.content.insert_str(byte_idx, text);
-        self.cursor += text.chars().count();
+        self.cursor += inserted_chars;
+        self.char_count += inserted_chars;
     }
 
     pub fn backspace(&mut self) {
@@ -103,16 +109,17 @@ impl TextInputState {
         let end = char_to_byte_index(&self.content, self.cursor);
         self.content.drain(start..end);
         self.cursor = prev;
+        self.char_count -= 1;
     }
 
     pub fn delete(&mut self) {
-        let len = self.char_count();
-        if self.cursor >= len {
+        if self.cursor >= self.char_count {
             return;
         }
         let start = char_to_byte_index(&self.content, self.cursor);
         let end = char_to_byte_index(&self.content, self.cursor + 1);
         self.content.drain(start..end);
+        self.char_count -= 1;
     }
 
     pub fn move_cursor(&mut self, movement: CursorMove) {
@@ -121,8 +128,7 @@ impl TextInputState {
                 self.cursor = self.cursor.saturating_sub(1);
             }
             CursorMove::Right => {
-                let len = self.char_count();
-                if self.cursor < len {
+                if self.cursor < self.char_count {
                     self.cursor += 1;
                 }
             }
@@ -136,7 +142,7 @@ impl TextInputState {
             | CursorMove::LineEnd
             | CursorMove::BufferEnd
             | CursorMove::LastLine => {
-                self.cursor = self.char_count();
+                self.cursor = self.char_count;
             }
             CursorMove::WordForward => {
                 self.cursor = next_word_start(&self.content, self.cursor);
@@ -159,7 +165,7 @@ impl TextInputState {
         }
 
         // █ occupies one terminal cell at end-of-input; shrink effective width to keep it visible
-        let effective_width = if self.cursor == self.char_count() {
+        let effective_width = if self.cursor == self.char_count {
             visible_width.saturating_sub(1)
         } else {
             visible_width
@@ -178,20 +184,22 @@ impl TextInputState {
     }
 
     pub fn set_content(&mut self, s: String) {
-        let len = s.chars().count();
+        let char_count = s.chars().count();
         self.content = s;
-        self.cursor = len;
+        self.char_count = char_count;
+        self.cursor = char_count;
         self.viewport_offset = 0;
     }
 
     pub fn clear(&mut self) {
         self.content.clear();
+        self.char_count = 0;
         self.cursor = 0;
         self.viewport_offset = 0;
     }
 
     pub fn char_count(&self) -> usize {
-        self.content.chars().count()
+        self.char_count
     }
 }
 
@@ -769,6 +777,30 @@ mod tests {
 
             assert_eq!(s.char_count(), 5);
         }
+
+        #[test]
+        fn mutations_keep_cached_char_count_in_sync() {
+            let mut s = state_with("ab", 2);
+
+            s.insert_char('日');
+            assert_eq!(s.char_count(), 3);
+
+            s.insert_str("本語");
+            assert_eq!(s.char_count(), 5);
+
+            s.backspace();
+            assert_eq!(s.char_count(), 4);
+
+            s.set_cursor(1);
+            s.delete();
+            assert_eq!(s.char_count(), 3);
+
+            s.set_content("xyz".to_string());
+            assert_eq!(s.char_count(), 3);
+
+            s.clear();
+            assert_eq!(s.char_count(), 0);
+        }
     }
 
     mod constructor_tests {
@@ -817,5 +849,130 @@ mod tests {
             assert_eq!(s.cursor(), 1);
             assert_eq!(s.viewport_offset(), 0);
         }
+    }
+
+    #[derive(Clone)]
+    struct BaselineTextInputState {
+        content: String,
+        cursor: usize,
+        viewport_offset: usize,
+    }
+
+    impl BaselineTextInputState {
+        fn new(content: impl Into<String>, cursor: usize) -> Self {
+            let content = content.into();
+            let char_count = content.chars().count();
+            Self {
+                content,
+                cursor: cursor.min(char_count),
+                viewport_offset: 0,
+            }
+        }
+
+        fn move_cursor(&mut self, movement: CursorMove) {
+            match movement {
+                CursorMove::Left => {
+                    self.cursor = self.cursor.saturating_sub(1);
+                }
+                CursorMove::Right => {
+                    let len = self.content.chars().count();
+                    if self.cursor < len {
+                        self.cursor += 1;
+                    }
+                }
+                CursorMove::Home
+                | CursorMove::LineStart
+                | CursorMove::BufferStart
+                | CursorMove::FirstLine => {
+                    self.cursor = 0;
+                }
+                CursorMove::End
+                | CursorMove::LineEnd
+                | CursorMove::BufferEnd
+                | CursorMove::LastLine => {
+                    self.cursor = self.content.chars().count();
+                }
+                CursorMove::WordForward => {
+                    self.cursor = next_word_start(&self.content, self.cursor);
+                }
+                CursorMove::WordBackward => {
+                    self.cursor = previous_word_start(&self.content, self.cursor);
+                }
+                CursorMove::Up
+                | CursorMove::Down
+                | CursorMove::ViewportTop
+                | CursorMove::ViewportMiddle
+                | CursorMove::ViewportBottom => {}
+            }
+        }
+
+        fn update_viewport(&mut self, visible_width: usize) {
+            if visible_width == 0 {
+                self.viewport_offset = 0;
+                return;
+            }
+
+            let effective_width = if self.cursor == self.content.chars().count() {
+                visible_width.saturating_sub(1)
+            } else {
+                visible_width
+            };
+
+            if effective_width == 0 {
+                self.viewport_offset = self.cursor;
+                return;
+            }
+
+            if self.cursor < self.viewport_offset {
+                self.viewport_offset = self.cursor;
+            } else if self.cursor >= self.viewport_offset + effective_width {
+                self.viewport_offset = self.cursor - effective_width + 1;
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "local-only dev benchmark, not tied to a CI issue"]
+    #[allow(clippy::print_stderr, reason = "benchmark result output")]
+    fn bench_cached_char_count_speedup() {
+        use std::time::Instant;
+
+        let content = "x".repeat(4096);
+        let iterations = 20_000;
+
+        let mut baseline = BaselineTextInputState::new(content.clone(), 2048);
+        let start = Instant::now();
+        for _ in 0..iterations {
+            baseline.move_cursor(CursorMove::End);
+            baseline.update_viewport(80);
+            baseline.move_cursor(CursorMove::Home);
+            baseline.move_cursor(CursorMove::Right);
+            baseline.update_viewport(80);
+            std::hint::black_box(baseline.cursor);
+            std::hint::black_box(baseline.viewport_offset);
+        }
+        let baseline_elapsed = start.elapsed();
+
+        let mut cached = TextInputState::new(content, 2048);
+        let start = Instant::now();
+        for _ in 0..iterations {
+            cached.move_cursor(CursorMove::End);
+            cached.update_viewport(80);
+            cached.move_cursor(CursorMove::Home);
+            cached.move_cursor(CursorMove::Right);
+            cached.update_viewport(80);
+            std::hint::black_box(cached.cursor());
+            std::hint::black_box(cached.viewport_offset());
+        }
+        let cached_elapsed = start.elapsed();
+
+        eprintln!(
+            "Baseline: {:?} ({:.1} µs/iter), Cached: {:?} ({:.1} µs/iter), Speedup: {:.2}x",
+            baseline_elapsed,
+            baseline_elapsed.as_micros() as f64 / iterations as f64,
+            cached_elapsed,
+            cached_elapsed.as_micros() as f64 / iterations as f64,
+            baseline_elapsed.as_secs_f64() / cached_elapsed.as_secs_f64(),
+        );
     }
 }
