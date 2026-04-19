@@ -23,7 +23,7 @@ pub mod service_file;
 pub mod sql_dialect;
 
 pub use clipboard::{ClipboardError, ClipboardWriter};
-pub use config_writer::ConfigWriter;
+pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_capabilities::{DatabaseCapabilities, DatabaseCapabilityProvider, InspectorFeature};
 pub use db_operation_error::DbOperationError;
@@ -36,6 +36,6 @@ pub use graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 pub use metadata::MetadataProvider;
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};
-pub use renderer::{RenderOutput, Renderer};
+pub use renderer::{RenderError, RenderOutput, RenderResult, Renderer};
 pub use service_file::{PgServiceEntryReader, ServiceFileError};
 pub use sql_dialect::SqlDialect;

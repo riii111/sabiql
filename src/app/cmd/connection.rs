@@ -218,11 +218,12 @@ mod tests {
     use crate::app::ports::connection_store::MockConnectionStore;
     use crate::app::ports::metadata::MockMetadataProvider;
     use crate::app::ports::query_executor::MockQueryExecutor;
-    use crate::app::ports::{ConnectionStoreError, DsnBuilder, RenderOutput, Renderer};
+    use crate::app::ports::{
+        ConnectionStoreError, DsnBuilder, RenderOutput, RenderResult, Renderer,
+    };
     use crate::app::services::AppServices;
     use crate::app::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
     use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
-    use color_eyre::eyre::Result;
 
     struct NoopRenderer;
     impl Renderer for NoopRenderer {
@@ -231,7 +232,7 @@ mod tests {
             _state: &AppState,
             _services: &AppServices,
             _now: Instant,
-        ) -> Result<RenderOutput> {
+        ) -> RenderResult<RenderOutput> {
             Ok(RenderOutput::default())
         }
     }

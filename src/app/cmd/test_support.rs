@@ -7,8 +7,8 @@ use tokio::sync::mpsc;
 use crate::app::cmd::cache::TtlCache;
 use crate::app::cmd::runner::{EffectRunner, EffectRunnerBuilder};
 use crate::app::ports::{
-    ClipboardError, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter,
-    ErExportResult, ErLogWriter, FolderOpenError, FolderOpener, MetadataProvider,
+    ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder,
+    ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener, MetadataProvider,
     PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, ServiceFileError,
 };
 use crate::app::update::action::Action;
@@ -18,7 +18,10 @@ use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, Qu
 
 pub struct NoopConfigWriter;
 impl ConfigWriter for NoopConfigWriter {
-    fn get_cache_dir(&self, _project_name: &str) -> color_eyre::eyre::Result<PathBuf> {
+    fn get_cache_dir(
+        &self,
+        _project_name: &str,
+    ) -> Result<PathBuf, ConfigWriterError> {
         Ok(PathBuf::from("/tmp"))
     }
 }

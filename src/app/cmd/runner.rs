@@ -403,13 +403,12 @@ impl EffectRunner {
 mod tests {
     use super::*;
     use crate::app::cmd::test_support::*;
-    use crate::app::ports::RenderOutput;
+    use crate::app::ports::{RenderOutput, RenderResult};
     use crate::app::ports::connection_store::MockConnectionStore;
     use crate::app::ports::metadata::MockMetadataProvider;
     use crate::app::ports::query_executor::MockQueryExecutor;
     use crate::app::services::AppServices;
     use crate::domain::{DatabaseMetadata, TableSummary};
-    use color_eyre::eyre::Result;
     use tokio::sync::mpsc;
 
     struct NoopRenderer;
@@ -419,7 +418,7 @@ mod tests {
             _state: &AppState,
             _services: &AppServices,
             _now: Instant,
-        ) -> Result<RenderOutput> {
+        ) -> RenderResult<RenderOutput> {
             Ok(RenderOutput::default())
         }
     }
@@ -442,7 +441,7 @@ mod tests {
                 _state: &AppState,
                 _services: &AppServices,
                 _now: Instant,
-            ) -> Result<RenderOutput> {
+            ) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
                     explorer_content_width: self.explorer_content_width,
                     ..RenderOutput::default()
@@ -456,7 +455,7 @@ mod tests {
                 _state: &AppState,
                 _services: &AppServices,
                 _now: Instant,
-            ) -> Result<RenderOutput> {
+            ) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
                     jsonb_detail_editor_visible_rows: Some(self.visible_rows),
                     ..RenderOutput::default()

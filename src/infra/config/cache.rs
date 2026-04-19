@@ -1,10 +1,23 @@
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 
-use color_eyre::eyre::{Result, eyre};
+#[derive(Debug, thiserror::Error)]
+pub enum CacheDirError {
+    #[error("cache directory is unavailable")]
+    BaseDirUnavailable,
+    #[error("I/O error: {0}")]
+    Io(#[source] io::Error),
+}
 
-pub fn get_cache_dir(project_name: &str) -> Result<PathBuf> {
-    let cache_base = dirs::cache_dir().ok_or_else(|| eyre!("Could not find cache directory"))?;
+impl From<io::Error> for CacheDirError {
+    fn from(error: io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+pub fn get_cache_dir(project_name: &str) -> Result<PathBuf, CacheDirError> {
+    let cache_base = dirs::cache_dir().ok_or(CacheDirError::BaseDirUnavailable)?;
     let cache_dir = cache_base.join("sabiql").join(project_name);
 
     if !cache_dir.exists() {
