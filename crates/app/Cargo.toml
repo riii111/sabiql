@@ -6,6 +6,9 @@ edition = "2024"
 [lib]
 path = "../../src/app/mod.rs"
 
+[features]
+test-support = []
+
 [dependencies]
 arboard.workspace = true
 async-trait.workspace = true

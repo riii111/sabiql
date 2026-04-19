@@ -6,6 +6,9 @@ edition = "2024"
 [lib]
 path = "../../src/ui/mod.rs"
 
+[features]
+test-support = ["sabiql-app/test-support"]
+
 [dependencies]
 color-eyre.workspace = true
 crossterm.workspace = true
@@ -20,3 +23,4 @@ sabiql-domain = { path = "../domain" }
 [dev-dependencies]
 insta.workspace = true
 rstest.workspace = true
+sabiql-app = { path = "../app", features = ["test-support"] }

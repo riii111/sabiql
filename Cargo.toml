@@ -82,6 +82,8 @@ default = []
 self-update = ["dep:self_update"]
 
 [dev-dependencies]
+sabiql-app = { path = "crates/app", features = ["test-support"] }
+sabiql-ui = { path = "crates/ui", features = ["test-support"] }
 rstest.workspace = true
 tempfile.workspace = true
 insta.workspace = true

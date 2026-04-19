@@ -49,8 +49,7 @@ impl MainLayout {
     }
 
     // `render_with_theme` exists only as a test seam for injected palettes.
-    // It is hidden from docs.
-    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn render_with_theme(
         frame: &mut Frame,
         state: &AppState,
