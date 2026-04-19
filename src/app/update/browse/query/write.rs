@@ -868,7 +868,10 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.messages.last_error.as_deref(), Some("boom"));
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Query failed: boom. Review the database error details and SQL.")
+            );
         }
 
         #[test]

@@ -15,7 +15,7 @@ pub(in crate::infra::adapters::postgres) fn classify_query_error(stderr: &str) -
 
 fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
     if sqlstate.starts_with("08") {
-        return if is_connection_lost_message(details) {
+        return if is_connection_lost_message(&details.to_lowercase()) {
             DbOperationError::ConnectionLost(details.to_string())
         } else {
             DbOperationError::ConnectionFailed(details.to_string())
@@ -27,7 +27,8 @@ fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
         "42501" => DbOperationError::PermissionDenied(details.to_string()),
         "23503" => DbOperationError::ForeignKeyViolation(details.to_string()),
         "23505" => DbOperationError::UniqueViolation(details.to_string()),
-        "55P03" | "57014" => DbOperationError::LockTimeout(details.to_string()),
+        "55P03" => DbOperationError::LockTimeout(details.to_string()),
+        "57014" => classify_query_canceled(details),
         "42P01" | "42703" => DbOperationError::ObjectMissing(details.to_string()),
         _ => DbOperationError::QueryFailed(details.to_string()),
     }
@@ -46,6 +47,7 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         || lower.contains("name or service not known")
         || lower.contains("nodename nor servname provided")
         || (lower.contains("does not exist") && lower.contains("database"))
+        || (lower.contains("does not exist") && lower.contains("role"))
         || lower.contains("connection refused")
         || lower.contains("could not connect to server")
     {
@@ -65,12 +67,17 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return DbOperationError::UniqueViolation(details.to_string());
     }
 
-    if lower.contains("lock not available")
-        || lower.contains("canceling statement due to lock timeout")
-        || lower.contains("canceling statement due to statement timeout")
-        || lower.contains("statement timeout")
+    if lower.contains("lock not available") || lower.contains("canceling statement due to lock timeout")
     {
         return DbOperationError::LockTimeout(details.to_string());
+    }
+
+    if lower.contains("canceling statement due to statement timeout")
+        || lower.contains("statement timeout")
+        || lower.contains("query canceled")
+        || lower.contains("canceling statement due to user request")
+    {
+        return DbOperationError::Timeout(details.to_string());
     }
 
     if (lower.contains("does not exist")
@@ -83,15 +90,23 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return DbOperationError::ObjectMissing(details.to_string());
     }
 
-    if is_connection_lost_message(details) {
+    if is_connection_lost_message(&lower) {
         return DbOperationError::ConnectionLost(details.to_string());
     }
 
     DbOperationError::QueryFailed(details.to_string())
 }
 
-fn is_connection_lost_message(details: &str) -> bool {
+fn classify_query_canceled(details: &str) -> DbOperationError {
     let lower = details.to_lowercase();
+    if lower.contains("lock timeout") || lower.contains("lock not available") {
+        DbOperationError::LockTimeout(details.to_string())
+    } else {
+        DbOperationError::Timeout(details.to_string())
+    }
+}
+
+fn is_connection_lost_message(lower: &str) -> bool {
     lower.contains("server closed the connection unexpectedly")
         || lower.contains("connection to server was lost")
         || lower.contains("terminating connection")
@@ -174,6 +189,7 @@ mod tests {
             "UniqueViolation"
         )]
         #[case("ERROR:  55P03: lock not available", "LockTimeout")]
+        #[case("ERROR:  57014: canceling statement due to statement timeout", "Timeout")]
         #[case("ERROR:  42P01: relation \"users\" does not exist", "ObjectMissing")]
         #[case("ERROR:  08006: connection to server was lost", "ConnectionLost")]
         fn classifies_sqlstate_first(#[case] input: &str, #[case] expected: &str) {
@@ -183,6 +199,7 @@ mod tests {
                 DbOperationError::ForeignKeyViolation(_) => "ForeignKeyViolation",
                 DbOperationError::UniqueViolation(_) => "UniqueViolation",
                 DbOperationError::LockTimeout(_) => "LockTimeout",
+                DbOperationError::Timeout(_) => "Timeout",
                 DbOperationError::ObjectMissing(_) => "ObjectMissing",
                 DbOperationError::ConnectionLost(_) => "ConnectionLost",
                 _ => "Other",
@@ -208,6 +225,11 @@ mod tests {
             "server closed the connection unexpectedly",
             "ConnectionLost"
         )]
+        #[case(
+            "ERROR: canceling statement due to statement timeout",
+            "Timeout"
+        )]
+        #[case(r#"FATAL: role "alice" does not exist"#, "ConnectionFailed")]
         fn falls_back_to_stderr_matching(#[case] input: &str, #[case] expected: &str) {
             let error = classify_query_error(input);
             let actual = match error {
@@ -215,6 +237,8 @@ mod tests {
                 DbOperationError::UniqueViolation(_) => "UniqueViolation",
                 DbOperationError::ObjectMissing(_) => "ObjectMissing",
                 DbOperationError::ConnectionLost(_) => "ConnectionLost",
+                DbOperationError::Timeout(_) => "Timeout",
+                DbOperationError::ConnectionFailed(_) => "ConnectionFailed",
                 _ => "Other",
             };
 

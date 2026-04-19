@@ -64,14 +64,16 @@ impl DbOperationError {
                 "Check referenced rows before retrying the write operation"
             }
             Self::UniqueViolation(_) => "Check for duplicate values before retrying",
-            Self::LockTimeout(_) => "Retry after the blocking transaction finishes",
+            Self::LockTimeout(_) => {
+                "Retry; if it persists, check for blocking transactions or timeout settings"
+            }
             Self::ObjectMissing(_) => "Check the table, column, or connected database",
             Self::QueryFailed(_) => "Review the database error details and SQL",
             Self::InvalidJson(_) => "Check whether the adapter query output shape changed",
             Self::EmptyResponse(_) => "Retry the operation and inspect the command output",
             Self::CsvParse(_) => "Check whether the adapter returned malformed CSV",
             Self::CommandTagParseFailed(_) => "Check whether the command output format changed",
-            Self::CommandNotFound(_) => "Install psql and add it to PATH",
+            Self::CommandNotFound(_) => "Install the database client and add it to PATH",
             Self::Timeout(_) => "Retry the operation or increase the timeout",
         }
     }
@@ -100,30 +102,24 @@ impl DbOperationError {
     }
 
     pub fn user_message(&self) -> String {
-        match self {
-            Self::QueryFailed(details) if !details.trim().is_empty() => self.masked_details(),
-            _ => {
-                let summary = self.summary();
-                let hint = self.hint();
-                if hint.is_empty() {
-                    summary.to_string()
-                } else {
-                    format!("{summary}. {hint}.")
-                }
-            }
+        let summary = self.summary();
+        let hint = self.hint();
+        let details = self.masked_details();
+
+        match (details.trim().is_empty(), hint.is_empty()) {
+            (true, true) => summary.to_string(),
+            (true, false) => format!("{summary}. {hint}."),
+            (false, true) => format!("{summary}: {details}"),
+            (false, false) => format!("{summary}: {details}. {hint}."),
         }
     }
 
     pub fn result_message(&self) -> String {
-        if let Self::QueryFailed(_) = self {
+        let details = self.masked_details();
+        if details.trim().is_empty() {
             self.user_message()
         } else {
-            let details = self.masked_details();
-            if details.trim().is_empty() {
-                self.user_message()
-            } else {
-                format!("{}\n\nDetails:\n{}", self.user_message(), details)
-            }
+            format!("{}\n\nDetails:\n{}", self.user_message(), details)
         }
     }
 
@@ -185,7 +181,12 @@ impl DbOperationError {
         Self::mask_after_prefix(text, |pos| {
             PREFIXES
                 .iter()
-                .find_map(|p| text[pos..].starts_with(p).then_some(p.len()))
+                .find_map(|p| {
+                    text[pos..]
+                        .get(..p.len())
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(p))
+                        .then_some(p.len())
+                })
         })
     }
 
@@ -243,13 +244,16 @@ mod tests {
         #[case(DbOperationError::LockTimeout("boom".to_string()))]
         #[case(DbOperationError::ObjectMissing("boom".to_string()))]
         #[case(DbOperationError::QueryFailed("boom".to_string()))]
+        #[case(DbOperationError::InvalidJson(Arc::new(serde_json::from_str::<i32>("x").unwrap_err())))]
         #[case(DbOperationError::EmptyResponse("boom".to_string()))]
+        #[case(DbOperationError::CsvParse(Arc::new(csv::Error::from(std::io::Error::other("boom")))))]
         #[case(DbOperationError::CommandTagParseFailed("boom".to_string()))]
         #[case(DbOperationError::CommandNotFound("boom".to_string()))]
         #[case(DbOperationError::Timeout("boom".to_string()))]
         fn non_empty(#[case] error: DbOperationError) {
             assert!(!error.summary().is_empty());
             assert!(!error.hint().is_empty());
+            assert!(!error.user_message().is_empty());
         }
     }
 
@@ -269,6 +273,10 @@ mod tests {
             DbOperationError::ConnectionFailed("PGPASSWORD=secret123 psql".to_string()),
             "PGPASSWORD=**** psql"
         )]
+        #[case(
+            DbOperationError::ConnectionFailed("pgpassword=secret123 psql".to_string()),
+            "pgpassword=**** psql"
+        )]
         fn hides_passwords(#[case] error: DbOperationError, #[case] expected: &str) {
             assert_eq!(error.masked_details(), expected);
         }
@@ -283,15 +291,18 @@ mod tests {
 
             assert_eq!(
                 error.user_message(),
-                "Permission denied. Check the connected user's privileges."
+                "Permission denied: permission denied. Check the connected user's privileges."
             );
         }
 
         #[test]
-        fn generic_query_failed_uses_raw_details() {
+        fn generic_query_failed_uses_consistent_format() {
             let error = DbOperationError::QueryFailed("syntax error at or near SELECT".to_string());
 
-            assert_eq!(error.user_message(), "syntax error at or near SELECT");
+            assert_eq!(
+                error.user_message(),
+                "Query failed: syntax error at or near SELECT. Review the database error details and SQL."
+            );
         }
 
         #[test]
@@ -300,7 +311,7 @@ mod tests {
                 "ERROR: duplicate key value violates unique constraint".to_string(),
             );
 
-            assert!(error.result_message().contains("Unique constraint violation."));
+            assert!(error.result_message().contains("Unique constraint violation:"));
             assert!(error.result_message().contains("Details:"));
         }
     }

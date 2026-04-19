@@ -651,7 +651,10 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.messages.last_error.as_deref(), Some("psql error"));
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Query failed: psql error. Review the database error details and SQL.")
+            );
         }
 
         #[test]

@@ -1,3 +1,5 @@
+use crate::app::ports::DbOperationError;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
     CliNotFound,
@@ -106,6 +108,19 @@ impl ConnectionErrorInfo {
         }
     }
 
+    pub fn from_db_operation_error(error: &DbOperationError) -> Self {
+        let raw_details = error.raw_details().into_owned();
+        let kind = match error {
+            DbOperationError::CommandNotFound(_) => ConnectionErrorKind::CliNotFound,
+            DbOperationError::Timeout(_) | DbOperationError::ConnectionLost(_) => {
+                ConnectionErrorKind::Timeout
+            }
+            DbOperationError::ConnectionFailed(_) => ConnectionErrorKind::classify(&raw_details),
+            _ => ConnectionErrorKind::Unknown,
+        };
+        Self::with_kind(kind, raw_details)
+    }
+
     pub fn summary(&self) -> &'static str {
         self.kind.summary()
     }
@@ -172,7 +187,12 @@ impl ConnectionErrorInfo {
         Self::mask_after_prefix(text, |pos| {
             PREFIXES
                 .iter()
-                .find_map(|p| text[pos..].starts_with(p).then_some(p.len()))
+                .find_map(|p| {
+                    text[pos..]
+                        .get(..p.len())
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(p))
+                        .then_some(p.len())
+                })
         })
     }
 
@@ -313,6 +333,18 @@ mod tests {
         }
 
         #[test]
+        fn from_db_operation_error_uses_raw_details() {
+            let info = ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::ConnectionFailed(
+                    r#"FATAL: database "nonexistent" does not exist"#.to_string(),
+                ),
+            );
+
+            assert_eq!(info.kind, ConnectionErrorKind::DatabaseNotFound);
+            assert_eq!(info.raw_details, r#"FATAL: database "nonexistent" does not exist"#);
+        }
+
+        #[test]
         fn delegates_summary_and_hint() {
             let info = ConnectionErrorInfo::new("psql: command not found");
             assert_eq!(info.summary(), "Database CLI not found");
@@ -339,6 +371,7 @@ mod tests {
         #[case("password=mysecret host=localhost", "password=**** host=localhost")]
         #[case("PASSWORD=mysecret host=localhost", "PASSWORD=**** host=localhost")]
         #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
+        #[case("pgpassword=secret123 psql", "pgpassword=**** psql")]
         fn masks_key_value_dsn(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
         }

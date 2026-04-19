@@ -823,7 +823,7 @@ mod tests {
 
             assert_eq!(
                 state.explain.error.as_deref(),
-                Some("syntax error")
+                Some("Query failed: syntax error. Review the database error details and SQL.")
             );
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);

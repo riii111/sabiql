@@ -125,10 +125,12 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             Some(effects)
         }
         Action::MetadataFailed(error) => {
-            let error_info = ConnectionErrorInfo::new(error.to_string());
+            let error_info = ConnectionErrorInfo::from_db_operation_error(error);
             state.connection_error.set_error(error_info);
             let was_connected = state.session.connection_state().is_connected();
-            state.session.mark_connection_failed(error.to_string());
+            state
+                .session
+                .mark_connection_failed(error.raw_details().into_owned());
             if !was_connected {
                 state.modal.replace_mode(InputMode::ConnectionError);
             }
@@ -684,7 +686,10 @@ mod tests {
                 .get(&qualified)
                 .unwrap();
             assert_eq!(entry.retry_count, 2);
-            assert_eq!(entry.error, "new error");
+            assert_eq!(
+                entry.error,
+                "Query failed: new error. Review the database error details and SQL."
+            );
         }
 
         #[test]
