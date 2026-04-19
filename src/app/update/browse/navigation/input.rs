@@ -1,8 +1,8 @@
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::update::action::{Action, InputTarget, ListMotion, ListTarget};
 use crate::app::palette::palette_command_count;
+use crate::app::update::action::{Action, InputTarget, ListMotion, ListTarget};
 
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {

@@ -1,8 +1,6 @@
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-use crate::update::action::{
-    Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
-};
+use crate::update::action::{Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::input::keybindings::{Key, KeyCombo};
 use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,

@@ -6,6 +6,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
+use crate::app::services::AppServices;
 use crate::app::ui::model::app_state::AppState;
 use crate::app::ui::model::shared::flash_timer::FlashId;
 use crate::app::ui::model::shared::focused_pane::FocusedPane;
@@ -14,7 +15,6 @@ use crate::app::ui::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::app::ui::ports::DdlGenerator;
-use crate::app::services::AppServices;
 use crate::domain::Table;
 use crate::ui::primitives::atoms::panel_block;
 use crate::ui::primitives::utils::text_utils::{

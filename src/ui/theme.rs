@@ -1,7 +1,7 @@
 use ratatui::style::{Color, Modifier, Style};
 
-use crate::app::ui::model::shared::theme_id::ThemeId;
 use crate::app::policy::write::write_guardrails::RiskLevel;
+use crate::app::ui::model::shared::theme_id::ThemeId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusTone {

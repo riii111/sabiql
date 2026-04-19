@@ -21,15 +21,14 @@ mod tests;
 #[path = "tests/render_snapshots/mod.rs"]
 mod render_snapshots;
 
-use crate::app::{
-    Action, AppRuntime, AppState, CompletionEngine, DbCapabilities, EffectRunner, InputMode,
-    StartupLoadError, TtlCache, initialize_connection_state,
-    next_animation_deadline,
-};
+use crate::app::AppServices;
 use crate::app::ports::{
     ConnectionStore, DatabaseCapabilityProvider, PgServiceEntryReader, handle_input,
 };
-use crate::app::AppServices;
+use crate::app::{
+    Action, AppRuntime, AppState, CompletionEngine, DbCapabilities, EffectRunner, InputMode,
+    StartupLoadError, TtlCache, initialize_connection_state, next_animation_deadline,
+};
 use crate::infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
     PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
@@ -143,13 +142,7 @@ async fn main() -> Result<()> {
     let runtime = AppRuntime::new(&effect_runner, &completion_engine, &services);
 
     if state.session.dsn.is_some() && state.input_mode() == InputMode::Normal {
-        dispatch_action(
-            Action::TryConnect,
-            &mut state,
-            &mut tui,
-            &runtime,
-        )
-        .await?;
+        dispatch_action(Action::TryConnect, &mut state, &mut tui, &runtime).await?;
     }
 
     let cache_cleanup_interval = Duration::from_secs(150);
@@ -184,13 +177,7 @@ async fn main() -> Result<()> {
             && Instant::now() >= debounce_until
         {
             state.sql_modal.completion_debounce = None;
-            dispatch_action(
-                Action::CompletionTrigger,
-                &mut state,
-                &mut tui,
-                &runtime,
-            )
-            .await?;
+            dispatch_action(Action::CompletionTrigger, &mut state, &mut tui, &runtime).await?;
         }
 
         if last_cache_cleanup.elapsed() >= cache_cleanup_interval {

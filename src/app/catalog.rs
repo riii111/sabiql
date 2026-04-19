@@ -86,7 +86,10 @@ pub fn help_sections() -> Vec<HelpSection> {
         },
         HelpSection {
             title: "Navigation",
-            entries: NAVIGATION_KEYS.iter().map(help_entry_from_binding).collect(),
+            entries: NAVIGATION_KEYS
+                .iter()
+                .map(help_entry_from_binding)
+                .collect(),
         },
         HelpSection {
             title: "Result History",
@@ -94,11 +97,17 @@ pub fn help_sections() -> Vec<HelpSection> {
         },
         HelpSection {
             title: "Result Pane",
-            entries: RESULT_ACTIVE_KEYS.iter().map(help_entry_from_binding).collect(),
+            entries: RESULT_ACTIVE_KEYS
+                .iter()
+                .map(help_entry_from_binding)
+                .collect(),
         },
         HelpSection {
             title: "Inspector Pane (DDL tab)",
-            entries: INSPECTOR_DDL_KEYS.iter().map(help_entry_from_binding).collect(),
+            entries: INSPECTOR_DDL_KEYS
+                .iter()
+                .map(help_entry_from_binding)
+                .collect(),
         },
         HelpSection {
             title: "Cell Edit",
@@ -142,7 +151,10 @@ pub fn help_sections() -> Vec<HelpSection> {
         },
         HelpSection {
             title: "Command Line",
-            entries: COMMAND_LINE_KEYS.iter().map(help_entry_from_binding).collect(),
+            entries: COMMAND_LINE_KEYS
+                .iter()
+                .map(help_entry_from_binding)
+                .collect(),
         },
         HelpSection {
             title: "Connection Setup",
@@ -153,11 +165,17 @@ pub fn help_sections() -> Vec<HelpSection> {
         },
         HelpSection {
             title: "Connection Error",
-            entries: CONNECTION_ERROR_ROWS.iter().map(help_entry_from_row).collect(),
+            entries: CONNECTION_ERROR_ROWS
+                .iter()
+                .map(help_entry_from_row)
+                .collect(),
         },
         HelpSection {
             title: "Connection Selector",
-            entries: CONNECTION_SELECTOR_ROWS.iter().map(help_entry_from_row).collect(),
+            entries: CONNECTION_SELECTOR_ROWS
+                .iter()
+                .map(help_entry_from_row)
+                .collect(),
         },
         HelpSection {
             title: "ER Diagram Picker",
@@ -187,7 +205,10 @@ pub fn help_sections() -> Vec<HelpSection> {
         },
         HelpSection {
             title: "Confirm Dialog",
-            entries: CONFIRM_DIALOG_KEYS.iter().map(help_entry_from_binding).collect(),
+            entries: CONFIRM_DIALOG_KEYS
+                .iter()
+                .map(help_entry_from_binding)
+                .collect(),
         },
         HelpSection {
             title: "JSONB Detail",
@@ -199,7 +220,10 @@ pub fn help_sections() -> Vec<HelpSection> {
         },
         HelpSection {
             title: "JSONB Search",
-            entries: JSONB_SEARCH_KEYS.iter().map(help_entry_from_binding).collect(),
+            entries: JSONB_SEARCH_KEYS
+                .iter()
+                .map(help_entry_from_binding)
+                .collect(),
         },
     ]
 }
@@ -343,9 +367,7 @@ pub fn sql_modal_border_hint(
             join_hint_text(
                 &[
                     hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN]),
-                    hint_from_binding(
-                        &SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT],
-                    ),
+                    hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT]),
                     hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE]),
                 ],
                 true,
@@ -362,20 +384,22 @@ pub fn sql_modal_border_hint(
             ],
             true,
         ),
-        crate::model::sql_editor::modal::SqlModalTab::Compare if compare_can_yank => join_hint_text(
-            &[
-                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY]),
-                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK]),
-                Hint {
-                    key: "Tab/⇧Tab",
-                    description: SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
-                        .as_hint()
-                        .1,
-                },
-                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE]),
-            ],
-            true,
-        ),
+        crate::model::sql_editor::modal::SqlModalTab::Compare if compare_can_yank => {
+            join_hint_text(
+                &[
+                    hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY]),
+                    hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK]),
+                    Hint {
+                        key: "Tab/⇧Tab",
+                        description: SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
+                            .as_hint()
+                            .1,
+                    },
+                    hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE]),
+                ],
+                true,
+            )
+        }
         crate::model::sql_editor::modal::SqlModalTab::Compare => join_hint_text(
             &[
                 hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY]),
@@ -392,9 +416,7 @@ pub fn sql_modal_border_hint(
         crate::model::sql_editor::modal::SqlModalTab::Sql => join_hint_text(
             &[
                 hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN]),
-                hint_from_binding(
-                    &SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT],
-                ),
+                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT]),
                 Hint {
                     key: "Tab/⇧Tab",
                     description: SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
@@ -422,7 +444,10 @@ fn join_hint_text(hints: &[Hint], bordered: bool) -> String {
 }
 
 fn sql_modal_footer_hints(state: &AppState, services: &AppServices) -> Vec<Hint> {
-    if matches!(state.sql_modal.status(), SqlModalStatus::ConfirmingHigh { .. }) {
+    if matches!(
+        state.sql_modal.status(),
+        SqlModalStatus::ConfirmingHigh { .. }
+    ) {
         return vec![hint_from_binding(
             &SQL_MODAL_CONFIRMING_KEYS[idx::sql_modal_confirming::CANCEL_CONFIRM],
         )];
@@ -454,8 +479,10 @@ fn connection_selector_footer_hints(state: &AppState) -> Vec<Hint> {
     use crate::model::connection::list::is_service_selected;
     use idx::connection_selector as cs;
 
-    let is_service_selected =
-        is_service_selected(state.connection_list_items(), state.ui.connection_list_selected);
+    let is_service_selected = is_service_selected(
+        state.connection_list_items(),
+        state.ui.connection_list_selected,
+    );
     let mut hints = vec![
         hint_from_row(&CONNECTION_SELECTOR_ROWS[cs::CONFIRM]),
         hint_from_row(&CONNECTION_SELECTOR_ROWS[cs::NEW]),
@@ -526,7 +553,9 @@ fn normal_mode_footer_hints(state: &AppState, services: &AppServices) -> Vec<Hin
             hints.push(hint_from_binding(&GLOBAL_KEYS[idx::global::CSV_EXPORT]));
         }
         if state.query.can_paginate_visible_result() {
-            hints.push(hint_from_binding(&FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV]));
+            hints.push(hint_from_binding(
+                &FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV],
+            ));
         }
         hints.push(hint_from_binding(&GLOBAL_KEYS[idx::global::HELP]));
         hints.push(hint_from_binding(&GLOBAL_KEYS[idx::global::EXIT_FOCUS]));
@@ -561,7 +590,9 @@ fn normal_mode_footer_hints(state: &AppState, services: &AppServices) -> Vec<Hin
     }
     if state.ui.focused_pane == FocusedPane::Inspector && active_inspector_tab == InspectorTab::Ddl
     {
-        hints.push(hint_from_binding(&INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK]));
+        hints.push(hint_from_binding(
+            &INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK],
+        ));
     }
     if state.ui.focused_pane == FocusedPane::Result {
         hints.push(hint_from_binding(
@@ -574,7 +605,9 @@ fn normal_mode_footer_hints(state: &AppState, services: &AppServices) -> Vec<Hin
             hints.push(hint_from_binding(&CELL_EDIT_KEYS[idx::cell_edit::WRITE]));
         }
         if state.query.can_paginate_visible_result() {
-            hints.push(hint_from_binding(&FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV]));
+            hints.push(hint_from_binding(
+                &FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV],
+            ));
         }
     }
     if state.ui.focused_pane == FocusedPane::Inspector
@@ -602,7 +635,10 @@ mod tests {
     #[test]
     fn help_sections_include_global_keys() {
         let sections = help_sections();
-        assert_eq!(sections.first().map(|section| section.title), Some("Global Keys"));
+        assert_eq!(
+            sections.first().map(|section| section.title),
+            Some("Global Keys")
+        );
         assert!(!sections.first().unwrap().entries.is_empty());
     }
 

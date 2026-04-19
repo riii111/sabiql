@@ -6,10 +6,10 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
+use crate::app::services::AppServices;
 use crate::app::ui::model::app_state::AppState;
 use crate::app::ui::model::shared::flash_timer::FlashId;
 use crate::app::ui::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
-use crate::app::services::AppServices;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::ThemePalette;
 

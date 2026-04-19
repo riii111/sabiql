@@ -15,8 +15,13 @@ pub enum StartupLoadError {
 pub fn initialize_connection_state(
     state: &mut AppState,
     services: &AppServices,
-    profiles_result: Result<Vec<crate::domain::connection::ConnectionProfile>, ConnectionStoreError>,
-    service_result: Option<Result<(Vec<crate::domain::connection::ServiceEntry>, PathBuf), ServiceFileError>>,
+    profiles_result: Result<
+        Vec<crate::domain::connection::ConnectionProfile>,
+        ConnectionStoreError,
+    >,
+    service_result: Option<
+        Result<(Vec<crate::domain::connection::ServiceEntry>, PathBuf), ServiceFileError>,
+    >,
 ) -> Result<(), StartupLoadError> {
     match profiles_result {
         Ok(profiles) => {
@@ -133,7 +138,9 @@ mod tests {
             &mut state,
             &crate::services::AppServices::stub(),
             Ok(vec![profile("zeta"), profile("alpha")]),
-            Some(Err(ServiceFileError::NotFound("/tmp/pg_service.conf".into()))),
+            Some(Err(ServiceFileError::NotFound(
+                "/tmp/pg_service.conf".into(),
+            ))),
         )
         .unwrap();
 

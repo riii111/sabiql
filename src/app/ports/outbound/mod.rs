@@ -19,7 +19,9 @@ pub mod sql_dialect;
 pub use self::clipboard::{ClipboardError, ClipboardWriter};
 pub use self::config_writer::{ConfigWriter, ConfigWriterError};
 pub use self::connection_store::{ConnectionStore, ConnectionStoreError};
-pub use self::db_capabilities::{DatabaseCapabilities, DatabaseCapabilityProvider, InspectorFeature};
+pub use self::db_capabilities::{
+    DatabaseCapabilities, DatabaseCapabilityProvider, InspectorFeature,
+};
 pub use self::db_operation_error::DbOperationError;
 pub use self::ddl_generator::DdlGenerator;
 pub use self::dsn_builder::DsnBuilder;

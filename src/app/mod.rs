@@ -1,5 +1,5 @@
-pub mod cmd;
 pub mod catalog;
+pub mod cmd;
 pub mod model;
 pub mod palette;
 pub mod policy;
@@ -31,8 +31,8 @@ pub mod ui {
 }
 
 pub mod app {
-    pub use crate::cmd;
     pub use crate::catalog;
+    pub use crate::cmd;
     pub use crate::model;
     pub use crate::palette;
     pub use crate::policy;

@@ -120,11 +120,10 @@ mod tests {
             state.sql_modal.active_tab = crate::model::sql_editor::modal::SqlModalTab::Plan;
 
             let mut services = AppServices::stub();
-            services.db_capabilities =
-                crate::model::shared::db_capabilities::DbCapabilities::new(
-                    false,
-                    vec![crate::model::shared::inspector_tab::InspectorTab::Info],
-                );
+            services.db_capabilities = crate::model::shared::db_capabilities::DbCapabilities::new(
+                false,
+                vec![crate::model::shared::inspector_tab::InspectorTab::Info],
+            );
 
             let result = handle_key_event(combo(Key::Char('i')), &state, &services);
 
