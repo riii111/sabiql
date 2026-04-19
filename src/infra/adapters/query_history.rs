@@ -1,3 +1,4 @@
+use std::io;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
@@ -5,9 +6,18 @@ use async_trait::async_trait;
 use crate::app::ports::{QueryHistoryError, QueryHistoryStore};
 use crate::domain::connection::ConnectionId;
 use crate::domain::query_history::QueryHistoryEntry;
-use crate::infra::config::cache::get_cache_dir;
+use crate::infra::config::cache::{CacheDirError, get_cache_dir};
 
 const MAX_HISTORY_ENTRIES: usize = 1000;
+
+fn map_cache_dir_error(error: CacheDirError) -> QueryHistoryError {
+    match error {
+        CacheDirError::BaseDirUnavailable => {
+            io::Error::new(io::ErrorKind::NotFound, "Could not find cache directory").into()
+        }
+        CacheDirError::Io(error) => error.into(),
+    }
+}
 
 fn append_entry(path: &Path, dir: &Path, line: &str) -> Result<(), QueryHistoryError> {
     use std::fs::OpenOptions;
@@ -60,7 +70,7 @@ impl FileQueryHistoryStore {
         if let Some(base) = &self.base_dir {
             Ok(base.join("history"))
         } else {
-            let cache_dir = get_cache_dir(project_name)?;
+            let cache_dir = get_cache_dir(project_name).map_err(map_cache_dir_error)?;
             Ok(cache_dir.join("history"))
         }
     }

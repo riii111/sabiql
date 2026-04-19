@@ -1,8 +1,7 @@
-use std::io;
 use std::path::PathBuf;
 
 use crate::app::ports::{ConfigWriter, ConfigWriterError};
-use crate::infra::config::cache::get_cache_dir;
+use crate::infra::config::cache::{CacheDirError, get_cache_dir};
 
 pub struct FileConfigWriter;
 
@@ -18,17 +17,18 @@ impl Default for FileConfigWriter {
     }
 }
 
+fn map_cache_dir_error(error: CacheDirError) -> ConfigWriterError {
+    match error {
+        CacheDirError::BaseDirUnavailable => ConfigWriterError::MissingCacheDir,
+        CacheDirError::Io(error) => error.into(),
+    }
+}
+
 impl ConfigWriter for FileConfigWriter {
     fn get_cache_dir(
         &self,
         project_name: &str,
     ) -> Result<PathBuf, ConfigWriterError> {
-        get_cache_dir(project_name).map_err(|error| {
-            if error.kind() == io::ErrorKind::NotFound {
-                ConfigWriterError::MissingCacheDir
-            } else {
-                error.into()
-            }
-        })
+        get_cache_dir(project_name).map_err(map_cache_dir_error)
     }
 }
