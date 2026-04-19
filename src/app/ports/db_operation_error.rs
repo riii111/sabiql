@@ -6,6 +6,8 @@ pub enum DbOperationError {
     ConnectionFailed(String),
     #[error("Query failed: {0}")]
     QueryFailed(String),
+    #[error("Metadata parse failed: {0}")]
+    MetadataParseFailed(String),
     #[error("Invalid JSON: {0}")]
     InvalidJson(#[source] Arc<serde_json::Error>),
     #[error("Empty response: {0}")]
