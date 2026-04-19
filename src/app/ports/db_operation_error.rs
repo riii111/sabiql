@@ -48,6 +48,7 @@ impl DbOperationError {
             Self::LockTimeout(_) => "Operation blocked by lock or timeout",
             Self::ObjectMissing(_) => "Database object not found",
             Self::QueryFailed(_) => "Query failed",
+            Self::MetadataParseFailed(_) => "Failed to parse database metadata output",
             Self::InvalidJson(_) => "Failed to parse database JSON output",
             Self::EmptyResponse(_) => "Database returned an empty response",
             Self::CsvParse(_) => "Failed to parse database CSV output",
@@ -71,6 +72,9 @@ impl DbOperationError {
             }
             Self::ObjectMissing(_) => "Check the table, column, or connected database",
             Self::QueryFailed(_) => "Review the database error details and SQL",
+            Self::MetadataParseFailed(_) => {
+                "Check whether the metadata output format changed unexpectedly"
+            }
             Self::InvalidJson(_) => "Check whether the adapter query output shape changed",
             Self::EmptyResponse(_) => "Retry the operation and inspect the command output",
             Self::CsvParse(_) => "Check whether the adapter returned malformed CSV",
@@ -90,6 +94,7 @@ impl DbOperationError {
             | Self::LockTimeout(details)
             | Self::ObjectMissing(details)
             | Self::QueryFailed(details)
+            | Self::MetadataParseFailed(details)
             | Self::EmptyResponse(details)
             | Self::CommandTagParseFailed(details)
             | Self::CommandNotFound(details)
@@ -159,9 +164,14 @@ mod tests {
         #[case(DbOperationError::LockTimeout("boom".to_string()))]
         #[case(DbOperationError::ObjectMissing("boom".to_string()))]
         #[case(DbOperationError::QueryFailed("boom".to_string()))]
+        #[case(DbOperationError::MetadataParseFailed("boom".to_string()))]
         #[case(DbOperationError::InvalidJson(Arc::new(serde_json::from_str::<i32>("x").unwrap_err())))]
         #[case(DbOperationError::EmptyResponse("boom".to_string()))]
-        #[case(DbOperationError::CsvParse(Arc::new(csv::Error::from(std::io::Error::other("boom")))))]
+        #[case(
+            DbOperationError::CsvParse(Arc::new(csv::Error::from(std::io::Error::other(
+                "boom"
+            ))))
+        )]
         #[case(DbOperationError::CommandTagParseFailed("boom".to_string()))]
         #[case(DbOperationError::CommandNotFound("boom".to_string()))]
         #[case(DbOperationError::Timeout("boom".to_string()))]
@@ -230,7 +240,11 @@ mod tests {
                 "ERROR: duplicate key value violates unique constraint".to_string(),
             );
 
-            assert!(error.result_message().contains("Unique constraint violation."));
+            assert!(
+                error
+                    .result_message()
+                    .contains("Unique constraint violation.")
+            );
             assert!(error.result_message().contains("Details:"));
             assert_eq!(
                 error
