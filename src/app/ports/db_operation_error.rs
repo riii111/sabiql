@@ -80,7 +80,7 @@ impl DbOperationError {
         }
     }
 
-    pub fn raw_details(&self) -> Cow<'_, str> {
+    pub(crate) fn raw_details(&self) -> Cow<'_, str> {
         match self {
             Self::ConnectionFailed(details)
             | Self::ConnectionLost(details)

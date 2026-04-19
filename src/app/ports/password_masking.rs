@@ -21,20 +21,13 @@ fn mask_url_passwords(text: &str) -> String {
 
         if scheme_len > 0 {
             let authority_start = i + scheme_len;
-            let authority_end = text[authority_start..]
-                .find(['/', '?', '#', ' ', '\n', '\r', '\t'])
-                .map_or(text.len(), |offset| authority_start + offset);
-            let authority = &text[authority_start..authority_end];
-
-            if let Some(at) = authority.rfind('@') {
-                let userinfo = authority.get(..at).unwrap_or_default();
+            if let Some(at) = find_userinfo_terminator(text, authority_start) {
+                let userinfo = text.get(authority_start..at).unwrap_or_default();
                 if let Some(colon) = userinfo.find(':') {
                     let password_start = authority_start + colon + 1;
-                    let password_end = authority_start + at;
                     result.push_str(&text[i..password_start]);
                     result.push_str("****");
-                    result.push_str(&text[password_end..authority_end]);
-                    i = authority_end;
+                    i = at;
                     continue;
                 }
             }
@@ -46,6 +39,22 @@ fn mask_url_passwords(text: &str) -> String {
     }
 
     result
+}
+
+fn find_userinfo_terminator(text: &str, authority_start: usize) -> Option<usize> {
+    let line_end = text[authority_start..]
+        .find(['\n', '\r'])
+        .map_or(text.len(), |offset| authority_start + offset);
+    let line = text.get(authority_start..line_end).unwrap_or_default();
+
+    line.match_indices('@').rev().find_map(|(offset, _)| {
+        let at = authority_start + offset;
+        let host = text.get((at + 1)..line_end).unwrap_or_default();
+        let host_end = host
+            .find(['/', '?', '#', ' ', '\t', '\'', '"', ','])
+            .unwrap_or(host.len());
+        (host_end > 0).then_some(at)
+    })
 }
 
 fn mask_kv_passwords(text: &str) -> String {
@@ -118,6 +127,10 @@ mod tests {
     #[case("postgres://user:secret@host", "postgres://user:****@host")]
     #[case("postgres://user:p@ss@host", "postgres://user:****@host")]
     #[case("postgres://user:p@ss@host:5432/db", "postgres://user:****@host:5432/db")]
+    #[case("postgres://user:p/w@host/db", "postgres://user:****@host/db")]
+    #[case("postgres://user:p?w@host:5432/db", "postgres://user:****@host:5432/db")]
+    #[case("postgres://user:p#w@host", "postgres://user:****@host")]
+    #[case("postgres://user:p w@host", "postgres://user:****@host")]
     #[case("postgresql://user:secret@host", "postgresql://user:****@host")]
     #[case("mysql://user:secret@host", "mysql://user:****@host")]
     fn masks_passwords_in_urls(#[case] input: &str, #[case] expected: &str) {

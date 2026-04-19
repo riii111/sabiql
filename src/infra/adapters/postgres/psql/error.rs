@@ -133,9 +133,10 @@ fn extract_sqlstate(details: &str) -> Option<&str> {
 
 fn extract_verbose_sqlstate(line: &str) -> Option<&str> {
     for prefix in ["ERROR:", "FATAL:", "PANIC:"] {
-        let Some(rest) = line.strip_prefix(prefix) else {
+        let Some(prefix_pos) = line.find(prefix) else {
             continue;
         };
+        let rest = &line[(prefix_pos + prefix.len())..];
         let rest = rest.trim_start();
         if rest.len() < 6 {
             continue;
@@ -176,6 +177,7 @@ mod tests {
         #[rstest]
         #[case("ERROR:  42501: permission denied for table users", "42501")]
         #[case("FATAL:  23505: duplicate key value violates unique constraint", "23505")]
+        #[case("psql:/tmp/f.sql:1: ERROR:  42501: permission denied", "42501")]
         #[case("SQL state: 42P01", "42P01")]
         fn extracts_codes(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(extract_sqlstate(input), Some(expected));
