@@ -6,6 +6,7 @@ use crate::ports::{ConnectionStoreError, ServiceFileError};
 use crate::update::action::ConnectionsLoadedPayload;
 use crate::update::reducer::reduce;
 
+#[derive(Debug)]
 pub enum StartupLoadError {
     VersionMismatch { found: u32, expected: u32 },
 }
@@ -82,16 +83,11 @@ mod tests {
 
     fn service(name: &str) -> ServiceEntry {
         ServiceEntry {
-            name: name.to_string(),
+            service_name: name.to_string(),
             host: None,
-            port: None,
             dbname: None,
+            port: None,
             user: None,
-            options: None,
-            sslmode: None,
-            sslcert: None,
-            sslkey: None,
-            sslrootcert: None,
         }
     }
 

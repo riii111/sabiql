@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use ratatui::widgets::{List, ListItem};
 
 use crate::app::model::app_state::AppState;
-use crate::app::update::input::palette::palette_commands;
+use crate::app::palette::palette_commands;
 use crate::ui::theme::ThemePalette;
 
 use crate::ui::primitives::molecules::render_modal;
@@ -24,13 +24,13 @@ impl CommandPalette {
 
         let items: Vec<ListItem> = palette_commands()
             .enumerate()
-            .map(|(i, kb)| {
+            .map(|(i, entry)| {
                 let style = if i == state.ui.table_picker.selected() {
                     theme.picker_selected_style()
                 } else {
                     Style::default().fg(theme.semantic.text.secondary)
                 };
-                let content = format!("  {:<18} {}", kb.key, kb.description);
+                let content = format!("  {:<18} {}", entry.key, entry.description);
                 ListItem::new(content).style(style)
             })
             .collect();

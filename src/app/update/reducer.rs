@@ -112,7 +112,7 @@ fn reduce_inner(
                     return select_table(state, &table);
                 }
             } else if state.modal.active_mode() == InputMode::CommandPalette {
-                use crate::app::update::input::palette::palette_action_for_index;
+                use crate::app::palette::palette_action_for_index;
 
                 let cmd_action = palette_action_for_index(state.ui.table_picker.selected());
                 state.modal.set_mode(InputMode::Normal);
@@ -2498,7 +2498,7 @@ mod tests {
 
     mod command_palette {
         use super::*;
-        use crate::app::update::input::palette::palette_commands;
+        use crate::app::palette::palette_commands;
         use rstest::rstest;
 
         fn state_in_palette_mode() -> AppState {
