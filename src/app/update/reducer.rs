@@ -175,7 +175,7 @@ mod tests {
 
     use super::*;
     use crate::app::ports::DbOperationError;
-    use crate::app::ports::connection_store::ConnectionStoreError;
+    use crate::app::ports::outbound::connection_store::ConnectionStoreError;
     use crate::app::update::action::{ConnectionSaveError, ConnectionTarget};
     use crate::app::update::action::{InputTarget, SelectMotion};
 

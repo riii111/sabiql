@@ -52,8 +52,8 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
 
-    use crate::app::ports::clipboard::ClipboardError;
-    use crate::app::ports::folder_opener::FolderOpenError;
+    use crate::app::ports::outbound::clipboard::ClipboardError;
+    use crate::app::ports::outbound::folder_opener::FolderOpenError;
 
     struct MockClipboard {
         result: Result<(), ClipboardError>,

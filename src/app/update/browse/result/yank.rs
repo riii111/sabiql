@@ -119,7 +119,7 @@ fn clipboard_unavailable() -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::ddl_generator::DdlGenerator;
+    use crate::app::ports::outbound::ddl_generator::DdlGenerator;
     use crate::domain::{Column, Table};
     use std::sync::Arc;
 
