@@ -3,13 +3,13 @@ use crate::app::update::action::CursorMove;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextInputState {
     content: String,
+    char_count: usize,
     cursor: usize,
     viewport_offset: usize,
 }
 
 pub trait TextInputLike {
     fn text_input(&self) -> &TextInputState;
-    fn text_input_mut(&mut self) -> &mut TextInputState;
 
     fn content(&self) -> &str {
         self.text_input().content()
@@ -22,31 +22,16 @@ pub trait TextInputLike {
     fn char_count(&self) -> usize {
         self.text_input().char_count()
     }
-
-    fn insert_char(&mut self, c: char) {
-        self.text_input_mut().insert_char(c);
-    }
-
-    fn insert_str(&mut self, text: &str) {
-        self.text_input_mut().insert_str(text);
-    }
-
-    fn backspace(&mut self) {
-        self.text_input_mut().backspace();
-    }
-
-    fn delete(&mut self) {
-        self.text_input_mut().delete();
-    }
 }
 
 impl TextInputState {
     pub fn new(content: impl Into<String>, cursor: usize) -> Self {
         let content = content.into();
-        let len = content.chars().count();
+        let char_count = content.chars().count();
         Self {
             content,
-            cursor: cursor.min(len),
+            char_count,
+            cursor: cursor.min(char_count),
             viewport_offset: 0,
         }
     }
@@ -57,10 +42,11 @@ impl TextInputState {
         viewport_offset: usize,
     ) -> Self {
         let content = content.into();
-        let len = content.chars().count();
+        let char_count = content.chars().count();
         Self {
             content,
-            cursor: cursor.min(len),
+            char_count,
+            cursor: cursor.min(char_count),
             viewport_offset,
         }
     }
@@ -78,7 +64,7 @@ impl TextInputState {
     }
 
     pub fn set_cursor(&mut self, pos: usize) {
-        self.cursor = pos.min(self.char_count());
+        self.cursor = pos.min(self.char_count);
         self.viewport_offset = 0;
     }
 
@@ -86,12 +72,15 @@ impl TextInputState {
         let byte_idx = char_to_byte_index(&self.content, self.cursor);
         self.content.insert(byte_idx, c);
         self.cursor += 1;
+        self.char_count += 1;
     }
 
     pub fn insert_str(&mut self, text: &str) {
         let byte_idx = char_to_byte_index(&self.content, self.cursor);
+        let inserted_chars = text.chars().count();
         self.content.insert_str(byte_idx, text);
-        self.cursor += text.chars().count();
+        self.cursor += inserted_chars;
+        self.char_count += inserted_chars;
     }
 
     pub fn backspace(&mut self) {
@@ -103,16 +92,17 @@ impl TextInputState {
         let end = char_to_byte_index(&self.content, self.cursor);
         self.content.drain(start..end);
         self.cursor = prev;
+        self.char_count -= 1;
     }
 
     pub fn delete(&mut self) {
-        let len = self.char_count();
-        if self.cursor >= len {
+        if self.cursor >= self.char_count {
             return;
         }
         let start = char_to_byte_index(&self.content, self.cursor);
         let end = char_to_byte_index(&self.content, self.cursor + 1);
         self.content.drain(start..end);
+        self.char_count -= 1;
     }
 
     pub fn move_cursor(&mut self, movement: CursorMove) {
@@ -121,8 +111,7 @@ impl TextInputState {
                 self.cursor = self.cursor.saturating_sub(1);
             }
             CursorMove::Right => {
-                let len = self.char_count();
-                if self.cursor < len {
+                if self.cursor < self.char_count {
                     self.cursor += 1;
                 }
             }
@@ -136,7 +125,7 @@ impl TextInputState {
             | CursorMove::LineEnd
             | CursorMove::BufferEnd
             | CursorMove::LastLine => {
-                self.cursor = self.char_count();
+                self.cursor = self.char_count;
             }
             CursorMove::WordForward => {
                 self.cursor = next_word_start(&self.content, self.cursor);
@@ -159,7 +148,7 @@ impl TextInputState {
         }
 
         // █ occupies one terminal cell at end-of-input; shrink effective width to keep it visible
-        let effective_width = if self.cursor == self.char_count() {
+        let effective_width = if self.cursor == self.char_count {
             visible_width.saturating_sub(1)
         } else {
             visible_width
@@ -178,29 +167,27 @@ impl TextInputState {
     }
 
     pub fn set_content(&mut self, s: String) {
-        let len = s.chars().count();
+        let char_count = s.chars().count();
         self.content = s;
-        self.cursor = len;
+        self.char_count = char_count;
+        self.cursor = char_count;
         self.viewport_offset = 0;
     }
 
     pub fn clear(&mut self) {
         self.content.clear();
+        self.char_count = 0;
         self.cursor = 0;
         self.viewport_offset = 0;
     }
 
     pub fn char_count(&self) -> usize {
-        self.content.chars().count()
+        self.char_count
     }
 }
 
 impl TextInputLike for TextInputState {
     fn text_input(&self) -> &TextInputState {
-        self
-    }
-
-    fn text_input_mut(&mut self) -> &mut TextInputState {
         self
     }
 }
@@ -210,6 +197,9 @@ fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
         .nth(char_idx)
         .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
+
+#[cfg(test)]
+mod perf_tests;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum WordKind {
@@ -769,6 +759,30 @@ mod tests {
 
             assert_eq!(s.char_count(), 5);
         }
+
+        #[test]
+        fn mutations_keep_cached_char_count_in_sync() {
+            let mut s = state_with("ab", 2);
+
+            s.insert_char('日');
+            assert_eq!(s.char_count(), 3);
+
+            s.insert_str("本語");
+            assert_eq!(s.char_count(), 5);
+
+            s.backspace();
+            assert_eq!(s.char_count(), 4);
+
+            s.set_cursor(1);
+            s.delete();
+            assert_eq!(s.char_count(), 3);
+
+            s.set_content("xyz".to_string());
+            assert_eq!(s.char_count(), 3);
+
+            s.clear();
+            assert_eq!(s.char_count(), 0);
+        }
     }
 
     mod constructor_tests {
@@ -818,4 +832,5 @@ mod tests {
             assert_eq!(s.viewport_offset(), 0);
         }
     }
+
 }
