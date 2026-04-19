@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use crate::app::ports::password_masking::mask_password;
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum DbOperationError {
     #[error("Connection failed: {0}")]
@@ -98,7 +100,7 @@ impl DbOperationError {
     }
 
     pub fn masked_details(&self) -> String {
-        Self::mask_password(self.raw_details().as_ref())
+        mask_password(self.raw_details().as_ref())
     }
 
     pub fn user_message(&self) -> String {
@@ -121,97 +123,6 @@ impl DbOperationError {
         } else {
             format!("{}\n\nDetails:\n{}", self.user_message(), details)
         }
-    }
-
-    fn mask_password(text: &str) -> String {
-        let result = Self::mask_url_passwords(text);
-        let result = Self::mask_kv_passwords(&result);
-        Self::mask_env_passwords(&result)
-    }
-
-    fn mask_url_passwords(text: &str) -> String {
-        let lower = text.to_lowercase();
-        let mut result = String::with_capacity(text.len());
-        let mut i = 0;
-
-        while i < text.len() {
-            let remaining = &lower[i..];
-            let scheme_len = if remaining.starts_with("postgresql://") {
-                "postgresql://".len()
-            } else if remaining.starts_with("postgres://") {
-                "postgres://".len()
-            } else if remaining.starts_with("mysql://") {
-                "mysql://".len()
-            } else {
-                0
-            };
-
-            if scheme_len > 0 {
-                let after_scheme = i + scheme_len;
-                if let Some(colon_off) = text[after_scheme..].find(':') {
-                    let colon = after_scheme + colon_off;
-                    if let Some(at_off) = text[(colon + 1)..].find('@') {
-                        let at = colon + 1 + at_off;
-                        result.push_str(&text[i..=colon]);
-                        result.push_str("****");
-                        i = at;
-                        continue;
-                    }
-                }
-            }
-
-            let ch = text[i..].chars().next().unwrap();
-            result.push(ch);
-            i += ch.len_utf8();
-        }
-
-        result
-    }
-
-    fn mask_kv_passwords(text: &str) -> String {
-        let lower = text.to_lowercase();
-        Self::mask_after_prefix(text, |pos| {
-            let needle = "password=";
-            lower[pos..].starts_with(needle).then_some(needle.len())
-        })
-    }
-
-    fn mask_env_passwords(text: &str) -> String {
-        const PREFIXES: &[&str] = &["PGPASSWORD=", "MYSQL_PASSWORD=", "MYSQL_PWD="];
-        Self::mask_after_prefix(text, |pos| {
-            PREFIXES
-                .iter()
-                .find_map(|p| {
-                    text[pos..]
-                        .get(..p.len())
-                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(p))
-                        .then_some(p.len())
-                })
-        })
-    }
-
-    fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -> String {
-        let mut result = String::with_capacity(text.len());
-        let mut i = 0;
-
-        while i < text.len() {
-            if let Some(prefix_len) = find_prefix(i) {
-                let eq_end = i + prefix_len;
-                result.push_str(&text[i..eq_end]);
-                result.push_str("****");
-                let mut j = eq_end;
-                while j < text.len() && !text.as_bytes()[j].is_ascii_whitespace() {
-                    j += 1;
-                }
-                i = j;
-            } else {
-                let ch = text[i..].chars().next().unwrap();
-                result.push(ch);
-                i += ch.len_utf8();
-            }
-        }
-
-        result
     }
 }
 
@@ -276,6 +187,10 @@ mod tests {
         #[case(
             DbOperationError::ConnectionFailed("pgpassword=secret123 psql".to_string()),
             "pgpassword=**** psql"
+        )]
+        #[case(
+            DbOperationError::ConnectionFailed("postgres://user:p@ss@host".to_string()),
+            "postgres://user:****@host"
         )]
         fn hides_passwords(#[case] error: DbOperationError, #[case] expected: &str) {
             assert_eq!(error.masked_details(), expected);

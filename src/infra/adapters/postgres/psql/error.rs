@@ -46,8 +46,7 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         || lower.contains("could not translate host name")
         || lower.contains("name or service not known")
         || lower.contains("nodename nor servname provided")
-        || (lower.contains("does not exist") && lower.contains("database"))
-        || (lower.contains("does not exist") && lower.contains("role"))
+        || is_missing_database_or_role(&lower)
         || lower.contains("connection refused")
         || lower.contains("could not connect to server")
     {
@@ -80,13 +79,7 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return DbOperationError::Timeout(details.to_string());
     }
 
-    if (lower.contains("does not exist")
-        && (lower.contains("relation")
-            || lower.contains("column")
-            || lower.contains("table")
-            || lower.contains("schema")))
-        || lower.contains("undefined column")
-    {
+    if is_missing_object(&lower) {
         return DbOperationError::ObjectMissing(details.to_string());
     }
 
@@ -95,6 +88,20 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
     }
 
     DbOperationError::QueryFailed(details.to_string())
+}
+
+fn is_missing_database_or_role(lower: &str) -> bool {
+    lower.contains("does not exist")
+        && (lower.contains("database") || lower.contains("role"))
+}
+
+fn is_missing_object(lower: &str) -> bool {
+    (lower.contains("does not exist")
+        && (lower.contains("relation")
+            || lower.contains("column")
+            || lower.contains("table")
+            || lower.contains("schema")))
+        || lower.contains("undefined column")
 }
 
 fn classify_query_canceled(details: &str) -> DbOperationError {

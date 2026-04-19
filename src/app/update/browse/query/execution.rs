@@ -150,6 +150,12 @@ pub fn reduce(
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
+                    state.query.set_current_result(Arc::new(QueryResult::error(
+                        state.query.pagination.table.clone(),
+                        error.result_message(),
+                        0,
+                        QuerySource::Preview,
+                    )));
                 }
                 state.set_error(error.user_message());
                 if is_adhoc {
@@ -613,6 +619,27 @@ mod tests {
             );
             assert_eq!(state.result_interaction.scroll_offset, 0);
             assert_eq!(state.result_interaction.horizontal_offset, 0);
+        }
+
+        #[test]
+        fn preview_failure_sets_error_result() {
+            let mut state = state_with_table("public", "users");
+            state.session.set_selection_generation(1);
+
+            reduce_query(
+                &mut state,
+                &Action::QueryFailed(DbOperationError::PermissionDenied("forbidden".to_string()), 1),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let result = state.query.current_result().expect("result");
+            assert!(result.is_error());
+            assert_eq!(result.source, QuerySource::Preview);
+            assert!(result
+                .error
+                .as_deref()
+                .is_some_and(|message| message.contains("Permission denied")));
         }
     }
 

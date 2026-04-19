@@ -245,13 +245,7 @@ impl PostgresAdapter {
         let elapsed = start.elapsed().as_millis() as u64;
 
         if !output.status.success() {
-            let error = Self::classify_psql_error(&output.stderr);
-            return Ok(QueryResult::error(
-                query.to_string(),
-                error.result_message(),
-                elapsed,
-                source,
-            ));
+            return Err(Self::classify_psql_error(&output.stderr));
         }
 
         if output.stdout.trim().is_empty() {

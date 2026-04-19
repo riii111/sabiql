@@ -128,9 +128,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             let error_info = ConnectionErrorInfo::from_db_operation_error(error);
             state.connection_error.set_error(error_info);
             let was_connected = state.session.connection_state().is_connected();
-            state
-                .session
-                .mark_connection_failed(error.raw_details().into_owned());
+            state.session.mark_connection_failed(error.masked_details());
             if !was_connected {
                 state.modal.replace_mode(InputMode::ConnectionError);
             }
