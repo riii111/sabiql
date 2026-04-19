@@ -1,9 +1,8 @@
 use async_trait::async_trait;
 
-use crate::app::model::shared::db_capabilities::DbCapabilities;
-use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::ports::{
-    DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
+    DatabaseCapabilities, DatabaseCapabilityProvider, DbOperationError, DdlGenerator, DsnBuilder,
+    InspectorFeature, MetadataProvider, QueryExecutor, SqlDialect,
 };
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
@@ -15,14 +14,17 @@ impl MySqlAdapter {
         Self
     }
 
-    pub fn capabilities(&self) -> DbCapabilities {
-        DbCapabilities::new(
+}
+
+impl DatabaseCapabilityProvider for MySqlAdapter {
+    fn capabilities(&self) -> DatabaseCapabilities {
+        DatabaseCapabilities::new(
             false,
             vec![
-                InspectorTab::Info,
-                InspectorTab::Columns,
-                InspectorTab::Indexes,
-                InspectorTab::ForeignKeys,
+                InspectorFeature::Info,
+                InspectorFeature::Columns,
+                InspectorFeature::Indexes,
+                InspectorFeature::ForeignKeys,
             ],
         )
     }
