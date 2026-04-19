@@ -9,6 +9,7 @@ use crate::app::ports::DbOperationError;
 use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
+use super::error::classify_query_error;
 use super::parser::{ParseCommandTagError, split_sql_statements};
 
 fn csv_field_count(line: &str) -> usize {
@@ -140,7 +141,14 @@ impl PostgresAdapter {
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
         }
-        cmd.arg(dsn).arg("-X").arg("-v").arg("ON_ERROR_STOP=1");
+        cmd.arg(dsn)
+            .arg("-X")
+            .arg("-v")
+            .arg("ON_ERROR_STOP=1")
+            .arg("-v")
+            .arg("VERBOSITY=verbose")
+            .arg("-v")
+            .arg("SHOW_CONTEXT=never");
 
         for arg in extra_args {
             cmd.arg(arg);
@@ -217,7 +225,7 @@ impl PostgresAdapter {
         let output = self.run_psql(dsn, &["-t", "-A"], query, false).await?;
 
         if !output.status.success() {
-            return Err(DbOperationError::QueryFailed(output.stderr));
+            return Err(Self::classify_psql_error(&output.stderr));
         }
 
         Ok(output.stdout)
@@ -237,9 +245,10 @@ impl PostgresAdapter {
         let elapsed = start.elapsed().as_millis() as u64;
 
         if !output.status.success() {
+            let error = Self::classify_psql_error(&output.stderr);
             return Ok(QueryResult::error(
                 query.to_string(),
-                output.stderr.trim().to_string(),
+                error.result_message(),
                 elapsed,
                 source,
             ));
@@ -300,9 +309,7 @@ impl PostgresAdapter {
         let elapsed = start.elapsed().as_millis() as u64;
 
         if !output.status.success() {
-            return Err(DbOperationError::QueryFailed(
-                output.stderr.trim().to_string(),
-            ));
+            return Err(Self::classify_psql_error(&output.stderr));
         }
 
         let affected_rows = Self::parse_affected_rows_with_source(&output.stdout).map_err(
@@ -325,7 +332,7 @@ impl PostgresAdapter {
     ) -> Result<usize, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
         if !output.status.success() {
-            return Err(DbOperationError::QueryFailed(output.stderr));
+            return Err(Self::classify_psql_error(&output.stderr));
         }
         output.stdout.trim().parse::<usize>().map_err(|e| {
             DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {e}"))
@@ -405,7 +412,7 @@ impl PostgresAdapter {
         let (status, stderr, newline_count) = result;
         if !status.success() {
             let _ = tokio::fs::remove_file(path).await;
-            return Err(DbOperationError::QueryFailed(stderr.trim().to_string()));
+            return Err(Self::classify_psql_error(&stderr));
         }
 
         // Subtract 1 for the CSV header line
@@ -441,6 +448,10 @@ impl PostgresAdapter {
     #[cfg(test)]
     pub(in crate::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
         Self::parse_affected_rows_with_source(stdout).ok()
+    }
+
+    fn classify_psql_error(stderr: &str) -> DbOperationError {
+        classify_query_error(stderr)
     }
 }
 
