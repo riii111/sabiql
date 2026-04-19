@@ -202,22 +202,18 @@ impl PostgresAdapter {
 
         Ok(raw
             .into_iter()
-            .map(|i| {
-                let index_type = i
-                    .index_type
-                    .parse::<IndexType>()
-                    .map_err(|never| match never {})?;
-                Ok(Index {
-                    name: i.name,
-                    columns: i.columns,
-                    is_unique: i.is_unique,
-                    is_primary: i.is_primary,
-                    index_type,
-                    definition: i.definition,
-                })
+            .map(|i| Index {
+                name: i.name,
+                columns: i.columns,
+                is_unique: i.is_unique,
+                is_primary: i.is_primary,
+                index_type: match i.index_type.parse::<IndexType>() {
+                    Ok(index_type) => index_type,
+                    Err(never) => match never {},
+                },
+                definition: i.definition,
             })
-            .collect::<Result<Vec<_>, std::convert::Infallible>>()
-            .map_err(|never| match never {})?)
+            .collect())
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_foreign_keys(
