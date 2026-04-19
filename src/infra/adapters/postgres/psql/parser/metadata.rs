@@ -238,8 +238,7 @@ impl PostgresAdapter {
 
         let raw: Vec<RawForeignKey> = serde_json::from_str(trimmed)?;
 
-        Ok(raw
-            .into_iter()
+        raw.into_iter()
             .map(|fk| {
                 let on_delete = fk
                     .on_delete
@@ -262,7 +261,7 @@ impl PostgresAdapter {
                 })
             })
             .collect::<Result<Vec<_>, MetadataParseError>>()
-            .map_err(DbOperationError::from)?)
+            .map_err(DbOperationError::from)
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_rls(
@@ -336,8 +335,7 @@ impl PostgresAdapter {
 
         let raw: Vec<RawTrigger> = serde_json::from_str(trimmed)?;
 
-        Ok(raw
-            .into_iter()
+        raw.into_iter()
             .map(|t| {
                 let timing = t
                     .timing
@@ -361,7 +359,7 @@ impl PostgresAdapter {
                 })
             })
             .collect::<Result<Vec<_>, MetadataParseError>>()
-            .map_err(DbOperationError::from)?)
+            .map_err(DbOperationError::from)
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_table_detail_combined(
