@@ -1,17 +1,17 @@
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::key_sequence::Prefix;
-use crate::app::update::action::Action;
-use crate::app::update::input::keybindings::{self as kb, Key, KeyCombo};
-use crate::app::update::input::vim::{
+use crate::model::app_state::AppState;
+use crate::model::shared::focused_pane::FocusedPane;
+use crate::model::shared::key_sequence::Prefix;
+use crate::update::action::Action;
+use crate::update::input::keybindings::{self as kb, Key, KeyCombo};
+use crate::update::input::vim::{
     BrowseVimContext, VimCommand, VimSurfaceContext, action_for_input, action_for_key,
     classify_command,
 };
 
 #[cfg(test)]
-use crate::app::model::connection::error::ConnectionErrorInfo;
+use crate::model::connection::error::ConnectionErrorInfo;
 #[cfg(test)]
-use crate::app::model::shared::ui_state::FocusMode;
+use crate::model::shared::ui_state::FocusMode;
 
 pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let browse_ctx = BrowseVimContext::from(state);
@@ -177,12 +177,12 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::key_sequence::KeySequenceState;
-    use crate::app::update::action::{
+    use crate::model::shared::key_sequence::KeySequenceState;
+    use crate::update::action::{
         CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
         SelectMotion,
     };
-    use crate::app::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -1512,8 +1512,6 @@ mod tests {
     mod navigation_matrix {
         use super::*;
         use crate::domain::{QueryResult, QuerySource};
-        use crate::ui::event::key_translator::translate;
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::sync::Arc;
 
         fn assert_action(actual: Action, expected: Action, ctx: &str, key: &str) {
@@ -1569,11 +1567,9 @@ mod tests {
 
         #[test]
         fn shift_g_event_translates_to_select_last() {
-            let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
-            let combo = translate(event);
             let state = explorer_ctx();
 
-            let result = handle_normal_mode(combo, &state);
+            let result = handle_normal_mode(combo(Key::Char('G')), &state);
 
             assert!(matches!(result, Action::Select(SelectMotion::Last)));
         }

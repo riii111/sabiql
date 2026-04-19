@@ -26,6 +26,7 @@ use crate::app::cmd::completion_engine::CompletionEngine;
 use crate::app::cmd::effect::Effect;
 use crate::app::cmd::render_schedule::next_animation_deadline;
 use crate::app::cmd::runner::EffectRunner;
+use crate::app::input::handle_event;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::shared::input_mode::InputMode;
@@ -43,7 +44,6 @@ use crate::infra::adapters::{
 use crate::infra::config::project_root::{find_project_root, get_project_name};
 use crate::infra::export::DotExporter;
 use crate::ui::adapters::TuiAdapter;
-use crate::ui::event::handlers::handle_event;
 use crate::ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]
@@ -192,7 +192,7 @@ async fn main() -> Result<()> {
 
         tokio::select! {
             Some(event) = tui.next_event() => {
-                let action = handle_event(event, &state, &services);
+                let action = handle_event(event.into(), &state, &services);
                 if !action.is_none() {
                     drain_and_process_terminal_events(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
                 }
@@ -384,7 +384,7 @@ async fn drain_and_process_terminal_events(
             break;
         };
         drained += 1;
-        let action = handle_event(event, state, services);
+        let action = handle_event(event.into(), state, services);
         if action.is_none() {
             continue;
         }

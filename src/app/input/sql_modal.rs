@@ -1,10 +1,10 @@
-use crate::app::model::shared::key_sequence::Prefix;
-use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-use crate::app::update::action::{
+use crate::model::shared::key_sequence::Prefix;
+use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+use crate::update::action::{
     Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
-use crate::app::update::input::keybindings::{Key, KeyCombo};
-use crate::app::update::input::vim::{
+use crate::update::input::keybindings::{Key, KeyCombo};
+use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
 
@@ -25,7 +25,7 @@ pub fn handle_sql_modal_keys_with_prefix(
     active_tab: SqlModalTab,
     pending_prefix: Option<Prefix>,
 ) -> Action {
-    use crate::app::update::action::CursorMove;
+    use crate::update::action::CursorMove;
 
     // Running state: suppress all key input while EXPLAIN is executing
     if matches!(status, SqlModalStatus::Running) {
@@ -322,8 +322,8 @@ pub fn handle_sql_modal_keys_with_prefix(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::update::action::CursorMove;
-    use crate::app::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::action::CursorMove;
+    use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -1237,7 +1237,7 @@ mod tests {
 
     mod keybinding_contract {
         use super::*;
-        use crate::app::update::input::keybindings::{
+        use crate::update::input::keybindings::{
             KeyBinding, SQL_MODAL_COMPARE_KEYS, SQL_MODAL_PLAN_KEYS,
         };
 
