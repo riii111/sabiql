@@ -123,7 +123,7 @@ async fn main() -> Result<()> {
         Err(_) => None,
     };
     if let Err(StartupLoadError::VersionMismatch { found, expected }) =
-        initialize_connection_state(&mut state, all_profiles, service_result)
+        initialize_connection_state(&mut state, &services, all_profiles, service_result)
     {
         eprintln!(
             "Error: Configuration file version mismatch (found v{}, expected v{}).\n\

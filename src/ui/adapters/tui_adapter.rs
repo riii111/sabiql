@@ -32,8 +32,12 @@ impl Renderer for TuiAdapter<'_> {
         now: Instant,
     ) -> RenderResult<RenderOutput> {
         let mut output = RenderOutput::default();
+        let time_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
         self.tui.terminal().draw(|frame| {
-            output = MainLayout::render(frame, state, None, services, now);
+            output = MainLayout::render(frame, state, time_ms, services, now);
         })?;
         let uses_insert = uses_insert_cursor(state);
         if self.last_cursor_insert != Some(uses_insert) {

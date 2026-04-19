@@ -204,18 +204,12 @@ pub fn help_sections() -> Vec<HelpSection> {
     ]
 }
 
-pub fn footer_status_text(state: &AppState, time_ms: Option<u128>) -> Option<String> {
+pub fn footer_status_text(state: &AppState, time_ms: u128) -> Option<String> {
     if state.er_preparation.status != ErStatus::Waiting {
         return None;
     }
 
-    let now_ms = time_ms.unwrap_or_else(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_millis())
-            .unwrap_or(0)
-    });
-    let spinner = spinner_char(now_ms);
+    let spinner = spinner_char(time_ms);
     let total = state.er_preparation.total_tables;
     let failed_count = state.er_preparation.failed_tables.len();
     let remaining =
@@ -615,11 +609,11 @@ mod tests {
     #[test]
     fn er_waiting_status_text_is_present_only_while_waiting() {
         let mut state = AppState::new("test".to_string());
-        assert!(footer_status_text(&state, Some(0)).is_none());
+        assert!(footer_status_text(&state, 0).is_none());
 
         state.er_preparation.status = ErStatus::Waiting;
         state.er_preparation.total_tables = 10;
-        let text = footer_status_text(&state, Some(0)).unwrap();
+        let text = footer_status_text(&state, 0).unwrap();
         assert!(text.contains("Preparing ER"));
     }
 

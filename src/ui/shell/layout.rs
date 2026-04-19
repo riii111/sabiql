@@ -34,7 +34,7 @@ impl MainLayout {
     pub fn render(
         frame: &mut Frame,
         state: &AppState,
-        time_ms: Option<u128>,
+        time_ms: u128,
         services: &AppServices,
         now: Instant,
     ) -> RenderOutput {
@@ -54,7 +54,7 @@ impl MainLayout {
     pub fn render_with_theme(
         frame: &mut Frame,
         state: &AppState,
-        time_ms: Option<u128>,
+        time_ms: u128,
         services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
@@ -65,7 +65,7 @@ impl MainLayout {
     fn render_impl(
         frame: &mut Frame,
         state: &AppState,
-        time_ms: Option<u128>,
+        time_ms: u128,
         services: &AppServices,
         now: Instant,
         theme: &ThemePalette,

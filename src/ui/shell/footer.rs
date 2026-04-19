@@ -20,7 +20,7 @@ impl Footer {
         area: Rect,
         state: &AppState,
         services: &AppServices,
-        time_ms: Option<u128>,
+        time_ms: u128,
         theme: &ThemePalette,
     ) {
         let base_style = Style::default().fg(theme.semantic.text.primary);
@@ -44,7 +44,7 @@ impl Footer {
 
     fn build_er_waiting_line(
         state: &AppState,
-        time_ms: Option<u128>,
+        time_ms: u128,
         theme: &ThemePalette,
     ) -> Line<'static> {
         let text = footer_status_text(state, time_ms).unwrap_or_default();

@@ -62,7 +62,7 @@ pub fn render_and_get_buffer_at_with_theme(
             let output = MainLayout::render_with_theme(
                 frame,
                 state,
-                Some(FIXED_TIME_MS),
+                FIXED_TIME_MS,
                 &AppServices::stub(),
                 now,
                 theme,

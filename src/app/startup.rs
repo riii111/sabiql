@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::{ConnectionStoreError, ServiceFileError};
+use crate::services::AppServices;
 use crate::update::action::ConnectionsLoadedPayload;
 use crate::update::reducer::reduce;
 
@@ -13,12 +14,13 @@ pub enum StartupLoadError {
 
 pub fn initialize_connection_state(
     state: &mut AppState,
+    services: &AppServices,
     profiles_result: Result<Vec<crate::domain::connection::ConnectionProfile>, ConnectionStoreError>,
     service_result: Option<Result<(Vec<crate::domain::connection::ServiceEntry>, PathBuf), ServiceFileError>>,
 ) -> Result<(), StartupLoadError> {
     match profiles_result {
         Ok(profiles) => {
-            let (services, service_file_path, service_load_warning) = match service_result {
+            let (service_entries, service_file_path, service_load_warning) = match service_result {
                 Some(Ok((services, path))) if !services.is_empty() => (services, Some(path), None),
                 Some(Ok(_)) | Some(Err(ServiceFileError::NotFound(_))) | None => {
                     (Vec::new(), None, None)
@@ -28,7 +30,7 @@ pub fn initialize_connection_state(
 
             let payload = ConnectionsLoadedPayload {
                 profiles,
-                services,
+                services: service_entries,
                 service_file_path,
                 profile_load_warning: None,
                 service_load_warning,
@@ -37,7 +39,7 @@ pub fn initialize_connection_state(
                 state,
                 crate::update::action::Action::ConnectionsLoaded(payload),
                 std::time::Instant::now(),
-                &crate::services::AppServices::stub(),
+                services,
             );
 
             if state.connection_list_items().is_empty() {
@@ -95,7 +97,13 @@ mod tests {
     fn opens_setup_when_no_profiles_or_services_exist() {
         let mut state = AppState::new("test".to_string());
 
-        initialize_connection_state(&mut state, Ok(vec![]), Some(Ok((vec![], "/tmp/pg_service.conf".into())))).unwrap();
+        initialize_connection_state(
+            &mut state,
+            &crate::services::AppServices::stub(),
+            Ok(vec![]),
+            Some(Ok((vec![], "/tmp/pg_service.conf".into()))),
+        )
+        .unwrap();
 
         assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         assert!(state.connection_setup.is_first_run);
@@ -107,6 +115,7 @@ mod tests {
 
         initialize_connection_state(
             &mut state,
+            &crate::services::AppServices::stub(),
             Ok(vec![]),
             Some(Ok((vec![service("svc")], "/tmp/pg_service.conf".into()))),
         )
@@ -122,6 +131,7 @@ mod tests {
 
         initialize_connection_state(
             &mut state,
+            &crate::services::AppServices::stub(),
             Ok(vec![profile("zeta"), profile("alpha")]),
             Some(Err(ServiceFileError::NotFound("/tmp/pg_service.conf".into()))),
         )
@@ -138,6 +148,7 @@ mod tests {
 
         let error = initialize_connection_state(
             &mut state,
+            &crate::services::AppServices::stub(),
             Err(ConnectionStoreError::VersionMismatch {
                 found: 1,
                 expected: 2,
