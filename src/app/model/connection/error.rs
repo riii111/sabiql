@@ -93,8 +93,8 @@ impl ConnectionErrorKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionErrorInfo {
     pub kind: ConnectionErrorKind,
-    pub raw_details: String,
-    pub masked_details: String,
+    raw_details: String,
+    masked_details: String,
 }
 
 impl ConnectionErrorInfo {
@@ -139,6 +139,10 @@ impl ConnectionErrorInfo {
 
     pub fn hint(&self) -> &'static str {
         self.kind.hint()
+    }
+
+    pub fn masked_details(&self) -> &str {
+        &self.masked_details
     }
 }
 
@@ -337,7 +341,7 @@ mod tests {
         fn info_stores_both_raw_and_masked() {
             let info = ConnectionErrorInfo::new("postgres://user:secret@host");
             assert!(info.raw_details.contains("secret"));
-            assert!(!info.masked_details.contains("secret"));
+            assert!(!info.masked_details().contains("secret"));
         }
     }
 }

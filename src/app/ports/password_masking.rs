@@ -5,17 +5,15 @@ pub(crate) fn mask_password(text: &str) -> String {
 }
 
 fn mask_url_passwords(text: &str) -> String {
-    let lower = text.to_lowercase();
     let mut result = String::with_capacity(text.len());
     let mut i = 0;
 
     while i < text.len() {
-        let remaining = &lower[i..];
-        let scheme_len = if remaining.starts_with("postgresql://") {
+        let scheme_len = if starts_with_ascii_ignore_case(text, i, "postgresql://") {
             "postgresql://".len()
-        } else if remaining.starts_with("postgres://") {
+        } else if starts_with_ascii_ignore_case(text, i, "postgres://") {
             "postgres://".len()
-        } else if remaining.starts_with("mysql://") {
+        } else if starts_with_ascii_ignore_case(text, i, "mysql://") {
             "mysql://".len()
         } else {
             0
@@ -51,10 +49,10 @@ fn mask_url_passwords(text: &str) -> String {
 }
 
 fn mask_kv_passwords(text: &str) -> String {
-    let lower = text.to_lowercase();
     mask_after_prefix(text, |pos| {
         let needle = "password=";
-        lower[pos..].starts_with(needle).then_some(needle.len())
+        (has_assignment_boundary(text, pos) && starts_with_ascii_ignore_case(text, pos, needle))
+            .then_some(needle.len())
     })
 }
 
@@ -62,12 +60,25 @@ fn mask_env_passwords(text: &str) -> String {
     const PREFIXES: &[&str] = &["PGPASSWORD=", "MYSQL_PASSWORD=", "MYSQL_PWD="];
     mask_after_prefix(text, |pos| {
         PREFIXES.iter().find_map(|prefix| {
-            text[pos..]
-                .get(..prefix.len())
-                .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+            (has_assignment_boundary(text, pos)
+                && starts_with_ascii_ignore_case(text, pos, prefix))
                 .then_some(prefix.len())
         })
     })
+}
+
+fn starts_with_ascii_ignore_case(text: &str, pos: usize, needle: &str) -> bool {
+    text.as_bytes()
+        .get(pos..pos + needle.len())
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(needle.as_bytes()))
+}
+
+fn has_assignment_boundary(text: &str, pos: usize) -> bool {
+    pos == 0
+        || text
+            .as_bytes()
+            .get(pos - 1)
+            .is_some_and(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
 }
 
 fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -> String {
@@ -115,5 +126,21 @@ mod tests {
     #[case("pgpassword=secret123 psql", "pgpassword=**** psql")]
     fn masks_password_assignments(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
+    }
+
+    #[rstest]
+    #[case("newpassword=secret host=localhost", "newpassword=secret host=localhost")]
+    #[case("old_password=secret host=localhost", "old_password=secret host=localhost")]
+    #[case("xPGPASSWORD=secret psql", "xPGPASSWORD=secret psql")]
+    fn preserves_non_secret_compound_words(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(mask_password(input), expected);
+    }
+
+    #[test]
+    fn handles_multibyte_prefix_without_panicking() {
+        assert_eq!(
+            mask_password("接続先İ password=secret"),
+            "接続先İ password=****"
+        );
     }
 }

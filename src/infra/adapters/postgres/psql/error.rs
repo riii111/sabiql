@@ -14,15 +14,11 @@ pub(in crate::infra::adapters::postgres) fn classify_query_error(stderr: &str) -
 }
 
 fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
-    if sqlstate.starts_with("08") {
-        return if is_connection_lost_message(&details.to_lowercase()) {
-            DbOperationError::ConnectionLost(details.to_string())
-        } else {
-            DbOperationError::ConnectionFailed(details.to_string())
-        };
-    }
-
     match sqlstate {
+        "08003" | "08006" | "08P01" => DbOperationError::ConnectionLost(details.to_string()),
+        "08000" | "08001" | "08004" | "08007" => {
+            DbOperationError::ConnectionFailed(details.to_string())
+        }
         "28P01" | "3D000" => DbOperationError::ConnectionFailed(details.to_string()),
         "42501" => DbOperationError::PermissionDenied(details.to_string()),
         "23503" => DbOperationError::ForeignKeyViolation(details.to_string()),
@@ -30,6 +26,13 @@ fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
         "55P03" => DbOperationError::LockTimeout(details.to_string()),
         "57014" => classify_query_canceled(details),
         "42P01" | "42703" => DbOperationError::ObjectMissing(details.to_string()),
+        code if code.starts_with("08") => {
+            if is_connection_lost_message(&details.to_lowercase()) {
+                DbOperationError::ConnectionLost(details.to_string())
+            } else {
+                DbOperationError::ConnectionFailed(details.to_string())
+            }
+        }
         _ => DbOperationError::QueryFailed(details.to_string()),
     }
 }
@@ -197,8 +200,11 @@ mod tests {
         )]
         #[case("ERROR:  55P03: lock not available", "LockTimeout")]
         #[case("ERROR:  57014: canceling statement due to statement timeout", "Timeout")]
+        #[case("ERROR:  57014: canceling statement due to lock timeout", "LockTimeout")]
         #[case("ERROR:  42P01: relation \"users\" does not exist", "ObjectMissing")]
         #[case("ERROR:  08006: connection to server was lost", "ConnectionLost")]
+        #[case("ERROR:  08006: could not receive data from server", "ConnectionLost")]
+        #[case("ERROR:  08001: could not connect to server", "ConnectionFailed")]
         fn classifies_sqlstate_first(#[case] input: &str, #[case] expected: &str) {
             let error = classify_query_error(input);
             let actual = match error {
@@ -209,6 +215,7 @@ mod tests {
                 DbOperationError::Timeout(_) => "Timeout",
                 DbOperationError::ObjectMissing(_) => "ObjectMissing",
                 DbOperationError::ConnectionLost(_) => "ConnectionLost",
+                DbOperationError::ConnectionFailed(_) => "ConnectionFailed",
                 _ => "Other",
             };
 
