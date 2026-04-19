@@ -65,13 +65,21 @@ impl MultiLineInputState {
     }
 
     pub fn backspace(&mut self) {
+        let previous_char_count = self.inner.char_count();
         self.inner.backspace();
+        if self.inner.char_count() == previous_char_count {
+            return;
+        }
         self.preferred_col = None;
         self.rebuild_derived();
     }
 
     pub fn delete(&mut self) {
+        let previous_char_count = self.inner.char_count();
         self.inner.delete();
+        if self.inner.char_count() == previous_char_count {
+            return;
+        }
         self.preferred_col = None;
         self.rebuild_derived();
     }
@@ -816,6 +824,16 @@ mod tests {
         }
 
         #[test]
+        fn backspace_at_buffer_start_is_noop() {
+            let mut s = ml("abc", 0);
+
+            s.backspace();
+
+            assert_eq!(s.content(), "abc");
+            assert_eq!(s.cursor_to_position(), (0, 0));
+        }
+
+        #[test]
         fn delete_at_newline_joins_adjacent_lines() {
             // "abc\ndef" → cursor at 3 (end of "abc", on \n)
             // delete removes \n → "abcdef", cursor=3
@@ -823,6 +841,16 @@ mod tests {
             s.delete();
             assert_eq!(s.content(), "abcdef");
             assert_eq!(s.cursor(), 3);
+        }
+
+        #[test]
+        fn delete_at_buffer_end_is_noop() {
+            let mut s = ml("abc", 3);
+
+            s.delete();
+
+            assert_eq!(s.content(), "abc");
+            assert_eq!(s.cursor_to_position(), (0, 3));
         }
 
         #[test]
