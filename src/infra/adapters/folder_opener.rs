@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::app::ports::folder_opener::{FolderOpenError, FolderOpener};
+use crate::app::ports::{FolderOpenError, FolderOpener};
 
 pub struct NativeFolderOpener;
 

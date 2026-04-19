@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::app::ports::service_file::{PgServiceEntryReader, ServiceFileError};
+use crate::app::ports::{PgServiceEntryReader, ServiceFileError};
 use crate::domain::connection::ServiceEntry;
 
 #[derive(Default)]
