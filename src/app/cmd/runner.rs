@@ -19,7 +19,11 @@ use crate::app::cmd::sql_editor::query_history as cmd_query_history;
 use crate::app::cmd::utility as cmd_utility;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::ui_state::scroll_max_offset;
-use crate::app::ports::{ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore, Renderer};
+use crate::app::ports::{
+    ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
+    FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
+    Renderer,
+};
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
 use crate::domain::DatabaseMetadata;
