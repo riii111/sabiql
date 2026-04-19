@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::model::app_state::AppState;
 use crate::model::er_state::ErStatus;
 use crate::model::shared::focused_pane::FocusedPane;
@@ -22,10 +24,10 @@ pub struct Hint {
     pub description: &'static str,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct HelpEntry {
     pub key: &'static str,
-    pub description: &'static str,
+    pub description: Cow<'static, str>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,14 +49,14 @@ fn hint_from_row(row: &ModeRow) -> Hint {
 fn help_entry_from_binding(binding: &KeyBinding) -> HelpEntry {
     HelpEntry {
         key: binding.key,
-        description: binding.description,
+        description: Cow::Borrowed(binding.description),
     }
 }
 
 fn help_entry_from_row(row: &ModeRow) -> HelpEntry {
     HelpEntry {
         key: row.key,
-        description: row.description,
+        description: Cow::Borrowed(row.description),
     }
 }
 
@@ -65,9 +67,7 @@ fn dedup_adjacent_bindings(bindings: &[KeyBinding]) -> Vec<HelpEntry> {
         if i + 1 < bindings.len() && bindings[i].key == bindings[i + 1].key {
             entries.push(HelpEntry {
                 key: bindings[i].key,
-                description: Box::leak(
-                    format!("Toggle {}", bindings[i].desc_short).into_boxed_str(),
-                ),
+                description: Cow::Owned(format!("Toggle {}", bindings[i].desc_short)),
             });
             i += 2;
         } else {
@@ -313,6 +313,118 @@ pub fn footer_hints(state: &AppState, services: &AppServices) -> Vec<Hint> {
         ],
         InputMode::ConnectionSelector => connection_selector_footer_hints(state),
     }
+}
+
+pub fn connection_selector_hint_string(state: &AppState) -> String {
+    join_hint_text(&connection_selector_footer_hints(state), false)
+}
+
+pub fn sql_modal_border_hint(
+    state: &AppState,
+    active_tab: crate::model::sql_editor::modal::SqlModalTab,
+    services: &AppServices,
+) -> String {
+    let compare_can_yank = state.explain.left.is_some() && state.explain.right.is_some();
+
+    if matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
+        let mut hints = vec![
+            hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::RUN]),
+            hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::CLEAR]),
+            hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY]),
+            hint_from_binding(&SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL]),
+        ];
+        if services.db_capabilities.supports_explain() {
+            hints.insert(
+                1,
+                hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN]),
+            );
+        }
+        return join_hint_text(&hints, true);
+    }
+
+    match active_tab {
+        crate::model::sql_editor::modal::SqlModalTab::Sql
+            if services.db_capabilities.supported_sql_modal_tabs().len() == 1 =>
+        {
+            join_hint_text(
+                &[
+                    hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN]),
+                    hint_from_binding(
+                        &SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT],
+                    ),
+                    hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE]),
+                ],
+                true,
+            )
+        }
+        crate::model::sql_editor::modal::SqlModalTab::Plan => join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::YANK]),
+                Hint {
+                    key: "Tab/⇧Tab",
+                    description: SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
+                },
+                hint_from_binding(&SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::CLOSE]),
+            ],
+            true,
+        ),
+        crate::model::sql_editor::modal::SqlModalTab::Compare if compare_can_yank => join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY]),
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK]),
+                Hint {
+                    key: "Tab/⇧Tab",
+                    description: SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
+                        .as_hint()
+                        .1,
+                },
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE]),
+            ],
+            true,
+        ),
+        crate::model::sql_editor::modal::SqlModalTab::Compare => join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY]),
+                Hint {
+                    key: "Tab/⇧Tab",
+                    description: SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
+                        .as_hint()
+                        .1,
+                },
+                hint_from_binding(&SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE]),
+            ],
+            true,
+        ),
+        crate::model::sql_editor::modal::SqlModalTab::Sql => join_hint_text(
+            &[
+                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN]),
+                hint_from_binding(
+                    &SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT],
+                ),
+                Hint {
+                    key: "Tab/⇧Tab",
+                    description: SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
+                },
+                hint_from_binding(&SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE]),
+            ],
+            true,
+        ),
+    }
+}
+
+fn join_hint_text(hints: &[Hint], bordered: bool) -> String {
+    let separator = if bordered { " │ " } else { "  " };
+    let parts: Vec<String> = hints
+        .iter()
+        .map(|hint| {
+            if bordered {
+                format!("{}: {}", hint.key, hint.description)
+            } else {
+                format!("{} {}", hint.key, hint.description)
+            }
+        })
+        .collect();
+    format!(" {} ", parts.join(separator))
 }
 
 fn sql_modal_footer_hints(state: &AppState, services: &AppServices) -> Vec<Hint> {

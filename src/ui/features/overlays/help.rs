@@ -88,7 +88,7 @@ impl HelpOverlay {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                entry.description.to_string(),
+                entry.description.into_owned(),
                 Style::default().fg(theme.semantic.text.secondary),
             ),
         ])

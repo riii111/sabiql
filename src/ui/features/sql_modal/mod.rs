@@ -2,7 +2,6 @@ mod compare;
 mod explain;
 mod plan_highlight;
 
-use std::sync::LazyLock;
 use std::time::Instant;
 
 use ratatui::Frame;
@@ -12,12 +11,10 @@ use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
+use crate::app::catalog::sql_modal_border_hint;
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
 use crate::app::services::AppServices;
-use crate::app::update::input::keybindings::{
-    SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
-};
 use crate::ui::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::ui::primitives::molecules::render_modal_with_border_color;
 use crate::ui::theme::ThemePalette;
@@ -76,9 +73,8 @@ impl SqlModal {
                 _ => unreachable!(),
             }
         } else {
-            let hint: &str = match state.sql_modal.status() {
-                SqlModalStatus::Editing => Self::editing_hint(services),
-                SqlModalStatus::Running => " Running\u{2026} ",
+            let hint = match state.sql_modal.status() {
+                SqlModalStatus::Running => " Running\u{2026} ".to_owned(),
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     input, target_name, ..
                 } => {
@@ -86,18 +82,14 @@ impl SqlModal {
                         .as_ref()
                         .is_some_and(|name| input.content() == name);
                     if is_match {
-                        " Enter: Confirm \u{2502} Esc: Cancel "
+                        " Enter: Confirm \u{2502} Esc: Cancel ".to_owned()
                     } else {
-                        " Esc: Cancel "
+                        " Esc: Cancel ".to_owned()
                     }
                 }
-                _ => {
-                    let compare_can_yank =
-                        state.explain.left.is_some() && state.explain.right.is_some();
-                    Self::border_hint(active_tab, compare_can_yank, services)
-                }
+                _ => sql_modal_border_hint(state, active_tab, services),
             };
-            Self::render_modal_with_tabs(frame, active_tab, hint, services, theme)
+            Self::render_modal_with_tabs(frame, active_tab, &hint, services, theme)
         };
 
         // Add 1-char horizontal padding for breathing room inside the modal
@@ -221,107 +213,5 @@ impl SqlModal {
             spans.push(Span::raw(" "));
         }
         Line::from(spans)
-    }
-
-    fn border_hint(
-        tab: SqlModalTab,
-        compare_can_yank: bool,
-        services: &AppServices,
-    ) -> &'static str {
-        static PLAN: LazyLock<String> = LazyLock::new(|| {
-            SqlModal::join_hint_pairs(&[
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::YANK].as_hint(),
-                (
-                    "Tab/⇧Tab",
-                    SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
-                ),
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::CLOSE].as_hint(),
-            ])
-        });
-        static COMPARE_WITH_YANK: LazyLock<String> = LazyLock::new(|| {
-            SqlModal::join_hint_pairs(&[
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK].as_hint(),
-                (
-                    "Tab/⇧Tab",
-                    SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
-                        .as_hint()
-                        .1,
-                ),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE].as_hint(),
-            ])
-        });
-        static COMPARE_NO_YANK: LazyLock<String> = LazyLock::new(|| {
-            SqlModal::join_hint_pairs(&[
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
-                (
-                    "Tab/⇧Tab",
-                    SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
-                        .as_hint()
-                        .1,
-                ),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE].as_hint(),
-            ])
-        });
-        static SQL: LazyLock<String> = LazyLock::new(|| {
-            SqlModal::join_hint_pairs(&[
-                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
-                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
-                (
-                    "Tab/⇧Tab",
-                    SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
-                ),
-                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
-            ])
-        });
-        static SQL_NO_TABS: LazyLock<String> = LazyLock::new(|| {
-            SqlModal::join_hint_pairs(&[
-                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
-                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
-                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
-            ])
-        });
-        match tab {
-            SqlModalTab::Sql if services.db_capabilities.supported_sql_modal_tabs().len() == 1 => {
-                &SQL_NO_TABS
-            }
-            SqlModalTab::Plan => &PLAN,
-            SqlModalTab::Compare if compare_can_yank => &COMPARE_WITH_YANK,
-            SqlModalTab::Compare => &COMPARE_NO_YANK,
-            SqlModalTab::Sql => &SQL,
-        }
-    }
-
-    fn editing_hint(services: &AppServices) -> &'static str {
-        static HINT: LazyLock<String> = LazyLock::new(|| {
-            SqlModal::join_hint_pairs(&[
-                SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::CLEAR].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
-            ])
-        });
-        static HINT_NO_EXPLAIN: LazyLock<String> = LazyLock::new(|| {
-            SqlModal::join_hint_pairs(&[
-                SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::CLEAR].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
-            ])
-        });
-        if services.db_capabilities.supports_explain() {
-            &HINT
-        } else {
-            &HINT_NO_EXPLAIN
-        }
-    }
-
-    fn join_hint_pairs(pairs: &[(&str, &str)]) -> String {
-        let parts: Vec<String> = pairs
-            .iter()
-            .map(|(key, desc)| format!("{key}: {desc}"))
-            .collect();
-        format!(" {} ", parts.join(" \u{2502} "))
     }
 }

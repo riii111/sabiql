@@ -4,9 +4,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState};
 
+use crate::app::catalog::connection_selector_hint_string;
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::list::ConnectionListItem;
-use crate::app::update::input::keybindings::{CONNECTION_SELECTOR_ROWS, idx};
 use crate::domain::connection::ConnectionId;
 use crate::ui::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,
@@ -22,11 +22,7 @@ pub struct ConnectionSelector;
 
 impl ConnectionSelector {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> u16 {
-        let is_service_selected = crate::app::model::connection::list::is_service_selected(
-            state.connection_list_items(),
-            state.ui.connection_list_selected,
-        );
-        let hint = Self::build_hint_string(is_service_selected);
+        let hint = connection_selector_hint_string(state);
         let (_outer, inner) = render_modal(
             frame,
             Constraint::Percentage(60),
@@ -37,24 +33,6 @@ impl ConnectionSelector {
         );
 
         render_connection_list(frame, inner, state, theme)
-    }
-
-    fn build_hint_string(is_service_selected: bool) -> String {
-        let r = CONNECTION_SELECTOR_ROWS;
-        use idx::connection_selector as cs;
-
-        let mut hints = vec![r[cs::CONFIRM].as_hint(), r[cs::NEW].as_hint()];
-        if !is_service_selected {
-            hints.push(r[cs::EDIT].as_hint());
-            hints.push(r[cs::DELETE].as_hint());
-        }
-        hints.push(r[cs::CLOSE].as_hint());
-
-        let hint_parts: Vec<String> = hints
-            .iter()
-            .map(|(key, desc)| format!("{key} {desc}"))
-            .collect();
-        format!(" {} ", hint_parts.join("  "))
     }
 }
 
