@@ -63,11 +63,7 @@ fn find_userinfo_terminator(text: &str, authority_start: usize) -> Option<usize>
 }
 
 fn mask_kv_passwords(text: &str) -> String {
-    mask_after_prefix(text, |pos| {
-        let needle = "password=";
-        (has_assignment_boundary(text, pos) && starts_with_ascii_ignore_case(text, pos, needle))
-            .then_some(needle.len())
-    })
+    mask_after_prefix(text, |pos| password_assignment_prefix_len(text, pos))
 }
 
 fn mask_env_passwords(text: &str) -> String {
@@ -92,6 +88,28 @@ fn has_assignment_boundary(text: &str, pos: usize) -> bool {
             .as_bytes()
             .get(pos - 1)
             .is_some_and(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+}
+
+fn password_assignment_prefix_len(text: &str, pos: usize) -> Option<usize> {
+    let key = "password";
+    if !has_assignment_boundary(text, pos) || !starts_with_ascii_ignore_case(text, pos, key) {
+        return None;
+    }
+
+    let bytes = text.as_bytes();
+    let mut i = pos + key.len();
+    while bytes.get(i).is_some_and(|byte| byte.is_ascii_whitespace()) {
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b'=') {
+        return None;
+    }
+    i += 1;
+    while bytes.get(i).is_some_and(|byte| byte.is_ascii_whitespace()) {
+        i += 1;
+    }
+
+    Some(i - pos)
 }
 
 fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -> String {
@@ -188,6 +206,8 @@ mod tests {
 
     #[rstest]
     #[case("password=mysecret host=localhost", "password=**** host=localhost")]
+    #[case("password = mysecret host=localhost", "password = **** host=localhost")]
+    #[case("password= secret host=localhost", "password= **** host=localhost")]
     #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
     #[case("pgpassword=secret123 psql", "pgpassword=**** psql")]
     fn masks_password_assignments(#[case] input: &str, #[case] expected: &str) {

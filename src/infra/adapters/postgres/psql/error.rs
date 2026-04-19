@@ -95,7 +95,9 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
 }
 
 fn is_missing_database_or_role(lower: &str) -> bool {
-    lower.contains("does not exist") && (lower.contains("database") || lower.contains("role"))
+    lower.contains("fatal:")
+        && lower.contains("does not exist")
+        && (lower.contains("database") || lower.contains("role"))
 }
 
 fn is_missing_object(lower: &str) -> bool {
@@ -235,6 +237,7 @@ mod tests {
         #[case("server closed the connection unexpectedly", "ConnectionLost")]
         #[case("ERROR: canceling statement due to statement timeout", "Timeout")]
         #[case(r#"FATAL: role "alice" does not exist"#, "ConnectionFailed")]
+        #[case(r#"ERROR: role "alice" does not exist"#, "QueryFailed")]
         fn falls_back_to_stderr_matching(#[case] input: &str, #[case] expected: &str) {
             let error = classify_query_error(input);
             let actual = match error {
@@ -244,6 +247,7 @@ mod tests {
                 DbOperationError::ConnectionLost(_) => "ConnectionLost",
                 DbOperationError::Timeout(_) => "Timeout",
                 DbOperationError::ConnectionFailed(_) => "ConnectionFailed",
+                DbOperationError::QueryFailed(_) => "QueryFailed",
                 _ => "Other",
             };
 

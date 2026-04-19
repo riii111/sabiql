@@ -140,11 +140,14 @@ pub fn reduce(
                 Some(vec![])
             }
         }
-        Action::QueryFailed(error, generation) => {
+        Action::QueryFailed {
+            error,
+            generation,
+            source,
+        } => {
             if *generation == 0 || *generation == state.session.selection_generation() {
                 state.query.mark_idle();
-                let is_adhoc = state.modal.active_mode() == InputMode::SqlModal;
-                if !is_adhoc {
+                if *source == QuerySource::Preview {
                     state.result_interaction.reset_view();
                     state
                         .query
@@ -167,7 +170,7 @@ pub fn reduce(
                 }
                 let user_message = error.user_message();
                 state.set_error(user_message.clone());
-                if is_adhoc {
+                if *source == QuerySource::Adhoc {
                     state.sql_modal.mark_adhoc_error(user_message);
                 }
             }
@@ -617,7 +620,11 @@ mod tests {
 
             reduce_query(
                 &mut state,
-                &Action::QueryFailed(DbOperationError::QueryFailed("error".to_string()), 1),
+                &Action::QueryFailed {
+                    error: DbOperationError::QueryFailed("error".to_string()),
+                    generation: 1,
+                    source: QuerySource::Preview,
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -637,10 +644,11 @@ mod tests {
 
             reduce_query(
                 &mut state,
-                &Action::QueryFailed(
-                    DbOperationError::PermissionDenied("forbidden".to_string()),
-                    1,
-                ),
+                &Action::QueryFailed {
+                    error: DbOperationError::PermissionDenied("forbidden".to_string()),
+                    generation: 1,
+                    source: QuerySource::Preview,
+                },
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -655,6 +663,35 @@ mod tests {
                     .as_deref()
                     .is_some_and(|message| message.contains("Permission denied"))
             );
+        }
+
+        #[test]
+        fn preview_failure_does_not_become_adhoc_error_when_sql_modal_is_open() {
+            let mut state = state_with_table("public", "users");
+            state.session.set_selection_generation(1);
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+                .sql_modal
+                .mark_adhoc_error("previous adhoc error".to_string());
+
+            reduce_query(
+                &mut state,
+                &Action::QueryFailed {
+                    error: DbOperationError::PermissionDenied("forbidden".to_string()),
+                    generation: 1,
+                    source: QuerySource::Preview,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(
+                state.sql_modal.last_adhoc_error(),
+                Some("previous adhoc error")
+            );
+            let result = state.query.current_result().expect("result");
+            assert_eq!(result.source, QuerySource::Preview);
+            assert!(result.is_error());
         }
     }
 

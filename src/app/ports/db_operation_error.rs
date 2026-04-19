@@ -13,35 +13,35 @@ pub fn is_connection_lost_message(lower: &str) -> bool {
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum DbOperationError {
-    #[error("Connection failed: {0}")]
+    #[error("Connection failed")]
     ConnectionFailed(String),
-    #[error("Connection lost: {0}")]
+    #[error("Connection lost")]
     ConnectionLost(String),
-    #[error("Permission denied: {0}")]
+    #[error("Permission denied")]
     PermissionDenied(String),
-    #[error("Foreign key constraint violated: {0}")]
+    #[error("Foreign key constraint violated")]
     ForeignKeyViolation(String),
-    #[error("Unique constraint violated: {0}")]
+    #[error("Unique constraint violated")]
     UniqueViolation(String),
-    #[error("Operation blocked by lock or timeout: {0}")]
+    #[error("Operation blocked by lock or timeout")]
     LockTimeout(String),
-    #[error("Database object not found: {0}")]
+    #[error("Database object not found")]
     ObjectMissing(String),
-    #[error("Query failed: {0}")]
+    #[error("Query failed")]
     QueryFailed(String),
-    #[error("Metadata parse failed: {0}")]
+    #[error("Metadata parse failed")]
     MetadataParseFailed(String),
-    #[error("Invalid JSON: {0}")]
+    #[error("Invalid JSON")]
     InvalidJson(#[source] Arc<serde_json::Error>),
-    #[error("Empty response: {0}")]
+    #[error("Empty response")]
     EmptyResponse(String),
-    #[error("CSV parse error: {0}")]
+    #[error("CSV parse error")]
     CsvParse(#[source] Arc<csv::Error>),
-    #[error("Command tag parse failed: {0}")]
+    #[error("Command tag parse failed")]
     CommandTagParseFailed(String),
-    #[error("Command not found: {0}")]
+    #[error("Command not found")]
     CommandNotFound(String),
-    #[error("Operation timed out: {0}")]
+    #[error("Operation timed out")]
     Timeout(String),
 }
 

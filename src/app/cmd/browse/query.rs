@@ -10,6 +10,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::ports::{QueryExecutor, QueryHistoryStore};
 use crate::app::update::action::Action;
 use crate::domain::ConnectionId;
+use crate::domain::QuerySource;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -128,7 +129,13 @@ pub async fn run(
                         .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::QueryFailed(e, generation)).await.ok();
+                        tx.send(Action::QueryFailed {
+                            error: e,
+                            generation,
+                            source: QuerySource::Preview,
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -221,7 +228,13 @@ pub async fn run(
                                 None,
                             );
                         }
-                        tx.send(Action::QueryFailed(e, 0)).await.ok();
+                        tx.send(Action::QueryFailed {
+                            error: e,
+                            generation: 0,
+                            source: QuerySource::Adhoc,
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -410,6 +423,7 @@ mod tests {
         use crate::app::ports::{DbOperationError, RenderOutput, RenderResult, Renderer};
         use crate::app::services::AppServices;
         use crate::app::update::action::Action;
+        use crate::domain::QuerySource;
 
         struct NoopRenderer;
         impl Renderer for NoopRenderer {
@@ -524,7 +538,13 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             assert!(
-                matches!(action, Action::QueryFailed(_, _)),
+                matches!(
+                    action,
+                    Action::QueryFailed {
+                        source: QuerySource::Preview,
+                        ..
+                    }
+                ),
                 "expected QueryFailed, got {action:?}"
             );
         }
