@@ -39,12 +39,41 @@ impl MultiLineInputState {
         self.scroll_row
     }
 
+    pub fn set_cursor(&mut self, pos: usize) {
+        self.set_cursor_and_sync(pos);
+        self.preferred_col = None;
+    }
+
     pub fn insert_newline(&mut self) {
         self.insert_char('\n');
     }
 
     pub fn insert_tab(&mut self) {
         self.insert_str("    ");
+    }
+
+    pub fn insert_char(&mut self, c: char) {
+        self.inner.insert_char(c);
+        self.preferred_col = None;
+        self.rebuild_derived();
+    }
+
+    pub fn insert_str(&mut self, text: &str) {
+        self.inner.insert_str(text);
+        self.preferred_col = None;
+        self.rebuild_derived();
+    }
+
+    pub fn backspace(&mut self) {
+        self.inner.backspace();
+        self.preferred_col = None;
+        self.rebuild_derived();
+    }
+
+    pub fn delete(&mut self) {
+        self.inner.delete();
+        self.preferred_col = None;
+        self.rebuild_derived();
     }
 
     pub fn set_content(&mut self, s: String) {
@@ -56,6 +85,7 @@ impl MultiLineInputState {
 
     pub fn set_content_with_cursor(&mut self, s: String, cursor: usize) {
         self.inner.set_content(s);
+        // set_content resets the cursor to the end, so restore the requested position here.
         self.inner.set_cursor(cursor);
         self.scroll_row = 0;
         self.preferred_col = None;
@@ -197,6 +227,7 @@ impl MultiLineInputState {
     }
 
     fn line_spans(&self) -> &[LineSpan] {
+        debug_assert!(!self.derived.line_spans.is_empty());
         &self.derived.line_spans
     }
 
@@ -255,34 +286,6 @@ impl TextInputLike for MultiLineInputState {
     fn text_input(&self) -> &TextInputState {
         &self.inner
     }
-
-    fn text_input_mut(&mut self) -> &mut TextInputState {
-        &mut self.inner
-    }
-
-    fn insert_char(&mut self, c: char) {
-        self.inner.insert_char(c);
-        self.preferred_col = None;
-        self.rebuild_derived();
-    }
-
-    fn insert_str(&mut self, text: &str) {
-        self.inner.insert_str(text);
-        self.preferred_col = None;
-        self.rebuild_derived();
-    }
-
-    fn backspace(&mut self) {
-        self.inner.backspace();
-        self.preferred_col = None;
-        self.rebuild_derived();
-    }
-
-    fn delete(&mut self) {
-        self.inner.delete();
-        self.preferred_col = None;
-        self.rebuild_derived();
-    }
 }
 
 impl MultiLineDerivedState {
@@ -323,176 +326,15 @@ fn char_to_byte_index_impl(s: &str, char_idx: usize) -> usize {
 }
 
 #[cfg(test)]
+mod perf_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
 
     fn ml(content: &str, cursor: usize) -> MultiLineInputState {
         MultiLineInputState::new(content, cursor)
-    }
-
-    #[derive(Clone)]
-    struct BaselineMultiLineInputState {
-        inner: TextInputState,
-        scroll_row: usize,
-        preferred_col: Option<usize>,
-    }
-
-    impl BaselineMultiLineInputState {
-        fn new(content: impl Into<String>, cursor: usize) -> Self {
-            Self {
-                inner: TextInputState::new(content, cursor),
-                scroll_row: 0,
-                preferred_col: None,
-            }
-        }
-
-        fn content(&self) -> &str {
-            self.inner.content()
-        }
-
-        fn cursor(&self) -> usize {
-            self.inner.cursor()
-        }
-
-        fn line_spans(&self) -> Vec<(usize, usize)> {
-            let mut result = Vec::new();
-            let mut start = 0;
-            for line in self.content().split('\n') {
-                let len = line.chars().count();
-                result.push((start, len));
-                start += len + 1;
-            }
-            result
-        }
-
-        fn current_line_col(&self) -> (usize, usize) {
-            let cursor = self.cursor();
-            let lines = self.line_spans();
-            for (i, (start, len)) in lines.iter().enumerate() {
-                if cursor >= *start && cursor <= start + len {
-                    return (i, cursor - start);
-                }
-            }
-            (0, cursor)
-        }
-
-        fn set_cursor_raw(&mut self, pos: usize) {
-            self.inner.set_cursor(pos.min(self.inner.char_count()));
-        }
-
-        fn move_cursor(&mut self, movement: CursorMove) {
-            match movement {
-                CursorMove::Left | CursorMove::Right => {
-                    self.inner.move_cursor(movement);
-                    self.preferred_col = None;
-                }
-                CursorMove::Up => {
-                    let (current_line, current_col) = self.current_line_col();
-                    let preferred_col = self.preferred_col.unwrap_or(current_col);
-                    if current_line > 0 {
-                        let lines = self.line_spans();
-                        let (prev_start, prev_len) = lines[current_line - 1];
-                        self.set_cursor_raw(prev_start + preferred_col.min(prev_len));
-                    }
-                    self.preferred_col = Some(preferred_col);
-                }
-                CursorMove::Down => {
-                    let (current_line, current_col) = self.current_line_col();
-                    let preferred_col = self.preferred_col.unwrap_or(current_col);
-                    let lines = self.line_spans();
-                    if current_line + 1 < lines.len() {
-                        let (next_start, next_len) = lines[current_line + 1];
-                        self.set_cursor_raw(next_start + preferred_col.min(next_len));
-                    }
-                    self.preferred_col = Some(preferred_col);
-                }
-                CursorMove::Home | CursorMove::LineStart => {
-                    let (current_line, _) = self.current_line_col();
-                    let lines = self.line_spans();
-                    if let Some((start, _)) = lines.get(current_line) {
-                        self.set_cursor_raw(*start);
-                    }
-                    self.preferred_col = None;
-                }
-                CursorMove::End | CursorMove::LineEnd => {
-                    let (current_line, _) = self.current_line_col();
-                    let lines = self.line_spans();
-                    if let Some((start, len)) = lines.get(current_line) {
-                        self.set_cursor_raw(start + len);
-                    }
-                    self.preferred_col = None;
-                }
-                CursorMove::WordForward => {
-                    self.set_cursor_raw(next_word_start(self.content(), self.cursor()));
-                    self.preferred_col = None;
-                }
-                CursorMove::WordBackward => {
-                    self.set_cursor_raw(previous_word_start(self.content(), self.cursor()));
-                    self.preferred_col = None;
-                }
-                CursorMove::BufferStart => {
-                    self.set_cursor_raw(0);
-                    self.preferred_col = None;
-                }
-                CursorMove::BufferEnd => {
-                    self.set_cursor_raw(self.inner.char_count());
-                    self.preferred_col = None;
-                }
-                CursorMove::FirstLine => {
-                    let (_, current_col) = self.current_line_col();
-                    let preferred_col = self.preferred_col.unwrap_or(current_col);
-                    let lines = self.line_spans();
-                    if let Some((start, len)) = lines.first() {
-                        self.set_cursor_raw(start + preferred_col.min(*len));
-                    }
-                    self.preferred_col = Some(preferred_col);
-                }
-                CursorMove::LastLine => {
-                    let (_, current_col) = self.current_line_col();
-                    let preferred_col = self.preferred_col.unwrap_or(current_col);
-                    let lines = self.line_spans();
-                    if let Some((start, len)) = lines.last() {
-                        self.set_cursor_raw(start + preferred_col.min(*len));
-                    }
-                    self.preferred_col = Some(preferred_col);
-                }
-                CursorMove::ViewportTop
-                | CursorMove::ViewportMiddle
-                | CursorMove::ViewportBottom => {}
-            }
-        }
-
-        fn cursor_to_position(&self) -> (usize, usize) {
-            let mut row = 0;
-            let mut col = 0;
-
-            for (current_pos, ch) in self.content().chars().enumerate() {
-                if current_pos >= self.cursor() {
-                    break;
-                }
-                if ch == '\n' {
-                    row += 1;
-                    col = 0;
-                } else {
-                    col += 1;
-                }
-            }
-
-            (row, col)
-        }
-
-        fn update_scroll(&mut self, visible_rows: usize) {
-            if visible_rows == 0 {
-                return;
-            }
-            let (row, _) = self.cursor_to_position();
-            if row < self.scroll_row {
-                self.scroll_row = row;
-            } else if row >= self.scroll_row + visible_rows {
-                self.scroll_row = row - visible_rows + 1;
-            }
-        }
     }
 
     mod cursor_to_position {
@@ -1094,6 +936,16 @@ mod tests {
         }
 
         #[test]
+        fn set_cursor_syncs_cached_position() {
+            let mut s = ml("aa\nbb\ncc", 0);
+
+            s.set_cursor(4);
+
+            assert_eq!(s.cursor(), 4);
+            assert_eq!(s.cursor_to_position(), (1, 1));
+        }
+
+        #[test]
         fn clear_resets_all_fields() {
             let mut s = ml("multi\nline", 8);
             s.scroll_row = 3;
@@ -1130,55 +982,4 @@ mod tests {
         }
     }
 
-    #[test]
-    #[ignore = "local-only dev benchmark, not tied to a CI issue"]
-    #[allow(clippy::print_stderr, reason = "benchmark result output")]
-    fn bench_multiline_cache_speedup() {
-        use std::time::Instant;
-
-        let content = (0..400)
-            .map(|i| format!("line_{i:04}_{}", "x".repeat((i % 17) + 8)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let iterations = 5_000;
-
-        let mut baseline = BaselineMultiLineInputState::new(content.clone(), 0);
-        let start = Instant::now();
-        for _ in 0..iterations {
-            baseline.move_cursor(CursorMove::LastLine);
-            baseline.update_scroll(12);
-            std::hint::black_box(baseline.cursor_to_position());
-            baseline.move_cursor(CursorMove::FirstLine);
-            baseline.update_scroll(12);
-            std::hint::black_box(baseline.cursor_to_position());
-            baseline.move_cursor(CursorMove::Down);
-            baseline.move_cursor(CursorMove::Down);
-            baseline.move_cursor(CursorMove::Up);
-        }
-        let baseline_elapsed = start.elapsed();
-
-        let mut cached = MultiLineInputState::new(content, 0);
-        let start = Instant::now();
-        for _ in 0..iterations {
-            cached.move_cursor(CursorMove::LastLine);
-            cached.update_scroll(12);
-            std::hint::black_box(cached.cursor_to_position());
-            cached.move_cursor(CursorMove::FirstLine);
-            cached.update_scroll(12);
-            std::hint::black_box(cached.cursor_to_position());
-            cached.move_cursor(CursorMove::Down);
-            cached.move_cursor(CursorMove::Down);
-            cached.move_cursor(CursorMove::Up);
-        }
-        let cached_elapsed = start.elapsed();
-
-        eprintln!(
-            "Baseline: {:?} ({:.1} µs/iter), Cached: {:?} ({:.1} µs/iter), Speedup: {:.2}x",
-            baseline_elapsed,
-            baseline_elapsed.as_micros() as f64 / iterations as f64,
-            cached_elapsed,
-            cached_elapsed.as_micros() as f64 / iterations as f64,
-            baseline_elapsed.as_secs_f64() / cached_elapsed.as_secs_f64(),
-        );
-    }
 }

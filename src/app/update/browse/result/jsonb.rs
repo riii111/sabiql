@@ -292,11 +292,7 @@ fn update_search_matches(state: &mut AppState) {
 fn jump_to_current_match(state: &mut AppState) {
     let search = state.jsonb_detail.search();
     if let Some(&match_pos) = search.matches.get(search.current_match) {
-        state
-            .jsonb_detail
-            .editor_mut()
-            .text_input_mut()
-            .set_cursor(match_pos);
+        state.jsonb_detail.editor_mut().set_cursor(match_pos);
         update_editor_scroll(state);
     }
 }
@@ -467,6 +463,25 @@ mod tests {
 
     fn open_detail(state: &mut AppState) {
         reduce(state, &Action::OpenJsonbDetail, Instant::now());
+    }
+
+    fn cursor_position(content: &str, cursor: usize) -> (usize, usize) {
+        let mut row = 0;
+        let mut col = 0;
+
+        for (idx, ch) in content.chars().enumerate() {
+            if idx >= cursor {
+                break;
+            }
+            if ch == '\n' {
+                row += 1;
+                col = 0;
+            } else {
+                col += 1;
+            }
+        }
+
+        (row, col)
     }
 
     mod entry_guards {
@@ -856,9 +871,11 @@ mod tests {
             reduce(&mut state, &Action::JsonbSearchSubmit, Instant::now());
 
             assert!(!state.jsonb_detail.search().active);
+            let expected_cursor = state.jsonb_detail.search().matches[0];
+            assert_eq!(state.jsonb_detail.editor().cursor(), expected_cursor);
             assert_eq!(
-                state.jsonb_detail.editor().cursor(),
-                state.jsonb_detail.search().matches[0]
+                state.jsonb_detail.editor().cursor_to_position(),
+                cursor_position(state.jsonb_detail.editor().content(), expected_cursor)
             );
         }
 
@@ -913,9 +930,11 @@ mod tests {
             reduce(&mut state, &Action::JsonbSearchNext, Instant::now());
 
             assert_eq!(state.jsonb_detail.search().current_match, 1);
+            let expected_cursor = state.jsonb_detail.search().matches[1];
+            assert_eq!(state.jsonb_detail.editor().cursor(), expected_cursor);
             assert_eq!(
-                state.jsonb_detail.editor().cursor(),
-                state.jsonb_detail.search().matches[1]
+                state.jsonb_detail.editor().cursor_to_position(),
+                cursor_position(state.jsonb_detail.editor().content(), expected_cursor)
             );
         }
 
@@ -943,9 +962,11 @@ mod tests {
             reduce(&mut state, &Action::JsonbSearchPrev, Instant::now());
 
             assert_eq!(state.jsonb_detail.search().current_match, match_count - 1);
+            let expected_cursor = state.jsonb_detail.search().matches[match_count - 1];
+            assert_eq!(state.jsonb_detail.editor().cursor(), expected_cursor);
             assert_eq!(
-                state.jsonb_detail.editor().cursor(),
-                state.jsonb_detail.search().matches[match_count - 1]
+                state.jsonb_detail.editor().cursor_to_position(),
+                cursor_position(state.jsonb_detail.editor().content(), expected_cursor)
             );
         }
     }
