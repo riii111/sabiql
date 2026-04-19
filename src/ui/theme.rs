@@ -266,6 +266,7 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
 };
 
 #[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
 pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
     semantic: SemanticTokens {
         surface: SurfaceTokens {

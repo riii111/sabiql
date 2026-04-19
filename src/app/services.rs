@@ -11,6 +11,7 @@ pub struct AppServices {
 
 impl AppServices {
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn stub() -> Self {
         struct StubDdlGenerator;
         impl DdlGenerator for StubDdlGenerator {
