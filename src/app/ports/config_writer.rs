@@ -5,7 +5,7 @@ use std::sync::Arc;
 pub enum ConfigWriterError {
     #[error("cache directory is unavailable")]
     MissingCacheDir,
-    #[error("i/o error: {0}")]
+    #[error("I/O error: {0}")]
     Io(#[source] Arc<std::io::Error>),
 }
 

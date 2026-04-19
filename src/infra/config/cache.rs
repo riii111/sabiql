@@ -6,7 +6,7 @@ use std::path::PathBuf;
 pub enum CacheDirError {
     #[error("cache directory is unavailable")]
     BaseDirUnavailable,
-    #[error("i/o error: {0}")]
+    #[error("I/O error: {0}")]
     Io(#[source] io::Error),
 }
 
