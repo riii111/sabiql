@@ -78,7 +78,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::inbound::{InputEvent, Key, KeyCombo};
+    use crate::app::ports::inbound::Key;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -208,6 +208,16 @@ mod tests {
             let result = handle_event(InputEvent::Init, &state, &services);
 
             assert!(matches!(result, Action::Render));
+        }
+
+        #[test]
+        fn resize_maps_to_resize() {
+            let state = AppState::new("test".to_string());
+            let services = AppServices::stub();
+
+            let result = handle_event(InputEvent::Resize(80, 24), &state, &services);
+
+            assert!(matches!(result, Action::Resize(80, 24)));
         }
     }
 }
