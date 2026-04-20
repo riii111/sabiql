@@ -17,7 +17,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use super::event::InputEvent;
+use crate::app::ports::inbound::InputEvent;
 
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 

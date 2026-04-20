@@ -28,7 +28,7 @@ pub enum Key {
     Other,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Modifiers(u8);
 
 impl Modifiers {

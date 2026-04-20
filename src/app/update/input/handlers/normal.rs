@@ -1510,8 +1510,6 @@ mod tests {
     mod navigation_matrix {
         use super::*;
         use crate::domain::{QueryResult, QuerySource};
-        use crate::ui::event::key_translator::translate;
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         use std::sync::Arc;
 
         fn assert_action(actual: Action, expected: Action, ctx: &str, key: &str) {
@@ -1567,8 +1565,7 @@ mod tests {
 
         #[test]
         fn shift_g_event_translates_to_select_last() {
-            let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
-            let combo = translate(event);
+            let combo = KeyCombo::plain(Key::Char('G'));
             let state = explorer_ctx();
 
             let result = handle_normal_mode(combo, &state);
