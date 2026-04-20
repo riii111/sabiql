@@ -12,7 +12,6 @@ test-support = []
 [dependencies]
 arboard.workspace = true
 async-trait.workspace = true
-bitflags.workspace = true
 color-eyre.workspace = true
 crossterm.workspace = true
 csv.workspace = true

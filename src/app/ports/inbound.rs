@@ -1,5 +1,3 @@
-use bitflags::bitflags;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputEvent {
     Init,
@@ -30,19 +28,48 @@ pub enum Key {
     Other,
 }
 
-bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct Modifiers: u8 {
-        const CTRL = 0b001;
-        const ALT = 0b010;
-        const SHIFT = 0b100;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Modifiers(u8);
+
+impl Modifiers {
+    pub const NONE: Self = Self(0);
+    pub const CTRL: Self = Self(0b001);
+    pub const ALT: Self = Self(0b010);
+    pub const SHIFT: Self = Self(0b100);
+    pub const CTRL_ALT: Self = Self(Self::CTRL.0 | Self::ALT.0);
+    pub const CTRL_SHIFT: Self = Self(Self::CTRL.0 | Self::SHIFT.0);
+
+    pub const fn empty() -> Self {
+        Self::NONE
+    }
+
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    pub const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+
+    pub const fn intersects(self, other: Self) -> bool {
+        (self.0 & other.0) != 0
+    }
+
+    pub fn set(&mut self, flag: Self, enabled: bool) {
+        if enabled {
+            self.0 |= flag.0;
+        } else {
+            self.0 &= !flag.0;
+        }
     }
 }
 
-impl Modifiers {
-    pub const NONE: Self = Self::empty();
-    pub const CTRL_ALT: Self = Self::from_bits_retain(Self::CTRL.bits() | Self::ALT.bits());
-    pub const CTRL_SHIFT: Self = Self::from_bits_retain(Self::CTRL.bits() | Self::SHIFT.bits());
+impl std::ops::BitOr for Modifiers {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

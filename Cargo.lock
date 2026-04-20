@@ -2591,7 +2591,6 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "async-trait",
- "bitflags 2.11.1",
  "color-eyre",
  "crossterm",
  "csv",
