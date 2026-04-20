@@ -1,5 +1,5 @@
 use super::KeyBinding;
-use super::types::{Key, KeyCombo};
+use super::{Key, KeyCombo};
 use crate::app::update::action::Action;
 
 // =============================================================================

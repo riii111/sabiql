@@ -35,6 +35,7 @@ use crate::app::ports::{
 };
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
+use crate::app::update::input::handle_event;
 use crate::app::update::reducer::reduce;
 use crate::infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
@@ -43,7 +44,6 @@ use crate::infra::adapters::{
 use crate::infra::config::project_root::{find_project_root, get_project_name};
 use crate::infra::export::DotExporter;
 use crate::ui::adapters::TuiAdapter;
-use crate::ui::event::handlers::handle_event;
 use crate::ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]

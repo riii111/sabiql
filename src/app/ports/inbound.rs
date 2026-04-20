@@ -1,3 +1,11 @@
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InputEvent {
+    Init,
+    Key(KeyCombo),
+    Paste(String),
+    Resize(u16, u16),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
     Char(char),
