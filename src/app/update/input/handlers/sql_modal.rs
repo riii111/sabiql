@@ -3,7 +3,7 @@ use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::app::update::action::{
     Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
-use crate::app::update::input::keybindings::{Key, KeyCombo};
+use crate::app::update::input::keybindings::{Key, KeyCombo, Modifiers};
 use crate::app::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
@@ -37,8 +37,8 @@ pub fn handle_sql_modal_keys_with_prefix(
         status,
         SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
     ) {
-        let ctrl = combo.modifiers.ctrl;
-        let alt = combo.modifiers.alt;
+        let ctrl = combo.modifiers.contains(Modifiers::CTRL);
+        let alt = combo.modifiers.contains(Modifiers::ALT);
         let plain = !ctrl && !alt;
 
         if let Some(prefix) = pending_prefix {
@@ -66,7 +66,9 @@ pub fn handle_sql_modal_keys_with_prefix(
         if plain && combo.key == Key::Tab {
             return Action::SqlModalNextTab;
         }
-        if !combo.modifiers.ctrl && !combo.modifiers.alt && combo.key == Key::BackTab {
+        if !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT)
+            && combo.key == Key::BackTab
+        {
             return Action::SqlModalPrevTab;
         }
 
@@ -156,7 +158,7 @@ pub fn handle_sql_modal_keys_with_prefix(
     }
 
     if matches!(status, SqlModalStatus::ConfirmingHigh { .. }) {
-        let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
+        let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
         return match combo.key {
             Key::Char(c) if plain => Action::TextInput {
                 target: InputTarget::SqlModalHighRisk,
@@ -188,7 +190,7 @@ pub fn handle_sql_modal_keys_with_prefix(
     }
 
     if matches!(status, SqlModalStatus::ConfirmingAnalyzeHigh { .. }) {
-        let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
+        let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
         return match combo.key {
             Key::Up if plain => Action::Scroll {
                 target: ScrollTarget::ExplainConfirm,
@@ -229,9 +231,9 @@ pub fn handle_sql_modal_keys_with_prefix(
         };
     }
 
-    let ctrl = combo.modifiers.ctrl;
-    let alt = combo.modifiers.alt;
-    let shift = combo.modifiers.shift;
+    let ctrl = combo.modifiers.contains(Modifiers::CTRL);
+    let alt = combo.modifiers.contains(Modifiers::ALT);
+    let shift = combo.modifiers.contains(Modifiers::SHIFT);
     let ctrl_only = ctrl && !alt && !shift;
 
     if alt && combo.key == Key::Enter {

@@ -32,11 +32,13 @@ pub fn translate(event: KeyEvent) -> KeyCombo {
         _ => raw_shift,
     };
 
-    let modifiers = Modifiers {
-        ctrl: event.modifiers.contains(KeyModifiers::CONTROL),
-        alt: event.modifiers.contains(KeyModifiers::ALT),
-        shift,
-    };
+    let mut modifiers = Modifiers::empty();
+    modifiers.set(
+        Modifiers::CTRL,
+        event.modifiers.contains(KeyModifiers::CONTROL),
+    );
+    modifiers.set(Modifiers::ALT, event.modifiers.contains(KeyModifiers::ALT));
+    modifiers.set(Modifiers::SHIFT, shift);
 
     KeyCombo { key, modifiers }
 }
@@ -82,11 +84,7 @@ mod tests {
             combo,
             KeyCombo {
                 key: Key::BackTab,
-                modifiers: Modifiers {
-                    ctrl: false,
-                    alt: false,
-                    shift: true,
-                },
+                modifiers: Modifiers::SHIFT,
             }
         );
     }

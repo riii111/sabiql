@@ -1,3 +1,5 @@
+use bitflags::bitflags;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputEvent {
     Init,
@@ -28,34 +30,19 @@ pub enum Key {
     Other,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Modifiers {
-    pub ctrl: bool,
-    pub alt: bool,
-    pub shift: bool,
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Modifiers: u8 {
+        const CTRL = 0b001;
+        const ALT = 0b010;
+        const SHIFT = 0b100;
+    }
 }
 
 impl Modifiers {
-    pub const NONE: Self = Self {
-        ctrl: false,
-        alt: false,
-        shift: false,
-    };
-    pub const CTRL: Self = Self {
-        ctrl: true,
-        alt: false,
-        shift: false,
-    };
-    pub const ALT: Self = Self {
-        ctrl: false,
-        alt: true,
-        shift: false,
-    };
-    pub const SHIFT: Self = Self {
-        ctrl: false,
-        alt: false,
-        shift: true,
-    };
+    pub const NONE: Self = Self::empty();
+    pub const CTRL_ALT: Self = Self::from_bits_retain(Self::CTRL.bits() | Self::ALT.bits());
+    pub const CTRL_SHIFT: Self = Self::from_bits_retain(Self::CTRL.bits() | Self::SHIFT.bits());
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,21 +73,13 @@ impl KeyCombo {
     pub const fn ctrl_alt(key: Key) -> Self {
         Self {
             key,
-            modifiers: Modifiers {
-                ctrl: true,
-                alt: true,
-                shift: false,
-            },
+            modifiers: Modifiers::CTRL_ALT,
         }
     }
     pub const fn ctrl_shift(key: Key) -> Self {
         Self {
             key,
-            modifiers: Modifiers {
-                ctrl: true,
-                alt: false,
-                shift: true,
-            },
+            modifiers: Modifiers::CTRL_SHIFT,
         }
     }
     pub const fn shift(key: Key) -> Self {

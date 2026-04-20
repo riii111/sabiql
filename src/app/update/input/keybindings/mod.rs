@@ -938,11 +938,7 @@ mod tests {
                 name: &str,
                 allowed_chars: &[char],
             ) {
-                let no_mods = Modifiers {
-                    ctrl: false,
-                    alt: false,
-                    shift: false,
-                };
+                let no_mods = Modifiers::empty();
                 for kb in bindings
                     .iter()
                     .filter(|kb| !matches!(kb.action, Action::None))
@@ -967,11 +963,7 @@ mod tests {
                 name: &str,
                 allowed_chars: &[char],
             ) {
-                let no_mods = Modifiers {
-                    ctrl: false,
-                    alt: false,
-                    shift: false,
-                };
+                let no_mods = Modifiers::empty();
                 for row in rows {
                     for eb in row.bindings {
                         for combo in eb.combos {

@@ -2,7 +2,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::key_sequence::Prefix;
 use crate::app::update::action::Action;
-use crate::app::update::input::keybindings::{self as kb, Key, KeyCombo};
+use crate::app::update::input::keybindings::{self as kb, Key, KeyCombo, Modifiers};
 use crate::app::update::input::vim::{
     BrowseVimContext, VimCommand, VimSurfaceContext, action_for_input, action_for_key,
     classify_command,
@@ -19,7 +19,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let inspector_navigation = browse_ctx.is_inspector();
 
     // Ctrl combos
-    if combo.modifiers.ctrl {
+    if combo.modifiers.contains(Modifiers::CTRL) {
         match combo.key {
             Key::Char('h') => {
                 return if state.query.is_history_mode() {
@@ -67,7 +67,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Must be resolved before history whitelist and global actions so that
     // the second key (t, b, z) is never swallowed and the sequence is always cleared.
     if let Some(prefix) = state.ui.key_sequence.pending_prefix() {
-        if combo.modifiers.ctrl || combo.modifiers.alt {
+        if combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
             return Action::CancelKeySequence;
         }
         return match action_for_input(&combo, Some(prefix), VimSurfaceContext::Browse(browse_ctx)) {
@@ -109,9 +109,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         return Action::ToggleFocus;
     }
     if combo.key == Key::Enter
-        && !combo.modifiers.ctrl
-        && !combo.modifiers.alt
-        && !combo.modifiers.shift
+        && combo.modifiers.is_empty()
         && state.connection_error.error_info.is_some()
     {
         return Action::ConfirmSelection;

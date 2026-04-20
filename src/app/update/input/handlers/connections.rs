@@ -1,15 +1,15 @@
 use crate::app::model::app_state::AppState;
 use crate::app::update::action::{Action, InputTarget};
-use crate::app::update::input::keybindings::{self, Key, KeyCombo};
+use crate::app::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 
 pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action {
     use crate::app::model::connection::setup::ConnectionField;
     use crate::app::update::action::CursorMove;
 
     let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
-    let ctrl = combo.modifiers.ctrl;
-    let alt = combo.modifiers.alt;
-    let shift = combo.modifiers.shift;
+    let ctrl = combo.modifiers.contains(Modifiers::CTRL);
+    let alt = combo.modifiers.contains(Modifiers::ALT);
+    let shift = combo.modifiers.contains(Modifiers::SHIFT);
     let ctrl_only = ctrl && !alt && !shift;
 
     if dropdown_open {
@@ -208,11 +208,7 @@ mod tests {
             let state = setup_state();
             let altgr = KeyCombo {
                 key: Key::Char('@'),
-                modifiers: Modifiers {
-                    ctrl: true,
-                    alt: true,
-                    shift: false,
-                },
+                modifiers: Modifiers::CTRL_ALT,
             };
 
             let result = handle_connection_setup_keys(altgr, &state);

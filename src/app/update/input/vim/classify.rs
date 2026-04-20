@@ -1,10 +1,10 @@
 use crate::app::model::shared::key_sequence::Prefix;
-use crate::app::update::input::keybindings::{Key, KeyCombo};
+use crate::app::update::input::keybindings::{Key, KeyCombo, Modifiers};
 
 use super::types::{SearchContinuation, VimCommand, VimModeTransition, VimNavigation, VimOperator};
 
 pub fn classify_command(combo: &KeyCombo) -> Option<VimCommand> {
-    if combo.modifiers.alt {
+    if combo.modifiers.contains(Modifiers::ALT) {
         return None;
     }
 
@@ -12,7 +12,7 @@ pub fn classify_command(combo: &KeyCombo) -> Option<VimCommand> {
         return Some(VimCommand::Navigation(navigation));
     }
 
-    if combo.modifiers.ctrl {
+    if combo.modifiers.contains(Modifiers::CTRL) {
         return None;
     }
 
@@ -32,7 +32,7 @@ pub fn classify_command(combo: &KeyCombo) -> Option<VimCommand> {
 }
 
 pub fn classify_sequence(prefix: Prefix, combo: &KeyCombo) -> Option<VimCommand> {
-    if combo.modifiers.ctrl || combo.modifiers.alt || combo.modifiers.shift {
+    if !combo.modifiers.is_empty() {
         return None;
     }
 
@@ -51,11 +51,14 @@ pub fn classify_sequence(prefix: Prefix, combo: &KeyCombo) -> Option<VimCommand>
 }
 
 fn navigation(combo: &KeyCombo) -> Option<VimNavigation> {
-    if combo.modifiers.shift || combo.modifiers.alt {
+    if combo
+        .modifiers
+        .intersects(Modifiers::SHIFT | Modifiers::ALT)
+    {
         return None;
     }
 
-    if combo.modifiers.ctrl {
+    if combo.modifiers.contains(Modifiers::CTRL) {
         return match combo.key {
             // NOTE: Ctrl+N/P are intercepted on the main screen (handlers/normal.rs)
             // and mapped to OpenTablePicker / None. These entries are only reached
