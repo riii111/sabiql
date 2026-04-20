@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::ports::{QueryExecutor, QueryHistoryStore};
+use crate::app::ports::outbound::{QueryExecutor, QueryHistoryStore};
 use crate::app::update::action::Action;
 use crate::domain::ConnectionId;
 use crate::domain::QuerySource;
@@ -417,10 +417,10 @@ mod tests {
         use std::time::Instant;
 
         use crate::app::model::app_state::AppState;
-        use crate::app::ports::connection_store::MockConnectionStore;
-        use crate::app::ports::metadata::MockMetadataProvider;
-        use crate::app::ports::query_executor::MockQueryExecutor;
-        use crate::app::ports::{DbOperationError, RenderOutput, RenderResult, Renderer};
+        use crate::app::ports::outbound::connection_store::MockConnectionStore;
+        use crate::app::ports::outbound::metadata::MockMetadataProvider;
+        use crate::app::ports::outbound::query_executor::MockQueryExecutor;
+        use crate::app::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
         use crate::app::services::AppServices;
         use crate::app::update::action::Action;
         use crate::domain::QuerySource;

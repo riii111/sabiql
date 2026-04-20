@@ -1,7 +1,7 @@
 use crate::app::model::shared::key_sequence::Prefix;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::app::update::input::keybindings::{
-    JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo,
+    JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo, Modifiers,
 };
 use crate::app::update::input::keymap;
 use crate::app::update::input::vim::{
@@ -18,7 +18,7 @@ pub fn handle_jsonb_detail_keys(
     }
 
     if let Some(prefix) = pending_prefix {
-        if combo.modifiers.ctrl || combo.modifiers.alt {
+        if combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
             return Action::CancelKeySequence;
         }
         return match action_for_input(
@@ -31,11 +31,12 @@ pub fn handle_jsonb_detail_keys(
         };
     }
 
-    if !combo.modifiers.ctrl && !combo.modifiers.alt && combo.key == Key::Char('g') {
+    if !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) && combo.key == Key::Char('g')
+    {
         return Action::BeginKeySequence(Prefix::G);
     }
 
-    if !combo.modifiers.ctrl && !combo.modifiers.alt {
+    if !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
         match combo.key {
             Key::Home => {
                 return Action::TextMoveCursor {

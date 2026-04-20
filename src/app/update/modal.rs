@@ -768,7 +768,7 @@ mod tests {
     mod query_history_picker {
         use super::*;
         use crate::app::model::shared::text_input::TextInputLike;
-        use crate::app::ports::query_history::QueryHistoryError;
+        use crate::app::ports::outbound::query_history::QueryHistoryError;
         use crate::domain::ConnectionId;
         use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 

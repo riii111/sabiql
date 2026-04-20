@@ -2,14 +2,13 @@ mod connections;
 mod editors;
 mod normal;
 mod overlays;
-pub mod types;
 
+pub use crate::app::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::app::update::action::Action;
 pub use connections::*;
 pub use editors::*;
 pub use normal::*;
 pub use overlays::*;
-pub use types::{Key, KeyCombo, Modifiers};
 
 #[derive(Clone)]
 pub struct KeyBinding {
@@ -939,11 +938,7 @@ mod tests {
                 name: &str,
                 allowed_chars: &[char],
             ) {
-                let no_mods = Modifiers {
-                    ctrl: false,
-                    alt: false,
-                    shift: false,
-                };
+                let no_mods = Modifiers::empty();
                 for kb in bindings
                     .iter()
                     .filter(|kb| !matches!(kb.action, Action::None))
@@ -968,11 +963,7 @@ mod tests {
                 name: &str,
                 allowed_chars: &[char],
             ) {
-                let no_mods = Modifiers {
-                    ctrl: false,
-                    alt: false,
-                    shift: false,
-                };
+                let no_mods = Modifiers::empty();
                 for row in rows {
                     for eb in row.bindings {
                         for combo in eb.combos {

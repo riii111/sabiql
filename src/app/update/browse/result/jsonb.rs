@@ -9,7 +9,7 @@ use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
-use crate::app::ports::ClipboardError;
+use crate::app::ports::outbound::ClipboardError;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::QuerySource;
 

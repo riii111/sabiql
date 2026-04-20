@@ -8,7 +8,7 @@ use crate::app::cmd::cache::TtlCache;
 use crate::app::cmd::completion_engine::CompletionEngine;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::ports::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::app::update::action::Action;
 use crate::domain::DatabaseMetadata;
 
@@ -197,10 +197,10 @@ mod tests {
     use std::time::Instant;
 
     use crate::app::model::app_state::AppState;
-    use crate::app::ports::connection_store::MockConnectionStore;
-    use crate::app::ports::metadata::MockMetadataProvider;
-    use crate::app::ports::query_executor::MockQueryExecutor;
-    use crate::app::ports::{DbOperationError, RenderOutput, RenderResult, Renderer};
+    use crate::app::ports::outbound::connection_store::MockConnectionStore;
+    use crate::app::ports::outbound::metadata::MockMetadataProvider;
+    use crate::app::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::app::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
     use crate::app::services::AppServices;
     use crate::app::update::action::Action;
     use crate::domain::DatabaseMetadata;

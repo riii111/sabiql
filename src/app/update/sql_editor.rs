@@ -18,7 +18,7 @@ use crate::app::policy::write::sql_risk::{
 use crate::app::policy::write::write_guardrails::{
     AdhocRiskDecision, RiskLevel, evaluate_sql_risk,
 };
-use crate::app::ports::ClipboardError;
+use crate::app::ports::outbound::ClipboardError;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 

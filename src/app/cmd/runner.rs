@@ -19,7 +19,7 @@ use crate::app::cmd::sql_editor::query_history as cmd_query_history;
 use crate::app::cmd::utility as cmd_utility;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::ui_state::scroll_max_offset;
-use crate::app::ports::{
+use crate::app::ports::outbound::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
     Renderer,
@@ -403,10 +403,10 @@ impl EffectRunner {
 mod tests {
     use super::*;
     use crate::app::cmd::test_support::*;
-    use crate::app::ports::connection_store::MockConnectionStore;
-    use crate::app::ports::metadata::MockMetadataProvider;
-    use crate::app::ports::query_executor::MockQueryExecutor;
-    use crate::app::ports::{RenderOutput, RenderResult};
+    use crate::app::ports::outbound::connection_store::MockConnectionStore;
+    use crate::app::ports::outbound::metadata::MockMetadataProvider;
+    use crate::app::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::app::ports::outbound::{RenderOutput, RenderResult};
     use crate::app::services::AppServices;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use tokio::sync::mpsc;

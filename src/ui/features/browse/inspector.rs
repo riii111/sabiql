@@ -13,7 +13,7 @@ use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
-use crate::app::ports::DdlGenerator;
+use crate::app::ports::outbound::DdlGenerator;
 use crate::app::services::AppServices;
 use crate::domain::Table;
 use crate::ui::primitives::atoms::panel_block;

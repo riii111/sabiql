@@ -8,18 +8,16 @@ mod sql_modal;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::ports::inbound::{InputEvent, KeyCombo};
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
-use crate::app::update::input::keybindings::KeyCombo;
 
-use super::Event;
-
-pub fn handle_event(event: Event, state: &AppState, services: &AppServices) -> Action {
+pub fn handle_event(event: InputEvent, state: &AppState, services: &AppServices) -> Action {
     match event {
-        Event::Init => Action::Render,
-        Event::Resize(w, h) => Action::Resize(w, h),
-        Event::Key(combo) => handle_key_event(combo, state, services),
-        Event::Paste(text) => handle_paste_event(text, state),
+        InputEvent::Init => Action::Render,
+        InputEvent::Resize(w, h) => Action::Resize(w, h),
+        InputEvent::Key(combo) => handle_key_event(combo, state, services),
+        InputEvent::Paste(text) => handle_paste_event(text, state),
     }
 }
 
@@ -80,7 +78,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::update::input::keybindings::{Key, KeyCombo};
+    use crate::app::ports::inbound::Key;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -196,6 +194,30 @@ mod tests {
             let result = handle_paste_event("text".to_string(), &state);
 
             assert!(matches!(result, Action::None));
+        }
+    }
+
+    mod input_events {
+        use super::*;
+
+        #[test]
+        fn init_maps_to_render() {
+            let state = AppState::new("test".to_string());
+            let services = AppServices::stub();
+
+            let result = handle_event(InputEvent::Init, &state, &services);
+
+            assert!(matches!(result, Action::Render));
+        }
+
+        #[test]
+        fn resize_maps_to_resize() {
+            let state = AppState::new("test".to_string());
+            let services = AppServices::stub();
+
+            let result = handle_event(InputEvent::Resize(80, 24), &state, &services);
+
+            assert!(matches!(result, Action::Resize(80, 24)));
         }
     }
 }

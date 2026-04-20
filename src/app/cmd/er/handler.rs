@@ -9,7 +9,7 @@ use super::task::spawn_er_diagram_task;
 use crate::app::cmd::completion_engine::CompletionEngine;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::ports::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
+use crate::app::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
 use crate::app::update::action::{
     Action, ErDiagramError, ErLogError, SmartErRefreshError, SmartErRefreshResult,
 };

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::app::ports::ErDiagramExporter;
+use crate::app::ports::outbound::ErDiagramExporter;
 use crate::app::update::action::{Action, ErDiagramInfo};
 use crate::domain::ErTableInfo;
 
@@ -53,7 +53,7 @@ pub fn spawn_er_diagram_task(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::ErExportResult;
+    use crate::app::ports::outbound::ErExportResult;
     use std::path::Path;
     use std::time::Duration;
 

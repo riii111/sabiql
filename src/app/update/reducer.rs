@@ -174,8 +174,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::app::ports::DbOperationError;
-    use crate::app::ports::connection_store::ConnectionStoreError;
+    use crate::app::ports::outbound::DbOperationError;
+    use crate::app::ports::outbound::connection_store::ConnectionStoreError;
     use crate::app::update::action::{ConnectionSaveError, ConnectionTarget};
     use crate::app::update::action::{InputTarget, SelectMotion};
 

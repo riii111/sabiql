@@ -1,4 +1,4 @@
-use crate::app::ports::SqlDialect;
+use crate::app::ports::outbound::SqlDialect;
 
 use super::super::PostgresAdapter;
 use super::{quote_ident, quote_literal};
@@ -98,7 +98,7 @@ impl SqlDialect for PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use crate::adapters::postgres::PostgresAdapter;
-    use crate::app::ports::SqlDialect;
+    use crate::app::ports::outbound::SqlDialect;
 
     mod sql_dialect_update {
         use super::*;

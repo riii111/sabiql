@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::app::ports::{
+use crate::app::ports::outbound::{
     DatabaseCapabilities, DatabaseCapabilityProvider, DbOperationError, DdlGenerator, DsnBuilder,
     InspectorFeature, MetadataProvider, QueryExecutor, SqlDialect,
 };

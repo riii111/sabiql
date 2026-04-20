@@ -651,7 +651,7 @@ mod tests {
 
     mod table_detail_cache_failed {
         use super::*;
-        use crate::app::ports::DbOperationError;
+        use crate::app::ports::outbound::DbOperationError;
 
         #[test]
         fn increments_retry_count() {

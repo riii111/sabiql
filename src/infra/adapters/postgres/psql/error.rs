@@ -1,4 +1,4 @@
-use crate::app::ports::DbOperationError;
+use crate::app::ports::outbound::DbOperationError;
 
 pub(in crate::adapters::postgres) fn classify_query_error(stderr: &str) -> DbOperationError {
     let trimmed = stderr.trim();

@@ -17,14 +17,14 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use super::event::Event;
+use crate::app::ports::inbound::InputEvent;
 
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 
 pub struct TuiRunner {
     terminal: Tui,
-    event_rx: UnboundedReceiver<Event>,
-    event_tx: UnboundedSender<Event>,
+    event_rx: UnboundedReceiver<InputEvent>,
+    event_tx: UnboundedSender<InputEvent>,
     task: Option<JoinHandle<()>>,
     cancellation_token: CancellationToken,
 }
@@ -78,7 +78,7 @@ impl TuiRunner {
         self.task = Some(tokio::spawn(async move {
             let mut event_stream = EventStream::new();
 
-            let _ = event_tx.send(Event::Init);
+            let _ = event_tx.send(InputEvent::Init);
 
             loop {
                 let event = tokio::select! {
@@ -87,10 +87,10 @@ impl TuiRunner {
                         match crossterm_event {
                             Some(Ok(evt)) => match evt {
                                 CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press || key.kind == KeyEventKind::Repeat => {
-                                    Event::Key(super::event::key_translator::translate(key))
+                                    InputEvent::Key(super::event::key_translator::translate(key))
                                 }
-                                CrosstermEvent::Resize(x, y) => Event::Resize(x, y),
-                                CrosstermEvent::Paste(text) => Event::Paste(text),
+                                CrosstermEvent::Resize(x, y) => InputEvent::Resize(x, y),
+                                CrosstermEvent::Paste(text) => InputEvent::Paste(text),
                                 _ => continue,
                             },
                             Some(Err(_)) | None => break,
@@ -112,11 +112,11 @@ impl TuiRunner {
         }
     }
 
-    pub async fn next_event(&mut self) -> Option<Event> {
+    pub async fn next_event(&mut self) -> Option<InputEvent> {
         self.event_rx.recv().await
     }
 
-    pub fn try_next_event(&mut self) -> Option<Event> {
+    pub fn try_next_event(&mut self) -> Option<InputEvent> {
         self.event_rx.try_recv().ok()
     }
 

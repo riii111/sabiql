@@ -29,12 +29,13 @@ use crate::app::cmd::runner::EffectRunner;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::ports::{
+use crate::app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
     ServiceFileError,
 };
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
+use crate::app::update::input::handle_event;
 use crate::app::update::reducer::reduce;
 use crate::infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
@@ -43,7 +44,6 @@ use crate::infra::adapters::{
 use crate::infra::config::project_root::{find_project_root, get_project_name};
 use crate::infra::export::DotExporter;
 use crate::ui::adapters::TuiAdapter;
-use crate::ui::event::handlers::handle_event;
 use crate::ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]

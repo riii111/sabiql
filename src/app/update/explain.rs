@@ -808,7 +808,7 @@ mod tests {
 
     mod explain_failed {
         use super::*;
-        use crate::app::ports::DbOperationError;
+        use crate::app::ports::outbound::DbOperationError;
 
         #[test]
         fn sets_error_and_switches_to_plan_tab() {
