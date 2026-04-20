@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::app::cmd::effect::Effect;
-use crate::app::ports::QueryHistoryStore;
+use crate::app::ports::outbound::QueryHistoryStore;
 use crate::app::update::action::Action;
 
 pub fn run(

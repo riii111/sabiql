@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use crate::app::cmd::cache::TtlCache;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::ports::{
+use crate::app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, DsnBuilder, MetadataProvider, PgServiceEntryReader,
     ServiceFileError,
 };
@@ -215,10 +215,10 @@ mod tests {
     use crate::app::cmd::effect::Effect;
     use crate::app::cmd::test_support::*;
     use crate::app::model::app_state::AppState;
-    use crate::app::ports::connection_store::MockConnectionStore;
-    use crate::app::ports::metadata::MockMetadataProvider;
-    use crate::app::ports::query_executor::MockQueryExecutor;
-    use crate::app::ports::{
+    use crate::app::ports::outbound::connection_store::MockConnectionStore;
+    use crate::app::ports::outbound::metadata::MockMetadataProvider;
+    use crate::app::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::app::ports::outbound::{
         ConnectionStoreError, DsnBuilder, RenderOutput, RenderResult, Renderer,
     };
     use crate::app::services::AppServices;

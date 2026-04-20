@@ -29,7 +29,7 @@ use crate::app::cmd::runner::EffectRunner;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::ports::{
+use crate::app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
     ServiceFileError,
 };

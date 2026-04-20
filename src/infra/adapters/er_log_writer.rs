@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::app::ports::ErLogWriter;
+use crate::app::ports::outbound::ErLogWriter;
 
 pub struct FsErLogWriter;
 

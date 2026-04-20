@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::ports::{DdlGenerator, SqlDialect};
+use super::ports::outbound::{DdlGenerator, SqlDialect};
 use crate::app::model::shared::db_capabilities::DbCapabilities;
 
 pub struct AppServices {

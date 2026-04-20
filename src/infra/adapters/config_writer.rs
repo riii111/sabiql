@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::app::ports::{ConfigWriter, ConfigWriterError};
+use crate::app::ports::outbound::{ConfigWriter, ConfigWriterError};
 use crate::infra::config::cache::{CacheDirError, get_cache_dir};
 
 pub struct FileConfigWriter;

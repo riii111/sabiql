@@ -5,7 +5,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::DbOperationError;
+use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;

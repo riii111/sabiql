@@ -5,7 +5,7 @@ use crossterm::execute;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::ports::renderer::{RenderOutput, RenderResult, Renderer};
+use crate::app::ports::outbound::renderer::{RenderOutput, RenderResult, Renderer};
 use crate::app::services::AppServices;
 use crate::ui::shell::layout::MainLayout;
 use crate::ui::tui::TuiRunner;

@@ -459,7 +459,7 @@ mod tests {
 
     mod csv_export {
         use super::*;
-        use crate::app::ports::DbOperationError;
+        use crate::app::ports::outbound::DbOperationError;
         use crate::domain::QueryResult;
 
         fn export_test_state() -> AppState {

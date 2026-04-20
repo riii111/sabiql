@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::app::ports::{
+use crate::app::ports::outbound::{
     ErDiagramExporter, ErExportResult, GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher,
 };
 use crate::domain::ErTableInfo;

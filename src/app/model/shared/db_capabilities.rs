@@ -1,6 +1,6 @@
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::sql_editor::modal::SqlModalTab;
-use crate::app::ports::{DatabaseCapabilities, InspectorFeature};
+use crate::app::ports::outbound::{DatabaseCapabilities, InspectorFeature};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {

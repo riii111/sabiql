@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 
 use crate::app::cmd::cache::TtlCache;
 use crate::app::cmd::runner::{EffectRunner, EffectRunnerBuilder};
-use crate::app::ports::{
+use crate::app::ports::outbound::{
     ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder,
     ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
     MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore,

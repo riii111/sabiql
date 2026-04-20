@@ -556,7 +556,7 @@ mod tests {
 
     mod smart_er_refresh_failed {
         use super::*;
-        use crate::app::ports::DbOperationError;
+        use crate::app::ports::outbound::DbOperationError;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {

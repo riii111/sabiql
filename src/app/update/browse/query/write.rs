@@ -386,7 +386,7 @@ mod tests {
 
     mod write_flow {
         use super::*;
-        use crate::app::ports::SqlDialect;
+        use crate::app::ports::outbound::SqlDialect;
 
         struct FakeSqlDialect;
         impl SqlDialect for FakeSqlDialect {
@@ -717,7 +717,7 @@ mod tests {
 
     mod delete_write_flow {
         use super::*;
-        use crate::app::ports::DbOperationError;
+        use crate::app::ports::outbound::DbOperationError;
 
         fn delete_preview() -> WritePreview {
             WritePreview {

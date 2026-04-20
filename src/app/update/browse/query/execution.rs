@@ -607,7 +607,7 @@ mod tests {
     mod query_failed {
         use super::*;
         use crate::app::model::shared::ui_state::ResultNavMode;
-        use crate::app::ports::DbOperationError;
+        use crate::app::ports::outbound::DbOperationError;
 
         #[test]
         fn resets_result_selection_and_offsets() {

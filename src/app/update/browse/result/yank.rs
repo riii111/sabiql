@@ -5,7 +5,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::ui_state::YankFlash;
-use crate::app::ports::ClipboardError;
+use crate::app::ports::outbound::ClipboardError;
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
 
@@ -119,7 +119,7 @@ fn clipboard_unavailable() -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::ddl_generator::DdlGenerator;
+    use crate::app::ports::outbound::ddl_generator::DdlGenerator;
     use crate::domain::{Column, Table};
     use std::sync::Arc;
 
