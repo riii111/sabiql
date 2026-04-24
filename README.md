@@ -82,6 +82,16 @@ On first run, enter your connection details — saved to `~/.config/sabiql/conne
 - `psql` CLI (PostgreSQL client)
 - Graphviz (optional, for ER diagrams): `brew install graphviz`
 
+## Development
+
+With Nix:
+
+```bash
+nix develop
+cargo nextest run --workspace
+nix build
+```
+
 ## Environment Variables
 
 | Variable | Description |
