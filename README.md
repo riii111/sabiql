@@ -87,9 +87,15 @@ On first run, enter your connection details — saved to `~/.config/sabiql/conne
 With Nix:
 
 ```bash
-nix develop
+direnv allow
 cargo nextest run --workspace
 nix build
+```
+
+Without direnv, enter the shell explicitly:
+
+```bash
+nix develop
 ```
 
 ## Environment Variables

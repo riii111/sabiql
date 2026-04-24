@@ -1,7 +1,5 @@
-rc: .lefthookrc
-
 pre-commit:
   commands:
     fmt:
-      run: mise run fmt
+      run: cargo fmt
       stage_fixed: true
