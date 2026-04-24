@@ -3,9 +3,9 @@ mod classify;
 mod dispatch;
 mod types;
 
-use crate::app::model::shared::key_sequence::Prefix;
-use crate::app::update::action::Action;
-use crate::app::update::input::keybindings::KeyCombo;
+use crate::model::shared::key_sequence::Prefix;
+use crate::update::action::Action;
+use crate::update::input::keybindings::KeyCombo;
 
 pub use classify::{classify_command, classify_sequence};
 pub use types::{

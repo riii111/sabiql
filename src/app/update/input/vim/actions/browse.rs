@@ -1,11 +1,11 @@
-use crate::app::model::shared::ui_state::ResultNavMode;
-use crate::app::update::action::{
+use crate::model::shared::ui_state::ResultNavMode;
+use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
 };
 
 use super::{scroll, scroll_to_cursor};
-use crate::app::update::input::vim::types::{
+use crate::update::input::vim::types::{
     BrowseVimContext, InspectorVimContext, ResultVimContext, VimModeTransition, VimNavigation,
     VimOperator,
 };
@@ -292,8 +292,8 @@ fn result_navigation(navigation: VimNavigation, ctx: ResultVimContext) -> Action
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::ui_state::ResultNavMode;
-    use crate::app::update::input::vim::{VimCommand, VimSurfaceContext, action_for_command};
+    use crate::model::shared::ui_state::ResultNavMode;
+    use crate::update::input::vim::{VimCommand, VimSurfaceContext, action_for_command};
     use rstest::rstest;
 
     fn result_ctx(mode: ResultNavMode) -> ResultVimContext {
@@ -456,9 +456,7 @@ mod tests {
     #[test]
     fn result_search_continuation_stays_unsupported() {
         let action = action_for_command(
-            VimCommand::SearchContinuation(
-                crate::app::update::input::vim::SearchContinuation::Next,
-            ),
+            VimCommand::SearchContinuation(crate::update::input::vim::SearchContinuation::Next),
             browse_result(result_ctx(ResultNavMode::Scroll)),
         );
 

@@ -1,9 +1,9 @@
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::update::action::{Action, ConnectionsLoadedPayload, ListMotion, ListTarget};
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::input_mode::InputMode;
+use crate::update::action::{Action, ConnectionsLoadedPayload, ListMotion, ListTarget};
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -70,7 +70,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::ConfirmConnectionSelection => {
-            use crate::app::model::connection::list::ConnectionListItem;
+            use crate::model::connection::list::ConnectionListItem;
             let selected_idx = state.ui.connection_list_selected;
 
             let effect = match state.connection_list_items().get(selected_idx) {
@@ -102,9 +102,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::services::AppServices;
-    use crate::app::update::browse::navigation::reduce_navigation;
     use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+    use crate::services::AppServices;
+    use crate::update::browse::navigation::reduce_navigation;
 
     fn create_test_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile {

@@ -3,11 +3,11 @@ use std::cell::RefCell;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::cmd::completion_engine::CompletionEngine;
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::text_input::TextInputLike;
-use crate::app::update::action::Action;
+use crate::cmd::completion_engine::CompletionEngine;
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::text_input::TextInputLike;
+use crate::update::action::Action;
 
 pub async fn run(
     effect: Effect,

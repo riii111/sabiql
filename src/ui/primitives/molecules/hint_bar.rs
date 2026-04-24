@@ -1,8 +1,8 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use crate::ui::primitives::atoms::{key_chip, key_text};
-use crate::ui::theme::ThemePalette;
+use crate::primitives::atoms::{key_chip, key_text};
+use crate::theme::ThemePalette;
 
 pub fn hint_line(hints: &[(&str, &str)], theme: &ThemePalette) -> Line<'static> {
     let mut spans = Vec::new();

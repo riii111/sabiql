@@ -10,7 +10,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub fn render(
     frame: &mut Frame,
@@ -51,7 +51,7 @@ pub fn render(
     let visible_mask: Vec<bool> = flash_mask.into_iter().skip(clamped).collect();
 
     let flash_active = can_yank && state.flash_timers.is_active(FlashId::SqlModal, now);
-    crate::ui::primitives::atoms::apply_yank_flash_masked(
+    crate::primitives::atoms::apply_yank_flash_masked(
         &mut visible,
         flash_active,
         &visible_mask,
@@ -409,7 +409,7 @@ mod tests {
     use super::*;
     use crate::app::model::explain_context::SlotSource;
     use crate::domain::explain_plan::ExplainPlan;
-    use crate::ui::theme::DEFAULT_THEME;
+    use crate::theme::DEFAULT_THEME;
 
     fn sample_slot(label: SlotSource, plan: &str) -> CompareSlot {
         CompareSlot {

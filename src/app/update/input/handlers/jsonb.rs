@@ -1,10 +1,10 @@
-use crate::app::model::shared::key_sequence::Prefix;
-use crate::app::update::action::{Action, CursorMove, InputTarget};
-use crate::app::update::input::keybindings::{
+use crate::model::shared::key_sequence::Prefix;
+use crate::update::action::{Action, CursorMove, InputTarget};
+use crate::update::input::keybindings::{
     JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo, Modifiers,
 };
-use crate::app::update::input::keymap;
-use crate::app::update::input::vim::{
+use crate::update::input::keymap;
+use crate::update::input::vim::{
     JsonbDetailVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
 
@@ -167,8 +167,8 @@ pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::update::action::CursorMove;
-    use crate::app::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::action::CursorMove;
+    use crate::update::input::keybindings::{Key, KeyCombo};
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -180,7 +180,7 @@ mod tests {
 
     mod jsonb_detail {
         use super::*;
-        use crate::app::model::shared::key_sequence::Prefix;
+        use crate::model::shared::key_sequence::Prefix;
 
         #[test]
         fn ctrl_n_moves_cursor_down_in_normal_mode() {
@@ -298,7 +298,7 @@ mod tests {
 
     mod jsonb_search {
         use super::*;
-        use crate::app::model::shared::key_sequence::Prefix;
+        use crate::model::shared::key_sequence::Prefix;
 
         #[test]
         fn ctrl_n_still_falls_through_to_search_input() {

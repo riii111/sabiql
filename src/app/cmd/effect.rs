@@ -1,6 +1,6 @@
-use crate::app::update::action::Action;
 use crate::domain::Table;
 use crate::domain::connection::{ConnectionId, SslMode};
+use crate::update::action::Action;
 
 #[derive(Debug, Clone)]
 pub enum Effect {

@@ -1,8 +1,8 @@
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
-use crate::app::model::shared::text_input::TextInputState;
 use crate::domain::query_history::QueryHistoryEntry;
+use crate::model::shared::text_input::TextInputState;
 
 #[derive(Debug, Clone, Default)]
 pub struct QueryHistoryPickerState {

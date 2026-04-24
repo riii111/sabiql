@@ -1,13 +1,13 @@
 use std::time::{Duration, Instant};
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::inspector_tab::InspectorTab;
-use crate::app::model::shared::ui_state::YankFlash;
-use crate::app::ports::outbound::ClipboardError;
-use crate::app::services::AppServices;
-use crate::app::update::action::Action;
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::flash_timer::FlashId;
+use crate::model::shared::inspector_tab::InspectorTab;
+use crate::model::shared::ui_state::YankFlash;
+use crate::ports::outbound::ClipboardError;
+use crate::services::AppServices;
+use crate::update::action::Action;
 
 pub fn reduce(
     state: &mut AppState,
@@ -119,8 +119,8 @@ fn clipboard_unavailable() -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::outbound::ddl_generator::DdlGenerator;
     use crate::domain::{Column, Table};
+    use crate::ports::outbound::ddl_generator::DdlGenerator;
     use std::sync::Arc;
 
     mod cell_yank {

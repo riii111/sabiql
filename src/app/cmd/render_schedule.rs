@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::er_state::ErStatus;
-use crate::app::model::shared::input_mode::InputMode;
+use crate::model::app_state::AppState;
+use crate::model::er_state::ErStatus;
+use crate::model::shared::input_mode::InputMode;
 
 const SPINNER_INTERVAL: Duration = Duration::from_millis(150);
 

@@ -1,6 +1,6 @@
 use super::KeyBinding;
 use super::{Key, KeyCombo};
-use crate::app::update::action::Action;
+use crate::update::action::Action;
 
 // =============================================================================
 // SQL Modal (Normal mode — default when opened)

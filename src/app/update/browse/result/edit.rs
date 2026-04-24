@@ -1,12 +1,12 @@
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::policy::write::write_update::build_pk_pairs;
-use crate::app::update::action::{Action, InputTarget};
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::input_mode::InputMode;
+use crate::policy::write::write_update::build_pk_pairs;
+use crate::update::action::{Action, InputTarget};
 
-use crate::app::update::helpers::{EditGuardrailError, editable_preview_base};
+use crate::update::helpers::{EditGuardrailError, editable_preview_base};
 
 fn is_jsonb_cell(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
@@ -149,8 +149,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::update::action::CursorMove;
     use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::update::action::CursorMove;
     use std::sync::Arc;
 
     mod cell_edit_entry_guardrails {

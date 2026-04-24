@@ -4,13 +4,13 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::cmd::cache::TtlCache;
-use crate::app::cmd::completion_engine::CompletionEngine;
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
-use crate::app::update::action::Action;
+use crate::cmd::cache::TtlCache;
+use crate::cmd::completion_engine::CompletionEngine;
+use crate::cmd::effect::Effect;
 use crate::domain::DatabaseMetadata;
+use crate::model::app_state::AppState;
+use crate::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::update::action::Action;
 
 pub async fn run(
     effect: Effect,
@@ -190,20 +190,20 @@ mod tests {
 
     use tokio::sync::mpsc;
 
-    use crate::app::cmd::cache::TtlCache;
-    use crate::app::cmd::completion_engine::CompletionEngine;
-    use crate::app::cmd::effect::Effect;
-    use crate::app::cmd::test_support::*;
+    use crate::cmd::cache::TtlCache;
+    use crate::cmd::completion_engine::CompletionEngine;
+    use crate::cmd::effect::Effect;
+    use crate::cmd::test_support::*;
     use std::time::Instant;
 
-    use crate::app::model::app_state::AppState;
-    use crate::app::ports::outbound::connection_store::MockConnectionStore;
-    use crate::app::ports::outbound::metadata::MockMetadataProvider;
-    use crate::app::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::app::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
-    use crate::app::services::AppServices;
-    use crate::app::update::action::Action;
     use crate::domain::DatabaseMetadata;
+    use crate::model::app_state::AppState;
+    use crate::ports::outbound::connection_store::MockConnectionStore;
+    use crate::ports::outbound::metadata::MockMetadataProvider;
+    use crate::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
+    use crate::services::AppServices;
+    use crate::update::action::Action;
 
     struct NoopRenderer;
     impl Renderer for NoopRenderer {

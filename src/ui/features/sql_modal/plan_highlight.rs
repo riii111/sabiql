@@ -1,7 +1,7 @@
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 const NODE_TYPES: &[&str] = &[
     "Aggregate",
@@ -145,7 +145,7 @@ fn find_node_type(text: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::theme::DEFAULT_THEME;
+    use crate::theme::DEFAULT_THEME;
 
     fn spans_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()

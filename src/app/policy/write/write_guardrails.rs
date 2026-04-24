@@ -1,4 +1,4 @@
-use crate::app::policy::sql::statement_classifier::StatementKind;
+use crate::policy::sql::statement_classifier::StatementKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteOperation {
@@ -51,7 +51,7 @@ pub struct GuardrailDecision {
     pub target_summary: Option<TargetSummary>,
 }
 
-use crate::app::policy::json::json_diff::JsonDiffLine;
+use crate::policy::json::json_diff::JsonDiffLine;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnDiff {

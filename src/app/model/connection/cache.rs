@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::app::model::browse::result_history::ResultHistory;
-use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
+use crate::model::browse::result_history::ResultHistory;
+use crate::model::shared::inspector_tab::InspectorTab;
 
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionCache {

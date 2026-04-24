@@ -6,10 +6,10 @@ mod setup;
 
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::services::AppServices;
-use crate::app::update::action::Action;
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::services::AppServices;
+use crate::update::action::Action;
 
 pub fn reduce_connection(
     state: &mut AppState,
@@ -26,7 +26,7 @@ pub fn reduce_connection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::input_mode::InputMode;
+    use crate::model::shared::input_mode::InputMode;
 
     #[test]
     fn paste_handled_by_setup_in_connection_setup_mode() {

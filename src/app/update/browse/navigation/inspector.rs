@@ -1,11 +1,9 @@
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::inspector_tab::InspectorTab;
-use crate::app::model::shared::viewport::{
-    calculate_next_column_offset, calculate_prev_column_offset,
-};
-use crate::app::services::AppServices;
-use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::inspector_tab::InspectorTab;
+use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
+use crate::services::AppServices;
+use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 
 use super::inspector_max_scroll;
 
@@ -100,9 +98,9 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::db_capabilities::DbCapabilities;
-    use crate::app::update::browse::navigation::reduce_navigation;
     use crate::domain::{Column, Table};
+    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::update::browse::navigation::reduce_navigation;
     use std::time::Instant;
 
     mod inspector_scroll_top_bottom {

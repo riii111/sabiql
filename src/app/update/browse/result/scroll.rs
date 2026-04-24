@@ -1,10 +1,8 @@
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::key_sequence::KeySequenceState;
-use crate::app::model::shared::viewport::{
-    calculate_next_column_offset, calculate_prev_column_offset,
-};
-use crate::app::update::action::{
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::key_sequence::KeySequenceState;
+use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
+use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
 };
 
@@ -262,7 +260,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::app::model::shared::key_sequence::Prefix;
+    use crate::model::shared::key_sequence::Prefix;
 
     fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
         let mut state = AppState::new("test".to_string());

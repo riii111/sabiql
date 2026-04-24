@@ -1,21 +1,21 @@
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::browse::query_execution::{
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::browse::query_execution::{
     DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection,
 };
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::policy::json::json_diff::compute_json_diff;
-use crate::app::policy::write::write_guardrails::{
+use crate::model::shared::input_mode::InputMode;
+use crate::policy::json::json_diff::compute_json_diff;
+use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::policy::write::write_update::{
+use crate::policy::write::write_update::{
     build_pk_pairs, escape_preview_value, normalize_for_diff,
 };
-use crate::app::services::AppServices;
-use crate::app::update::action::Action;
-use crate::app::update::helpers::{
+use crate::services::AppServices;
+use crate::update::action::Action;
+use crate::update::helpers::{
     EditGuardrailError, build_bulk_delete_preview, editable_preview_base,
 };
 
@@ -55,7 +55,7 @@ fn build_update_preview(
     }
 
     let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
-    let target = crate::app::policy::write::write_guardrails::TargetSummary {
+    let target = crate::policy::write::write_guardrails::TargetSummary {
         schema: state.query.pagination.schema.clone(),
         table: state.query.pagination.table.clone(),
         key_values: pk_pairs.clone().unwrap_or_default(),
@@ -214,7 +214,7 @@ pub fn reduce(
             state.confirm_dialog.open(
                 title,
                 build_write_preview_fallback_message(preview),
-                crate::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+                crate::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
                     sql: preview.sql.clone(),
                     blocked: preview.guardrail.blocked,
                 },
@@ -375,18 +375,18 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::browse::query_execution::{
+    use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PostDeleteRowSelection, QueryStatus,
     };
-    use crate::app::policy::write::write_guardrails::{
+    use crate::policy::write::write_guardrails::{
         GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
     };
-    use crate::app::update::browse::query::reduce_query;
-    use crate::app::update::browse::query::tests::*;
+    use crate::update::browse::query::reduce_query;
+    use crate::update::browse::query::tests::*;
 
     mod write_flow {
         use super::*;
-        use crate::app::ports::outbound::SqlDialect;
+        use crate::ports::outbound::SqlDialect;
 
         struct FakeSqlDialect;
         impl SqlDialect for FakeSqlDialect {
@@ -653,7 +653,7 @@ mod tests {
                 Some(expected_sql.as_str())
             );
             match state.confirm_dialog.intent() {
-                Some(crate::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+                Some(crate::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
                     sql,
                     blocked,
                 }) => {
@@ -717,7 +717,7 @@ mod tests {
 
     mod delete_write_flow {
         use super::*;
-        use crate::app::ports::outbound::DbOperationError;
+        use crate::ports::outbound::DbOperationError;
 
         fn delete_preview() -> WritePreview {
             WritePreview {

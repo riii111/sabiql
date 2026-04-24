@@ -1,14 +1,14 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::browse::query_execution::PREVIEW_PAGE_SIZE;
-use crate::app::model::connection::error::ConnectionErrorInfo;
-use crate::app::model::er_state::ErStatus;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::sql_editor::modal::FailedPrefetchEntry;
-use crate::app::update::action::{Action, TableTarget};
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
+use crate::model::connection::error::ConnectionErrorInfo;
+use crate::model::er_state::ErStatus;
+use crate::model::shared::input_mode::InputMode;
+use crate::model::sql_editor::modal::FailedPrefetchEntry;
+use crate::update::action::{Action, TableTarget};
 
 const BASE_BACKOFF_SECS: u64 = 1;
 const MAX_BACKOFF_SECS: u64 = 4;
@@ -452,8 +452,8 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::app_state::AppState;
-    use crate::app::model::sql_editor::modal::FailedPrefetchEntry;
+    use crate::model::app_state::AppState;
+    use crate::model::sql_editor::modal::FailedPrefetchEntry;
     use std::time::{Duration, Instant};
 
     fn state_with_dsn(dsn: &str) -> AppState {
@@ -464,7 +464,7 @@ mod tests {
 
     mod prefetch_table_detail {
         use super::*;
-        use crate::app::model::er_state::ErStatus;
+        use crate::model::er_state::ErStatus;
 
         #[test]
         fn backoff_table_requeued_at_tail_with_process_effect() {
@@ -651,7 +651,7 @@ mod tests {
 
     mod table_detail_cache_failed {
         use super::*;
-        use crate::app::ports::outbound::DbOperationError;
+        use crate::ports::outbound::DbOperationError;
 
         #[test]
         fn increments_retry_count() {
@@ -960,7 +960,7 @@ mod tests {
 
     mod completion_check {
         use super::*;
-        use crate::app::model::er_state::ErStatus;
+        use crate::model::er_state::ErStatus;
 
         #[test]
         fn complete_not_fk_expanded_dispatches_expand() {
@@ -996,7 +996,7 @@ mod tests {
 
     mod fk_neighbors_discovered {
         use super::*;
-        use crate::app::model::er_state::ErStatus;
+        use crate::model::er_state::ErStatus;
 
         #[test]
         fn empty_neighbors_dispatches_generate() {

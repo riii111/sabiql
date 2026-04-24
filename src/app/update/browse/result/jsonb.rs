@@ -1,17 +1,17 @@
 use std::time::Instant;
 use unicode_casefold::UnicodeCaseFold;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::browse::jsonb_detail::JsonbDetailState;
-use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::key_sequence::KeySequenceState;
-use crate::app::model::shared::text_input::TextInputLike;
-use crate::app::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
-use crate::app::ports::outbound::ClipboardError;
-use crate::app::update::action::{Action, CursorMove, InputTarget};
+use crate::cmd::effect::Effect;
 use crate::domain::QuerySource;
+use crate::model::app_state::AppState;
+use crate::model::browse::jsonb_detail::JsonbDetailState;
+use crate::model::shared::flash_timer::FlashId;
+use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::key_sequence::KeySequenceState;
+use crate::model::shared::text_input::TextInputLike;
+use crate::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
+use crate::ports::outbound::ClipboardError;
+use crate::update::action::{Action, CursorMove, InputTarget};
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -577,9 +577,9 @@ mod tests {
 
     mod edit_lifecycle {
         use super::*;
-        use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
-        use crate::app::model::shared::key_sequence::{KeySequenceState, Prefix};
-        use crate::app::update::action::CursorMove;
+        use crate::model::browse::jsonb_detail::JsonbDetailMode;
+        use crate::model::shared::key_sequence::{KeySequenceState, Prefix};
+        use crate::update::action::CursorMove;
         use rstest::rstest;
 
         #[test]
@@ -805,7 +805,7 @@ mod tests {
 
     mod yank {
         use super::*;
-        use crate::app::cmd::effect::Effect;
+        use crate::cmd::effect::Effect;
 
         #[test]
         fn copies_all_text_to_clipboard() {
@@ -824,7 +824,7 @@ mod tests {
 
     mod search {
         use super::*;
-        use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+        use crate::model::browse::jsonb_detail::JsonbDetailMode;
 
         #[test]
         fn enter_search_activates_search_mode() {

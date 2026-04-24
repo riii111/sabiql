@@ -1,5 +1,5 @@
-use crate::app::model::shared::multi_line_input::MultiLineInputState;
-use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
+use crate::model::shared::multi_line_input::MultiLineInputState;
+use crate::model::shared::text_input::{TextInputLike, TextInputState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JsonbDetailMode {
@@ -183,7 +183,7 @@ impl JsonbDetailState {
 #[cfg(test)]
 mod tests {
     use super::JsonbDetailState;
-    use crate::app::model::shared::text_input::TextInputLike;
+    use crate::model::shared::text_input::TextInputLike;
 
     #[test]
     fn open_prettifies_valid_json_into_editor() {

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::app::model::browse::result_history::ResultHistory;
 use crate::domain::{QueryResult, QuerySource};
+use crate::model::browse::result_history::ResultHistory;
 
 pub const PREVIEW_PAGE_SIZE: usize = 500;
 

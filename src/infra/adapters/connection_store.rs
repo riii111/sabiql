@@ -3,10 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::app::ports::outbound::connection_store::{ConnectionStore, ConnectionStoreError};
+use crate::config::connection_config::{CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile};
 use crate::domain::connection::{ConnectionId, ConnectionProfile};
-use crate::infra::config::connection_config::{
-    CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile,
-};
 
 const CONFIG_FILE_NAME: &str = "connections.toml";
 

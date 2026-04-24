@@ -1,5 +1,5 @@
-use crate::app::policy::password_masking::mask_password;
-use crate::app::ports::outbound::DbOperationError;
+use crate::policy::password_masking::mask_password;
+use crate::ports::outbound::DbOperationError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {

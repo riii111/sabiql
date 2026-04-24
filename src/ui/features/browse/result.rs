@@ -7,7 +7,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 
-use crate::ui::primitives::atoms::{panel_block_highlight, text_cursor_spans};
+use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
@@ -17,10 +17,8 @@ use crate::app::model::shared::viewport::{
     select_viewport_columns,
 };
 use crate::domain::{QueryResult, QuerySource};
-use crate::ui::primitives::utils::text_utils::{
-    MIN_COL_WIDTH, PADDING, calculate_header_min_widths,
-};
-use crate::ui::theme::ThemePalette;
+use crate::primitives::utils::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
+use crate::theme::ThemePalette;
 
 pub struct ResultPane;
 
@@ -369,7 +367,7 @@ impl ResultPane {
         let total_rows = result.rows.len();
         let total_cols = result.columns.len();
 
-        use crate::ui::primitives::atoms::scroll_indicator::{
+        use crate::primitives::atoms::scroll_indicator::{
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
             render_vertical_scroll_indicator_bar,
         };
@@ -695,7 +693,7 @@ mod tests {
     #[allow(clippy::print_stderr, reason = "benchmark result output")]
     fn bench_ideal_widths_cache_speedup() {
         use crate::app::model::shared::viewport::ColumnWidthsCache;
-        use crate::ui::primitives::utils::text_utils::calculate_header_min_widths;
+        use crate::primitives::utils::text_utils::calculate_header_min_widths;
         use std::time::Instant;
 
         let cols = 20;

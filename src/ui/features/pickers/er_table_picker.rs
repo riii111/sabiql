@@ -6,10 +6,10 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::domain::er::er_output_filename;
-use crate::ui::primitives::atoms::text_cursor_spans;
-use crate::ui::theme::ThemePalette;
+use crate::primitives::atoms::text_cursor_spans;
+use crate::theme::ThemePalette;
 
-use crate::ui::primitives::molecules::render_modal;
+use crate::primitives::molecules::render_modal;
 
 pub struct ErTablePicker;
 

@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::ports::outbound::QueryHistoryStore;
-use crate::app::update::action::Action;
+use crate::cmd::effect::Effect;
+use crate::ports::outbound::QueryHistoryStore;
+use crate::update::action::Action;
 
 pub fn run(
     effect: Effect,

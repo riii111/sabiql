@@ -7,10 +7,10 @@ use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
-use crate::ui::primitives::atoms::highlight_sql;
-use crate::ui::primitives::molecules::{render_modal, render_modal_with_border_color};
-use crate::ui::primitives::utils::text_utils::wrapped_line_count;
-use crate::ui::theme::ThemePalette;
+use crate::primitives::atoms::highlight_sql;
+use crate::primitives::molecules::{render_modal, render_modal_with_border_color};
+use crate::primitives::utils::text_utils::wrapped_line_count;
+use crate::theme::ThemePalette;
 
 pub struct ConfirmDialog;
 

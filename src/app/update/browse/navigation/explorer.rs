@@ -1,9 +1,9 @@
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::key_sequence::KeySequenceState;
-use crate::app::model::shared::ui_state::{scroll_max_offset, text_display_width};
-use crate::app::update::action::{
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::focused_pane::FocusedPane;
+use crate::model::shared::key_sequence::KeySequenceState;
+use crate::model::shared::ui_state::{scroll_max_offset, text_display_width};
+use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
 };
@@ -200,10 +200,10 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::key_sequence::Prefix;
-    use crate::app::services::AppServices;
-    use crate::app::update::browse::navigation::reduce_navigation;
     use crate::domain::{DatabaseMetadata, TableSummary};
+    use crate::model::shared::key_sequence::Prefix;
+    use crate::services::AppServices;
+    use crate::update::browse::navigation::reduce_navigation;
     use rstest::rstest;
     use std::sync::Arc;
     use std::time::Instant;

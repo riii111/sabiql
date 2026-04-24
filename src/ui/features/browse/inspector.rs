@@ -16,11 +16,9 @@ use crate::app::model::shared::viewport::{
 use crate::app::ports::outbound::DdlGenerator;
 use crate::app::services::AppServices;
 use crate::domain::Table;
-use crate::ui::primitives::atoms::panel_block;
-use crate::ui::primitives::utils::text_utils::{
-    MIN_COL_WIDTH, PADDING, calculate_header_min_widths,
-};
-use crate::ui::theme::ThemePalette;
+use crate::primitives::atoms::panel_block;
+use crate::primitives::utils::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
+use crate::theme::ThemePalette;
 
 pub struct Inspector;
 
@@ -234,7 +232,7 @@ impl Inspector {
         let total_lines = lines.len();
         let visible_lines = area.height as usize;
 
-        use crate::ui::primitives::atoms::scroll_indicator::clamp_scroll_offset;
+        use crate::primitives::atoms::scroll_indicator::clamp_scroll_offset;
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
         let paragraph = Paragraph::new(lines)
@@ -391,7 +389,7 @@ impl Inspector {
             .style(Style::default().fg(theme.semantic.text.primary));
         frame.render_widget(table_widget, area);
 
-        use crate::ui::primitives::atoms::scroll_indicator::{
+        use crate::primitives::atoms::scroll_indicator::{
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
             render_vertical_scroll_indicator_bar,
         };
@@ -450,7 +448,7 @@ impl Inspector {
         let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
-        use crate::ui::primitives::molecules::{StripedTableConfig, render_striped_table};
+        use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
         render_striped_table(
             frame,
             area,
@@ -503,7 +501,7 @@ impl Inspector {
         let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
-        use crate::ui::primitives::molecules::{StripedTableConfig, render_striped_table};
+        use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
         render_striped_table(
             frame,
             area,
@@ -598,7 +596,7 @@ impl Inspector {
                 let total_lines = lines.len();
                 let visible_lines = area.height as usize;
 
-                use crate::ui::primitives::atoms::scroll_indicator::{
+                use crate::primitives::atoms::scroll_indicator::{
                     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
                 };
                 let clamped_scroll_offset =
@@ -641,7 +639,7 @@ impl Inspector {
             Constraint::Percentage(15),
         ];
 
-        use crate::ui::primitives::molecules::{StripedTableConfig, render_striped_table};
+        use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
         render_striped_table(
             frame,
             area,
@@ -691,7 +689,7 @@ impl Inspector {
         let total_lines = ddl.lines().count();
         let visible_lines = area.height as usize;
 
-        use crate::ui::primitives::atoms::scroll_indicator::{
+        use crate::primitives::atoms::scroll_indicator::{
             VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
         };
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
@@ -705,7 +703,7 @@ impl Inspector {
             })
             .collect();
 
-        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
+        crate::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })

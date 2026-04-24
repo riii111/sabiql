@@ -2,7 +2,7 @@ pub(super) mod browse;
 pub(super) mod jsonb;
 pub(super) mod sql;
 
-use crate::app::update::action::{
+use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
 };
 

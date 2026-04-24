@@ -1,6 +1,6 @@
 use ratatui::widgets::{Block, Borders};
 
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub fn panel_block(title: &str, focused: bool, theme: &ThemePalette) -> Block<'static> {
     Block::default()

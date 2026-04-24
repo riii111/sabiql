@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::browse::query_execution::PREVIEW_PAGE_SIZE;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::services::AppServices;
-use crate::app::update::action::Action;
+use crate::cmd::effect::Effect;
 use crate::domain::QuerySource;
+use crate::model::app_state::AppState;
+use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
+use crate::model::shared::input_mode::InputMode;
+use crate::services::AppServices;
+use crate::update::action::Action;
 
 pub fn reduce(
     state: &mut AppState,
@@ -78,7 +78,7 @@ pub fn reduce(
                 state.confirm_dialog.open(
                     "Confirm CSV Export",
                     msg,
-                    crate::app::model::shared::confirm_dialog::ConfirmIntent::CsvExport {
+                    crate::model::shared::confirm_dialog::ConfirmIntent::CsvExport {
                         export_query: export_query.clone(),
                         file_name: file_name.clone(),
                         row_count: *row_count,
@@ -207,9 +207,9 @@ mod tests {
     use crate::domain::{QueryResult, QuerySource};
     use std::sync::Arc;
 
-    use crate::app::model::browse::query_execution::PaginationState;
-    use crate::app::update::browse::query::reduce_query;
-    use crate::app::update::browse::query::tests::*;
+    use crate::model::browse::query_execution::PaginationState;
+    use crate::update::browse::query::reduce_query;
+    use crate::update::browse::query::tests::*;
 
     fn preview_result_with_two_columns(row_count: usize) -> Arc<QueryResult> {
         let rows: Vec<Vec<String>> = (0..row_count)
@@ -459,8 +459,8 @@ mod tests {
 
     mod csv_export {
         use super::*;
-        use crate::app::ports::outbound::DbOperationError;
         use crate::domain::QueryResult;
+        use crate::ports::outbound::DbOperationError;
 
         fn export_test_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());

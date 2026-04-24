@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::app::model::shared::text_input::TextInputState;
 use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
+use crate::model::shared::text_input::TextInputState;
 
 pub const CONNECTION_INPUT_WIDTH: u16 = 30;
 pub const CONNECTION_INPUT_VISIBLE_WIDTH: usize = (CONNECTION_INPUT_WIDTH - 4) as usize;

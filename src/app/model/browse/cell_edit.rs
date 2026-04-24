@@ -1,4 +1,4 @@
-use crate::app::model::shared::text_input::TextInputState;
+use crate::model::shared::text_input::TextInputState;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CellEditState {
@@ -39,7 +39,7 @@ impl CellEditState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::update::action::CursorMove;
+    use crate::update::action::CursorMove;
 
     #[test]
     fn begin_with_value_sets_active_state_with_copied_values() {

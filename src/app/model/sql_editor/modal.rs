@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
-use crate::app::model::shared::multi_line_input::MultiLineInputState;
-use crate::app::model::shared::text_input::TextInputState;
-use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
 use crate::domain::CommandTag;
+use crate::model::shared::multi_line_input::MultiLineInputState;
+use crate::model::shared::text_input::TextInputState;
+use crate::policy::write::write_guardrails::AdhocRiskDecision;
 
 use super::completion::CompletionState;
 
@@ -178,8 +178,8 @@ impl SqlModalContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::text_input::TextInputLike;
-    use crate::app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+    use crate::model::shared::text_input::TextInputLike;
+    use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
     #[test]
     fn default_creates_empty_context() {
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn confirming_high_with_target_name() {
-        use crate::app::policy::write::write_guardrails::RiskLevel;
+        use crate::policy::write::write_guardrails::RiskLevel;
 
         let status = SqlModalStatus::ConfirmingHigh {
             decision: AdhocRiskDecision {
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn confirming_high_without_target_name() {
-        use crate::app::policy::write::write_guardrails::RiskLevel;
+        use crate::policy::write::write_guardrails::RiskLevel;
 
         let status = SqlModalStatus::ConfirmingHigh {
             decision: AdhocRiskDecision {

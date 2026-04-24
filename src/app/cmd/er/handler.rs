@@ -6,15 +6,15 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use super::task::spawn_er_diagram_task;
-use crate::app::cmd::completion_engine::CompletionEngine;
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
-use crate::app::update::action::{
-    Action, ErDiagramError, ErLogError, SmartErRefreshError, SmartErRefreshResult,
-};
+use crate::cmd::completion_engine::CompletionEngine;
+use crate::cmd::effect::Effect;
 use crate::domain::ErTableInfo;
 use crate::domain::er::{er_output_filename, fk_neighbors_of_seeds, fk_reachable_tables_multi};
+use crate::model::app_state::AppState;
+use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
+use crate::update::action::{
+    Action, ErDiagramError, ErLogError, SmartErRefreshError, SmartErRefreshResult,
+};
 
 pub async fn run(
     effect: Effect,

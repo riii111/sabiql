@@ -1,6 +1,6 @@
 pub mod json_diff;
 
-use crate::app::model::browse::json_tree::{JsonTree, LineType, TreeLine, TreeValue};
+use crate::model::browse::json_tree::{JsonTree, LineType, TreeLine, TreeValue};
 
 pub fn parse_json_tree(json_str: &str) -> Result<JsonTree, String> {
     let value: serde_json::Value =

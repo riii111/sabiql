@@ -4,18 +4,18 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 
-use crate::app::cmd::cache::TtlCache;
-use crate::app::cmd::runner::{EffectRunner, EffectRunnerBuilder};
-use crate::app::ports::outbound::{
+use crate::cmd::cache::TtlCache;
+use crate::cmd::runner::{EffectRunner, EffectRunnerBuilder};
+use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};
+use crate::ports::outbound::{
     ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder,
     ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
     MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore,
     ServiceFileError,
 };
-use crate::app::update::action::Action;
-use crate::domain::connection::{ConnectionProfile, ServiceEntry};
-use crate::domain::query_history::QueryHistoryEntry;
-use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};
+use crate::update::action::Action;
 
 pub struct NoopConfigWriter;
 impl ConfigWriter for NoopConfigWriter {

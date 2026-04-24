@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use crate::app::model::browse::query_execution::{PaginationState, QueryExecution};
-use crate::app::model::browse::result_history::ResultHistory;
-use crate::app::model::connection::cache::ConnectionCache;
-use crate::app::model::connection::state::ConnectionState;
-use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::domain::{
     ConnectionId, DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary,
 };
+use crate::model::browse::query_execution::{PaginationState, QueryExecution};
+use crate::model::browse::result_history::ResultHistory;
+use crate::model::connection::cache::ConnectionCache;
+use crate::model::connection::state::ConnectionState;
+use crate::model::shared::inspector_tab::InspectorTab;
 
 // # Invariants
 //

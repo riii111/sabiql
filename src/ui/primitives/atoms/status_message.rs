@@ -1,6 +1,6 @@
 use ratatui::text::{Line, Span};
 
-use crate::ui::theme::{StatusTone, ThemePalette};
+use crate::theme::{StatusTone, ThemePalette};
 
 pub enum MessageType {
     Error,

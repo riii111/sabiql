@@ -10,9 +10,9 @@ use crate::app::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
 use crate::domain::MetadataState;
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
-use crate::ui::primitives::atoms::panel_block;
+use crate::primitives::atoms::panel_block;
 
 pub struct Explorer;
 
@@ -106,7 +106,7 @@ impl Explorer {
             if total_items > viewport_size {
                 let scroll_offset = state.ui.explorer_scroll_offset;
 
-                use crate::ui::primitives::atoms::scroll_indicator::{
+                use crate::primitives::atoms::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,
                 };
                 let has_h_scroll = max_name_width > content_width;
@@ -124,7 +124,7 @@ impl Explorer {
             }
 
             if max_name_width > content_width {
-                use crate::ui::primitives::atoms::scroll_indicator::{
+                use crate::primitives::atoms::scroll_indicator::{
                     HorizontalScrollParams, render_horizontal_scroll_indicator,
                 };
                 render_horizontal_scroll_indicator(

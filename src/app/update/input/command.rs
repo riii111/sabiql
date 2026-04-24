@@ -1,4 +1,4 @@
-use crate::app::update::action::Action;
+use crate::update::action::Action;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {

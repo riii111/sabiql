@@ -1,4 +1,4 @@
-use crate::app::update::action::CursorMove;
+use crate::update::action::CursorMove;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextInputState {

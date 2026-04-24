@@ -5,7 +5,7 @@ use ratatui::symbols::border;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders};
 
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub fn centered_rect(area: Rect, width: Constraint, height: Constraint) -> Rect {
     let [area] = Layout::horizontal([width]).flex(Flex::Center).areas(area);

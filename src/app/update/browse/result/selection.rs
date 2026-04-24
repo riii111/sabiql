@@ -1,8 +1,8 @@
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::update::action::Action;
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::update::action::Action;
 
 use super::scroll::{result_col_count, result_row_count};
 

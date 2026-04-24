@@ -1,11 +1,11 @@
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::confirm_dialog::ConfirmIntent;
-use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::update::action::{
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::confirm_dialog::ConfirmIntent;
+use crate::model::shared::flash_timer::FlashId;
+use crate::model::shared::input_mode::InputMode;
+use crate::update::action::{
     Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 
@@ -274,21 +274,19 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             match origin {
                 InputMode::Normal => {
                     state.modal.set_mode(InputMode::SqlModal);
-                    state.sql_modal.active_tab =
-                        crate::app::model::sql_editor::modal::SqlModalTab::Sql;
+                    state.sql_modal.active_tab = crate::model::sql_editor::modal::SqlModalTab::Sql;
                     state
                         .sql_modal
-                        .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Normal);
+                        .set_status(crate::model::sql_editor::modal::SqlModalStatus::Normal);
                     state.sql_modal.editor.set_content(query);
                     state.sql_modal.reset_completion();
                 }
                 InputMode::SqlModal => {
-                    state.sql_modal.active_tab =
-                        crate::app::model::sql_editor::modal::SqlModalTab::Sql;
+                    state.sql_modal.active_tab = crate::model::sql_editor::modal::SqlModalTab::Sql;
                     state.sql_modal.editor.set_content(query);
                     state
                         .sql_modal
-                        .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Normal);
+                        .set_status(crate::model::sql_editor::modal::SqlModalStatus::Normal);
                     state.sql_modal.reset_completion();
                 }
                 _ => {}
@@ -384,7 +382,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+    use crate::model::shared::confirm_dialog::ConfirmIntent;
 
     use std::time::Instant;
 
@@ -513,20 +511,17 @@ mod tests {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
                 state.result_interaction.set_write_preview(
-                    crate::app::policy::write::write_guardrails::WritePreview {
-                        operation:
-                            crate::app::policy::write::write_guardrails::WriteOperation::Update,
+                    crate::policy::write::write_guardrails::WritePreview {
+                        operation: crate::policy::write::write_guardrails::WriteOperation::Update,
                         sql: "UPDATE t SET x=1".to_string(),
-                        target_summary:
-                            crate::app::policy::write::write_guardrails::TargetSummary {
-                                schema: "public".to_string(),
-                                table: "t".to_string(),
-                                key_values: vec![],
-                            },
+                        target_summary: crate::policy::write::write_guardrails::TargetSummary {
+                            schema: "public".to_string(),
+                            table: "t".to_string(),
+                            key_values: vec![],
+                        },
                         diff: vec![],
-                        guardrail: crate::app::policy::write::write_guardrails::GuardrailDecision {
-                            risk_level:
-                                crate::app::policy::write::write_guardrails::RiskLevel::High,
+                        guardrail: crate::policy::write::write_guardrails::GuardrailDecision {
+                            risk_level: crate::policy::write::write_guardrails::RiskLevel::High,
                             blocked: true,
                             reason: Some("too risky".to_string()),
                             target_summary: None,
@@ -767,10 +762,10 @@ mod tests {
 
     mod query_history_picker {
         use super::*;
-        use crate::app::model::shared::text_input::TextInputLike;
-        use crate::app::ports::outbound::query_history::QueryHistoryError;
         use crate::domain::ConnectionId;
         use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+        use crate::model::shared::text_input::TextInputLike;
+        use crate::ports::outbound::query_history::QueryHistoryError;
 
         fn make_entry(query: &str, conn_id: &ConnectionId) -> QueryHistoryEntry {
             QueryHistoryEntry::new(
@@ -1097,7 +1092,7 @@ mod tests {
                 assert_eq!(state.sql_modal.editor.content(), "SELECT * FROM users");
                 assert!(matches!(
                     state.sql_modal.status(),
-                    crate::app::model::sql_editor::modal::SqlModalStatus::Normal
+                    crate::model::sql_editor::modal::SqlModalStatus::Normal
                 ));
                 assert!(effects.is_empty());
             }
@@ -1109,15 +1104,14 @@ mod tests {
                 state.sql_modal.editor.set_content("old query".to_string());
                 state
                     .sql_modal
-                    .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
+                    .set_status(crate::model::sql_editor::modal::SqlModalStatus::Editing);
                 state.sql_modal.completion.visible = true;
-                state.sql_modal.completion.candidates = vec![
-                    crate::app::model::sql_editor::completion::CompletionCandidate {
+                state.sql_modal.completion.candidates =
+                    vec![crate::model::sql_editor::completion::CompletionCandidate {
                         text: "stale".to_string(),
-                        kind: crate::app::model::sql_editor::completion::CompletionKind::Keyword,
+                        kind: crate::model::sql_editor::completion::CompletionKind::Keyword,
                         score: 1,
-                    },
-                ];
+                    }];
                 state.sql_modal.completion.selected_index = 3;
                 let test_conn = ConnectionId::from_string("test-conn");
                 state.query_history_picker.entries = vec![make_entry("new query", &test_conn)];
@@ -1134,7 +1128,7 @@ mod tests {
                 assert_eq!(state.sql_modal.editor.content(), "new query");
                 assert!(matches!(
                     state.sql_modal.status(),
-                    crate::app::model::sql_editor::modal::SqlModalStatus::Normal
+                    crate::model::sql_editor::modal::SqlModalStatus::Normal
                 ));
                 assert!(!state.sql_modal.completion.visible);
                 assert!(state.sql_modal.completion.candidates.is_empty());

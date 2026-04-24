@@ -1,6 +1,6 @@
 use super::KeyBinding;
 use super::{Key, KeyCombo};
-use crate::app::update::action::Action;
+use crate::update::action::Action;
 
 // =============================================================================
 // Global Keys (Normal mode)

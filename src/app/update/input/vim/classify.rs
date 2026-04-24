@@ -1,5 +1,5 @@
-use crate::app::model::shared::key_sequence::Prefix;
-use crate::app::update::input::keybindings::{Key, KeyCombo, Modifiers};
+use crate::model::shared::key_sequence::Prefix;
+use crate::update::input::keybindings::{Key, KeyCombo, Modifiers};
 
 use super::types::{SearchContinuation, VimCommand, VimModeTransition, VimNavigation, VimOperator};
 
@@ -96,7 +96,7 @@ fn navigation(combo: &KeyCombo) -> Option<VimNavigation> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::update::input::keybindings::KeyCombo;
+    use crate::update::input::keybindings::KeyCombo;
     use rstest::rstest;
 
     fn combo(key: Key) -> KeyCombo {

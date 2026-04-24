@@ -6,11 +6,11 @@ mod overlays;
 mod pickers;
 mod sql_modal;
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::ports::inbound::{InputEvent, KeyCombo};
-use crate::app::services::AppServices;
-use crate::app::update::action::Action;
+use crate::model::app_state::AppState;
+use crate::model::shared::input_mode::InputMode;
+use crate::ports::inbound::{InputEvent, KeyCombo};
+use crate::services::AppServices;
+use crate::update::action::Action;
 
 pub fn handle_event(event: InputEvent, state: &AppState, services: &AppServices) -> Action {
     match event {
@@ -78,7 +78,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::inbound::Key;
+    use crate::ports::inbound::Key;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -118,14 +118,13 @@ mod tests {
         #[test]
         fn sql_modal_normalizes_unsupported_tab_before_handling_keys() {
             let mut state = make_state(InputMode::SqlModal);
-            state.sql_modal.active_tab = crate::app::model::sql_editor::modal::SqlModalTab::Plan;
+            state.sql_modal.active_tab = crate::model::sql_editor::modal::SqlModalTab::Plan;
 
             let mut services = AppServices::stub();
-            services.db_capabilities =
-                crate::app::model::shared::db_capabilities::DbCapabilities::new(
-                    false,
-                    vec![crate::app::model::shared::inspector_tab::InspectorTab::Info],
-                );
+            services.db_capabilities = crate::model::shared::db_capabilities::DbCapabilities::new(
+                false,
+                vec![crate::model::shared::inspector_tab::InspectorTab::Info],
+            );
 
             let result = handle_key_event(combo(Key::Char('i')), &state, &services);
 

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::viewport::{ColumnWidthsCache, ViewportPlan};
-use crate::app::services::AppServices;
+use crate::model::app_state::AppState;
+use crate::model::shared::viewport::{ColumnWidthsCache, ViewportPlan};
+use crate::services::AppServices;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum RenderError {

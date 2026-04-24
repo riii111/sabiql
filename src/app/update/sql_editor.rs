@@ -1,32 +1,30 @@
 use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::key_sequence::KeySequenceState;
-use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
-use crate::app::model::sql_editor::modal::{
+use crate::cmd::effect::Effect;
+use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
+use crate::model::app_state::AppState;
+use crate::model::shared::flash_timer::FlashId;
+use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::key_sequence::KeySequenceState;
+use crate::model::shared::text_input::{TextInputLike, TextInputState};
+use crate::model::sql_editor::modal::{
     HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalContext, SqlModalStatus, SqlModalTab,
     sql_modal_visible_rows,
 };
-use crate::app::policy::sql::statement_classifier::{self, StatementKind};
-use crate::app::policy::write::sql_risk::{
+use crate::policy::sql::statement_classifier::{self, StatementKind};
+use crate::policy::write::sql_risk::{
     ConfirmationType, MultiStatementDecision, evaluate_multi_statement,
 };
-use crate::app::policy::write::write_guardrails::{
-    AdhocRiskDecision, RiskLevel, evaluate_sql_risk,
-};
-use crate::app::ports::outbound::ClipboardError;
-use crate::app::update::action::{Action, CursorMove, InputTarget};
-use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
+use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
+use crate::ports::outbound::ClipboardError;
+use crate::update::action::{Action, CursorMove, InputTarget};
 
 pub fn reduce_sql_modal(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    services: &crate::app::services::AppServices,
+    services: &crate::services::AppServices,
 ) -> Option<Vec<Effect>> {
     match action {
         // Completion navigation
@@ -451,7 +449,7 @@ fn high_risk_input_mut(
 }
 
 fn multi_statement_label(sql: &str) -> &'static str {
-    use crate::app::policy::write::sql_risk::split_statements;
+    use crate::policy::write::sql_risk::split_statements;
     let mut worst_level = RiskLevel::Low;
     let mut worst_label = "SQL";
     for stmt in split_statements(sql) {
@@ -486,12 +484,7 @@ mod tests {
         action: &Action,
         now: Instant,
     ) -> Option<Vec<Effect>> {
-        super::reduce_sql_modal(
-            state,
-            action,
-            now,
-            &crate::app::services::AppServices::stub(),
-        )
+        super::reduce_sql_modal(state, action, now, &crate::services::AppServices::stub())
     }
 
     fn sql_modal_state() -> AppState {
@@ -601,7 +594,7 @@ mod tests {
                 .editor
                 .set_content("DROP TABLE users".to_string());
             state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
-                decision: crate::app::policy::write::write_guardrails::AdhocRiskDecision {
+                decision: crate::policy::write::write_guardrails::AdhocRiskDecision {
                     risk_level: RiskLevel::High,
                     label: "DROP",
                 },
@@ -625,7 +618,7 @@ mod tests {
 
     mod scrolling {
         use super::*;
-        use crate::app::update::action::CursorMove;
+        use crate::update::action::CursorMove;
 
         #[test]
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
@@ -680,8 +673,8 @@ mod tests {
 
     mod confirming_high {
         use super::*;
-        use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
-        use crate::app::update::action::CursorMove;
+        use crate::policy::write::write_guardrails::AdhocRiskDecision;
+        use crate::update::action::CursorMove;
 
         fn confirming_high_state(content: &str, target: Option<&str>) -> AppState {
             let mut state = sql_modal_state();
@@ -1061,7 +1054,7 @@ mod tests {
 
             // Simulate a prior adhoc success
             state.sql_modal.mark_adhoc_success(
-                crate::app::model::sql_editor::modal::AdhocSuccessSnapshot {
+                crate::model::sql_editor::modal::AdhocSuccessSnapshot {
                     command_tag: None,
                     row_count: 5,
                     execution_time_ms: 10,
@@ -1099,7 +1092,7 @@ mod tests {
 
     mod confirmation_flow {
         use super::*;
-        use crate::app::policy::write::write_guardrails::RiskLevel;
+        use crate::policy::write::write_guardrails::RiskLevel;
 
         fn modal_state_with_query(query: &str) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -1303,8 +1296,8 @@ mod tests {
 
     mod yank {
         use super::*;
-        use crate::app::model::explain_context::{CompareSlot, SlotSource};
         use crate::domain::explain_plan::ExplainPlan;
+        use crate::model::explain_context::{CompareSlot, SlotSource};
 
         fn make_slot(raw: &str, is_analyze: bool, ms: u64, source: SlotSource) -> CompareSlot {
             CompareSlot {

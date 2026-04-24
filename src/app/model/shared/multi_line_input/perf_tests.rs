@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use super::{MultiLineInputState, next_word_start, previous_word_start};
-use crate::app::update::action::CursorMove;
+use crate::update::action::CursorMove;
 
 // Snapshot of the pre-cache implementation, kept only for local perf comparison.
 #[derive(Clone)]

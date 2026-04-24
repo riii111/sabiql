@@ -1,15 +1,15 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus};
-use crate::app::services::AppServices;
-use crate::app::update::action::{Action, TableTarget};
-use crate::app::update::input::command::{command_to_action, parse_command};
+use crate::cmd::effect::Effect;
 use crate::domain::{QueryResult, QuerySource};
+use crate::model::app_state::AppState;
+use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::model::shared::input_mode::InputMode;
+use crate::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus};
+use crate::services::AppServices;
+use crate::update::action::{Action, TableTarget};
+use crate::update::input::command::{command_to_action, parse_command};
 
 fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> {
     if result.source != QuerySource::Adhoc || result.is_error() {
@@ -273,9 +273,9 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::browse::query_execution::PaginationState;
-    use crate::app::update::browse::query::reduce_query;
-    use crate::app::update::browse::query::tests::*;
+    use crate::model::browse::query_execution::PaginationState;
+    use crate::update::browse::query::reduce_query;
+    use crate::update::browse::query::tests::*;
 
     mod command_line_submit {
         use super::*;
@@ -606,8 +606,8 @@ mod tests {
 
     mod query_failed {
         use super::*;
-        use crate::app::model::shared::ui_state::ResultNavMode;
-        use crate::app::ports::outbound::DbOperationError;
+        use crate::model::shared::ui_state::ResultNavMode;
+        use crate::ports::outbound::DbOperationError;
 
         #[test]
         fn resets_result_selection_and_offsets() {
@@ -898,8 +898,8 @@ mod tests {
 
     mod adhoc_refresh_integration {
         use super::*;
-        use crate::app::update::browse::metadata::reduce_metadata;
         use crate::domain::{CommandTag, DatabaseMetadata, TableSummary};
+        use crate::update::browse::metadata::reduce_metadata;
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
             Arc::new(DatabaseMetadata {
@@ -1050,7 +1050,7 @@ mod tests {
             );
             assert_eq!(
                 *state.sql_modal.status(),
-                crate::app::model::sql_editor::modal::SqlModalStatus::Success
+                crate::model::sql_editor::modal::SqlModalStatus::Success
             );
         }
 

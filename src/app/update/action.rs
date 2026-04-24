@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use crate::app::model::connection::error::ConnectionErrorInfo;
-use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::key_sequence::Prefix;
-use crate::app::model::sql_editor::completion::CompletionCandidate;
-use crate::app::policy::write::write_guardrails::WritePreview;
-use crate::app::ports::outbound::DbOperationError;
-use crate::app::ports::outbound::clipboard::ClipboardError;
-use crate::app::ports::outbound::connection_store::ConnectionStoreError;
-use crate::app::ports::outbound::folder_opener::FolderOpenError;
-use crate::app::ports::outbound::query_history::QueryHistoryError;
 use crate::domain::connection::{ConnectionNameError, ConnectionProfile, ServiceEntry};
+use crate::model::connection::error::ConnectionErrorInfo;
+use crate::model::shared::focused_pane::FocusedPane;
+use crate::model::shared::key_sequence::Prefix;
+use crate::model::sql_editor::completion::CompletionCandidate;
+use crate::policy::write::write_guardrails::WritePreview;
+use crate::ports::outbound::DbOperationError;
+use crate::ports::outbound::clipboard::ClipboardError;
+use crate::ports::outbound::connection_store::ConnectionStoreError;
+use crate::ports::outbound::folder_opener::FolderOpenError;
+use crate::ports::outbound::query_history::QueryHistoryError;
 use std::collections::HashMap;
 
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Table};

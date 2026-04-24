@@ -9,12 +9,12 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::text_input::TextInputLike;
-use crate::ui::primitives::atoms::{
+use crate::primitives::atoms::{
     CursorKind, ModalTextSurface, build_modal_text_surface_lines, render_modal_text_surface,
     set_terminal_cursor, text_cursor_spans_with_kind,
 };
-use crate::ui::primitives::molecules::render_modal;
-use crate::ui::theme::ThemePalette;
+use crate::primitives::molecules::render_modal;
+use crate::theme::ThemePalette;
 
 pub struct JsonbDetailRenderMetrics {
     pub editor_visible_rows: usize,
@@ -122,7 +122,7 @@ impl JsonbDetail {
         let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
         let flash_active = state.flash_timers.is_active(FlashId::JsonbDetail, now);
-        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
+        crate::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
 
         render_modal_text_surface(frame, area, surface, lines);
     }

@@ -1,5 +1,5 @@
 use super::write_guardrails::RiskLevel;
-use crate::app::policy::sql::statement_classifier::{
+use crate::policy::sql::statement_classifier::{
     StatementKind, advance_single_quote, classify, drop_subtype, extract_target_name,
     skip_block_comment, skip_dollar_quoted_string, skip_double_quoted_identifier,
     skip_line_comment,

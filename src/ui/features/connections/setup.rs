@@ -7,9 +7,9 @@ use crate::app::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
 use crate::domain::connection::SslMode;
-use crate::ui::primitives::atoms::text_cursor_spans;
-use crate::ui::primitives::molecules::render_modal;
-use crate::ui::theme::ThemePalette;
+use crate::primitives::atoms::text_cursor_spans;
+use crate::primitives::molecules::render_modal;
+use crate::theme::ThemePalette;
 
 const LABEL_WIDTH: u16 = 12;
 const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;

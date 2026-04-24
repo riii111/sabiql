@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use crate::app::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::domain::explain_plan::{self, ExplainPlan};
+use crate::model::sql_editor::modal::sql_modal_visible_rows;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlotSource {

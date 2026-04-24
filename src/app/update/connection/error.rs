@@ -1,9 +1,9 @@
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::input_mode::InputMode;
+use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -89,7 +89,7 @@ mod tests {
 
     mod scroll_down {
         use super::*;
-        use crate::app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+        use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 
         fn scroll_down_action() -> Action {
             Action::Scroll {

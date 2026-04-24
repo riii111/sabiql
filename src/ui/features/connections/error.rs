@@ -5,12 +5,12 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
-use crate::ui::primitives::atoms::key_chip;
-use crate::ui::primitives::molecules::render_modal;
-use crate::ui::primitives::utils::text_utils::wrapped_line_count;
+use crate::primitives::atoms::key_chip;
+use crate::primitives::molecules::render_modal;
+use crate::primitives::utils::text_utils::wrapped_line_count;
 
 pub struct ConnectionError;
 

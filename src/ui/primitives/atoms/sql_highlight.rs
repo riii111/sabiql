@@ -2,7 +2,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::app::policy::sql::lexer::{SqlLexer, TokenKind};
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub fn highlight_sql(text: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
     highlight_sql_spans(text, theme)
@@ -74,8 +74,8 @@ fn token_style(kind: &TokenKind, theme: &ThemePalette) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::primitives::atoms::{CursorKind, insert_cursor_span_with_kind};
-    use crate::ui::theme::{DEFAULT_THEME, ThemePalette};
+    use crate::primitives::atoms::{CursorKind, insert_cursor_span_with_kind};
+    use crate::theme::{DEFAULT_THEME, ThemePalette};
 
     fn line_text(line: &Line<'_>) -> String {
         line.spans
@@ -258,8 +258,8 @@ mod tests {
     #[test]
     fn highlight_sql_honors_injected_theme_colors() {
         let custom_theme = ThemePalette {
-            component: crate::ui::theme::ComponentTokens {
-                syntax: crate::ui::theme::SyntaxTokens {
+            component: crate::theme::ComponentTokens {
+                syntax: crate::theme::SyntaxTokens {
                     sql_keyword: ratatui::style::Color::Rgb(0x12, 0x34, 0x56),
                     ..DEFAULT_THEME.component.syntax
                 },
@@ -279,8 +279,8 @@ mod tests {
     #[test]
     fn highlight_sql_with_insert_cursor_preserves_injected_token_style() {
         let custom_theme = ThemePalette {
-            semantic: crate::ui::theme::SemanticTokens {
-                cursor: crate::ui::theme::CursorTokens {
+            semantic: crate::theme::SemanticTokens {
+                cursor: crate::theme::CursorTokens {
                     fg: ratatui::style::Color::Rgb(0xfe, 0xdc, 0xba),
                     ..DEFAULT_THEME.semantic.cursor
                 },

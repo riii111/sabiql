@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::app::ports::outbound::ErDiagramExporter;
-use crate::app::update::action::{Action, ErDiagramInfo};
 use crate::domain::ErTableInfo;
+use crate::ports::outbound::ErDiagramExporter;
+use crate::update::action::{Action, ErDiagramInfo};
 
 pub fn spawn_er_diagram_task(
     exporter: Arc<dyn ErDiagramExporter>,
@@ -35,14 +35,14 @@ pub fn spawn_er_diagram_task(
             Ok(Err(e)) => {
                 let _ = tx
                     .send(Action::ErDiagramFailed(
-                        crate::app::update::action::ErDiagramError::ExportFailed(e.to_string()),
+                        crate::update::action::ErDiagramError::ExportFailed(e.to_string()),
                     ))
                     .await;
             }
             Err(e) => {
                 let _ = tx
                     .send(Action::ErDiagramFailed(
-                        crate::app::update::action::ErDiagramError::TaskPanicked(e.to_string()),
+                        crate::update::action::ErDiagramError::TaskPanicked(e.to_string()),
                     ))
                     .await;
             }
@@ -53,7 +53,7 @@ pub fn spawn_er_diagram_task(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::outbound::ErExportResult;
+    use crate::ports::outbound::ErExportResult;
     use std::path::Path;
     use std::time::Duration;
 

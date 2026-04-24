@@ -1,11 +1,11 @@
-use crate::app::model::app_state::AppState;
-use crate::app::model::connection::setup::{ConnectionField, ConnectionSetupState};
-use crate::app::policy::write::write_guardrails::{
+use crate::domain::QueryResult;
+use crate::model::app_state::AppState;
+use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
+use crate::policy::write::write_guardrails::{
     TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::policy::write::write_update::build_pk_pairs;
-use crate::app::services::AppServices;
-use crate::domain::QueryResult;
+use crate::policy::write::write_update::build_pk_pairs;
+use crate::services::AppServices;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum EditGuardrailError {
@@ -116,7 +116,7 @@ pub fn build_bulk_delete_preview(
     if state.session.dsn.is_none() {
         return Err(EditGuardrailError::NoActiveConnection);
     }
-    if state.query.status() != crate::app::model::browse::query_execution::QueryStatus::Idle {
+    if state.query.status() != crate::model::browse::query_execution::QueryStatus::Idle {
         return Err(EditGuardrailError::WriteUnavailableWhileQueryRunning);
     }
 
@@ -280,7 +280,7 @@ mod tests {
 
     mod validate_field_name {
         use super::*;
-        use crate::app::model::shared::text_input::TextInputState;
+        use crate::model::shared::text_input::TextInputState;
 
         #[test]
         fn empty_name_sets_error() {

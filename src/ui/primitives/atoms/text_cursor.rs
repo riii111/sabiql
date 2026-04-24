@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
 
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorKind {
@@ -382,7 +382,7 @@ fn split_at_cursor(text: &str, cursor_col: usize) -> (String, String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::theme::DEFAULT_THEME;
+    use crate::theme::DEFAULT_THEME;
     use ratatui::style::Modifier;
     use rstest::rstest;
 

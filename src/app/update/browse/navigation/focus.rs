@@ -1,12 +1,12 @@
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::confirm_dialog::ConfirmIntent;
-use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::services::AppServices;
-use crate::app::update::action::Action;
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::confirm_dialog::ConfirmIntent;
+use crate::model::shared::focused_pane::FocusedPane;
+use crate::model::shared::input_mode::InputMode;
+use crate::services::AppServices;
+use crate::update::action::Action;
 
 pub fn reduce(
     state: &mut AppState,
@@ -66,10 +66,10 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::db_capabilities::DbCapabilities;
-    use crate::app::model::shared::inspector_tab::InspectorTab;
-    use crate::app::services::AppServices;
-    use crate::app::update::browse::navigation::reduce_navigation;
+    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::model::shared::inspector_tab::InspectorTab;
+    use crate::services::AppServices;
+    use crate::update::browse::navigation::reduce_navigation;
 
     mod toggle_read_only {
         use super::*;

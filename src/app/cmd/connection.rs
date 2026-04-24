@@ -3,16 +3,16 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::cmd::cache::TtlCache;
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::ports::outbound::{
+use crate::cmd::cache::TtlCache;
+use crate::cmd::effect::Effect;
+use crate::domain::DatabaseMetadata;
+use crate::domain::connection::ConnectionProfile;
+use crate::model::app_state::AppState;
+use crate::ports::outbound::{
     ConnectionStore, ConnectionStoreError, DsnBuilder, MetadataProvider, PgServiceEntryReader,
     ServiceFileError,
 };
-use crate::app::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
-use crate::domain::DatabaseMetadata;
-use crate::domain::connection::ConnectionProfile;
+use crate::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
 
 pub(crate) async fn run(
     effect: Effect,
@@ -210,20 +210,20 @@ mod tests {
 
     use tokio::sync::mpsc;
 
-    use crate::app::cmd::cache::TtlCache;
-    use crate::app::cmd::completion_engine::CompletionEngine;
-    use crate::app::cmd::effect::Effect;
-    use crate::app::cmd::test_support::*;
-    use crate::app::model::app_state::AppState;
-    use crate::app::ports::outbound::connection_store::MockConnectionStore;
-    use crate::app::ports::outbound::metadata::MockMetadataProvider;
-    use crate::app::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::app::ports::outbound::{
+    use crate::cmd::cache::TtlCache;
+    use crate::cmd::completion_engine::CompletionEngine;
+    use crate::cmd::effect::Effect;
+    use crate::cmd::test_support::*;
+    use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
+    use crate::model::app_state::AppState;
+    use crate::ports::outbound::connection_store::MockConnectionStore;
+    use crate::ports::outbound::metadata::MockMetadataProvider;
+    use crate::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::ports::outbound::{
         ConnectionStoreError, DsnBuilder, RenderOutput, RenderResult, Renderer,
     };
-    use crate::app::services::AppServices;
-    use crate::app::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
-    use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
+    use crate::services::AppServices;
+    use crate::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
 
     struct NoopRenderer;
     impl Renderer for NoopRenderer {
@@ -328,7 +328,7 @@ mod tests {
 
     mod load_connections {
         use super::*;
-        use crate::app::cmd::runner::EffectRunner;
+        use crate::cmd::runner::EffectRunner;
 
         #[tokio::test]
         async fn error_returns_empty_connections_list() {
@@ -433,7 +433,7 @@ mod tests {
 
     mod switch_connection {
         use super::*;
-        use crate::app::cmd::runner::EffectRunner;
+        use crate::cmd::runner::EffectRunner;
 
         struct FakeDsnBuilder;
         impl DsnBuilder for FakeDsnBuilder {

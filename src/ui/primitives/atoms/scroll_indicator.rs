@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub struct HorizontalScrollParams {
     pub position: usize,

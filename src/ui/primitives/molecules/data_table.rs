@@ -3,10 +3,10 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Cell, Paragraph, Row, Table};
 
-use crate::ui::primitives::atoms::scroll_indicator::{
+use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
 };
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub struct StripedTableConfig<'b> {
     pub headers: &'b [&'b str],

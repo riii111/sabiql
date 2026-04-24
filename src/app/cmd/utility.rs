@@ -3,9 +3,9 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::ports::outbound::{ClipboardWriter, FolderOpener};
-use crate::app::update::action::Action;
+use crate::cmd::effect::Effect;
+use crate::ports::outbound::{ClipboardWriter, FolderOpener};
+use crate::update::action::Action;
 
 pub(crate) async fn run(
     effect: Effect,
@@ -52,8 +52,8 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
 
-    use crate::app::ports::outbound::clipboard::ClipboardError;
-    use crate::app::ports::outbound::folder_opener::FolderOpenError;
+    use crate::ports::outbound::clipboard::ClipboardError;
+    use crate::ports::outbound::folder_opener::FolderOpenError;
 
     struct MockClipboard {
         result: Result<(), ClipboardError>,

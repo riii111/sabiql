@@ -4,7 +4,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::ui_state::HELP_MODAL_HEIGHT_PERCENT;
@@ -17,10 +17,10 @@ use crate::app::update::input::keybindings::{
     SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS,
 };
 
-use crate::ui::primitives::atoms::scroll_indicator::{
+use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
 };
-use crate::ui::primitives::molecules::render_modal;
+use crate::primitives::molecules::render_modal;
 
 pub struct HelpOverlay;
 

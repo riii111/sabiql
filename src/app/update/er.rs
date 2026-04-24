@@ -1,12 +1,10 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::er_state::ErStatus;
-use crate::app::update::action::{
-    Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult,
-};
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::er_state::ErStatus;
+use crate::update::action::{Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult};
 
 pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -192,7 +190,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::app::model::app_state::AppState;
+    use crate::model::app_state::AppState;
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -556,8 +554,8 @@ mod tests {
 
     mod smart_er_refresh_failed {
         use super::*;
-        use crate::app::ports::outbound::DbOperationError;
         use crate::domain::{DatabaseMetadata, TableSummary};
+        use crate::ports::outbound::DbOperationError;
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)

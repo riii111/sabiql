@@ -10,8 +10,8 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::services::AppServices;
-use crate::ui::primitives::atoms::text_cursor_spans;
-use crate::ui::theme::ThemePalette;
+use crate::primitives::atoms::text_cursor_spans;
+use crate::theme::ThemePalette;
 
 pub fn render(
     frame: &mut Frame,
@@ -99,7 +99,7 @@ pub fn render(
 
         let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
         let content_start = 3; // skip header, query snippet, empty line
-        crate::ui::primitives::atoms::apply_yank_flash(
+        crate::primitives::atoms::apply_yank_flash(
             &mut lines[content_start..],
             flash_active,
             theme,

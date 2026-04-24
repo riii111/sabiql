@@ -8,25 +8,25 @@ use std::time::Instant;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::cmd::browse as cmd_browse;
-use crate::app::cmd::cache::TtlCache;
-use crate::app::cmd::completion_engine::CompletionEngine;
-use crate::app::cmd::connection as cmd_connection;
-use crate::app::cmd::effect::Effect;
-use crate::app::cmd::er::handler as cmd_er;
-use crate::app::cmd::sql_editor::completion as cmd_completion;
-use crate::app::cmd::sql_editor::query_history as cmd_query_history;
-use crate::app::cmd::utility as cmd_utility;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::ui_state::scroll_max_offset;
-use crate::app::ports::outbound::{
+use crate::cmd::browse as cmd_browse;
+use crate::cmd::cache::TtlCache;
+use crate::cmd::completion_engine::CompletionEngine;
+use crate::cmd::connection as cmd_connection;
+use crate::cmd::effect::Effect;
+use crate::cmd::er::handler as cmd_er;
+use crate::cmd::sql_editor::completion as cmd_completion;
+use crate::cmd::sql_editor::query_history as cmd_query_history;
+use crate::cmd::utility as cmd_utility;
+use crate::domain::DatabaseMetadata;
+use crate::model::app_state::AppState;
+use crate::model::shared::ui_state::scroll_max_offset;
+use crate::ports::outbound::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
     Renderer,
 };
-use crate::app::services::AppServices;
-use crate::app::update::action::Action;
-use crate::domain::DatabaseMetadata;
+use crate::services::AppServices;
+use crate::update::action::Action;
 
 struct ConnectionDeps {
     dsn_builder: Arc<dyn DsnBuilder>,
@@ -402,13 +402,13 @@ impl EffectRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::cmd::test_support::*;
-    use crate::app::ports::outbound::connection_store::MockConnectionStore;
-    use crate::app::ports::outbound::metadata::MockMetadataProvider;
-    use crate::app::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::app::ports::outbound::{RenderOutput, RenderResult};
-    use crate::app::services::AppServices;
+    use crate::cmd::test_support::*;
     use crate::domain::{DatabaseMetadata, TableSummary};
+    use crate::ports::outbound::connection_store::MockConnectionStore;
+    use crate::ports::outbound::metadata::MockMetadataProvider;
+    use crate::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::ports::outbound::{RenderOutput, RenderResult};
+    use crate::services::AppServices;
     use tokio::sync::mpsc;
 
     struct NoopRenderer;
@@ -425,7 +425,7 @@ mod tests {
 
     mod render {
         use super::*;
-        use crate::app::model::browse::jsonb_detail::JsonbDetailState;
+        use crate::model::browse::jsonb_detail::JsonbDetailState;
 
         struct ExplorerWidthRenderer {
             explorer_content_width: usize,

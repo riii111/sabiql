@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::app::policy::password_masking::mask_password;
+use crate::policy::password_masking::mask_password;
 
 #[derive(Clone, thiserror::Error)]
 // Keep Display summary-only to avoid leaking raw command output.

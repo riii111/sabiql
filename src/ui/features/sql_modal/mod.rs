@@ -18,9 +18,9 @@ use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
     SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
 };
-use crate::ui::primitives::molecules::overlay::{centered_rect, render_scrim};
-use crate::ui::primitives::molecules::render_modal_with_border_color;
-use crate::ui::theme::ThemePalette;
+use crate::primitives::molecules::overlay::{centered_rect, render_scrim};
+use crate::primitives::molecules::render_modal_with_border_color;
+use crate::theme::ThemePalette;
 
 mod completion;
 mod editor;

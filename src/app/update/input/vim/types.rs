@@ -1,7 +1,7 @@
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::inspector_tab::InspectorTab;
-use crate::app::model::shared::ui_state::ResultNavMode;
+use crate::model::app_state::AppState;
+use crate::model::shared::focused_pane::FocusedPane;
+use crate::model::shared::inspector_tab::InspectorTab;
+use crate::model::shared::ui_state::ResultNavMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VimCommand {
@@ -137,7 +137,7 @@ pub enum JsonbDetailVimContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::app_state::AppState;
+    use crate::model::app_state::AppState;
 
     #[test]
     fn browse_context_detects_result_pending_state() {

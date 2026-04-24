@@ -2,7 +2,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 
-use crate::domain::Table;
+use crate::Table;
 
 #[derive(Debug, Clone)]
 pub struct ErFkInfo {

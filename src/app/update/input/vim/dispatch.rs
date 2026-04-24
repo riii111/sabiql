@@ -1,4 +1,4 @@
-use crate::app::update::action::Action;
+use crate::update::action::Action;
 
 use super::actions;
 use super::types::{

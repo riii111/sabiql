@@ -6,8 +6,8 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
-use crate::ui::primitives::atoms::{spinner_char, text_cursor_spans};
-use crate::ui::theme::ThemePalette;
+use crate::primitives::atoms::{spinner_char, text_cursor_spans};
+use crate::theme::ThemePalette;
 
 pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
     if let SqlModalStatus::ConfirmingHigh {

@@ -3,8 +3,8 @@ mod editors;
 mod normal;
 mod overlays;
 
-pub use crate::app::ports::inbound::{Key, KeyCombo, Modifiers};
-use crate::app::update::action::Action;
+pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
+use crate::update::action::Action;
 pub use connections::*;
 pub use editors::*;
 pub use normal::*;
@@ -55,7 +55,7 @@ pub struct ModeBindings {
 
 impl ModeBindings {
     pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
-        crate::app::update::input::keymap::resolve_mode(combo, self.rows)
+        crate::update::input::keymap::resolve_mode(combo, self.rows)
     }
 }
 
@@ -391,7 +391,7 @@ pub fn is_open_er(combo: &KeyCombo) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
 
     mod structure {
         use super::*;
@@ -630,7 +630,7 @@ mod tests {
 
     mod catalog_semantics {
         use super::*;
-        use crate::app::update::input::keymap;
+        use crate::update::input::keymap;
 
         mod action_mapping {
             use super::*;

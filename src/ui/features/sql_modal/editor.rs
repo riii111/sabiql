@@ -10,11 +10,11 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
-use crate::ui::primitives::atoms::{
+use crate::primitives::atoms::{
     CursorKind, ModalTextSurface, build_modal_text_surface_lines, highlight_sql_spans,
     render_modal_text_surface,
 };
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub(super) fn render_editor(
     frame: &mut Frame,
@@ -78,7 +78,7 @@ pub(super) fn render_editor(
     let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
     let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
-    crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
+    crate::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
 
     render_modal_text_surface(frame, area, surface, lines);
 }

@@ -3,10 +3,10 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Color;
 use ratatui::widgets::Clear;
 
-use crate::ui::primitives::molecules::overlay::{
+use crate::primitives::molecules::overlay::{
     centered_rect, modal_block_with_hint, modal_block_with_hint_color, render_scrim,
 };
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub fn render_modal(
     frame: &mut Frame,

@@ -1,10 +1,10 @@
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::services::AppServices;
-use crate::app::update::action::{Action, ConnectionTarget};
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::shared::input_mode::InputMode;
+use crate::services::AppServices;
+use crate::update::action::{Action, ConnectionTarget};
 
 use super::helpers::{restore_cache, save_current_cache};
 
@@ -67,10 +67,10 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::connection::cache::ConnectionCache;
-    use crate::app::model::connection::state::ConnectionState;
-    use crate::app::model::shared::inspector_tab::InspectorTab;
     use crate::domain::ConnectionId;
+    use crate::model::connection::cache::ConnectionCache;
+    use crate::model::connection::state::ConnectionState;
+    use crate::model::shared::inspector_tab::InspectorTab;
 
     fn create_switch_action(id: &ConnectionId, name: &str) -> Action {
         Action::SwitchConnection(ConnectionTarget {
@@ -124,7 +124,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();
         let mut services = AppServices::stub();
-        services.db_capabilities = crate::app::model::shared::db_capabilities::DbCapabilities::new(
+        services.db_capabilities = crate::model::shared::db_capabilities::DbCapabilities::new(
             true,
             vec![InspectorTab::Info],
         );
@@ -214,7 +214,7 @@ mod tests {
 
         assert_eq!(
             state.result_interaction.selection().mode(),
-            crate::app::model::shared::ui_state::ResultNavMode::Scroll
+            crate::model::shared::ui_state::ResultNavMode::Scroll
         );
     }
 
@@ -231,7 +231,7 @@ mod tests {
 
         assert_eq!(
             state.result_interaction.selection().mode(),
-            crate::app::model::shared::ui_state::ResultNavMode::Scroll
+            crate::model::shared::ui_state::ResultNavMode::Scroll
         );
     }
 

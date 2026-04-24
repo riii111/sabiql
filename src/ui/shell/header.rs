@@ -6,7 +6,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::domain::MetadataState;
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub struct Header;
 

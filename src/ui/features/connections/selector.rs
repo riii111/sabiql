@@ -8,11 +8,11 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::connection::list::ConnectionListItem;
 use crate::app::update::input::keybindings::{CONNECTION_SELECTOR_ROWS, idx};
 use crate::domain::connection::ConnectionId;
-use crate::ui::primitives::atoms::scroll_indicator::{
+use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,
 };
-use crate::ui::primitives::molecules::render_modal;
-use crate::ui::theme::ThemePalette;
+use crate::primitives::molecules::render_modal;
+use crate::theme::ThemePalette;
 
 const PREFIX_DISPLAY_WIDTH: usize = 2;
 

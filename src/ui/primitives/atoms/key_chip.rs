@@ -1,7 +1,7 @@
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
 pub fn key_chip(key: &str, theme: &ThemePalette) -> Span<'static> {
     Span::styled(

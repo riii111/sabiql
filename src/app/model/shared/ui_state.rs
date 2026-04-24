@@ -8,7 +8,7 @@ use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
 use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
-use crate::app::update::input::keybindings::help_content_line_count;
+use crate::update::input::keybindings::help_content_line_count;
 use unicode_width::UnicodeWidthStr;
 
 pub use super::picker::clamp_scroll_offset;

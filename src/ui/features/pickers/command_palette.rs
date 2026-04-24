@@ -5,9 +5,9 @@ use ratatui::widgets::{List, ListItem};
 
 use crate::app::model::app_state::AppState;
 use crate::app::update::input::palette::palette_commands;
-use crate::ui::theme::ThemePalette;
+use crate::theme::ThemePalette;
 
-use crate::ui::primitives::molecules::render_modal;
+use crate::primitives::molecules::render_modal;
 
 pub struct CommandPalette;
 

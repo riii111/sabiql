@@ -1,15 +1,15 @@
 use std::time::Instant;
 
-use crate::app::cmd::effect::Effect;
-use crate::app::model::app_state::AppState;
-use crate::app::model::explain_context::ExplainContext;
-use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
-use crate::app::model::sql_editor::completion::CompletionState;
-use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-use crate::app::policy::sql::statement_classifier::{self, StatementKind};
-use crate::app::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk, split_statements};
-use crate::app::services::AppServices;
-use crate::app::update::action::{Action, ScrollAmount, ScrollTarget};
+use crate::cmd::effect::Effect;
+use crate::model::app_state::AppState;
+use crate::model::explain_context::ExplainContext;
+use crate::model::shared::text_input::{TextInputLike, TextInputState};
+use crate::model::sql_editor::completion::CompletionState;
+use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+use crate::policy::sql::statement_classifier::{self, StatementKind};
+use crate::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk, split_statements};
+use crate::services::AppServices;
+use crate::update::action::{Action, ScrollAmount, ScrollTarget};
 
 fn is_multi_statement(content: &str) -> bool {
     split_statements(content).len() > 1
@@ -285,22 +285,17 @@ pub fn reduce_explain_with_services(
 
 #[cfg(test)]
 pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
-    reduce_explain_with_services(
-        state,
-        action,
-        now,
-        &crate::app::services::AppServices::stub(),
-    )
+    reduce_explain_with_services(state, action, now, &crate::services::AppServices::stub())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::db_capabilities::DbCapabilities;
-    use crate::app::model::shared::input_mode::InputMode;
-    use crate::app::model::shared::inspector_tab::InspectorTab;
-    use crate::app::services::AppServices;
-    use crate::app::update::action::ScrollDirection;
+    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::inspector_tab::InspectorTab;
+    use crate::services::AppServices;
+    use crate::update::action::ScrollDirection;
     use std::time::Instant;
 
     fn sql_modal_state() -> AppState {
@@ -721,7 +716,7 @@ mod tests {
         fn confirm_from_high_with_matching_table_emits_effect() {
             let mut state = sql_modal_state();
             state.session.dsn = Some("dsn://test".to_string());
-            let mut input = crate::app::model::shared::text_input::TextInputState::default();
+            let mut input = crate::model::shared::text_input::TextInputState::default();
             for c in "users".chars() {
                 input.insert_char(c);
             }
@@ -744,7 +739,7 @@ mod tests {
         fn confirm_from_high_with_mismatch_is_noop() {
             let mut state = sql_modal_state();
             state.session.dsn = Some("dsn://test".to_string());
-            let mut input = crate::app::model::shared::text_input::TextInputState::default();
+            let mut input = crate::model::shared::text_input::TextInputState::default();
             input.insert_char('x');
             state
                 .sql_modal
@@ -808,7 +803,7 @@ mod tests {
 
     mod explain_failed {
         use super::*;
-        use crate::app::ports::outbound::DbOperationError;
+        use crate::ports::outbound::DbOperationError;
 
         #[test]
         fn sets_error_and_switches_to_plan_tab() {
@@ -934,10 +929,9 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
-            let modal_inner =
-                crate::app::model::explain_context::ExplainContext::modal_inner_height(
-                    state.ui.terminal_height,
-                );
+            let modal_inner = crate::model::explain_context::ExplainContext::modal_inner_height(
+                state.ui.terminal_height,
+            );
             let max = state.explain.line_count().saturating_sub(modal_inner);
             state.explain.scroll_offset = max;
 

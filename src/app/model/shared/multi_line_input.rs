@@ -1,4 +1,4 @@
-use crate::app::update::action::CursorMove;
+use crate::update::action::CursorMove;
 
 use super::text_input::{TextInputLike, TextInputState, next_word_start, previous_word_start};
 
