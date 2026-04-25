@@ -16,7 +16,7 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
         target_name,
     } = state.sql_modal.status()
     {
-        render_confirming_high_status(frame, area, decision, input, target_name.as_ref(), theme);
+        render_confirming_high_status(frame, area, decision, input, target_name.as_deref(), theme);
         return;
     }
 
@@ -130,7 +130,7 @@ fn render_confirming_high_status(
     area: Rect,
     decision: &crate::app::policy::write::write_guardrails::AdhocRiskDecision,
     input: &crate::app::model::shared::text_input::TextInputState,
-    target_name: Option<&String>,
+    target_name: Option<&str>,
     theme: &ThemePalette,
 ) {
     let error_style = Style::default().fg(theme.semantic.status.error);

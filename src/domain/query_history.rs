@@ -16,6 +16,12 @@ impl Iso8601Timestamp {
     }
 }
 
+impl AsRef<str> for Iso8601Timestamp {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl std::fmt::Display for Iso8601Timestamp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
