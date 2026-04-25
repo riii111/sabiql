@@ -8,7 +8,7 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::app::update::browse::result::reduce_result;
-use crate::domain::{Column, QueryResult, QuerySource};
+use crate::domain::{Column, ColumnAttributes, QueryResult, QuerySource};
 use crate::ui::theme::{
     ComponentTokens, DEFAULT_THEME, EditorTokens, ModalTokens, SemanticTokens, SurfaceTokens,
     TEST_CONTRAST_THEME, ThemePalette,
@@ -40,9 +40,7 @@ fn jsonb_detail_state() -> (AppState, Instant) {
     table.columns.push(Column {
         name: "settings".to_string(),
         data_type: "jsonb".to_string(),
-        nullable: true,
-        is_primary_key: false,
-        is_unique: false,
+        attributes: ColumnAttributes::NULLABLE,
         default: None,
         comment: None,
         ordinal_position: 4,

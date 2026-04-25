@@ -267,12 +267,12 @@ impl Inspector {
                 vec![
                     col.name.clone(),
                     col.data_type.clone(),
-                    if col.nullable {
+                    if col.nullable() {
                         "✓".to_string()
                     } else {
                         String::new()
                     },
-                    if col.is_primary_key {
+                    if col.is_primary_key() {
                         "✓".to_string()
                     } else {
                         String::new()
@@ -437,7 +437,7 @@ impl Inspector {
                     idx.name.clone(),
                     idx.columns.join(", "),
                     format!("{:?}", idx.index_type).to_lowercase(),
-                    if idx.is_unique {
+                    if idx.is_unique() {
                         "✓".to_string()
                     } else {
                         String::new()
@@ -466,7 +466,7 @@ impl Inspector {
                     Cell::from(index.name.clone()),
                     Cell::from(index.columns.join(", ")),
                     Cell::from(format!("{:?}", index.index_type).to_lowercase()),
-                    Cell::from(if index.is_unique { "✓" } else { "" }),
+                    Cell::from(if index.is_unique() { "✓" } else { "" }),
                 ]
             },
         );

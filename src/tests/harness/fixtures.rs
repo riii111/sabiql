@@ -1,8 +1,8 @@
 use std::time::Instant;
 
 use crate::domain::{
-    Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
-    Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
+    Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
+    IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
 pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
@@ -32,9 +32,7 @@ pub fn sample_table_detail() -> Table {
             Column {
                 name: "id".to_string(),
                 data_type: "integer".to_string(),
-                nullable: false,
-                is_primary_key: true,
-                is_unique: true,
+                attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                 default: None,
                 comment: Some("Primary key".to_string()),
                 ordinal_position: 1,
@@ -42,9 +40,7 @@ pub fn sample_table_detail() -> Table {
             Column {
                 name: "name".to_string(),
                 data_type: "varchar(255)".to_string(),
-                nullable: false,
-                is_primary_key: false,
-                is_unique: false,
+                attributes: ColumnAttributes::empty(),
                 default: None,
                 comment: None,
                 ordinal_position: 2,
@@ -52,9 +48,7 @@ pub fn sample_table_detail() -> Table {
             Column {
                 name: "email".to_string(),
                 data_type: "varchar(255)".to_string(),
-                nullable: true,
-                is_primary_key: false,
-                is_unique: true,
+                attributes: ColumnAttributes::NULLABLE | ColumnAttributes::UNIQUE,
                 default: None,
                 comment: None,
                 ordinal_position: 3,
@@ -65,16 +59,14 @@ pub fn sample_table_detail() -> Table {
             Index {
                 name: "users_pkey".to_string(),
                 columns: vec!["id".to_string()],
-                is_unique: true,
-                is_primary: true,
+                attributes: IndexAttributes::UNIQUE | IndexAttributes::PRIMARY,
                 index_type: IndexType::BTree,
                 definition: None,
             },
             Index {
                 name: "idx_users_email".to_string(),
                 columns: vec!["email".to_string()],
-                is_unique: true,
-                is_primary: false,
+                attributes: IndexAttributes::UNIQUE,
                 index_type: IndexType::BTree,
                 definition: None,
             },

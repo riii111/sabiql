@@ -1,6 +1,8 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+#[cfg(test)]
+use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::write::write_update::build_pk_pairs;
@@ -313,20 +315,16 @@ mod tests {
                 Column {
                     name: "id".to_string(),
                     data_type: "integer".to_string(),
-                    nullable: false,
                     default: None,
-                    is_primary_key: true,
-                    is_unique: true,
+                    attributes: ColumnAttributes::from_parts(false, true, true),
                     comment: None,
                     ordinal_position: 1,
                 },
                 Column {
                     name: "name".to_string(),
                     data_type: "jsonb".to_string(),
-                    nullable: true,
                     default: None,
-                    is_primary_key: false,
-                    is_unique: false,
+                    attributes: ColumnAttributes::from_parts(true, false, false),
                     comment: None,
                     ordinal_position: 2,
                 },

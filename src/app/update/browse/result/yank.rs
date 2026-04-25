@@ -1,6 +1,8 @@
 use std::time::{Duration, Instant};
 
 use crate::cmd::effect::Effect;
+#[cfg(test)]
+use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -448,10 +450,8 @@ mod tests {
                 columns: vec![Column {
                     name: "id".to_string(),
                     data_type: "integer".to_string(),
-                    nullable: false,
                     default: None,
-                    is_primary_key: true,
-                    is_unique: true,
+                    attributes: ColumnAttributes::from_parts(false, true, true),
                     comment: None,
                     ordinal_position: 1,
                 }],

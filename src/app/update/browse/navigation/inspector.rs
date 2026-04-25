@@ -98,7 +98,7 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, Table};
+    use crate::domain::{Column, ColumnAttributes, Table};
     use crate::model::shared::db_capabilities::DbCapabilities;
     use crate::update::browse::navigation::reduce_navigation;
     use std::time::Instant;
@@ -114,10 +114,8 @@ mod tests {
                 .map(|i| Column {
                     name: format!("col_{i}"),
                     data_type: "text".to_string(),
-                    nullable: false,
                     default: None,
-                    is_primary_key: false,
-                    is_unique: false,
+                    attributes: ColumnAttributes::empty(),
                     comment: None,
                     ordinal_position: i as i32,
                 })

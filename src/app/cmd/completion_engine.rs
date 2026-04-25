@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
 use crate::cmd::cache::BoundedLruCache;
+#[cfg(test)]
+use crate::domain::ColumnAttributes;
 use crate::domain::{DatabaseMetadata, Table};
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::policy::sql::lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
@@ -729,7 +731,7 @@ impl CompletionEngine {
                 };
 
                 // Boost PK columns (+50)
-                if c.is_primary_key {
+                if c.is_primary_key() {
                     score += 50;
                 }
                 // Boost FK columns (+40)
@@ -737,7 +739,7 @@ impl CompletionEngine {
                     score += 40;
                 }
                 // Boost NOT NULL columns (+20)
-                if !c.nullable {
+                if !c.nullable() {
                     score += 20;
                 }
                 // Boost recently used columns (+30)
@@ -940,10 +942,8 @@ mod tests {
                 .map(|(i, col)| Column {
                     name: (*col).to_string(),
                     data_type: "text".to_string(),
-                    nullable: true,
                     default: None,
-                    is_primary_key: false,
-                    is_unique: false,
+                    attributes: ColumnAttributes::NULLABLE,
                     comment: None,
                     ordinal_position: (i + 1) as i32,
                 })
@@ -1236,20 +1236,16 @@ mod tests {
                     Column {
                         name: "user_name".to_string(),
                         data_type: "text".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 1,
                     },
                     Column {
                         name: "user_id".to_string(),
                         data_type: "int".to_string(),
-                        nullable: false,
                         default: None,
-                        is_primary_key: true,
-                        is_unique: true,
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                         comment: None,
                         ordinal_position: 2,
                     },
@@ -1383,20 +1379,16 @@ mod tests {
                 Column {
                     name: "name".to_string(),
                     data_type: "text".to_string(),
-                    nullable: true,
                     default: None,
-                    is_primary_key: false,
-                    is_unique: false,
+                    attributes: ColumnAttributes::NULLABLE,
                     comment: None,
                     ordinal_position: 1,
                 },
                 Column {
                     name: "id".to_string(),
                     data_type: "int".to_string(),
-                    nullable: false,
                     default: None,
-                    is_primary_key: true,
-                    is_unique: true,
+                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                     comment: None,
                     ordinal_position: 2,
                 },
@@ -1415,20 +1407,16 @@ mod tests {
                 Column {
                     name: "optional_field".to_string(),
                     data_type: "text".to_string(),
-                    nullable: true,
                     default: None,
-                    is_primary_key: false,
-                    is_unique: false,
+                    attributes: ColumnAttributes::NULLABLE,
                     comment: None,
                     ordinal_position: 1,
                 },
                 Column {
                     name: "required_field".to_string(),
                     data_type: "text".to_string(),
-                    nullable: false,
                     default: None,
-                    is_primary_key: false,
-                    is_unique: false,
+                    attributes: ColumnAttributes::empty(),
                     comment: None,
                     ordinal_position: 2,
                 },
@@ -1633,20 +1621,16 @@ mod tests {
                     Column {
                         name: "id".to_string(),
                         data_type: "int".to_string(),
-                        nullable: false,
                         default: None,
-                        is_primary_key: true,
-                        is_unique: true,
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                         comment: None,
                         ordinal_position: 1,
                     },
                     Column {
                         name: "name".to_string(),
                         data_type: "text".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 2,
                     },
@@ -1720,30 +1704,24 @@ mod tests {
                     Column {
                         name: "user_id".to_string(),
                         data_type: "int".to_string(),
-                        nullable: false,
                         default: None,
-                        is_primary_key: true,
-                        is_unique: true,
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                         comment: None,
                         ordinal_position: 1,
                     },
                     Column {
                         name: "username".to_string(),
                         data_type: "text".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 2,
                     },
                     Column {
                         name: "email".to_string(),
                         data_type: "text".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 3,
                     },
@@ -1799,30 +1777,24 @@ mod tests {
                     Column {
                         name: "id".to_string(),
                         data_type: "int".to_string(),
-                        nullable: false,
                         default: None,
-                        is_primary_key: true,
-                        is_unique: true,
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                         comment: None,
                         ordinal_position: 1,
                     },
                     Column {
                         name: "user_id".to_string(),
                         data_type: "int".to_string(),
-                        nullable: false,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::empty(),
                         comment: None,
                         ordinal_position: 2,
                     },
                     Column {
                         name: "status".to_string(),
                         data_type: "text".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 3,
                     },
@@ -1902,20 +1874,16 @@ mod tests {
                     Column {
                         name: "user_id".to_string(),
                         data_type: "int".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 1,
                     },
                     Column {
                         name: "created_at".to_string(),
                         data_type: "timestamp".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 2,
                     },
@@ -1947,20 +1915,16 @@ mod tests {
                     Column {
                         name: "id".to_string(),
                         data_type: "int".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 1,
                     },
                     Column {
                         name: "user_id".to_string(),
                         data_type: "int".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 2,
                     },
@@ -1999,20 +1963,16 @@ mod tests {
                     Column {
                         name: "name".to_string(),
                         data_type: "text".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 1,
                     },
                     Column {
                         name: "email".to_string(),
                         data_type: "text".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 2,
                     },
@@ -2146,10 +2106,8 @@ mod tests {
                 columns: vec![Column {
                     name: "id".to_string(),
                     data_type: "int".to_string(),
-                    nullable: false,
                     default: None,
-                    is_primary_key: true,
-                    is_unique: true,
+                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                     comment: None,
                     ordinal_position: 1,
                 }],
@@ -2314,30 +2272,24 @@ mod tests {
                     Column {
                         name: "id".to_string(),
                         data_type: "int".to_string(),
-                        nullable: false,
                         default: None,
-                        is_primary_key: true,
-                        is_unique: true,
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                         comment: None,
                         ordinal_position: 1,
                     },
                     Column {
                         name: "name".to_string(),
                         data_type: "text".to_string(),
-                        nullable: true,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: false,
+                        attributes: ColumnAttributes::NULLABLE,
                         comment: None,
                         ordinal_position: 2,
                     },
                     Column {
                         name: "email".to_string(),
                         data_type: "text".to_string(),
-                        nullable: false,
                         default: None,
-                        is_primary_key: false,
-                        is_unique: true,
+                        attributes: ColumnAttributes::UNIQUE,
                         comment: None,
                         ordinal_position: 3,
                     },
@@ -2547,10 +2499,8 @@ mod tests {
                 columns: vec![Column {
                     name: "and".to_string(), // Same as keyword AND
                     data_type: "text".to_string(),
-                    nullable: true,
                     default: None,
-                    is_primary_key: false,
-                    is_unique: false,
+                    attributes: ColumnAttributes::NULLABLE,
                     comment: None,
                     ordinal_position: 1,
                 }],

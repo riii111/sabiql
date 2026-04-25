@@ -27,7 +27,7 @@ impl PostgresAdapter {
     fn extract_primary_key(columns: &[Column]) -> Option<Vec<String>> {
         let pk_cols: Vec<String> = columns
             .iter()
-            .filter(|c| c.is_primary_key)
+            .filter(|c| c.is_primary_key())
             .map(|c| c.name.clone())
             .collect();
         if pk_cols.is_empty() {

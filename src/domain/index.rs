@@ -4,10 +4,54 @@ use std::str::FromStr;
 pub struct Index {
     pub name: String,
     pub columns: Vec<String>,
-    pub is_unique: bool,
-    pub is_primary: bool,
+    pub attributes: IndexAttributes,
     pub index_type: IndexType,
     pub definition: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct IndexAttributes(u8);
+
+impl IndexAttributes {
+    pub const UNIQUE: Self = Self(0b01);
+    pub const PRIMARY: Self = Self(0b10);
+
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
+    pub const fn from_parts(unique: bool, primary: bool) -> Self {
+        let mut bits = 0;
+        if unique {
+            bits |= Self::UNIQUE.0;
+        }
+        if primary {
+            bits |= Self::PRIMARY.0;
+        }
+        Self(bits)
+    }
+
+    pub const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+}
+
+impl std::ops::BitOr for IndexAttributes {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl Index {
+    pub const fn is_unique(&self) -> bool {
+        self.attributes.contains(IndexAttributes::UNIQUE)
+    }
+
+    pub const fn is_primary(&self) -> bool {
+        self.attributes.contains(IndexAttributes::PRIMARY)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

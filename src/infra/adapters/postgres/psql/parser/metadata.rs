@@ -1,7 +1,7 @@
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
-    Column, FkAction, ForeignKey, Index, IndexType, RlsCommand, RlsInfo, RlsPolicy, Schema,
-    TableSignature, TableSummary, Trigger, TriggerEvent, TriggerTiming,
+    Column, ColumnAttributes, FkAction, ForeignKey, Index, IndexAttributes, IndexType, RlsCommand,
+    RlsInfo, RlsPolicy, Schema, TableSignature, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
 use super::super::super::PostgresAdapter;
@@ -171,10 +171,8 @@ impl PostgresAdapter {
             .map(|c| Column {
                 name: c.name,
                 data_type: c.data_type,
-                nullable: c.nullable,
                 default: c.default,
-                is_primary_key: c.is_primary_key,
-                is_unique: c.is_unique,
+                attributes: ColumnAttributes::from_parts(c.nullable, c.is_primary_key, c.is_unique),
                 comment: c.comment,
                 ordinal_position: c.ordinal_position,
             })
@@ -205,8 +203,7 @@ impl PostgresAdapter {
             .map(|i| Index {
                 name: i.name,
                 columns: i.columns,
-                is_unique: i.is_unique,
-                is_primary: i.is_primary,
+                attributes: IndexAttributes::from_parts(i.is_unique, i.is_primary),
                 index_type: match i.index_type.parse::<IndexType>() {
                     Ok(index_type) => index_type,
                     Err(never) => match never {},
