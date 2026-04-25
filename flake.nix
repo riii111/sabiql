@@ -35,6 +35,7 @@
             extensions = [
               "clippy"
               "rust-analyzer"
+              "rust-src"
               "rustfmt"
             ];
           };
@@ -89,6 +90,7 @@
             extensions = [
               "clippy"
               "rust-analyzer"
+              "rust-src"
               "rustfmt"
             ];
           };
