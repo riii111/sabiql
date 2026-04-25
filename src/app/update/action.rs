@@ -244,6 +244,8 @@ pub struct ConnectionTarget {
     pub name: String,
 }
 
+// Do not derive PartialEq here: payload variants carry domain snapshots and
+// errors that are not all value-comparable.
 #[derive(Debug, Clone)]
 pub enum Action {
     None,
