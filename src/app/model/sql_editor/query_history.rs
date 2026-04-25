@@ -2,7 +2,7 @@ use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
 use crate::domain::query_history::QueryHistoryEntry;
-use crate::model::shared::picker::clamp_scroll_offset;
+use crate::model::shared::picker::{clamp_scroll_offset, sanitize_filter_text};
 use crate::model::shared::text_input::TextInputState;
 use crate::update::action::CursorMove;
 
@@ -61,12 +61,7 @@ impl QueryHistoryPickerState {
     }
 
     pub fn insert_filter_str(&mut self, text: &str) {
-        if text.contains(['\n', '\r']) {
-            let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-            self.filter_input.insert_str(&clean);
-        } else {
-            self.filter_input.insert_str(text);
-        }
+        self.filter_input.insert_str(&sanitize_filter_text(text));
         self.reset_selection();
     }
 
