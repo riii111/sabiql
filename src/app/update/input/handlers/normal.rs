@@ -1016,7 +1016,7 @@ mod tests {
             #[test]
             fn dd_stages_row_for_delete() {
                 let mut state = active_cell_state();
-                state.result_interaction.delete_op_pending = true;
+                state.result_interaction.start_delete_operator();
 
                 let result = handle_normal_mode(combo(Key::Char('d')), &state);
 
@@ -1035,7 +1035,7 @@ mod tests {
             #[test]
             fn yy_triggers_row_yank() {
                 let mut state = active_cell_state();
-                state.result_interaction.yank_op_pending = true;
+                state.result_interaction.start_yank_operator();
 
                 let result = handle_normal_mode(combo(Key::Char('y')), &state);
 

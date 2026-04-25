@@ -14,10 +14,10 @@ use crate::policy::write::write_guardrails::WritePreview;
 pub struct ResultInteraction {
     pub scroll_offset: usize,
     pub horizontal_offset: usize,
-    pub delete_op_pending: bool,
-    pub yank_op_pending: bool,
     pub yank_flash: Option<YankFlash>,
 
+    delete_op_pending: bool,
+    yank_op_pending: bool,
     selection: ResultSelection,
     cell_edit: CellEditState,
     staged_delete_rows: BTreeSet<usize>,
@@ -118,13 +118,27 @@ impl ResultInteraction {
         self.clear_active_cell_state();
     }
 
-    pub fn clear_operator_pending(&mut self, keep_delete: bool, keep_yank: bool) {
-        if !keep_delete {
-            self.delete_op_pending = false;
-        }
-        if !keep_yank {
-            self.yank_op_pending = false;
-        }
+    pub fn start_delete_operator(&mut self) {
+        self.delete_op_pending = true;
+        self.yank_op_pending = false;
+    }
+
+    pub fn start_yank_operator(&mut self) {
+        self.yank_op_pending = true;
+        self.delete_op_pending = false;
+    }
+
+    pub fn clear_operator_pending(&mut self) {
+        self.delete_op_pending = false;
+        self.yank_op_pending = false;
+    }
+
+    pub fn is_delete_operator_pending(&self) -> bool {
+        self.delete_op_pending
+    }
+
+    pub fn is_yank_operator_pending(&self) -> bool {
+        self.yank_op_pending
     }
 
     pub fn clear_expired_flash(&mut self, now: Instant) {
@@ -262,18 +276,48 @@ mod tests {
         assert!(ri.yank_flash.is_some());
     }
 
-    #[test]
-    fn clear_operator_pending_selective() {
-        let mut ri = ResultInteraction {
-            delete_op_pending: true,
-            yank_op_pending: true,
-            ..Default::default()
-        };
+    mod operator_pending {
+        use super::*;
 
-        ri.clear_operator_pending(true, false);
+        #[test]
+        fn clear_clears_both() {
+            let mut ri = ResultInteraction::default();
+            ri.start_delete_operator();
 
-        assert!(ri.delete_op_pending);
-        assert!(!ri.yank_op_pending);
+            ri.clear_operator_pending();
+
+            assert!(!ri.is_delete_operator_pending());
+            assert!(!ri.is_yank_operator_pending());
+
+            ri.start_yank_operator();
+
+            ri.clear_operator_pending();
+
+            assert!(!ri.is_delete_operator_pending());
+            assert!(!ri.is_yank_operator_pending());
+        }
+
+        #[test]
+        fn start_yank_clears_delete() {
+            let mut ri = ResultInteraction::default();
+
+            ri.start_delete_operator();
+            ri.start_yank_operator();
+
+            assert!(!ri.is_delete_operator_pending());
+            assert!(ri.is_yank_operator_pending());
+        }
+
+        #[test]
+        fn start_delete_clears_yank() {
+            let mut ri = ResultInteraction::default();
+
+            ri.start_yank_operator();
+            ri.start_delete_operator();
+
+            assert!(ri.is_delete_operator_pending());
+            assert!(!ri.is_yank_operator_pending());
+        }
     }
 
     #[test]
