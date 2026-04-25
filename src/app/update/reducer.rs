@@ -173,6 +173,7 @@ mod tests {
     use super::*;
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::ConnectionStoreError;
+    use crate::update::action::ModalKind;
     use crate::update::action::{ConnectionSaveError, ConnectionTarget};
     use crate::update::action::{InputTarget, SelectMotion};
 
@@ -526,7 +527,7 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::OpenTablePicker,
+                Action::OpenModal(ModalKind::TablePicker),
                 now,
                 &AppServices::stub(),
             );
@@ -545,7 +546,7 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::CloseTablePicker,
+                Action::CloseModal(ModalKind::TablePicker),
                 now,
                 &AppServices::stub(),
             );
@@ -560,12 +561,22 @@ mod tests {
             let now = Instant::now();
 
             // First open
-            let effects = reduce(&mut state, Action::OpenHelp, now, &AppServices::stub());
+            let effects = reduce(
+                &mut state,
+                Action::ToggleModal(ModalKind::Help),
+                now,
+                &AppServices::stub(),
+            );
             assert_eq!(state.input_mode(), InputMode::Help);
             assert!(effects.is_empty());
 
             // Toggle back to normal
-            let effects = reduce(&mut state, Action::OpenHelp, now, &AppServices::stub());
+            let effects = reduce(
+                &mut state,
+                Action::ToggleModal(ModalKind::Help),
+                now,
+                &AppServices::stub(),
+            );
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
@@ -577,7 +588,12 @@ mod tests {
             state.ui.help_scroll_offset = 12;
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::CloseHelp, now, &AppServices::stub());
+            let effects = reduce(
+                &mut state,
+                Action::CloseModal(ModalKind::Help),
+                now,
+                &AppServices::stub(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.ui.help_scroll_offset, 0);
@@ -2110,7 +2126,7 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::OpenErTablePicker,
+                Action::OpenModal(ModalKind::ErTablePicker),
                 now,
                 &AppServices::stub(),
             );
@@ -2128,7 +2144,7 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::OpenErTablePicker,
+                Action::OpenModal(ModalKind::ErTablePicker),
                 now,
                 &AppServices::stub(),
             );
@@ -2156,7 +2172,7 @@ mod tests {
         fn has_open_er_dispatch(effects: &[Effect]) -> bool {
             effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::OpenErTablePicker)))
+                    if actions.iter().any(|a| matches!(a, Action::OpenModal(ModalKind::ErTablePicker))))
             })
         }
 
@@ -2226,7 +2242,7 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::CloseErTablePicker,
+                Action::CloseModal(ModalKind::ErTablePicker),
                 now,
                 &AppServices::stub(),
             );
@@ -2513,17 +2529,24 @@ mod tests {
                 .expect("action must exist in palette")
         }
 
+        fn same_palette_action(left: &Action, right: &Action) -> bool {
+            match (left, right) {
+                (Action::OpenModal(a), Action::OpenModal(b))
+                | (Action::CloseModal(a), Action::CloseModal(b))
+                | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
+                _ => std::mem::discriminant(left) == std::mem::discriminant(right),
+            }
+        }
+
         #[rstest]
-        #[case(Action::OpenHelp, InputMode::Help)]
-        #[case(Action::OpenTablePicker, InputMode::TablePicker)]
-        #[case(Action::OpenSqlModal, InputMode::SqlModal)]
+        #[case(Action::ToggleModal(ModalKind::Help), InputMode::Help)]
+        #[case(Action::OpenModal(ModalKind::TablePicker), InputMode::TablePicker)]
+        #[case(Action::OpenModal(ModalKind::SqlModal), InputMode::SqlModal)]
         fn confirm_selection_applies_sub_action(
             #[case] target_action: Action,
             #[case] expected_mode: InputMode,
         ) {
-            let entry_index = palette_index_of(|a| {
-                std::mem::discriminant(a) == std::mem::discriminant(&target_action)
-            });
+            let entry_index = palette_index_of(|a| same_palette_action(a, &target_action));
 
             let mut state = state_in_palette_mode();
             state.ui.table_picker.set_selection(entry_index);
@@ -2563,7 +2586,8 @@ mod tests {
 
         #[test]
         fn confirm_selection_open_connection_selector_closes_palette() {
-            let entry_index = palette_index_of(|a| matches!(a, Action::OpenConnectionSelector));
+            let entry_index =
+                palette_index_of(|a| matches!(a, Action::OpenModal(ModalKind::ConnectionSelector)));
 
             let mut state = state_in_palette_mode();
             state.ui.table_picker.set_selection(entry_index);

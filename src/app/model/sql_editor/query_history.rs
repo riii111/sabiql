@@ -3,6 +3,7 @@ use nucleo_matcher::{Config, Matcher};
 
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::model::shared::text_input::TextInputState;
+use crate::update::action::CursorMove;
 
 #[derive(Debug, Clone, Default)]
 pub struct QueryHistoryPickerState {
@@ -28,6 +29,35 @@ impl QueryHistoryPickerState {
     pub fn reset(&mut self) {
         self.entries.clear();
         self.filter_input.clear();
+        self.selected = 0;
+        self.scroll_offset = 0;
+    }
+
+    pub fn insert_filter_char(&mut self, ch: char) {
+        self.filter_input.insert_char(ch);
+        self.reset_selection();
+    }
+
+    pub fn insert_filter_str(&mut self, text: &str) {
+        if text.contains(['\n', '\r']) {
+            let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+            self.filter_input.insert_str(&clean);
+        } else {
+            self.filter_input.insert_str(text);
+        }
+        self.reset_selection();
+    }
+
+    pub fn backspace_filter(&mut self) {
+        self.filter_input.backspace();
+        self.reset_selection();
+    }
+
+    pub fn move_filter_cursor(&mut self, direction: CursorMove) {
+        self.filter_input.move_cursor(direction);
+    }
+
+    pub fn reset_selection(&mut self) {
         self.selected = 0;
         self.scroll_offset = 0;
     }
@@ -108,6 +138,62 @@ mod tests {
     use super::*;
     use crate::domain::ConnectionId;
 
+    fn state_with_selection() -> QueryHistoryPickerState {
+        QueryHistoryPickerState {
+            selected: 3,
+            scroll_offset: 2,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn insert_filter_char_resets_selection() {
+        let mut state = state_with_selection();
+
+        state.insert_filter_char('a');
+
+        assert_eq!(state.filter_input.content(), "a");
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.scroll_offset, 0);
+    }
+
+    #[test]
+    fn insert_filter_str_strips_newlines_and_resets_selection() {
+        let mut state = state_with_selection();
+
+        state.insert_filter_str("a\nb\rc");
+
+        assert_eq!(state.filter_input.content(), "abc");
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.scroll_offset, 0);
+    }
+
+    #[test]
+    fn backspace_filter_resets_selection() {
+        let mut state = QueryHistoryPickerState {
+            filter_input: TextInputState::new("abc", 3),
+            ..state_with_selection()
+        };
+
+        state.backspace_filter();
+
+        assert_eq!(state.filter_input.content(), "ab");
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.scroll_offset, 0);
+    }
+
+    #[test]
+    fn move_filter_cursor_preserves_selection() {
+        let mut state = QueryHistoryPickerState {
+            filter_input: TextInputState::new("abc", 3),
+            ..state_with_selection()
+        };
+
+        state.move_filter_cursor(CursorMove::Left);
+
+        assert_eq!(state.selected, 3);
+        assert_eq!(state.scroll_offset, 2);
+    }
     fn make_entry(query: &str) -> QueryHistoryEntry {
         use crate::domain::query_history::QueryResultStatus;
         QueryHistoryEntry::new(

@@ -182,6 +182,20 @@ pub enum ListMotion {
     Previous,
 }
 
+/// Payload-free modal lifecycle kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModalKind {
+    TablePicker,
+    CommandPalette,
+    Help,
+    SqlModal,
+    ErTablePicker,
+    QueryHistoryPicker,
+    JsonbDetail,
+    ConnectionSetup,
+    ConnectionSelector,
+}
+
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshResult {
     pub run_id: u64,
@@ -268,22 +282,17 @@ pub enum Action {
         motion: ListMotion,
     },
 
-    // Overlay toggles
-    OpenTablePicker,
-    CloseTablePicker,
-    OpenCommandPalette,
-    CloseCommandPalette,
-    OpenHelp,
-    CloseHelp,
+    // Modal lifecycle
+    OpenModal(ModalKind),
+    CloseModal(ModalKind),
+    ToggleModal(ModalKind),
 
     // Connection lifecycle
     TryConnect,
     SwitchConnection(ConnectionTarget),
 
     // Connection Setup
-    OpenConnectionSetup,
     StartEditConnection(ConnectionId),
-    CloseConnectionSetup,
     ConnectionSetupNextField,
     ConnectionSetupPrevField,
     ConnectionSetupToggleDropdown,
@@ -297,9 +306,6 @@ pub enum Action {
     ConnectionSaveFailed(ConnectionSaveError),
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(ConnectionStoreError),
-
-    // Connection Selector
-    OpenConnectionSelector,
 
     // Connection Error
     ShowConnectionError(ConnectionErrorInfo),
@@ -388,8 +394,6 @@ pub enum Action {
     Paste(String),
 
     // SQL Modal
-    OpenSqlModal,
-    CloseSqlModal,
     SqlModalAppendInsert,
     SqlModalEnterInsert,
     SqlModalEnterNormal,
@@ -494,15 +498,11 @@ pub enum Action {
     ToggleReadOnly,
 
     // ER Table Picker
-    OpenErTablePicker,
-    CloseErTablePicker,
     ErToggleSelection,
     ErSelectAll,
     ErConfirmSelection,
 
     // Query History Picker
-    OpenQueryHistoryPicker,
-    CloseQueryHistoryPicker,
     QueryHistoryLoaded(
         crate::domain::ConnectionId,
         Vec<crate::domain::query_history::QueryHistoryEntry>,
@@ -530,8 +530,6 @@ pub enum Action {
     CsvExportFailed(DbOperationError),
 
     // JSONB Detail View
-    OpenJsonbDetail,
-    CloseJsonbDetail,
     JsonbYankAll,
     JsonbEnterEdit,
     JsonbAppendInsert,

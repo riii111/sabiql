@@ -1,6 +1,8 @@
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-use crate::update::action::{Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::update::action::{
+    Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
+};
 use crate::update::input::keybindings::{Key, KeyCombo, Modifiers};
 use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
@@ -105,7 +107,7 @@ pub fn handle_sql_modal_keys_with_prefix(
             return Action::ExplainAnalyzeRequest;
         }
         if ctrl && combo.key == Key::Char('o') {
-            return Action::OpenQueryHistoryPicker;
+            return Action::OpenModal(ModalKind::QueryHistoryPicker);
         }
         if ctrl && combo.key == Key::Char('l') {
             return Action::SqlModalClear;
@@ -239,7 +241,7 @@ pub fn handle_sql_modal_keys_with_prefix(
     }
 
     if ctrl && combo.key == Key::Char('o') {
-        return Action::OpenQueryHistoryPicker;
+        return Action::OpenModal(ModalKind::QueryHistoryPicker);
     }
 
     if ctrl && combo.key == Key::Char(' ') {
@@ -347,7 +349,7 @@ mod tests {
         SqlModalDelete,
         SqlModalInput(char),
         SqlModalMoveCursor(CursorMove),
-        CloseSqlModal,
+        CloseModal(ModalKind),
         SqlModalAppendInsert,
         SqlModalEnterInsert,
         SqlModalEnterNormal,
@@ -357,7 +359,7 @@ mod tests {
         CompletionDismiss,
         CompletionPrev,
         CompletionNext,
-        OpenQueryHistoryPicker,
+        OpenModal(ModalKind),
         SqlModalClear,
         ExplainRequest,
         ExplainAnalyzeRequest,
@@ -398,7 +400,9 @@ mod tests {
                     matches!(result, Action::TextMoveCursor { target: InputTarget::SqlModal, direction: x } if x == m)
                 );
             }
-            Expected::CloseSqlModal => assert!(matches!(result, Action::CloseSqlModal)),
+            Expected::CloseModal(expected_kind) => {
+                assert!(matches!(result, Action::CloseModal(kind) if kind == expected_kind))
+            }
             Expected::SqlModalAppendInsert => {
                 assert!(matches!(result, Action::SqlModalAppendInsert));
             }
@@ -414,8 +418,8 @@ mod tests {
             Expected::CompletionDismiss => assert!(matches!(result, Action::CompletionDismiss)),
             Expected::CompletionPrev => assert!(matches!(result, Action::CompletionPrev)),
             Expected::CompletionNext => assert!(matches!(result, Action::CompletionNext)),
-            Expected::OpenQueryHistoryPicker => {
-                assert!(matches!(result, Action::OpenQueryHistoryPicker));
+            Expected::OpenModal(expected_kind) => {
+                assert!(matches!(result, Action::OpenModal(kind) if kind == expected_kind));
             }
             Expected::SqlModalClear => assert!(matches!(result, Action::SqlModalClear)),
             Expected::ExplainRequest => assert!(matches!(result, Action::ExplainRequest)),
@@ -603,7 +607,10 @@ mod tests {
                 SqlModalTab::Sql,
             );
 
-            assert!(matches!(result, Action::OpenQueryHistoryPicker));
+            assert!(matches!(
+                result,
+                Action::OpenModal(ModalKind::QueryHistoryPicker)
+            ));
         }
 
         #[test]
@@ -898,7 +905,7 @@ mod tests {
                 SqlModalTab::Sql,
             );
 
-            assert_action(result, Expected::CloseSqlModal);
+            assert_action(result, Expected::CloseModal(ModalKind::SqlModal));
         }
 
         #[test]
@@ -934,7 +941,7 @@ mod tests {
                 SqlModalTab::Sql,
             );
 
-            assert_action(result, Expected::OpenQueryHistoryPicker);
+            assert_action(result, Expected::OpenModal(ModalKind::QueryHistoryPicker));
         }
 
         #[test]
@@ -960,7 +967,7 @@ mod tests {
 
             assert_action(yank, Expected::SqlModalYank);
             assert_action(enter, Expected::None);
-            assert_action(close, Expected::CloseSqlModal);
+            assert_action(close, Expected::CloseModal(ModalKind::SqlModal));
         }
 
         #[test]
@@ -1064,7 +1071,7 @@ mod tests {
             let result =
                 handle_sql_modal_keys(combo(Key::Esc), false, &SqlModalStatus::Normal, tab);
 
-            assert_action(result, Expected::CloseSqlModal);
+            assert_action(result, Expected::CloseModal(ModalKind::SqlModal));
         }
 
         #[rstest]
@@ -1211,7 +1218,7 @@ mod tests {
             let close = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Plan);
 
             assert_action(scroll, Expected::ExplainPlanScrollDown);
-            assert_action(close, Expected::CloseSqlModal);
+            assert_action(close, Expected::CloseModal(ModalKind::SqlModal));
         }
 
         #[rstest]
@@ -1230,7 +1237,7 @@ mod tests {
             );
 
             assert_action(scroll, Expected::ExplainCompareScrollDown);
-            assert_action(close, Expected::CloseSqlModal);
+            assert_action(close, Expected::CloseModal(ModalKind::SqlModal));
             assert_action(explain, Expected::ExplainRequest);
         }
     }

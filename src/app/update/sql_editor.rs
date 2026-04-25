@@ -18,7 +18,7 @@ use crate::policy::write::sql_risk::{
 };
 use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
 use crate::ports::outbound::ClipboardError;
-use crate::update::action::{Action, CursorMove, InputTarget};
+use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 
 pub fn reduce_sql_modal(
     state: &mut AppState,
@@ -164,7 +164,7 @@ pub fn reduce_sql_modal(
         }
 
         // Modal open/submit
-        Action::OpenSqlModal => {
+        Action::OpenModal(ModalKind::SqlModal) => {
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.set_status(SqlModalStatus::Normal);
             state.sql_modal.active_tab = SqlModalTab::Sql;
@@ -1264,7 +1264,11 @@ mod tests {
         fn open_sql_modal_starts_in_normal() {
             let mut state = AppState::new("test".to_string());
 
-            reduce_sql_modal(&mut state, &Action::OpenSqlModal, Instant::now());
+            reduce_sql_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::SqlModal),
+                Instant::now(),
+            );
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
         }
@@ -1274,7 +1278,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.sql_modal.active_tab = SqlModalTab::Plan;
 
-            reduce_sql_modal(&mut state, &Action::OpenSqlModal, Instant::now());
+            reduce_sql_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::SqlModal),
+                Instant::now(),
+            );
 
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
         }

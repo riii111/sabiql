@@ -1,4 +1,4 @@
-use crate::update::action::{Action, CursorMove, InputTarget};
+use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 
 use crate::update::input::vim::types::{
     JsonbDetailVimContext, SearchContinuation, VimCommand, VimModeTransition, VimNavigation,
@@ -12,7 +12,9 @@ pub(in crate::update::input::vim) fn command(
     match ctx {
         JsonbDetailVimContext::Viewing => match command {
             VimCommand::Navigation(navigation) => navigation_action(navigation),
-            VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseJsonbDetail),
+            VimCommand::ModeTransition(VimModeTransition::Escape) => {
+                Some(Action::CloseModal(ModalKind::JsonbDetail))
+            }
             VimCommand::ModeTransition(VimModeTransition::Insert) => Some(Action::JsonbEnterEdit),
             VimCommand::ModeTransition(VimModeTransition::Append) => {
                 Some(Action::JsonbAppendInsert)

@@ -6,7 +6,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
-use crate::app::update::action::{Action, CursorMove, InputTarget};
+use crate::app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::app::update::browse::result::reduce_result;
 use crate::domain::{Column, ColumnAttributes, QueryResult, QuerySource};
 use crate::ui::theme::{
@@ -74,7 +74,7 @@ fn jsonb_detail_state() -> (AppState, Instant) {
     state.result_interaction.activate_cell(0, 3);
     reduce_result(
         &mut state,
-        &Action::OpenJsonbDetail,
+        &Action::OpenModal(ModalKind::JsonbDetail),
         &AppServices::stub(),
         now,
     );

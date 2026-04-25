@@ -3,11 +3,11 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::Action;
+use crate::update::action::{Action, ModalKind};
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
-        Action::OpenConnectionSelector => {
+        Action::OpenModal(ModalKind::ConnectionSelector) => {
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
             Some(vec![Effect::LoadConnections])
@@ -121,7 +121,11 @@ mod tests {
         fn sets_mode_and_loads_connections() {
             let mut state = AppState::new("test".to_string());
 
-            let effects = reduce(&mut state, &Action::OpenConnectionSelector, Instant::now());
+            let effects = reduce(
+                &mut state,
+                &Action::OpenModal(ModalKind::ConnectionSelector),
+                Instant::now(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
             let effects = effects.unwrap();
@@ -133,7 +137,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_connection_list_selection(Some(3));
 
-            reduce(&mut state, &Action::OpenConnectionSelector, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenModal(ModalKind::ConnectionSelector),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.connection_list_selected, 0);
         }

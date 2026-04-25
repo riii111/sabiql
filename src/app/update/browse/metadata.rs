@@ -8,7 +8,7 @@ use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::er_state::ErStatus;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::FailedPrefetchEntry;
-use crate::update::action::{Action, TableTarget};
+use crate::update::action::{Action, ModalKind, TableTarget};
 
 const BASE_BACKOFF_SECS: u64 = 1;
 const MAX_BACKOFF_SECS: u64 = 4;
@@ -117,7 +117,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             if state.ui.pending_er_picker && state.modal.active_mode() == InputMode::Normal {
                 state.ui.pending_er_picker = false;
-                effects.push(Effect::DispatchActions(vec![Action::OpenErTablePicker]));
+                effects.push(Effect::DispatchActions(vec![Action::OpenModal(
+                    ModalKind::ErTablePicker,
+                )]));
             } else {
                 state.ui.pending_er_picker = false;
             }

@@ -1,6 +1,6 @@
 use super::KeyBinding;
 use super::{Key, KeyCombo};
-use crate::update::action::Action;
+use crate::update::action::{Action, ModalKind};
 
 // =============================================================================
 // Global Keys (Normal mode)
@@ -20,7 +20,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         key: "?",
         desc_short: "Help",
         description: "Toggle help",
-        action: Action::OpenHelp,
+        action: Action::ToggleModal(ModalKind::Help),
         combos: &[KeyCombo::plain(Key::Char('?'))],
     },
     KeyBinding {
@@ -28,7 +28,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         key: "Ctrl+P",
         desc_short: "Tables",
         description: "Open Table Picker",
-        action: Action::OpenTablePicker,
+        action: Action::OpenModal(ModalKind::TablePicker),
         combos: &[KeyCombo::ctrl(Key::Char('p'))],
     },
     KeyBinding {
@@ -36,7 +36,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         key: "Ctrl+K",
         desc_short: "Palette",
         description: "Open Command Palette",
-        action: Action::OpenCommandPalette,
+        action: Action::OpenModal(ModalKind::CommandPalette),
         combos: &[KeyCombo::ctrl(Key::Char('k'))],
     },
     KeyBinding {
@@ -94,7 +94,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         key: "s",
         desc_short: "SQL",
         description: "Open SQL Editor",
-        action: Action::OpenSqlModal,
+        action: Action::OpenModal(ModalKind::SqlModal),
         combos: &[KeyCombo::plain(Key::Char('s'))],
     },
     KeyBinding {
@@ -102,7 +102,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         key: "e",
         desc_short: "ER Diagram",
         description: "Open ER Diagram",
-        action: Action::OpenErTablePicker,
+        action: Action::OpenModal(ModalKind::ErTablePicker),
         combos: &[KeyCombo::plain(Key::Char('e'))],
     },
     KeyBinding {
@@ -110,7 +110,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         key: "c",
         desc_short: "Connections",
         description: "Open Connection Selector",
-        action: Action::OpenConnectionSelector,
+        action: Action::OpenModal(ModalKind::ConnectionSelector),
         combos: &[KeyCombo::plain(Key::Char('c'))],
     },
     KeyBinding {
@@ -144,7 +144,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         key: "Ctrl+O",
         desc_short: "History",
         description: "Open Query History",
-        action: Action::OpenQueryHistoryPicker,
+        action: Action::OpenModal(ModalKind::QueryHistoryPicker),
         combos: &[KeyCombo::ctrl(Key::Char('o'))],
     },
 ];
