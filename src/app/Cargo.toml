@@ -1,10 +1,13 @@
 [package]
 name = "sabiql-app"
-version = "0.1.0"
+version = "1.11.1"
 edition = "2024"
+description = "Application layer for sabiql"
+license = "MIT"
+repository = "https://github.com/riii111/sabiql"
 
 [lib]
-path = "../../src/app/mod.rs"
+path = "lib.rs"
 
 [features]
 test-support = []
@@ -28,7 +31,7 @@ unicode-width.workspace = true
 urlencoding.workspace = true
 uuid.workspace = true
 dirs.workspace = true
-sabiql-domain = { path = "../domain" }
+sabiql-domain = { path = "../domain", version = "1.11.1" }
 
 [dev-dependencies]
 mockall.workspace = true

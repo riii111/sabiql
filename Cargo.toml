@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "crates/app",
-    "crates/domain",
-    "crates/infra",
-    "crates/ui",
+    "src/app",
+    "src/domain",
+    "src/infra",
+    "src/ui",
 ]
 resolver = "2"
 
@@ -55,18 +55,18 @@ color-eyre.workspace = true
 clap.workspace = true
 dotenvy.workspace = true
 self_update = { workspace = true, optional = true }
-sabiql-app = { path = "crates/app" }
-sabiql-infra = { path = "crates/infra" }
-sabiql-ui = { path = "crates/ui" }
+sabiql-app = { path = "src/app", version = "1.11.1" }
+sabiql-infra = { path = "src/infra", version = "1.11.1" }
+sabiql-ui = { path = "src/ui", version = "1.11.1" }
 
 [features]
 default = []
 self-update = ["dep:self_update"]
 
 [dev-dependencies]
-sabiql-domain = { path = "crates/domain" }
-sabiql-app = { path = "crates/app", features = ["test-support"] }
-sabiql-ui = { path = "crates/ui", features = ["test-support"] }
+sabiql-domain = { path = "src/domain", version = "1.11.1" }
+sabiql-app = { path = "src/app", version = "1.11.1", features = ["test-support"] }
+sabiql-ui = { path = "src/ui", version = "1.11.1", features = ["test-support"] }
 ratatui.workspace = true
 rstest.workspace = true
 tempfile.workspace = true

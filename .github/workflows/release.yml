@@ -133,7 +133,13 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
 
-      - name: Publish to crates.io
-        run: cargo publish
+      - name: Publish workspace crates to crates.io
+        run: |
+          for crate in src/domain src/app src/infra src/ui .; do
+            cargo publish --manifest-path "$crate/Cargo.toml"
+            if [ "$crate" != "." ]; then
+              sleep 30
+            fi
+          done
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
