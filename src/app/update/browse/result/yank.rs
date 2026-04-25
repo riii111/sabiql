@@ -451,7 +451,7 @@ mod tests {
                     name: "id".to_string(),
                     data_type: "integer".to_string(),
                     default: None,
-                    attributes: ColumnAttributes::from_parts(false, true, true),
+                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                     comment: None,
                     ordinal_position: 1,
                 }],
