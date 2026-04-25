@@ -6,7 +6,7 @@ use crate::domain::{QueryResult, QuerySource};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
 use crate::model::shared::input_mode::InputMode;
-use crate::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus};
+use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::services::AppServices;
 use crate::update::action::{Action, ModalKind, TableTarget};
 use crate::update::input::command::{command_to_action, parse_command};
@@ -192,14 +192,9 @@ pub fn reduce(
                     vec![]
                 }
                 Action::OpenModal(ModalKind::SqlModal) => {
-                    state.modal.set_mode(InputMode::SqlModal);
-                    state.sql_modal.set_status(SqlModalStatus::Normal);
-                    if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some()
-                    {
-                        vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
-                    } else {
-                        vec![]
-                    }
+                    vec![Effect::DispatchActions(vec![Action::OpenModal(
+                        ModalKind::SqlModal,
+                    )])]
                 }
                 Action::OpenModal(ModalKind::ErTablePicker) => {
                     // Defer to modal reducer so metadata readiness checks stay in one place.

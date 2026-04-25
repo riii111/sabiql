@@ -50,8 +50,12 @@ impl PickerState {
     }
 
     pub fn insert_filter_str(&mut self, text: &str) {
-        let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-        self.filter_input.insert_str(&clean);
+        if text.contains(['\n', '\r']) {
+            let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+            self.filter_input.insert_str(&clean);
+        } else {
+            self.filter_input.insert_str(text);
+        }
         self.filter_input.update_viewport(self.filter_visible_width);
         self.reset();
     }

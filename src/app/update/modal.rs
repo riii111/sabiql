@@ -38,6 +38,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ToggleModal(ModalKind::Help) => {
             if state.modal.active_mode() == InputMode::Help {
                 state.modal.set_mode(InputMode::Normal);
+                state.ui.help_scroll_offset = 0;
             } else {
                 state.modal.set_mode(InputMode::Help);
             }

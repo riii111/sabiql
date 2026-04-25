@@ -403,10 +403,7 @@ mod tests {
         fn selector_action_keys(#[case] code: Key, #[case] expected: Action) {
             let result = handle_connection_selector_keys(combo(code));
 
-            assert_eq!(
-                std::mem::discriminant(&result),
-                std::mem::discriminant(&expected)
-            );
+            assert_eq!(format!("{result:?}"), format!("{expected:?}"));
         }
 
         #[test]

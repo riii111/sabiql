@@ -344,7 +344,7 @@ mod tests {
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
-                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(crate::update::action::ModalKind::JsonbDetail)])
+                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
             ));
         }
     }
