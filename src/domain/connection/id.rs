@@ -18,6 +18,12 @@ impl ConnectionId {
     }
 }
 
+impl AsRef<str> for ConnectionId {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl Default for ConnectionId {
     fn default() -> Self {
         Self::new()

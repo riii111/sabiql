@@ -44,6 +44,12 @@ impl ConnectionName {
     }
 }
 
+impl AsRef<str> for ConnectionName {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl fmt::Display for ConnectionName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
