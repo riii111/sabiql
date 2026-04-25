@@ -276,44 +276,48 @@ mod tests {
         assert!(ri.yank_flash.is_some());
     }
 
-    #[test]
-    fn clear_operator_pending_clears_both() {
-        let mut ri = ResultInteraction::default();
-        ri.start_delete_operator();
+    mod operator_pending {
+        use super::*;
 
-        ri.clear_operator_pending();
+        #[test]
+        fn clear_clears_both() {
+            let mut ri = ResultInteraction::default();
+            ri.start_delete_operator();
 
-        assert!(!ri.is_delete_operator_pending());
-        assert!(!ri.is_yank_operator_pending());
+            ri.clear_operator_pending();
 
-        ri.start_yank_operator();
+            assert!(!ri.is_delete_operator_pending());
+            assert!(!ri.is_yank_operator_pending());
 
-        ri.clear_operator_pending();
+            ri.start_yank_operator();
 
-        assert!(!ri.is_delete_operator_pending());
-        assert!(!ri.is_yank_operator_pending());
-    }
+            ri.clear_operator_pending();
 
-    #[test]
-    fn starting_yank_operator_clears_delete_operator() {
-        let mut ri = ResultInteraction::default();
+            assert!(!ri.is_delete_operator_pending());
+            assert!(!ri.is_yank_operator_pending());
+        }
 
-        ri.start_delete_operator();
-        ri.start_yank_operator();
+        #[test]
+        fn start_yank_clears_delete() {
+            let mut ri = ResultInteraction::default();
 
-        assert!(!ri.is_delete_operator_pending());
-        assert!(ri.is_yank_operator_pending());
-    }
+            ri.start_delete_operator();
+            ri.start_yank_operator();
 
-    #[test]
-    fn starting_delete_operator_clears_yank_operator() {
-        let mut ri = ResultInteraction::default();
+            assert!(!ri.is_delete_operator_pending());
+            assert!(ri.is_yank_operator_pending());
+        }
 
-        ri.start_yank_operator();
-        ri.start_delete_operator();
+        #[test]
+        fn start_delete_clears_yank() {
+            let mut ri = ResultInteraction::default();
 
-        assert!(ri.is_delete_operator_pending());
-        assert!(!ri.is_yank_operator_pending());
+            ri.start_yank_operator();
+            ri.start_delete_operator();
+
+            assert!(ri.is_delete_operator_pending());
+            assert!(!ri.is_yank_operator_pending());
+        }
     }
 
     #[test]

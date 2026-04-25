@@ -139,35 +139,45 @@ mod tests {
     use super::*;
     use crate::model::app_state::AppState;
 
-    #[test]
-    fn browse_context_detects_result_pending_state() {
-        let mut state = AppState::new("test".to_string());
-        state.ui.focused_pane = FocusedPane::Result;
-        state.result_interaction.activate_cell(0, 0);
-        state.result_interaction.start_yank_operator();
+    mod browse_context {
+        use super::*;
 
-        let BrowseVimContext::Result(result_ctx) = BrowseVimContext::from(&state) else {
-            panic!("expected result context");
-        };
+        fn result_context(state: &AppState) -> ResultVimContext {
+            let BrowseVimContext::Result(result_ctx) = BrowseVimContext::from(state) else {
+                panic!("expected result context");
+            };
+            result_ctx
+        }
 
-        assert_eq!(result_ctx.mode, ResultNavMode::CellActive);
-        assert!(result_ctx.yank_pending);
-        assert!(!result_ctx.delete_pending);
-    }
+        fn result_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.focused_pane = FocusedPane::Result;
+            state.result_interaction.activate_cell(0, 0);
+            state
+        }
 
-    #[test]
-    fn browse_context_detects_result_delete_pending_state() {
-        let mut state = AppState::new("test".to_string());
-        state.ui.focused_pane = FocusedPane::Result;
-        state.result_interaction.activate_cell(0, 0);
-        state.result_interaction.start_delete_operator();
+        #[test]
+        fn result_yank_pending_is_detected() {
+            let mut state = result_state();
+            state.result_interaction.start_yank_operator();
 
-        let BrowseVimContext::Result(result_ctx) = BrowseVimContext::from(&state) else {
-            panic!("expected result context");
-        };
+            let result_ctx = result_context(&state);
 
-        assert_eq!(result_ctx.mode, ResultNavMode::CellActive);
-        assert!(!result_ctx.yank_pending);
-        assert!(result_ctx.delete_pending);
+            assert_eq!(result_ctx.mode, ResultNavMode::CellActive);
+            assert!(result_ctx.yank_pending);
+            assert!(!result_ctx.delete_pending);
+        }
+
+        #[test]
+        fn result_delete_pending_is_detected() {
+            let mut state = result_state();
+            state.result_interaction.start_delete_operator();
+
+            let result_ctx = result_context(&state);
+
+            assert_eq!(result_ctx.mode, ResultNavMode::CellActive);
+            assert!(!result_ctx.yank_pending);
+            assert!(result_ctx.delete_pending);
+        }
     }
 }
