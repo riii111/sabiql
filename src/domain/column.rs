@@ -22,6 +22,7 @@ impl ColumnAttributes {
         Self(0)
     }
 
+    /// Builds attributes from raw boolean fields at parser or test-helper boundaries.
     pub const fn from_parts(nullable: bool, primary_key: bool, unique: bool) -> Self {
         let mut bits = 0;
         if nullable {
@@ -50,7 +51,7 @@ impl std::ops::BitOr for ColumnAttributes {
 }
 
 impl Column {
-    pub const fn nullable(&self) -> bool {
+    pub const fn is_nullable(&self) -> bool {
         self.attributes.contains(ColumnAttributes::NULLABLE)
     }
 
@@ -64,7 +65,7 @@ impl Column {
 
     pub fn type_display(&self) -> String {
         let mut display = self.data_type.clone();
-        if !self.nullable() {
+        if !self.is_nullable() {
             display.push_str(" NOT NULL");
         }
         if let Some(default) = &self.default {
@@ -87,6 +88,47 @@ mod tests {
             attributes: ColumnAttributes::from_parts(nullable, false, false),
             comment: None,
             ordinal_position: 1,
+        }
+    }
+
+    mod attributes {
+        use super::*;
+
+        #[rstest]
+        #[case(false, false, false, false, false, false)]
+        #[case(true, false, false, true, false, false)]
+        #[case(false, true, false, false, true, false)]
+        #[case(false, false, true, false, false, true)]
+        #[case(true, true, true, true, true, true)]
+        fn from_parts_sets_expected_flags(
+            #[case] nullable: bool,
+            #[case] primary_key: bool,
+            #[case] unique: bool,
+            #[case] expected_nullable: bool,
+            #[case] expected_primary_key: bool,
+            #[case] expected_unique: bool,
+        ) {
+            let attributes = ColumnAttributes::from_parts(nullable, primary_key, unique);
+
+            assert_eq!(
+                attributes.contains(ColumnAttributes::NULLABLE),
+                expected_nullable
+            );
+            assert_eq!(
+                attributes.contains(ColumnAttributes::PRIMARY_KEY),
+                expected_primary_key
+            );
+            assert_eq!(
+                attributes.contains(ColumnAttributes::UNIQUE),
+                expected_unique
+            );
+        }
+
+        #[test]
+        fn bitor_combines_flags() {
+            let attributes = ColumnAttributes::NULLABLE | ColumnAttributes::PRIMARY_KEY;
+
+            assert_eq!(attributes, ColumnAttributes::from_parts(true, true, false));
         }
     }
 

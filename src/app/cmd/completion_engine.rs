@@ -739,7 +739,7 @@ impl CompletionEngine {
                     score += 40;
                 }
                 // Boost NOT NULL columns (+20)
-                if !c.nullable() {
+                if !c.is_nullable() {
                     score += 20;
                 }
                 // Boost recently used columns (+30)

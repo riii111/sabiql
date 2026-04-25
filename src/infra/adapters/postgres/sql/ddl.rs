@@ -15,7 +15,7 @@ impl DdlGenerator for PostgresAdapter {
         );
 
         for (i, col) in table.columns.iter().enumerate() {
-            let nullable = if col.nullable() { "" } else { " NOT NULL" };
+            let nullable = if col.is_nullable() { "" } else { " NOT NULL" };
             let default = col
                 .default
                 .as_ref()

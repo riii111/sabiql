@@ -267,7 +267,7 @@ impl Inspector {
                 vec![
                     col.name.clone(),
                     col.data_type.clone(),
-                    if col.nullable() {
+                    if col.is_nullable() {
                         "✓".to_string()
                     } else {
                         String::new()
