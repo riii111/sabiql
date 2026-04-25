@@ -43,10 +43,12 @@ fn reduce_inner(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    state.result_interaction.clear_operator_pending(
-        matches!(action, Action::ResultDeleteOperatorPending),
-        matches!(action, Action::ResultRowYankOperatorPending),
-    );
+    if !matches!(
+        action,
+        Action::ResultDeleteOperatorPending | Action::ResultRowYankOperatorPending
+    ) {
+        state.result_interaction.clear_operator_pending();
+    }
 
     // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
     // reset view state here and return None, relying on reduce_query for the actual page change.
@@ -2593,7 +2595,7 @@ mod tests {
         #[test]
         fn yank_pending_reset_on_non_yank_action() {
             let mut state = create_test_state();
-            state.result_interaction.yank_op_pending = true;
+            state.result_interaction.start_yank_operator();
             let now = Instant::now();
 
             reduce(
@@ -2603,7 +2605,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(!state.result_interaction.yank_op_pending);
+            assert!(!state.result_interaction.is_yank_operator_pending());
         }
 
         #[test]
@@ -2619,8 +2621,8 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(state.result_interaction.yank_op_pending);
-            assert!(!state.result_interaction.delete_op_pending);
+            assert!(state.result_interaction.is_yank_operator_pending());
+            assert!(!state.result_interaction.is_delete_operator_pending());
 
             reduce(
                 &mut state,
@@ -2628,8 +2630,34 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(!state.result_interaction.yank_op_pending);
-            assert!(state.result_interaction.delete_op_pending);
+            assert!(!state.result_interaction.is_yank_operator_pending());
+            assert!(state.result_interaction.is_delete_operator_pending());
+        }
+
+        #[test]
+        fn d_then_y_cancels_delete_starts_yank() {
+            let mut state = create_test_state();
+            state.ui.focused_pane = FocusedPane::Result;
+            state.result_interaction.activate_cell(0, 0);
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::ResultDeleteOperatorPending,
+                now,
+                &AppServices::stub(),
+            );
+            assert!(state.result_interaction.is_delete_operator_pending());
+            assert!(!state.result_interaction.is_yank_operator_pending());
+
+            reduce(
+                &mut state,
+                Action::ResultRowYankOperatorPending,
+                now,
+                &AppServices::stub(),
+            );
+            assert!(!state.result_interaction.is_delete_operator_pending());
+            assert!(state.result_interaction.is_yank_operator_pending());
         }
     }
 }

@@ -51,7 +51,7 @@ pub fn reduce(
             }
         }
         Action::ResultRowYankOperatorPending => {
-            state.result_interaction.yank_op_pending = true;
+            state.result_interaction.start_yank_operator();
             Some(vec![])
         }
         Action::DdlYank => {
@@ -224,7 +224,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert!(state.result_interaction.yank_op_pending);
+            assert!(state.result_interaction.is_yank_operator_pending());
         }
 
         #[test]

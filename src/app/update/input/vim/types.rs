@@ -101,8 +101,8 @@ impl From<&AppState> for BrowseVimContext {
             return Self::Result(ResultVimContext {
                 mode: state.result_interaction.selection().mode(),
                 has_pending_draft: state.result_interaction.cell_edit().has_pending_draft(),
-                yank_pending: state.result_interaction.yank_op_pending,
-                delete_pending: state.result_interaction.delete_op_pending,
+                yank_pending: state.result_interaction.is_yank_operator_pending(),
+                delete_pending: state.result_interaction.is_delete_operator_pending(),
             });
         }
 
@@ -144,8 +144,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.activate_cell(0, 0);
-        state.result_interaction.yank_op_pending = true;
-        state.result_interaction.delete_op_pending = true;
+        state.result_interaction.start_yank_operator();
 
         let BrowseVimContext::Result(result_ctx) = BrowseVimContext::from(&state) else {
             panic!("expected result context");
@@ -153,6 +152,22 @@ mod tests {
 
         assert_eq!(result_ctx.mode, ResultNavMode::CellActive);
         assert!(result_ctx.yank_pending);
+        assert!(!result_ctx.delete_pending);
+    }
+
+    #[test]
+    fn browse_context_detects_result_delete_pending_state() {
+        let mut state = AppState::new("test".to_string());
+        state.ui.focused_pane = FocusedPane::Result;
+        state.result_interaction.activate_cell(0, 0);
+        state.result_interaction.start_delete_operator();
+
+        let BrowseVimContext::Result(result_ctx) = BrowseVimContext::from(&state) else {
+            panic!("expected result context");
+        };
+
+        assert_eq!(result_ctx.mode, ResultNavMode::CellActive);
+        assert!(!result_ctx.yank_pending);
         assert!(result_ctx.delete_pending);
     }
 }

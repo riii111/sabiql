@@ -57,7 +57,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::ResultDeleteOperatorPending => {
-            state.result_interaction.delete_op_pending = true;
+            state.result_interaction.start_delete_operator();
             Some(vec![])
         }
         Action::StageRowForDelete => {
