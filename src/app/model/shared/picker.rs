@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::update::action::CursorMove;
 
 use super::text_input::TextInputState;
@@ -8,10 +10,14 @@ pub struct PickerState {
     scroll_offset: usize,
     pub pane_height: u16,
     pub filter_visible_width: usize,
-    pub filter_input: TextInputState,
+    filter_input: TextInputState,
 }
 
 impl PickerState {
+    pub fn filter_input(&self) -> &TextInputState {
+        &self.filter_input
+    }
+
     pub fn selected(&self) -> usize {
         self.selected
     }
@@ -50,12 +56,7 @@ impl PickerState {
     }
 
     pub fn insert_filter_str(&mut self, text: &str) {
-        if text.contains(['\n', '\r']) {
-            let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-            self.filter_input.insert_str(&clean);
-        } else {
-            self.filter_input.insert_str(text);
-        }
+        self.filter_input.insert_str(&sanitize_filter_text(text));
         self.filter_input.update_viewport(self.filter_visible_width);
         self.reset();
     }
@@ -69,6 +70,17 @@ impl PickerState {
     pub fn move_filter_cursor(&mut self, direction: CursorMove) {
         self.filter_input.move_cursor(direction);
         self.filter_input.update_viewport(self.filter_visible_width);
+    }
+}
+
+pub(crate) fn sanitize_filter_text(text: &str) -> Cow<'_, str> {
+    if text.contains(['\n', '\r']) {
+        text.chars()
+            .filter(|c| *c != '\n' && *c != '\r')
+            .collect::<String>()
+            .into()
+    } else {
+        text.into()
     }
 }
 

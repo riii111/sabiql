@@ -20,7 +20,9 @@ use crate::features::overlays::confirm_dialog::{ConfirmDialog, ConfirmPreviewMet
 use crate::features::overlays::help::HelpOverlay;
 use crate::features::pickers::command_palette::CommandPalette;
 use crate::features::pickers::er_table_picker::{ErTablePicker, ErTablePickerRenderMetrics};
-use crate::features::pickers::query_history_picker::QueryHistoryPicker;
+use crate::features::pickers::query_history_picker::{
+    QueryHistoryPicker, QueryHistoryPickerRenderMetrics,
+};
 use crate::features::pickers::table_picker::{TablePicker, TablePickerRenderMetrics};
 use crate::features::sql_modal::SqlModal;
 use crate::shell::command_line::CommandLine;
@@ -113,10 +115,17 @@ impl MainLayout {
             _ => (None, None),
         };
 
-        let query_history_picker_pane_height = match state.input_mode() {
-            InputMode::QueryHistoryPicker => Some(QueryHistoryPicker::render(frame, state, theme)),
-            _ => None,
-        };
+        let (query_history_picker_pane_height, query_history_picker_filter_visible_width) =
+            match state.input_mode() {
+                InputMode::QueryHistoryPicker => {
+                    let QueryHistoryPickerRenderMetrics {
+                        pane_height,
+                        filter_visible_width,
+                    } = QueryHistoryPicker::render(frame, state, theme);
+                    (Some(pane_height), Some(filter_visible_width))
+                }
+                _ => (None, None),
+            };
 
         let (
             confirm_preview_viewport_height,
@@ -167,6 +176,7 @@ impl MainLayout {
             er_picker_pane_height,
             er_picker_filter_visible_width,
             query_history_picker_pane_height,
+            query_history_picker_filter_visible_width,
             jsonb_detail_editor_visible_rows,
             confirm_preview_viewport_height,
             confirm_preview_content_height,

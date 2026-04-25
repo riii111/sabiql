@@ -376,11 +376,7 @@ fn table_picker_overlay() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::TablePicker);
-    state
-        .ui
-        .table_picker
-        .filter_input
-        .set_content("user".to_string());
+    state.ui.table_picker.insert_filter_str("user");
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -406,7 +402,7 @@ fn query_history_picker_with_entries() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
-    state.query_history_picker.entries = vec![
+    state.query_history_picker.replace_entries(&[
         QueryHistoryEntry::new(
             "SELECT * FROM users WHERE id = 1".to_string(),
             "2026-03-13T10:00:00Z".to_string(),
@@ -428,7 +424,7 @@ fn query_history_picker_with_entries() {
             QueryResultStatus::Failed,
             None,
         ),
-    ];
+    ]);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -453,7 +449,7 @@ fn query_history_picker_filter_mode() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
-    state.query_history_picker.entries = vec![
+    state.query_history_picker.replace_entries(&[
         QueryHistoryEntry::new(
             "SELECT * FROM users".to_string(),
             "2026-03-13T10:00:00Z".to_string(),
@@ -468,8 +464,8 @@ fn query_history_picker_filter_mode() {
             QueryResultStatus::Success,
             None,
         ),
-    ];
-    state.query_history_picker.filter_input.insert_str("user");
+    ]);
+    state.query_history_picker.insert_filter_str("user");
 
     let output = render_to_string(&mut terminal, &mut state);
 

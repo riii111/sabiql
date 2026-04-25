@@ -658,7 +658,7 @@ mod tests {
                 Action::OpenModal(ModalKind::QueryHistoryPicker)
             )]
             fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-                assert_action_eq(&GLOBAL_KEYS[i].action, &expected, "GLOBAL_KEYS", i);
+                assert_payload_free_action_eq(&GLOBAL_KEYS[i].action, &expected, "GLOBAL_KEYS", i);
             }
 
             #[test]
@@ -709,7 +709,7 @@ mod tests {
             #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
             #[case(idx::sql_modal_plan::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
             fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-                assert_action_eq(
+                assert_payload_free_action_eq(
                     &SQL_MODAL_PLAN_KEYS[i].action,
                     &expected,
                     "SQL_MODAL_PLAN_KEYS",
@@ -726,7 +726,7 @@ mod tests {
             #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
             #[case(idx::sql_modal_compare::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
             fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-                assert_action_eq(
+                assert_payload_free_action_eq(
                     &SQL_MODAL_COMPARE_KEYS[i].action,
                     &expected,
                     "SQL_MODAL_COMPARE_KEYS",
@@ -734,14 +734,19 @@ mod tests {
                 );
             }
 
-            fn assert_action_eq(actual: &Action, expected: &Action, label: &str, i: usize) {
+            fn assert_payload_free_action_eq(
+                actual: &Action,
+                expected: &Action,
+                label: &str,
+                i: usize,
+            ) {
                 assert!(
-                    same_action(actual, expected),
+                    same_payload_free_action(actual, expected),
                     "{label}[{i}] has action {actual:?}, expected {expected:?}",
                 );
             }
 
-            fn same_action(actual: &Action, expected: &Action) -> bool {
+            fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
                 match (actual, expected) {
                     (Action::OpenModal(a), Action::OpenModal(b))
                     | (Action::CloseModal(a), Action::CloseModal(b))

@@ -7,6 +7,8 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wra
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::query_history::GroupedEntry;
 use crate::domain::query_history::{Iso8601Timestamp, QueryResultStatus};
+use crate::features::pickers::table_picker::filter_visible_width;
+use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::render_modal;
 use crate::theme::{StatusTone, ThemePalette};
 
@@ -74,16 +76,24 @@ struct PreviewData<'a> {
 
 pub struct QueryHistoryPicker;
 
+pub struct QueryHistoryPickerRenderMetrics {
+    pub pane_height: u16,
+    pub filter_visible_width: usize,
+}
+
 impl QueryHistoryPicker {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> u16 {
-        let filter_is_empty = state.query_history_picker.filter_input.content().is_empty();
-        let filter_content = state
+    pub fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> QueryHistoryPickerRenderMetrics {
+        let filter_is_empty = state
             .query_history_picker
-            .filter_input
+            .filter_input()
             .content()
-            .to_string();
-        let scroll_offset = state.query_history_picker.scroll_offset;
-        let raw_selected = state.query_history_picker.selected;
+            .is_empty();
+        let scroll_offset = state.query_history_picker.scroll_offset();
+        let raw_selected = state.query_history_picker.selected();
 
         let grouped = state.query_history_picker.grouped_filtered_entries();
         let grouped_count = grouped.len();
@@ -131,26 +141,29 @@ impl QueryHistoryPicker {
             (filter_area, list_area, None)
         };
         let (filter_area, list_area, preview_area) = areas;
+        let raw_width = filter_area.width.saturating_sub(4) as usize;
 
-        let filter_line = if filter_content.is_empty() {
+        let input = state.query_history_picker.filter_input();
+        let visible_width = filter_visible_width(raw_width, input.cursor(), input.char_count());
+        let filter_line = if input.content().is_empty() {
             Line::from(Span::styled(
                 "  type to filter",
                 Style::default().fg(theme.semantic.text.placeholder),
             ))
         } else {
-            Line::from(vec![
-                Span::styled("  > ", Style::default().fg(theme.component.modal.title)),
-                Span::styled(
-                    filter_content,
-                    Style::default().fg(theme.semantic.text.primary),
-                ),
-                Span::styled(
-                    "\u{2588}",
-                    Style::default()
-                        .fg(theme.semantic.cursor.fg)
-                        .add_modifier(Modifier::SLOW_BLINK),
-                ),
-            ])
+            let cursor_spans = text_cursor_spans(
+                input.content(),
+                input.cursor(),
+                input.viewport_offset(),
+                visible_width,
+                theme,
+            );
+            let mut spans = vec![Span::styled(
+                "  > ",
+                Style::default().fg(theme.component.modal.title),
+            )];
+            spans.extend(cursor_spans);
+            Line::from(spans)
         };
         frame.render_widget(Paragraph::new(filter_line), filter_area);
 
@@ -169,7 +182,10 @@ impl QueryHistoryPicker {
             if let Some(pa) = preview_area {
                 render_empty_preview(frame, pa, theme);
             }
-            return list_area.height;
+            return QueryHistoryPickerRenderMetrics {
+                pane_height: list_area.height,
+                filter_visible_width: visible_width,
+            };
         }
 
         let available_width = list_area.width as usize;
@@ -205,7 +221,10 @@ impl QueryHistoryPicker {
             .with_selected(Some(selected_idx))
             .with_offset(scroll_offset);
         frame.render_stateful_widget(list, list_area, &mut list_state);
-        list_area.height
+        QueryHistoryPickerRenderMetrics {
+            pane_height: list_area.height,
+            filter_visible_width: visible_width,
+        }
     }
 }
 

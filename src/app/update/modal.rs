@@ -197,9 +197,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if state.session.active_connection_id.as_ref() != Some(conn_id) {
                 return Some(vec![]);
             }
-            state.query_history_picker.entries.clone_from(entries);
-            state.query_history_picker.selected = 0;
-            state.query_history_picker.scroll_offset = 0;
+            state.query_history_picker.replace_entries(entries);
             Some(vec![])
         }
         Action::QueryHistoryLoadFailed(e) => {
@@ -227,18 +225,14 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             target: ListTarget::QueryHistory,
             motion: ListMotion::Next,
         } => {
-            let count = state.query_history_picker.grouped_count();
-            if count > 0 && state.query_history_picker.selected < count - 1 {
-                state.query_history_picker.selected += 1;
-            }
+            state.query_history_picker.select_next();
             Some(vec![])
         }
         Action::ListSelect {
             target: ListTarget::QueryHistory,
             motion: ListMotion::Previous,
         } => {
-            state.query_history_picker.selected =
-                state.query_history_picker.selected.saturating_sub(1);
+            state.query_history_picker.select_previous();
             Some(vec![])
         }
         Action::QueryHistoryConfirmSelection => {
@@ -862,7 +856,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert_eq!(state.query_history_picker.entries.len(), 1);
+                assert_eq!(state.query_history_picker.entries().len(), 1);
                 assert!(effects.is_empty());
             }
 
@@ -880,7 +874,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(state.query_history_picker.entries.is_empty());
+                assert!(state.query_history_picker.entries().is_empty());
             }
 
             #[test]
@@ -896,7 +890,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(state.query_history_picker.entries.is_empty());
+                assert!(state.query_history_picker.entries().is_empty());
             }
 
             #[test]
@@ -963,7 +957,7 @@ mod tests {
             #[test]
             fn filter_input_resets_selection() {
                 let mut state = connected_state();
-                state.query_history_picker.selected = 5;
+                state.query_history_picker.set_selection_for_test(5);
 
                 let effects = reduce_modal(
                     &mut state,
@@ -975,8 +969,8 @@ mod tests {
                 )
                 .unwrap();
 
-                assert_eq!(state.query_history_picker.selected, 0);
-                assert_eq!(state.query_history_picker.filter_input.content(), "a");
+                assert_eq!(state.query_history_picker.selected(), 0);
+                assert_eq!(state.query_history_picker.filter_input().content(), "a");
                 assert!(effects.is_empty());
             }
 
@@ -984,11 +978,10 @@ mod tests {
             fn select_next_increments() {
                 let mut state = connected_state();
                 let test_conn = ConnectionId::from_string("test-conn");
-                state.query_history_picker.entries = vec![
+                state.query_history_picker.replace_entries(&[
                     make_entry("SELECT 1", &test_conn),
                     make_entry("SELECT 2", &test_conn),
-                ];
-                state.query_history_picker.selected = 0;
+                ]);
 
                 reduce_modal(
                     &mut state,
@@ -1000,15 +993,16 @@ mod tests {
                 )
                 .unwrap();
 
-                assert_eq!(state.query_history_picker.selected, 1);
+                assert_eq!(state.query_history_picker.selected(), 1);
             }
 
             #[test]
             fn select_next_clamps_at_end() {
                 let mut state = connected_state();
                 let test_conn = ConnectionId::from_string("test-conn");
-                state.query_history_picker.entries = vec![make_entry("SELECT 1", &test_conn)];
-                state.query_history_picker.selected = 0;
+                state
+                    .query_history_picker
+                    .replace_entries(&[make_entry("SELECT 1", &test_conn)]);
 
                 reduce_modal(
                     &mut state,
@@ -1020,13 +1014,13 @@ mod tests {
                 )
                 .unwrap();
 
-                assert_eq!(state.query_history_picker.selected, 0);
+                assert_eq!(state.query_history_picker.selected(), 0);
             }
 
             #[test]
             fn select_previous_decrements() {
                 let mut state = connected_state();
-                state.query_history_picker.selected = 1;
+                state.query_history_picker.set_selection_for_test(1);
 
                 reduce_modal(
                     &mut state,
@@ -1038,7 +1032,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert_eq!(state.query_history_picker.selected, 0);
+                assert_eq!(state.query_history_picker.selected(), 0);
             }
         }
 
@@ -1054,7 +1048,9 @@ mod tests {
                 let expected_chars = query.chars().count(); // 13
                 assert_ne!(query.len(), expected_chars); // sanity: bytes != chars
                 let test_conn = ConnectionId::from_string("test-conn");
-                state.query_history_picker.entries = vec![make_entry(&query, &test_conn)];
+                state
+                    .query_history_picker
+                    .replace_entries(&[make_entry(&query, &test_conn)]);
 
                 reduce_modal(
                     &mut state,
@@ -1071,9 +1067,9 @@ mod tests {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::Normal);
                 let test_conn = ConnectionId::from_string("test-conn");
-                state.query_history_picker.entries =
-                    vec![make_entry("SELECT * FROM users", &test_conn)];
-                state.query_history_picker.selected = 0;
+                state
+                    .query_history_picker
+                    .replace_entries(&[make_entry("SELECT * FROM users", &test_conn)]);
 
                 let effects = reduce_modal(
                     &mut state,
@@ -1108,8 +1104,9 @@ mod tests {
                     }];
                 state.sql_modal.completion.selected_index = 3;
                 let test_conn = ConnectionId::from_string("test-conn");
-                state.query_history_picker.entries = vec![make_entry("new query", &test_conn)];
-                state.query_history_picker.selected = 0;
+                state
+                    .query_history_picker
+                    .replace_entries(&[make_entry("new query", &test_conn)]);
 
                 reduce_modal(
                     &mut state,

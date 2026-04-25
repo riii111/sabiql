@@ -1,5 +1,6 @@
 ---
-source: tests/render_snapshots/overlays.rs
+source: src/tests/render_snapshots/overlays.rs
+assertion_line: 472
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -10,7 +11,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │           ╭ Query History ───────────────────────────────────────╮           │
-│           │  > user█                                             │           │
+│           │  > user                                              │           │
 │           │▸ ✓ SELECT * FROM users             Mar 13 10:00 UTC  │           │
 │           │                                                      │           │
 │           │                                                      │───────────┘

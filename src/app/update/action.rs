@@ -183,6 +183,10 @@ pub enum ListMotion {
 }
 
 /// Payload-free modal lifecycle kinds.
+///
+/// Modal lifecycle actions stay generic only while opening does not need a
+/// payload. Payload-bearing modals keep explicit actions until there is a
+/// repeated payload pattern worth abstracting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModalKind {
     TablePicker,
@@ -244,6 +248,8 @@ pub struct ConnectionTarget {
     pub name: String,
 }
 
+// Do not derive PartialEq here: payload variants carry domain snapshots and
+// errors that are not all value-comparable.
 #[derive(Debug, Clone)]
 pub enum Action {
     None,

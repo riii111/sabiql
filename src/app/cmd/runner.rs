@@ -278,6 +278,9 @@ impl EffectRunner {
                 if let Some(height) = output.query_history_picker_pane_height {
                     state.query_history_picker.pane_height = height;
                 }
+                if let Some(width) = output.query_history_picker_filter_visible_width {
+                    state.query_history_picker.filter_visible_width = width;
+                }
                 if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
                     state.ui.jsonb_detail_editor_visible_rows = visible_rows;
                     state.jsonb_detail.editor_mut().update_scroll(visible_rows);
