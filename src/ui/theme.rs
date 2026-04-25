@@ -343,8 +343,6 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
 pub fn palette_for(theme_id: ThemeId) -> &'static ThemePalette {
     match theme_id {
         ThemeId::Default => &DEFAULT_THEME,
-        #[cfg(any(test, feature = "test-support"))]
-        ThemeId::TestContrast => &TEST_CONTRAST_THEME,
     }
 }
 
@@ -355,11 +353,6 @@ mod tests {
     #[test]
     fn palette_for_default_returns_default_theme() {
         assert_eq!(palette_for(ThemeId::Default), &DEFAULT_THEME);
-    }
-
-    #[test]
-    fn palette_for_test_contrast_returns_test_theme() {
-        assert_eq!(palette_for(ThemeId::TestContrast), &TEST_CONTRAST_THEME);
     }
 
     #[test]

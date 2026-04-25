@@ -4,7 +4,6 @@ use std::time::Instant;
 use super::*;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
@@ -389,11 +388,11 @@ fn test_contrast_theme_applies_help_overlay_navigation_colors() {
     let (mut state, now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state.ui.set_theme(ThemeId::TestContrast);
     state.modal.set_mode(InputMode::Help);
     state.ui.help_scroll_offset = 1;
 
-    let buffer = render_and_get_buffer_at(&mut terminal, &mut state, now);
+    let buffer =
+        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
 
     let has_section_header = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
@@ -506,7 +505,6 @@ fn test_contrast_theme_applies_sql_syntax_colors() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
-    state.ui.set_theme(ThemeId::TestContrast);
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
@@ -514,7 +512,12 @@ fn test_contrast_theme_applies_sql_syntax_colors() {
         .set_content("SELECT 'x' + 42 -- note".to_string());
     state.sql_modal.set_status(SqlModalStatus::Editing);
 
-    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let buffer = render_and_get_buffer_at_with_theme(
+        &mut terminal,
+        &mut state,
+        Instant::now(),
+        &TEST_CONTRAST_THEME,
+    );
 
     let has_keyword = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
@@ -981,41 +984,17 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
 }
 
 #[test]
-fn state_theme_id_drives_render_palette_resolution() {
-    let (mut state, _now) = connected_state();
-    let mut terminal = create_test_terminal();
-
-    state.ui.set_theme(ThemeId::TestContrast);
-    state.ui.focused_pane = FocusedPane::Explorer;
-
-    let buffer = render_and_get_buffer(&mut terminal, &mut state);
-
-    let has_test_theme_focus_border = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "─" && cell.fg == TEST_CONTRAST_THEME.semantic.surface.focus_border
-            })
-        });
-
-    assert!(
-        has_test_theme_focus_border,
-        "Expected render() to resolve palette from state.theme_id"
-    );
-}
-
-#[test]
 fn test_contrast_theme_applies_result_pane_table_colors() {
     let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.set_theme(ThemeId::TestContrast);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
-    let staged_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let staged_buffer =
+        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
     let has_staged_delete_bg = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
@@ -1048,7 +1027,8 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
         .cell_edit_input_mut()
         .set_content("new@example.com".to_string());
 
-    let draft_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let draft_buffer =
+        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
     let has_pending_draft_fg = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
         .any(|(x, y)| {
