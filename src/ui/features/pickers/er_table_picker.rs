@@ -9,6 +9,7 @@ use crate::domain::er::er_output_filename;
 use crate::primitives::atoms::text_cursor_spans;
 use crate::theme::ThemePalette;
 
+use crate::features::pickers::table_picker::filter_visible_width;
 use crate::primitives::molecules::render_modal;
 
 pub struct ErTablePicker;
@@ -84,11 +85,7 @@ impl ErTablePicker {
 
         // Filter input
         let input = state.ui.er_picker.filter_input();
-        let visible_width = if input.cursor() == input.char_count() {
-            raw_width.saturating_sub(1)
-        } else {
-            raw_width
-        };
+        let visible_width = filter_visible_width(raw_width, input.cursor(), input.char_count());
         let cursor_spans = text_cursor_spans(
             input.content(),
             input.cursor(),
@@ -161,7 +158,7 @@ impl ErTablePicker {
         frame.render_stateful_widget(list, list_area, &mut list_state);
         ErTablePickerRenderMetrics {
             pane_height: list_area.height,
-            filter_visible_width: raw_width,
+            filter_visible_width: visible_width,
         }
     }
 }

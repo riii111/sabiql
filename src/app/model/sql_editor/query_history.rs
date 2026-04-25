@@ -88,12 +88,12 @@ impl QueryHistoryPickerState {
     pub fn select_next(&mut self) {
         let count = self.grouped_count();
         if count > 0 {
-            self.set_selection((self.selected + 1).min(count - 1));
+            self.set_selection((self.clamped_selected() + 1).min(count - 1));
         }
     }
 
     pub fn select_previous(&mut self) {
-        self.set_selection(self.selected.saturating_sub(1));
+        self.set_selection(self.clamped_selected().saturating_sub(1));
     }
 
     fn set_selection(&mut self, index: usize) {
@@ -406,6 +406,21 @@ mod tests {
 
         assert_eq!(state.selected(), 1);
         assert_eq!(state.scroll_offset(), 1);
+    }
+
+    #[test]
+    fn select_previous_starts_from_clamped_selection() {
+        let mut state = QueryHistoryPickerState {
+            entries: vec![make_entry("SELECT 1"), make_entry("SELECT 2")],
+            selected: 10,
+            pane_height: 5,
+            ..Default::default()
+        };
+
+        state.select_previous();
+
+        assert_eq!(state.selected(), 0);
+        assert_eq!(state.scroll_offset(), 0);
     }
 
     #[test]

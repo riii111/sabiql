@@ -7,6 +7,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wra
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::query_history::GroupedEntry;
 use crate::domain::query_history::{Iso8601Timestamp, QueryResultStatus};
+use crate::features::pickers::table_picker::filter_visible_width;
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::render_modal;
 use crate::theme::{StatusTone, ThemePalette};
@@ -143,17 +144,13 @@ impl QueryHistoryPicker {
         let raw_width = filter_area.width.saturating_sub(4) as usize;
 
         let input = state.query_history_picker.filter_input();
+        let visible_width = filter_visible_width(raw_width, input.cursor(), input.char_count());
         let filter_line = if input.content().is_empty() {
             Line::from(Span::styled(
                 "  type to filter",
                 Style::default().fg(theme.semantic.text.placeholder),
             ))
         } else {
-            let visible_width = if input.cursor() == input.char_count() {
-                raw_width.saturating_sub(1)
-            } else {
-                raw_width
-            };
             let cursor_spans = text_cursor_spans(
                 input.content(),
                 input.cursor(),
@@ -187,7 +184,7 @@ impl QueryHistoryPicker {
             }
             return QueryHistoryPickerRenderMetrics {
                 pane_height: list_area.height,
-                filter_visible_width: raw_width,
+                filter_visible_width: visible_width,
             };
         }
 
@@ -226,7 +223,7 @@ impl QueryHistoryPicker {
         frame.render_stateful_widget(list, list_area, &mut list_state);
         QueryHistoryPickerRenderMetrics {
             pane_height: list_area.height,
-            filter_visible_width: raw_width,
+            filter_visible_width: visible_width,
         }
     }
 }
