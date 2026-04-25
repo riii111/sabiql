@@ -183,6 +183,10 @@ pub enum ListMotion {
 }
 
 /// Payload-free modal lifecycle kinds.
+///
+/// Modal lifecycle actions stay generic only while opening does not need a
+/// payload. Payload-bearing modals keep explicit actions until there is a
+/// repeated payload pattern worth abstracting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModalKind {
     TablePicker,
@@ -309,7 +313,8 @@ pub enum Action {
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(ConnectionStoreError),
 
-    // Connection Error
+    // Connection Error: opening carries ConnectionErrorInfo, so this remains
+    // outside payload-free ModalKind lifecycle actions.
     ShowConnectionError(ConnectionErrorInfo),
     CloseConnectionError,
     ToggleConnectionErrorDetails,
