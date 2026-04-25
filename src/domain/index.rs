@@ -4,10 +4,55 @@ use std::str::FromStr;
 pub struct Index {
     pub name: String,
     pub columns: Vec<String>,
-    pub is_unique: bool,
-    pub is_primary: bool,
+    pub attributes: IndexAttributes,
     pub index_type: IndexType,
     pub definition: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct IndexAttributes(u8);
+
+impl IndexAttributes {
+    pub const UNIQUE: Self = Self(0b01);
+    pub const PRIMARY: Self = Self(0b10);
+
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
+    /// Builds attributes from raw boolean fields at parser or test-helper boundaries.
+    pub const fn from_parts(unique: bool, primary: bool) -> Self {
+        let mut bits = 0;
+        if unique {
+            bits |= Self::UNIQUE.0;
+        }
+        if primary {
+            bits |= Self::PRIMARY.0;
+        }
+        Self(bits)
+    }
+
+    pub const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+}
+
+impl std::ops::BitOr for IndexAttributes {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl Index {
+    pub const fn is_unique(&self) -> bool {
+        self.attributes.contains(IndexAttributes::UNIQUE)
+    }
+
+    pub const fn is_primary(&self) -> bool {
+        self.attributes.contains(IndexAttributes::PRIMARY)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -53,6 +98,71 @@ impl FromStr for IndexType {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    fn make_index(attributes: IndexAttributes) -> Index {
+        Index {
+            name: "idx".to_string(),
+            columns: vec!["id".to_string()],
+            attributes,
+            index_type: IndexType::BTree,
+            definition: None,
+        }
+    }
+
+    mod attributes {
+        use super::*;
+
+        #[rstest]
+        #[case(false, false, false, false)]
+        #[case(true, false, true, false)]
+        #[case(false, true, false, true)]
+        #[case(true, true, true, true)]
+        fn from_parts_sets_expected_flags(
+            #[case] unique: bool,
+            #[case] primary: bool,
+            #[case] expected_unique: bool,
+            #[case] expected_primary: bool,
+        ) {
+            let attributes = IndexAttributes::from_parts(unique, primary);
+
+            assert_eq!(
+                attributes.contains(IndexAttributes::UNIQUE),
+                expected_unique
+            );
+            assert_eq!(
+                attributes.contains(IndexAttributes::PRIMARY),
+                expected_primary
+            );
+        }
+
+        #[test]
+        fn bitor_combines_flags() {
+            let attributes = IndexAttributes::UNIQUE | IndexAttributes::PRIMARY;
+
+            assert!(attributes.contains(IndexAttributes::UNIQUE));
+            assert!(attributes.contains(IndexAttributes::PRIMARY));
+        }
+    }
+
+    mod index_helpers {
+        use super::*;
+
+        #[rstest]
+        #[case(IndexAttributes::UNIQUE, true, false)]
+        #[case(IndexAttributes::PRIMARY, false, true)]
+        #[case(IndexAttributes::UNIQUE | IndexAttributes::PRIMARY, true, true)]
+        #[case(IndexAttributes::empty(), false, false)]
+        fn report_expected_attribute_state(
+            #[case] attributes: IndexAttributes,
+            #[case] expected_unique: bool,
+            #[case] expected_primary: bool,
+        ) {
+            let index = make_index(attributes);
+
+            assert_eq!(index.is_unique(), expected_unique);
+            assert_eq!(index.is_primary(), expected_primary);
+        }
+    }
 
     #[rstest]
     #[case(IndexType::BTree)]

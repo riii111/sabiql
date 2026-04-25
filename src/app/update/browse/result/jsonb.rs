@@ -2,6 +2,8 @@ use std::time::Instant;
 use unicode_casefold::UnicodeCaseFold;
 
 use crate::cmd::effect::Effect;
+#[cfg(test)]
+use crate::domain::ColumnAttributes;
 use crate::domain::QuerySource;
 use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
@@ -409,20 +411,16 @@ mod tests {
                 Column {
                     name: "id".to_string(),
                     data_type: "integer".to_string(),
-                    nullable: false,
                     default: None,
-                    is_primary_key: true,
-                    is_unique: true,
+                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
                     comment: None,
                     ordinal_position: 1,
                 },
                 Column {
                     name: "settings".to_string(),
                     data_type: "jsonb".to_string(),
-                    nullable: true,
                     default: None,
-                    is_primary_key: false,
-                    is_unique: false,
+                    attributes: ColumnAttributes::NULLABLE,
                     comment: None,
                     ordinal_position: 2,
                 },

@@ -3,7 +3,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::services::AppServices;
 use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::app::update::browse::result::reduce_result;
-use crate::domain::{Column, QueryResult};
+use crate::domain::{Column, ColumnAttributes, QueryResult};
 use harness::{table_detail_loaded_state, with_current_result};
 
 fn jsonb_detail_state() -> (AppState, std::time::Instant) {
@@ -16,9 +16,7 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     table.columns.push(Column {
         name: "settings".to_string(),
         data_type: "jsonb".to_string(),
-        nullable: true,
-        is_primary_key: false,
-        is_unique: false,
+        attributes: ColumnAttributes::NULLABLE,
         default: None,
         comment: None,
         ordinal_position: 4,

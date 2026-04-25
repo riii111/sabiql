@@ -16,13 +16,13 @@ pub mod table;
 pub mod trigger;
 pub mod write_result;
 
-pub use column::Column;
+pub use column::{Column, ColumnAttributes};
 pub use command_tag::CommandTag;
 #[cfg(test)]
 pub use er::ErFkInfo;
 pub use er::ErTableInfo;
 pub use foreign_key::{FkAction, ForeignKey};
-pub use index::{Index, IndexType};
+pub use index::{Index, IndexAttributes, IndexType};
 pub use metadata::{DatabaseMetadata, MetadataState};
 pub use query_result::{QueryResult, QuerySource};
 pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
