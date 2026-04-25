@@ -6,7 +6,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wra
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::query_history::GroupedEntry;
-use crate::domain::query_history::QueryResultStatus;
+use crate::domain::query_history::{Iso8601Timestamp, QueryResultStatus};
 use crate::primitives::molecules::render_modal;
 use crate::theme::{StatusTone, ThemePalette};
 
@@ -21,7 +21,9 @@ const MONTH_ABBR: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-fn format_short_timestamp(iso: &str) -> String {
+fn format_short_timestamp(iso: impl AsRef<str>) -> String {
+    let iso = iso.as_ref();
+
     // "2026-03-17T00:48:52Z" -> "Mar 17 00:48 UTC"
     if iso.len() < 16 {
         return iso.to_string();
@@ -63,11 +65,11 @@ fn compute_preview_height(inner_height: u16) -> u16 {
     desired.min(max_preview)
 }
 
-struct PreviewData {
-    query: String,
+struct PreviewData<'a> {
+    query: &'a str,
     result_status: QueryResultStatus,
     affected_rows: Option<u64>,
-    executed_at: String,
+    executed_at: &'a Iso8601Timestamp,
 }
 
 pub struct QueryHistoryPicker;
@@ -174,10 +176,10 @@ impl QueryHistoryPicker {
         let query_max = available_width.saturating_sub(STATUS_WIDTH + TIMESTAMP_WIDTH + 4);
 
         let preview_data = grouped.get(selected_idx).map(|ge| PreviewData {
-            query: ge.entry.query.clone(),
+            query: ge.entry.query.as_str(),
             result_status: ge.entry.result_status,
             affected_rows: ge.entry.affected_rows,
-            executed_at: ge.entry.executed_at.as_str().to_string(),
+            executed_at: &ge.entry.executed_at,
         });
 
         let items: Vec<ListItem> = grouped
@@ -186,7 +188,6 @@ impl QueryHistoryPicker {
             .map(|(i, ge)| build_list_item(ge, i, selected_idx, query_max, theme))
             .collect();
 
-        drop(grouped);
         if let Some(pa) = preview_area {
             if let Some(ref pd) = preview_data {
                 render_preview(frame, pa, pd, theme);
@@ -194,6 +195,7 @@ impl QueryHistoryPicker {
                 render_empty_preview(frame, pa, theme);
             }
         }
+        drop(grouped);
 
         let list = List::new(items)
             .highlight_style(theme.picker_selected_style())
@@ -223,7 +225,7 @@ fn build_list_item(
         query_display
     };
 
-    let ts_short = format_short_timestamp(ge.entry.executed_at.as_str());
+    let ts_short = format_short_timestamp(&ge.entry.executed_at);
 
     let mut spans = vec![status_span(ge.entry.result_status, theme)];
 
@@ -318,7 +320,7 @@ fn render_preview(
         ));
     }
     meta_spans.push(Span::styled(
-        format!("  \u{2502} {}", format_short_timestamp(&pd.executed_at)),
+        format!("  \u{2502} {}", format_short_timestamp(pd.executed_at)),
         Style::default().fg(theme.semantic.text.dim),
     ));
     lines.push(Line::from(meta_spans));
