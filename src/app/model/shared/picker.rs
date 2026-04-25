@@ -1,3 +1,5 @@
+use crate::update::action::CursorMove;
+
 use super::text_input::TextInputState;
 
 #[derive(Debug, Clone, Default)]
@@ -30,6 +32,39 @@ impl PickerState {
     pub fn reset(&mut self) {
         self.selected = 0;
         self.scroll_offset = 0;
+    }
+
+    pub fn clear_filter_and_reset(&mut self) {
+        self.filter_input.clear();
+        self.reset();
+    }
+
+    pub fn clear_filter(&mut self) {
+        self.filter_input.clear();
+    }
+
+    pub fn insert_filter_char(&mut self, ch: char) {
+        self.filter_input.insert_char(ch);
+        self.filter_input.update_viewport(self.filter_visible_width);
+        self.reset();
+    }
+
+    pub fn insert_filter_str(&mut self, text: &str) {
+        let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+        self.filter_input.insert_str(&clean);
+        self.filter_input.update_viewport(self.filter_visible_width);
+        self.reset();
+    }
+
+    pub fn backspace_filter(&mut self) {
+        self.filter_input.backspace();
+        self.filter_input.update_viewport(self.filter_visible_width);
+        self.reset();
+    }
+
+    pub fn move_filter_cursor(&mut self, direction: CursorMove) {
+        self.filter_input.move_cursor(direction);
+        self.filter_input.update_viewport(self.filter_visible_width);
     }
 }
 

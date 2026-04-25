@@ -1,4 +1,4 @@
-use crate::update::action::Action;
+use crate::update::action::{Action, ModalKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -24,9 +24,9 @@ pub fn parse_command(input: &str) -> Command {
 pub fn command_to_action(cmd: Command) -> Action {
     match cmd {
         Command::Quit => Action::Quit,
-        Command::Help => Action::OpenHelp,
-        Command::Sql => Action::OpenSqlModal,
-        Command::Erd => Action::OpenErTablePicker,
+        Command::Help => Action::ToggleModal(ModalKind::Help),
+        Command::Sql => Action::OpenModal(ModalKind::SqlModal),
+        Command::Erd => Action::OpenModal(ModalKind::ErTablePicker),
         Command::Write => Action::SubmitCellEditWrite,
         Command::Unknown(_) => Action::None,
     }
@@ -117,21 +117,24 @@ mod tests {
         fn help_returns_open_help_action() {
             let result = command_to_action(Command::Help);
 
-            assert!(matches!(result, Action::OpenHelp));
+            assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
         }
 
         #[test]
         fn sql_returns_open_sql_modal_action() {
             let result = command_to_action(Command::Sql);
 
-            assert!(matches!(result, Action::OpenSqlModal));
+            assert!(matches!(result, Action::OpenModal(ModalKind::SqlModal)));
         }
 
         #[test]
         fn erd_returns_open_er_table_picker_action() {
             let result = command_to_action(Command::Erd);
 
-            assert!(matches!(result, Action::OpenErTablePicker));
+            assert!(matches!(
+                result,
+                Action::OpenModal(ModalKind::ErTablePicker)
+            ));
         }
 
         #[test]

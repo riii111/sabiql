@@ -1,7 +1,7 @@
 use super::{ExecBinding, KeyBinding, ModeRow};
 use super::{Key, KeyCombo};
 use crate::update::action::{
-    Action, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+    Action, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 
 // =============================================================================
@@ -88,7 +88,7 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
         desc_short: "Switch",
         description: "Switch to another connection",
         bindings: &[ExecBinding {
-            action: Action::OpenConnectionSelector,
+            action: Action::OpenModal(ModalKind::ConnectionSelector),
             combos: &[KeyCombo::plain(Key::Char('s'))],
         }],
     },
@@ -217,7 +217,7 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
         desc_short: "New",
         description: "New connection",
         bindings: &[ExecBinding {
-            action: Action::OpenConnectionSetup,
+            action: Action::OpenModal(ModalKind::ConnectionSetup),
             combos: &[KeyCombo::plain(Key::Char('n'))],
         }],
     },

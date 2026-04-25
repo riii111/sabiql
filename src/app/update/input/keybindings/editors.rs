@@ -1,6 +1,6 @@
 use super::KeyBinding;
 use super::{Key, KeyCombo};
-use crate::update::action::Action;
+use crate::update::action::{Action, ModalKind};
 
 // =============================================================================
 // SQL Modal (Normal mode — default when opened)
@@ -68,7 +68,7 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
         key: "Esc",
         desc_short: "Close",
         description: "Close editor",
-        action: Action::CloseSqlModal,
+        action: Action::CloseModal(ModalKind::SqlModal),
         combos: &[KeyCombo::plain(Key::Esc)],
     },
     KeyBinding {
@@ -84,7 +84,7 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
         key: "Ctrl+O",
         desc_short: "History",
         description: "Open Query History",
-        action: Action::OpenQueryHistoryPicker,
+        action: Action::OpenModal(ModalKind::QueryHistoryPicker),
         combos: &[KeyCombo::ctrl(Key::Char('o'))],
     },
 ];
@@ -147,7 +147,7 @@ pub const SQL_MODAL_PLAN_KEYS: &[KeyBinding] = &[
         key: "Esc",
         desc_short: "Close",
         description: "Close editor",
-        action: Action::CloseSqlModal,
+        action: Action::CloseModal(ModalKind::SqlModal),
         combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
@@ -218,7 +218,7 @@ pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
         key: "Esc",
         desc_short: "Close",
         description: "Close editor",
-        action: Action::CloseSqlModal,
+        action: Action::CloseModal(ModalKind::SqlModal),
         combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
@@ -289,7 +289,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         key: "Ctrl+O",
         desc_short: "History",
         description: "Open Query History",
-        action: Action::OpenQueryHistoryPicker,
+        action: Action::OpenModal(ModalKind::QueryHistoryPicker),
         combos: &[KeyCombo::ctrl(Key::Char('o'))],
     },
 ];
@@ -322,7 +322,7 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         key: ":help",
         desc_short: "Help",
         description: "Show help",
-        action: Action::OpenHelp,
+        action: Action::ToggleModal(ModalKind::Help),
         combos: &[],
     },
     KeyBinding {
@@ -330,7 +330,7 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         key: ":sql",
         desc_short: "SQL",
         description: "Open SQL Editor",
-        action: Action::OpenSqlModal,
+        action: Action::OpenModal(ModalKind::SqlModal),
         combos: &[],
     },
     KeyBinding {
@@ -338,7 +338,7 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         key: ":erd",
         desc_short: "ER Diagram",
         description: "Open ER Diagram",
-        action: Action::OpenErTablePicker,
+        action: Action::OpenModal(ModalKind::ErTablePicker),
         combos: &[],
     },
     KeyBinding {

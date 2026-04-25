@@ -87,7 +87,7 @@ mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
     use crate::update::action::{
-        ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+        ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
     use crate::update::input::keybindings::{Key, KeyCombo, Modifiers};
     use rstest::rstest;
@@ -312,7 +312,10 @@ mod tests {
                 Expected::Close => assert!(matches!(result, Action::CloseConnectionError)),
                 Expected::Reenter => assert!(matches!(result, Action::ReenterConnectionSetup)),
                 Expected::OpenSelector => {
-                    assert!(matches!(result, Action::OpenConnectionSelector));
+                    assert!(matches!(
+                        result,
+                        Action::OpenModal(ModalKind::ConnectionSelector)
+                    ));
                 }
                 Expected::ToggleDetails => {
                     assert!(matches!(result, Action::ToggleConnectionErrorDetails));
@@ -394,7 +397,7 @@ mod tests {
 
         #[rstest]
         #[case(Key::Enter, Action::ConfirmConnectionSelection)]
-        #[case(Key::Char('n'), Action::OpenConnectionSetup)]
+        #[case(Key::Char('n'), Action::OpenModal(ModalKind::ConnectionSetup))]
         #[case(Key::Char('e'), Action::RequestEditSelectedConnection)]
         #[case(Key::Char('d'), Action::RequestDeleteSelectedConnection)]
         fn selector_action_keys(#[case] code: Key, #[case] expected: Action) {

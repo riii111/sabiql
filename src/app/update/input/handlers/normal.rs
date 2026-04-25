@@ -1,7 +1,7 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::Prefix;
-use crate::update::action::Action;
+use crate::update::action::{Action, ModalKind};
 use crate::update::input::keybindings::{self as kb, Key, KeyCombo, Modifiers};
 use crate::update::input::vim::{
     BrowseVimContext, VimCommand, VimSurfaceContext, action_for_input, action_for_key,
@@ -29,19 +29,19 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 };
             }
             Key::Char('k') if !state.query.is_history_mode() => {
-                return Action::OpenCommandPalette;
+                return Action::OpenModal(ModalKind::CommandPalette);
             }
             Key::Char('r') => {
                 return Action::ToggleReadOnly;
             }
             Key::Char('o') if !state.query.is_history_mode() => {
-                return Action::OpenQueryHistoryPicker;
+                return Action::OpenModal(ModalKind::QueryHistoryPicker);
             }
             Key::Char('e') if state.can_request_csv_export() => {
                 return Action::RequestCsvExport;
             }
             Key::Char('p') if !state.query.is_history_mode() => {
-                return Action::OpenTablePicker;
+                return Action::OpenModal(ModalKind::TablePicker);
             }
             // Ctrl+N/P navigation disabled on main screen; use j/k or arrows.
             // Modals/pickers handle Ctrl+N/P via their own bindings.
@@ -81,7 +81,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         match combo.key {
             Key::Char('[') => return Action::HistoryOlder,
             Key::Char(']') => return Action::HistoryNewer,
-            Key::Char('?') => return Action::OpenHelp,
+            Key::Char('?') => return Action::ToggleModal(ModalKind::Help),
             // Home/End/PageDown/PageUp are blocked in history mode
             // (only char keys g/G and Ctrl+D/U/F/B are allowed for these motions)
             Key::Home | Key::End | Key::PageDown | Key::PageUp => return Action::None,
@@ -97,7 +97,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         return Action::Quit;
     }
     if kb::is_help(&combo) {
-        return Action::OpenHelp;
+        return Action::ToggleModal(ModalKind::Help);
     }
     if kb::is_command_line(&combo) {
         return Action::EnterCommandLine;
@@ -160,10 +160,10 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         {
             Action::ResultCellYank
         }
-        Key::Char('s') => Action::OpenSqlModal,
-        Key::Char('e') => Action::OpenErTablePicker,
+        Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
+        Key::Char('e') => Action::OpenModal(ModalKind::ErTablePicker),
         Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
-            Action::OpenConnectionSelector
+            Action::OpenModal(ModalKind::ConnectionSelector)
         }
 
         Key::Char('z') => Action::BeginKeySequence(Prefix::Z),
@@ -227,7 +227,7 @@ mod tests {
 
                 let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
 
-                assert!(matches!(result, Action::OpenTablePicker));
+                assert!(matches!(result, Action::OpenModal(ModalKind::TablePicker)));
             }
 
             #[test]
@@ -245,7 +245,10 @@ mod tests {
 
                 let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
 
-                assert!(matches!(result, Action::OpenCommandPalette));
+                assert!(matches!(
+                    result,
+                    Action::OpenModal(ModalKind::CommandPalette)
+                ));
             }
 
             #[test]
@@ -263,7 +266,7 @@ mod tests {
 
                 let result = handle_normal_mode(combo(Key::Char('?')), &state);
 
-                assert!(matches!(result, Action::OpenHelp));
+                assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
             }
 
             #[test]
@@ -547,7 +550,10 @@ mod tests {
 
                 let result = handle_normal_mode(combo(Key::Char('c')), &state);
 
-                assert!(matches!(result, Action::OpenConnectionSelector));
+                assert!(matches!(
+                    result,
+                    Action::OpenModal(ModalKind::ConnectionSelector)
+                ));
             }
         }
 
@@ -596,7 +602,7 @@ mod tests {
 
                 let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
 
-                assert!(matches!(result, Action::OpenTablePicker));
+                assert!(matches!(result, Action::OpenModal(ModalKind::TablePicker)));
             }
 
             #[rstest]
@@ -1192,7 +1198,7 @@ mod tests {
 
                     let result = handle_normal_mode(combo(Key::Char('?')), &state);
 
-                    assert!(matches!(result, Action::OpenHelp));
+                    assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
                 }
 
                 #[rstest]

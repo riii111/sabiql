@@ -8,7 +8,7 @@ use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSele
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus};
 use crate::services::AppServices;
-use crate::update::action::{Action, TableTarget};
+use crate::update::action::{Action, ModalKind, TableTarget};
 use crate::update::input::command::{command_to_action, parse_command};
 
 fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> {
@@ -187,11 +187,11 @@ pub fn reduce(
                     state.should_quit = true;
                     vec![]
                 }
-                Action::OpenHelp => {
+                Action::ToggleModal(ModalKind::Help) => {
                     state.modal.set_mode(InputMode::Help);
                     vec![]
                 }
-                Action::OpenSqlModal => {
+                Action::OpenModal(ModalKind::SqlModal) => {
                     state.modal.set_mode(InputMode::SqlModal);
                     state.sql_modal.set_status(SqlModalStatus::Normal);
                     if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some()
@@ -201,8 +201,11 @@ pub fn reduce(
                         vec![]
                     }
                 }
-                Action::OpenErTablePicker => {
-                    vec![Effect::DispatchActions(vec![Action::OpenErTablePicker])]
+                Action::OpenModal(ModalKind::ErTablePicker) => {
+                    // Defer to modal reducer so metadata readiness checks stay in one place.
+                    vec![Effect::DispatchActions(vec![Action::OpenModal(
+                        ModalKind::ErTablePicker,
+                    )])]
                 }
                 Action::SubmitCellEditWrite => {
                     vec![Effect::DispatchActions(vec![Action::SubmitCellEditWrite])]
@@ -336,7 +339,10 @@ mod tests {
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::DispatchActions(actions) => {
-                    assert!(matches!(actions[0], Action::OpenErTablePicker));
+                    assert!(matches!(
+                        actions[0],
+                        Action::OpenModal(ModalKind::ErTablePicker)
+                    ));
                 }
                 other => panic!("expected DispatchActions, got {other:?}"),
             }

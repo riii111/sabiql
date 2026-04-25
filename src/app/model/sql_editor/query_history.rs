@@ -3,6 +3,7 @@ use nucleo_matcher::{Config, Matcher};
 
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::model::shared::text_input::TextInputState;
+use crate::update::action::CursorMove;
 
 #[derive(Debug, Clone, Default)]
 pub struct QueryHistoryPickerState {
@@ -28,6 +29,31 @@ impl QueryHistoryPickerState {
     pub fn reset(&mut self) {
         self.entries.clear();
         self.filter_input.clear();
+        self.selected = 0;
+        self.scroll_offset = 0;
+    }
+
+    pub fn insert_filter_char(&mut self, ch: char) {
+        self.filter_input.insert_char(ch);
+        self.reset_selection();
+    }
+
+    pub fn insert_filter_str(&mut self, text: &str) {
+        let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+        self.filter_input.insert_str(&clean);
+        self.reset_selection();
+    }
+
+    pub fn backspace_filter(&mut self) {
+        self.filter_input.backspace();
+        self.reset_selection();
+    }
+
+    pub fn move_filter_cursor(&mut self, direction: CursorMove) {
+        self.filter_input.move_cursor(direction);
+    }
+
+    pub fn reset_selection(&mut self) {
         self.selected = 0;
         self.scroll_offset = 0;
     }

@@ -391,6 +391,7 @@ pub fn is_open_er(combo: &KeyCombo) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::update::action::ModalKind;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
 
     mod structure {
@@ -638,18 +639,24 @@ mod tests {
 
             #[rstest]
             #[case(idx::global::QUIT, Action::Quit)]
-            #[case(idx::global::HELP, Action::OpenHelp)]
-            #[case(idx::global::TABLE_PICKER, Action::OpenTablePicker)]
-            #[case(idx::global::PALETTE, Action::OpenCommandPalette)]
+            #[case(idx::global::HELP, Action::ToggleModal(ModalKind::Help))]
+            #[case(idx::global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
+            #[case(idx::global::PALETTE, Action::OpenModal(ModalKind::CommandPalette))]
             #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
             #[case(idx::global::RELOAD, Action::ReloadMetadata)]
-            #[case(idx::global::SQL, Action::OpenSqlModal)]
-            #[case(idx::global::ER_DIAGRAM, Action::OpenErTablePicker)]
-            #[case(idx::global::CONNECTIONS, Action::OpenConnectionSelector)]
+            #[case(idx::global::SQL, Action::OpenModal(ModalKind::SqlModal))]
+            #[case(idx::global::ER_DIAGRAM, Action::OpenModal(ModalKind::ErTablePicker))]
+            #[case(
+                idx::global::CONNECTIONS,
+                Action::OpenModal(ModalKind::ConnectionSelector)
+            )]
             #[case(idx::global::CSV_EXPORT, Action::RequestCsvExport)]
             #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
             #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
-            #[case(idx::global::QUERY_HISTORY, Action::OpenQueryHistoryPicker)]
+            #[case(
+                idx::global::QUERY_HISTORY,
+                Action::OpenModal(ModalKind::QueryHistoryPicker)
+            )]
             fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
                 assert!(
                     std::mem::discriminant(&GLOBAL_KEYS[i].action)
@@ -705,7 +712,7 @@ mod tests {
             #[case(idx::sql_modal_plan::YANK, Action::SqlModalYank)]
             #[case(idx::sql_modal_plan::TAB, Action::SqlModalNextTab)]
             #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
-            #[case(idx::sql_modal_plan::CLOSE, Action::CloseSqlModal)]
+            #[case(idx::sql_modal_plan::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
             fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
                 assert!(
                     std::mem::discriminant(&SQL_MODAL_PLAN_KEYS[i].action)
@@ -722,7 +729,7 @@ mod tests {
             #[case(idx::sql_modal_compare::YANK, Action::SqlModalYank)]
             #[case(idx::sql_modal_compare::TAB, Action::SqlModalNextTab)]
             #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
-            #[case(idx::sql_modal_compare::CLOSE, Action::CloseSqlModal)]
+            #[case(idx::sql_modal_compare::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
             fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
                 assert!(
                     std::mem::discriminant(&SQL_MODAL_COMPARE_KEYS[i].action)

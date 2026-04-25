@@ -1,7 +1,7 @@
 use super::*;
 use crate::app::model::app_state::AppState;
 use crate::app::services::AppServices;
-use crate::app::update::action::{Action, CursorMove, InputTarget};
+use crate::app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::app::update::browse::result::reduce_result;
 use crate::domain::{Column, ColumnAttributes, QueryResult};
 use harness::{table_detail_loaded_state, with_current_result};
@@ -206,7 +206,7 @@ fn result_pane_jsonb_detail_mode() {
 
     reduce_result(
         &mut state,
-        &Action::OpenJsonbDetail,
+        &Action::OpenModal(ModalKind::JsonbDetail),
         &AppServices::stub(),
         now,
     );
@@ -224,7 +224,7 @@ fn result_pane_jsonb_edit_mode() {
 
     reduce_result(
         &mut state,
-        &Action::OpenJsonbDetail,
+        &Action::OpenModal(ModalKind::JsonbDetail),
         &AppServices::stub(),
         now,
     );

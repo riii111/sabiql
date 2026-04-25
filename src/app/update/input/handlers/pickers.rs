@@ -50,6 +50,7 @@ pub fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::update::action::ModalKind;
     use crate::update::action::{ListMotion, ListTarget};
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
@@ -88,7 +89,9 @@ mod tests {
             let result = handle_table_picker_keys(combo(code));
 
             match expected {
-                Expected::Close => assert!(matches!(result, Action::CloseTablePicker)),
+                Expected::Close => {
+                    assert!(matches!(result, Action::CloseModal(ModalKind::TablePicker)))
+                }
                 Expected::Confirm => assert!(matches!(result, Action::ConfirmSelection)),
                 Expected::SelectPrev => {
                     assert!(matches!(
@@ -160,7 +163,10 @@ mod tests {
             let result = handle_command_palette_keys(combo(code));
 
             match expected {
-                Expected::Close => assert!(matches!(result, Action::CloseCommandPalette)),
+                Expected::Close => assert!(matches!(
+                    result,
+                    Action::CloseModal(ModalKind::CommandPalette)
+                )),
                 Expected::Confirm => assert!(matches!(result, Action::ConfirmSelection)),
                 Expected::SelectPrev => {
                     assert!(matches!(
@@ -193,7 +199,7 @@ mod tests {
         #[case(Key::Up, Action::ListSelect { target: ListTarget::QueryHistory, motion: ListMotion::Previous })]
         #[case(Key::Down, Action::ListSelect { target: ListTarget::QueryHistory, motion: ListMotion::Next })]
         #[case(Key::Backspace, Action::TextBackspace { target: InputTarget::QueryHistoryFilter })]
-        #[case(Key::Esc, Action::CloseQueryHistoryPicker)]
+        #[case(Key::Esc, Action::CloseModal(ModalKind::QueryHistoryPicker))]
         fn picker_keys(#[case] key: Key, #[case] expected: Action) {
             let result = handle_query_history_picker_keys(combo(key));
 
@@ -235,8 +241,11 @@ mod tests {
                         }
                     ));
                 }
-                Action::CloseQueryHistoryPicker => {
-                    assert!(matches!(result, Action::CloseQueryHistoryPicker));
+                Action::CloseModal(ModalKind::QueryHistoryPicker) => {
+                    assert!(matches!(
+                        result,
+                        Action::CloseModal(ModalKind::QueryHistoryPicker)
+                    ));
                 }
                 _ => unreachable!("unexpected test case"),
             }
@@ -278,7 +287,10 @@ mod tests {
         fn esc_returns_close_er_table_picker() {
             let result = handle_er_table_picker_keys(combo(Key::Esc));
 
-            assert!(matches!(result, Action::CloseErTablePicker));
+            assert!(matches!(
+                result,
+                Action::CloseModal(ModalKind::ErTablePicker)
+            ));
         }
 
         #[test]

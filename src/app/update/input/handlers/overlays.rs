@@ -13,6 +13,7 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::update::action::ModalKind;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
@@ -43,14 +44,14 @@ mod tests {
         fn esc_closes_help() {
             let result = handle_help_keys(combo(Key::Esc));
 
-            assert!(matches!(result, Action::CloseHelp));
+            assert!(matches!(result, Action::CloseModal(ModalKind::Help)));
         }
 
         #[test]
         fn question_mark_closes_help() {
             let result = handle_help_keys(combo(Key::Char('?')));
 
-            assert!(matches!(result, Action::CloseHelp));
+            assert!(matches!(result, Action::CloseModal(ModalKind::Help)));
         }
 
         #[test]

@@ -1,5 +1,5 @@
 use crate::update::action::{
-    Action, CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+    Action, CursorMove, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 
 use super::scroll;
@@ -14,7 +14,9 @@ pub(in crate::update::input::vim) fn command(
     match ctx {
         SqlModalVimContext::QueryNormal => match command {
             VimCommand::Navigation(navigation) => query_navigation(navigation),
-            VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseSqlModal),
+            VimCommand::ModeTransition(VimModeTransition::Escape) => {
+                Some(Action::CloseModal(ModalKind::SqlModal))
+            }
             VimCommand::ModeTransition(VimModeTransition::Append) => {
                 Some(Action::SqlModalAppendInsert)
             }
@@ -67,7 +69,9 @@ fn viewer(command: VimCommand, target: ScrollTarget) -> Option<Action> {
         VimCommand::Navigation(VimNavigation::MoveUp) => {
             Some(scroll(target, ScrollDirection::Up, ScrollAmount::Line))
         }
-        VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::CloseSqlModal),
+        VimCommand::ModeTransition(VimModeTransition::Escape) => {
+            Some(Action::CloseModal(ModalKind::SqlModal))
+        }
         VimCommand::Operator(VimOperator::Yank) => Some(Action::SqlModalYank),
         _ => None,
     }

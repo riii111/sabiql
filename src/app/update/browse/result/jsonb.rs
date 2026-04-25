@@ -13,11 +13,11 @@ use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::ports::outbound::ClipboardError;
-use crate::update::action::{Action, CursorMove, InputTarget};
+use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
-        Action::OpenJsonbDetail => {
+        Action::OpenModal(ModalKind::JsonbDetail) => {
             let result = match state.query.visible_result() {
                 Some(r) if r.source == QuerySource::Preview && !r.is_error() => r,
                 _ => return Some(vec![]),
@@ -77,7 +77,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
 
-        Action::CloseJsonbDetail => {
+        Action::CloseModal(ModalKind::JsonbDetail) => {
             apply_pending_edit_as_draft(state);
             state.jsonb_detail.close();
             state.modal.pop_mode();
@@ -460,7 +460,11 @@ mod tests {
     }
 
     fn open_detail(state: &mut AppState) {
-        reduce(state, &Action::OpenJsonbDetail, Instant::now());
+        reduce(
+            state,
+            &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+            Instant::now(),
+        );
     }
 
     fn cursor_position(content: &str, cursor: usize) -> (usize, usize) {
@@ -489,7 +493,11 @@ mod tests {
         fn opens_on_valid_jsonb_cell() {
             let mut state = state_with_jsonb_cell();
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
 
             assert!(state.jsonb_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
@@ -500,7 +508,11 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             state.result_interaction.move_cell(0);
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -521,7 +533,11 @@ mod tests {
                 command_tag: None,
             }));
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
         }
@@ -541,7 +557,11 @@ mod tests {
                 command_tag: None,
             }));
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
         }
@@ -551,7 +571,11 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             state.session.set_table_detail_raw(None);
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
         }
@@ -563,10 +587,18 @@ mod tests {
         #[test]
         fn close_clears_state() {
             let mut state = state_with_jsonb_cell();
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
             assert!(state.jsonb_detail.is_active());
 
-            reduce(&mut state, &Action::CloseJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::CloseModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -780,7 +812,11 @@ mod tests {
                 .set_content(r#"{"theme":"light","count":5}"#.to_string());
             reduce(&mut state, &Action::JsonbExitEdit, Instant::now());
 
-            reduce(&mut state, &Action::CloseJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::CloseModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.jsonb_detail.is_active());
@@ -794,7 +830,11 @@ mod tests {
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
             reduce(&mut state, &Action::JsonbExitEdit, Instant::now());
 
-            reduce(&mut state, &Action::CloseJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::CloseModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().has_pending_draft());
@@ -808,7 +848,11 @@ mod tests {
         #[test]
         fn copies_all_text_to_clipboard() {
             let mut state = state_with_jsonb_cell();
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                Instant::now(),
+            );
 
             let effects = reduce(&mut state, &Action::JsonbYankAll, Instant::now());
 

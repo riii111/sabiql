@@ -79,6 +79,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
 mod tests {
     use super::*;
     use crate::ports::inbound::Key;
+    use crate::update::action::ModalKind;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -112,7 +113,7 @@ mod tests {
             // Esc in SqlModal (Normal mode, the default) should close modal
             let result = handle_key_event(combo(Key::Esc), &state, &services);
 
-            assert!(matches!(result, Action::CloseSqlModal));
+            assert!(matches!(result, Action::CloseModal(ModalKind::SqlModal)));
         }
 
         #[test]

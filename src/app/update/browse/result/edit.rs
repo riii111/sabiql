@@ -6,7 +6,7 @@ use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::write::write_update::build_pk_pairs;
-use crate::update::action::{Action, InputTarget};
+use crate::update::action::{Action, InputTarget, ModalKind};
 
 use crate::update::helpers::{EditGuardrailError, editable_preview_base};
 
@@ -76,7 +76,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
             // JSONB columns open the dedicated detail modal instead of inline edit
             if is_jsonb_cell(state) {
-                return Some(vec![Effect::DispatchActions(vec![Action::OpenJsonbDetail])]);
+                return Some(vec![Effect::DispatchActions(vec![Action::OpenModal(
+                    ModalKind::JsonbDetail,
+                )])]);
             }
 
             match editable_cell_context(state) {
@@ -342,7 +344,7 @@ mod tests {
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
-                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenJsonbDetail])
+                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(crate::update::action::ModalKind::JsonbDetail)])
             ));
         }
     }

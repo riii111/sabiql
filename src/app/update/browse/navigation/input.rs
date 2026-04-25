@@ -8,25 +8,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
         Action::Paste(text) => match state.modal.active_mode() {
             InputMode::TablePicker => {
-                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.ui.table_picker.filter_input.insert_str(&clean);
-                state
-                    .ui
-                    .table_picker
-                    .filter_input
-                    .update_viewport(state.ui.table_picker.filter_visible_width);
-                state.ui.table_picker.reset();
+                state.ui.table_picker.insert_filter_str(text);
                 Some(vec![])
             }
             InputMode::ErTablePicker => {
-                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.ui.er_picker.filter_input.insert_str(&clean);
-                state
-                    .ui
-                    .er_picker
-                    .filter_input
-                    .update_viewport(state.ui.er_picker.filter_visible_width);
-                state.ui.er_picker.reset();
+                state.ui.er_picker.insert_filter_str(text);
                 Some(vec![])
             }
             InputMode::CommandLine => {
@@ -46,10 +32,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 Some(vec![])
             }
             InputMode::QueryHistoryPicker => {
-                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.query_history_picker.filter_input.insert_str(&clean);
-                state.query_history_picker.selected = 0;
-                state.query_history_picker.scroll_offset = 0;
+                state.query_history_picker.insert_filter_str(text);
                 Some(vec![])
             }
             _ => None,
@@ -59,37 +42,20 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: InputTarget::Filter,
             ch: c,
         } => {
-            state.ui.table_picker.filter_input.insert_char(*c);
-            state
-                .ui
-                .table_picker
-                .filter_input
-                .update_viewport(state.ui.table_picker.filter_visible_width);
-            state.ui.table_picker.reset();
+            state.ui.table_picker.insert_filter_char(*c);
             Some(vec![])
         }
         Action::TextBackspace {
             target: InputTarget::Filter,
         } => {
-            state.ui.table_picker.filter_input.backspace();
-            state
-                .ui
-                .table_picker
-                .filter_input
-                .update_viewport(state.ui.table_picker.filter_visible_width);
-            state.ui.table_picker.reset();
+            state.ui.table_picker.backspace_filter();
             Some(vec![])
         }
         Action::TextMoveCursor {
             target: InputTarget::Filter,
             direction: movement,
         } => {
-            state.ui.table_picker.filter_input.move_cursor(*movement);
-            state
-                .ui
-                .table_picker
-                .filter_input
-                .update_viewport(state.ui.table_picker.filter_visible_width);
+            state.ui.table_picker.move_filter_cursor(*movement);
             Some(vec![])
         }
 
