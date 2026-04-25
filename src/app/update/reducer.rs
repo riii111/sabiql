@@ -43,12 +43,7 @@ fn reduce_inner(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    if !matches!(
-        action,
-        Action::ResultDeleteOperatorPending | Action::ResultRowYankOperatorPending
-    ) {
-        state.result_interaction.clear_operator_pending();
-    }
+    state.result_interaction.clear_operator_pending();
 
     // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
     // reset view state here and return None, relying on reduce_query for the actual page change.
