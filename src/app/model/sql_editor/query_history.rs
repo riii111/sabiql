@@ -13,6 +13,7 @@ pub struct QueryHistoryPickerState {
     selected: usize,
     scroll_offset: usize,
     pub pane_height: u16,
+    pub filter_visible_width: usize,
 }
 
 pub struct FilteredEntry<'a> {
@@ -43,8 +44,9 @@ impl QueryHistoryPickerState {
         self.scroll_offset
     }
 
-    pub fn replace_entries(&mut self, entries: Vec<QueryHistoryEntry>) {
-        self.entries = entries;
+    pub fn replace_entries(&mut self, entries: &[QueryHistoryEntry]) {
+        self.entries.clear();
+        self.entries.extend_from_slice(entries);
         self.reset_selection();
     }
 
@@ -57,21 +59,25 @@ impl QueryHistoryPickerState {
 
     pub fn insert_filter_char(&mut self, ch: char) {
         self.filter_input.insert_char(ch);
+        self.filter_input.update_viewport(self.filter_visible_width);
         self.reset_selection();
     }
 
     pub fn insert_filter_str(&mut self, text: &str) {
         self.filter_input.insert_str(&sanitize_filter_text(text));
+        self.filter_input.update_viewport(self.filter_visible_width);
         self.reset_selection();
     }
 
     pub fn backspace_filter(&mut self) {
         self.filter_input.backspace();
+        self.filter_input.update_viewport(self.filter_visible_width);
         self.reset_selection();
     }
 
     pub fn move_filter_cursor(&mut self, direction: CursorMove) {
         self.filter_input.move_cursor(direction);
+        self.filter_input.update_viewport(self.filter_visible_width);
     }
 
     pub fn reset_selection(&mut self) {
@@ -233,6 +239,20 @@ mod tests {
         assert_eq!(state.selected, 3);
         assert_eq!(state.scroll_offset, 2);
     }
+
+    #[test]
+    fn filter_input_updates_viewport() {
+        let mut state = QueryHistoryPickerState {
+            filter_visible_width: 3,
+            ..Default::default()
+        };
+
+        state.insert_filter_str("abcd");
+
+        assert_eq!(state.filter_input.content(), "abcd");
+        assert_eq!(state.filter_input.viewport_offset(), 3);
+    }
+
     fn make_entry(query: &str) -> QueryHistoryEntry {
         use crate::domain::query_history::QueryResultStatus;
         QueryHistoryEntry::new(
@@ -344,6 +364,48 @@ mod tests {
         };
 
         assert_eq!(state.clamped_selected(), 1);
+    }
+
+    #[test]
+    fn select_next_updates_scroll_offset() {
+        let mut state = QueryHistoryPickerState {
+            entries: vec![
+                make_entry("SELECT 1"),
+                make_entry("SELECT 2"),
+                make_entry("SELECT 3"),
+                make_entry("SELECT 4"),
+            ],
+            pane_height: 2,
+            ..Default::default()
+        };
+
+        state.select_next();
+        state.select_next();
+
+        assert_eq!(state.selected(), 2);
+        assert_eq!(state.scroll_offset(), 1);
+    }
+
+    #[test]
+    fn select_previous_updates_scroll_offset() {
+        let mut state = QueryHistoryPickerState {
+            entries: vec![
+                make_entry("SELECT 1"),
+                make_entry("SELECT 2"),
+                make_entry("SELECT 3"),
+                make_entry("SELECT 4"),
+            ],
+            selected: 3,
+            scroll_offset: 2,
+            pane_height: 2,
+            ..Default::default()
+        };
+
+        state.select_previous();
+        state.select_previous();
+
+        assert_eq!(state.selected(), 1);
+        assert_eq!(state.scroll_offset(), 1);
     }
 
     #[test]

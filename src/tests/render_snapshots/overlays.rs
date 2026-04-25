@@ -402,7 +402,7 @@ fn query_history_picker_with_entries() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
-    state.query_history_picker.replace_entries(vec![
+    state.query_history_picker.replace_entries(&[
         QueryHistoryEntry::new(
             "SELECT * FROM users WHERE id = 1".to_string(),
             "2026-03-13T10:00:00Z".to_string(),
@@ -449,7 +449,7 @@ fn query_history_picker_filter_mode() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
-    state.query_history_picker.replace_entries(vec![
+    state.query_history_picker.replace_entries(&[
         QueryHistoryEntry::new(
             "SELECT * FROM users".to_string(),
             "2026-03-13T10:00:00Z".to_string(),

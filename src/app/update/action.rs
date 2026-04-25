@@ -313,8 +313,7 @@ pub enum Action {
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(ConnectionStoreError),
 
-    // Connection Error: opening carries ConnectionErrorInfo, so this remains
-    // outside payload-free ModalKind lifecycle actions.
+    // Connection Error
     ShowConnectionError(ConnectionErrorInfo),
     CloseConnectionError,
     ToggleConnectionErrorDetails,

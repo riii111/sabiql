@@ -197,7 +197,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if state.session.active_connection_id.as_ref() != Some(conn_id) {
                 return Some(vec![]);
             }
-            state.query_history_picker.replace_entries(entries.clone());
+            state.query_history_picker.replace_entries(entries);
             Some(vec![])
         }
         Action::QueryHistoryLoadFailed(e) => {
@@ -978,7 +978,7 @@ mod tests {
             fn select_next_increments() {
                 let mut state = connected_state();
                 let test_conn = ConnectionId::from_string("test-conn");
-                state.query_history_picker.replace_entries(vec![
+                state.query_history_picker.replace_entries(&[
                     make_entry("SELECT 1", &test_conn),
                     make_entry("SELECT 2", &test_conn),
                 ]);
@@ -1002,7 +1002,7 @@ mod tests {
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
                     .query_history_picker
-                    .replace_entries(vec![make_entry("SELECT 1", &test_conn)]);
+                    .replace_entries(&[make_entry("SELECT 1", &test_conn)]);
 
                 reduce_modal(
                     &mut state,
@@ -1050,7 +1050,7 @@ mod tests {
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
                     .query_history_picker
-                    .replace_entries(vec![make_entry(&query, &test_conn)]);
+                    .replace_entries(&[make_entry(&query, &test_conn)]);
 
                 reduce_modal(
                     &mut state,
@@ -1069,7 +1069,7 @@ mod tests {
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
                     .query_history_picker
-                    .replace_entries(vec![make_entry("SELECT * FROM users", &test_conn)]);
+                    .replace_entries(&[make_entry("SELECT * FROM users", &test_conn)]);
 
                 let effects = reduce_modal(
                     &mut state,
@@ -1106,7 +1106,7 @@ mod tests {
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
                     .query_history_picker
-                    .replace_entries(vec![make_entry("new query", &test_conn)]);
+                    .replace_entries(&[make_entry("new query", &test_conn)]);
 
                 reduce_modal(
                     &mut state,
