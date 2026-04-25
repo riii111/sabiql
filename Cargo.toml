@@ -7,7 +7,17 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+version = "1.11.1"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/riii111/sabiql"
+
 [workspace.dependencies]
+sabiql-domain = { path = "src/domain", version = "1.11.1" }
+sabiql-app = { path = "src/app", version = "1.11.1" }
+sabiql-infra = { path = "src/infra", version = "1.11.1" }
+sabiql-ui = { path = "src/ui", version = "1.11.1" }
 arboard = "3"
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
@@ -38,11 +48,11 @@ uuid = { version = "1", features = ["v4"] }
 
 [package]
 name = "sabiql"
-version = "1.11.1"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "A fast, driver-less TUI for browsing and editing PostgreSQL databases"
-license = "MIT"
-repository = "https://github.com/riii111/sabiql"
+license.workspace = true
+repository.workspace = true
 homepage = "https://github.com/riii111/sabiql"
 readme = "README.md"
 keywords = ["postgresql", "tui", "database", "cli", "sql"]
@@ -55,18 +65,18 @@ color-eyre.workspace = true
 clap.workspace = true
 dotenvy.workspace = true
 self_update = { workspace = true, optional = true }
-sabiql-app = { path = "src/app", version = "1.11.1" }
-sabiql-infra = { path = "src/infra", version = "1.11.1" }
-sabiql-ui = { path = "src/ui", version = "1.11.1" }
+sabiql-app.workspace = true
+sabiql-infra.workspace = true
+sabiql-ui.workspace = true
 
 [features]
 default = []
 self-update = ["dep:self_update"]
 
 [dev-dependencies]
-sabiql-domain = { path = "src/domain", version = "1.11.1" }
-sabiql-app = { path = "src/app", version = "1.11.1", features = ["test-support"] }
-sabiql-ui = { path = "src/ui", version = "1.11.1", features = ["test-support"] }
+sabiql-domain.workspace = true
+sabiql-app = { workspace = true, features = ["test-support"] }
+sabiql-ui = { workspace = true, features = ["test-support"] }
 ratatui.workspace = true
 rstest.workspace = true
 tempfile.workspace = true

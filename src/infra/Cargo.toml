@@ -1,10 +1,10 @@
 [package]
 name = "sabiql-infra"
-version = "1.11.1"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Infrastructure layer for sabiql"
-license = "MIT"
-repository = "https://github.com/riii111/sabiql"
+license.workspace = true
+repository.workspace = true
 
 [lib]
 path = "lib.rs"
@@ -20,8 +20,8 @@ thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
 urlencoding.workspace = true
-sabiql-app = { path = "../app", version = "1.11.1" }
-sabiql-domain = { path = "../domain", version = "1.11.1" }
+sabiql-app.workspace = true
+sabiql-domain.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

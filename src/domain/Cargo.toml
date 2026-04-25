@@ -1,10 +1,10 @@
 [package]
 name = "sabiql-domain"
-version = "1.11.1"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Domain layer for sabiql"
-license = "MIT"
-repository = "https://github.com/riii111/sabiql"
+license.workspace = true
+repository.workspace = true
 
 [lib]
 path = "lib.rs"

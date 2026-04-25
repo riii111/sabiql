@@ -1,10 +1,10 @@
 [package]
 name = "sabiql-ui"
-version = "1.11.1"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "UI layer for sabiql"
-license = "MIT"
-repository = "https://github.com/riii111/sabiql"
+license.workspace = true
+repository.workspace = true
 
 [lib]
 path = "lib.rs"
@@ -20,10 +20,10 @@ ratatui.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 unicode-width.workspace = true
-sabiql-app = { path = "../app", version = "1.11.1" }
-sabiql-domain = { path = "../domain", version = "1.11.1" }
+sabiql-app.workspace = true
+sabiql-domain.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
 rstest.workspace = true
-sabiql-app = { path = "../app", version = "1.11.1", features = ["test-support"] }
+sabiql-app = { workspace = true, features = ["test-support"] }
