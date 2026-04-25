@@ -76,14 +76,18 @@ pub struct QueryHistoryPicker;
 
 impl QueryHistoryPicker {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> u16 {
-        let filter_is_empty = state.query_history_picker.filter_input.content().is_empty();
+        let filter_is_empty = state
+            .query_history_picker
+            .filter_input()
+            .content()
+            .is_empty();
         let filter_content = state
             .query_history_picker
-            .filter_input
+            .filter_input()
             .content()
             .to_string();
-        let scroll_offset = state.query_history_picker.scroll_offset;
-        let raw_selected = state.query_history_picker.selected;
+        let scroll_offset = state.query_history_picker.scroll_offset();
+        let raw_selected = state.query_history_picker.selected();
 
         let grouped = state.query_history_picker.grouped_filtered_entries();
         let grouped_count = grouped.len();

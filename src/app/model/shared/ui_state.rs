@@ -316,7 +316,7 @@ mod tests {
             assert_eq!(state.focused_pane, FocusedPane::default());
             assert_eq!(state.focus_mode, FocusMode::Normal);
             assert_eq!(state.explorer_selected, 0);
-            assert!(state.table_picker.filter_input.content().is_empty());
+            assert!(state.table_picker.filter_input().content().is_empty());
         }
 
         #[test]

@@ -40,11 +40,7 @@ fn er_table_picker_filtered() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
-    state
-        .ui
-        .er_picker
-        .filter_input
-        .set_content("user".to_string());
+    state.ui.er_picker.insert_filter_str("user");
 
     let output = render_to_string(&mut terminal, &mut state);
 

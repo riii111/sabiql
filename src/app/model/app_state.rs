@@ -134,7 +134,7 @@ impl AppState {
     }
 
     pub fn filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.table_picker.filter_input.content().to_lowercase();
+        let filter_lower = self.ui.table_picker.filter_input().content().to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -147,7 +147,7 @@ impl AppState {
     }
 
     pub fn er_filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.er_picker.filter_input.content().to_lowercase();
+        let filter_lower = self.ui.er_picker.filter_input().content().to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -371,11 +371,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ])));
-            state
-                .ui
-                .table_picker
-                .filter_input
-                .set_content(String::new());
+            state.ui.table_picker.clear_filter();
 
             let filtered = state.filtered_tables();
 
@@ -389,11 +385,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ])));
-            state
-                .ui
-                .table_picker
-                .filter_input
-                .set_content("user".to_string());
+            state.ui.table_picker.insert_filter_str("user");
 
             let filtered = state.filtered_tables();
 
@@ -412,11 +404,7 @@ mod tests {
                     Some(100),
                     false,
                 )])));
-            state
-                .ui
-                .table_picker
-                .filter_input
-                .set_content("user".to_string());
+            state.ui.table_picker.insert_filter_str("user");
 
             let filtered = state.filtered_tables();
 

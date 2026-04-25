@@ -8,10 +8,14 @@ pub struct PickerState {
     scroll_offset: usize,
     pub pane_height: u16,
     pub filter_visible_width: usize,
-    pub filter_input: TextInputState,
+    filter_input: TextInputState,
 }
 
 impl PickerState {
+    pub fn filter_input(&self) -> &TextInputState {
+        &self.filter_input
+    }
+
     pub fn selected(&self) -> usize {
         self.selected
     }

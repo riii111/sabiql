@@ -518,11 +518,7 @@ mod tests {
         #[test]
         fn open_table_picker_sets_mode_and_clears_filter() {
             let mut state = create_test_state();
-            state
-                .ui
-                .table_picker
-                .filter_input
-                .set_content("test".to_string());
+            state.ui.table_picker.insert_filter_str("test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -533,7 +529,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::TablePicker);
-            assert!(state.ui.table_picker.filter_input.content().is_empty());
+            assert!(state.ui.table_picker.filter_input().content().is_empty());
             assert_eq!(state.ui.table_picker.selected(), 0);
             assert!(effects.is_empty());
         }
@@ -2113,11 +2109,7 @@ mod tests {
         #[test]
         fn open_clears_selections_and_filter() {
             let mut state = state_with_metadata();
-            state
-                .ui
-                .er_picker
-                .filter_input
-                .set_content("old".to_string());
+            state.ui.er_picker.insert_filter_str("old");
             state
                 .ui
                 .er_selected_tables
@@ -2132,7 +2124,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
-            assert!(state.ui.er_picker.filter_input.content().is_empty());
+            assert!(state.ui.er_picker.filter_input().content().is_empty());
             assert!(state.ui.er_selected_tables.is_empty());
             assert!(effects.is_empty());
         }
@@ -2233,11 +2225,7 @@ mod tests {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            state
-                .ui
-                .er_picker
-                .filter_input
-                .set_content("test".to_string());
+            state.ui.er_picker.insert_filter_str("test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -2248,7 +2236,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.ui.er_picker.filter_input.content().is_empty());
+            assert!(state.ui.er_picker.filter_input().content().is_empty());
             assert!(effects.is_empty());
         }
 

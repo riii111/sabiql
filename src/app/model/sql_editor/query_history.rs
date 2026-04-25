@@ -2,15 +2,16 @@ use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
 use crate::domain::query_history::QueryHistoryEntry;
+use crate::model::shared::picker::clamp_scroll_offset;
 use crate::model::shared::text_input::TextInputState;
 use crate::update::action::CursorMove;
 
 #[derive(Debug, Clone, Default)]
 pub struct QueryHistoryPickerState {
-    pub entries: Vec<QueryHistoryEntry>,
-    pub filter_input: TextInputState,
-    pub selected: usize,
-    pub scroll_offset: usize,
+    entries: Vec<QueryHistoryEntry>,
+    filter_input: TextInputState,
+    selected: usize,
+    scroll_offset: usize,
     pub pane_height: u16,
 }
 
@@ -26,6 +27,27 @@ pub struct GroupedEntry<'a> {
 }
 
 impl QueryHistoryPickerState {
+    pub fn entries(&self) -> &[QueryHistoryEntry] {
+        &self.entries
+    }
+
+    pub fn filter_input(&self) -> &TextInputState {
+        &self.filter_input
+    }
+
+    pub fn selected(&self) -> usize {
+        self.selected
+    }
+
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    pub fn replace_entries(&mut self, entries: Vec<QueryHistoryEntry>) {
+        self.entries = entries;
+        self.reset_selection();
+    }
+
     pub fn reset(&mut self) {
         self.entries.clear();
         self.filter_input.clear();
@@ -60,6 +82,28 @@ impl QueryHistoryPickerState {
     pub fn reset_selection(&mut self) {
         self.selected = 0;
         self.scroll_offset = 0;
+    }
+
+    pub fn select_next(&mut self) {
+        let count = self.grouped_count();
+        if count > 0 {
+            self.set_selection((self.selected + 1).min(count - 1));
+        }
+    }
+
+    pub fn select_previous(&mut self) {
+        self.set_selection(self.selected.saturating_sub(1));
+    }
+
+    fn set_selection(&mut self, index: usize) {
+        self.scroll_offset =
+            clamp_scroll_offset(index, self.scroll_offset, self.pane_height as usize);
+        self.selected = index;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_selection_for_test(&mut self, selected: usize) {
+        self.selected = selected;
     }
 
     pub fn filtered_entries(&self) -> Vec<FilteredEntry<'_>> {

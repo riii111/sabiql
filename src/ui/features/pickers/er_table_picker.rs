@@ -83,7 +83,7 @@ impl ErTablePicker {
         let raw_width = filter_area.width.saturating_sub(4) as usize;
 
         // Filter input
-        let input = &state.ui.er_picker.filter_input;
+        let input = state.ui.er_picker.filter_input();
         let visible_width = if input.cursor() == input.char_count() {
             raw_width.saturating_sub(1)
         } else {
