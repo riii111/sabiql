@@ -35,21 +35,38 @@ impl AppServices {
 
             fn build_update_sql(
                 &self,
-                _schema: &str,
-                _table: &str,
-                _column: &str,
-                _new_value: &str,
-                _pk_pairs: &[(String, String)],
+                schema: &str,
+                table: &str,
+                column: &str,
+                new_value: &str,
+                pk_pairs: &[(String, String)],
             ) -> String {
-                unimplemented!("inject a real SqlDialect via AppServices")
+                let set_clause = format!("\"{column}\" = '{new_value}'");
+                let where_clause = pk_pairs
+                    .iter()
+                    .map(|(key, value)| format!("\"{key}\" = '{value}'"))
+                    .collect::<Vec<_>>()
+                    .join(" AND ");
+                format!("UPDATE \"{schema}\".\"{table}\" SET {set_clause} WHERE {where_clause}")
             }
             fn build_bulk_delete_sql(
                 &self,
-                _schema: &str,
-                _table: &str,
-                _pk_pairs_per_row: &[Vec<(String, String)>],
+                schema: &str,
+                table: &str,
+                pk_pairs_per_row: &[Vec<(String, String)>],
             ) -> String {
-                unimplemented!("inject a real SqlDialect via AppServices")
+                let where_clause = pk_pairs_per_row
+                    .iter()
+                    .map(|pk_pairs| {
+                        pk_pairs
+                            .iter()
+                            .map(|(key, value)| format!("\"{key}\" = '{value}'"))
+                            .collect::<Vec<_>>()
+                            .join(" AND ")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                format!("DELETE FROM \"{schema}\".\"{table}\" WHERE {where_clause}")
             }
         }
 

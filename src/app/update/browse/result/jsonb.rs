@@ -400,6 +400,7 @@ mod tests {
     use super::*;
     use crate::domain::column::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::services::AppServices;
     use std::sync::Arc;
 
     fn jsonb_table() -> Table {
@@ -1072,6 +1073,160 @@ mod tests {
             let matches = find_text_matches("theme theme", "theme");
 
             assert_eq!(matches, vec![0, 6]);
+        }
+    }
+
+    mod reducer_chain {
+        use super::*;
+        use crate::cmd::effect::Effect;
+        use crate::model::browse::jsonb_detail::JsonbDetailMode;
+        use crate::model::shared::confirm_dialog::ConfirmIntent;
+        use crate::update::reducer::reduce as reduce_app;
+
+        #[test]
+        fn jsonb_detail_actions_flow_through_top_reducer() {
+            let mut state = state_with_jsonb_cell();
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+
+            reduce_app(&mut state, Action::JsonbEnterSearch, now, &services);
+            reduce_app(
+                &mut state,
+                Action::TextInput {
+                    target: InputTarget::JsonbSearch,
+                    ch: 't',
+                },
+                now,
+                &services,
+            );
+            assert!(!state.jsonb_detail.search().matches.is_empty());
+
+            reduce_app(&mut state, Action::JsonbSearchNext, now, &services);
+            reduce_app(&mut state, Action::JsonbSearchSubmit, now, &services);
+            assert!(!state.jsonb_detail.search().active);
+
+            let effects = reduce_app(&mut state, Action::JsonbYankAll, now, &services);
+            assert!(matches!(
+                effects.first(),
+                Some(Effect::CopyToClipboard { content, .. }) if content.contains("theme")
+            ));
+
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            assert_eq!(state.input_mode(), InputMode::JsonbEdit);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
+
+            reduce_app(&mut state, Action::JsonbExitEdit, now, &services);
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+
+            reduce_app(
+                &mut state,
+                Action::CloseModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(!state.jsonb_detail.is_active());
+        }
+
+        #[test]
+        fn jsonb_edit_input_actions_flow_through_top_reducer() {
+            let mut state = state_with_jsonb_cell();
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::TextInput {
+                    target: InputTarget::JsonbEdit,
+                    ch: ' ',
+                },
+                now,
+                &services,
+            );
+            reduce_app(
+                &mut state,
+                Action::TextBackspace {
+                    target: InputTarget::JsonbEdit,
+                },
+                now,
+                &services,
+            );
+            reduce_app(
+                &mut state,
+                Action::TextDelete {
+                    target: InputTarget::JsonbEdit,
+                },
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::Paste(" ".to_string()), now, &services);
+
+            assert_eq!(state.input_mode(), InputMode::JsonbEdit);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
+        }
+
+        #[test]
+        fn jsonb_edit_close_can_continue_to_write_preview() {
+            let mut state = state_with_jsonb_cell();
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content(r#"{"theme":"light","count":5}"#.to_string());
+            reduce_app(&mut state, Action::JsonbExitEdit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::CloseModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+
+            let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
+            let preview = match effects.first() {
+                Some(Effect::DispatchActions(actions)) => match actions.first() {
+                    Some(Action::OpenWritePreviewConfirm(preview)) => preview.clone(),
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+
+            reduce_app(
+                &mut state,
+                Action::OpenWritePreviewConfirm(preview),
+                now,
+                &services,
+            );
+
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+            assert!(state.result_interaction.pending_write_preview().is_some());
+            assert!(matches!(
+                state.confirm_dialog.intent(),
+                Some(ConfirmIntent::ExecuteWrite { blocked: false, .. })
+            ));
         }
     }
 }
