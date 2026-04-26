@@ -1063,12 +1063,9 @@ fn sql_completion_popup_uses_injected_theme_styles() {
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor.set_content("SELECT ".to_string());
     state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-    state.sql_modal.completion_mut_for_navigation().visible = true;
-    state
-        .sql_modal
-        .completion_mut_for_navigation()
-        .selected_index = 0;
-    state.sql_modal.completion_mut_for_navigation().candidates = vec![
+    state.sql_modal.completion_mut_for_test().visible = true;
+    state.sql_modal.completion_mut_for_test().selected_index = 0;
+    state.sql_modal.completion_mut_for_test().candidates = vec![
         CompletionCandidate {
             text: "users".into(),
             kind: CompletionKind::Table,

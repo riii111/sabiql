@@ -600,6 +600,7 @@ mod tests {
     mod sql_modal_debounce {
         use super::*;
         use crate::model::shared::text_input::TextInputLike;
+        use crate::model::sql_editor::modal::SqlModalStatus;
         use std::time::Duration;
 
         #[test]
@@ -663,6 +664,31 @@ mod tests {
             let expected = now + Duration::from_millis(100);
             assert_eq!(state.sql_modal.completion_debounce(), Some(expected));
         }
+
+        #[test]
+        fn text_input_preserves_visible_completion_popup() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::SqlModal);
+            state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+            state.sql_modal.completion_mut_for_test().visible = true;
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::TextInput {
+                    target: InputTarget::SqlModal,
+                    ch: 'x',
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert!(state.sql_modal.completion().visible);
+            assert_eq!(
+                state.sql_modal.completion_debounce(),
+                Some(now + Duration::from_millis(100))
+            );
+        }
     }
 
     mod completion_ui {
@@ -680,12 +706,9 @@ mod tests {
         #[test]
         fn completion_next_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion_mut_for_navigation().candidates =
+            state.sql_modal.completion_mut_for_test().candidates =
                 vec![make_candidate("a"), make_candidate("b")];
-            state
-                .sql_modal
-                .completion_mut_for_navigation()
-                .selected_index = 1;
+            state.sql_modal.completion_mut_for_test().selected_index = 1;
             let now = Instant::now();
 
             let effects = reduce(
@@ -695,25 +718,16 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(
-                state
-                    .sql_modal
-                    .completion_mut_for_navigation()
-                    .selected_index,
-                0
-            );
+            assert_eq!(state.sql_modal.completion().selected_index, 0);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn completion_prev_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion_mut_for_navigation().candidates =
+            state.sql_modal.completion_mut_for_test().candidates =
                 vec![make_candidate("a"), make_candidate("b")];
-            state
-                .sql_modal
-                .completion_mut_for_navigation()
-                .selected_index = 0;
+            state.sql_modal.completion_mut_for_test().selected_index = 0;
             let now = Instant::now();
 
             let effects = reduce(
@@ -723,13 +737,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(
-                state
-                    .sql_modal
-                    .completion_mut_for_navigation()
-                    .selected_index,
-                1
-            );
+            assert_eq!(state.sql_modal.completion().selected_index, 1);
             assert!(effects.is_empty());
         }
     }

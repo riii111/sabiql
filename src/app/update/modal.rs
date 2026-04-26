@@ -84,7 +84,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::CloseModal(ModalKind::SqlModal) => {
             state.modal.set_mode(InputMode::Normal);
-            state.sql_modal.close();
+            state.sql_modal.cleanup_on_close();
             state.flash_timers.clear(FlashId::SqlModal);
             Some(vec![])
         }
@@ -1084,17 +1084,14 @@ mod tests {
                 state
                     .sql_modal
                     .set_status_for_test(crate::model::sql_editor::modal::SqlModalStatus::Editing);
-                state.sql_modal.completion_mut_for_navigation().visible = true;
-                state.sql_modal.completion_mut_for_navigation().candidates =
+                state.sql_modal.completion_mut_for_test().visible = true;
+                state.sql_modal.completion_mut_for_test().candidates =
                     vec![crate::model::sql_editor::completion::CompletionCandidate {
                         text: "stale".to_string(),
                         kind: crate::model::sql_editor::completion::CompletionKind::Keyword,
                         score: 1,
                     }];
-                state
-                    .sql_modal
-                    .completion_mut_for_navigation()
-                    .selected_index = 3;
+                state.sql_modal.completion_mut_for_test().selected_index = 3;
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
                     .query_history_picker
@@ -1113,21 +1110,9 @@ mod tests {
                     state.sql_modal.status(),
                     crate::model::sql_editor::modal::SqlModalStatus::Normal
                 ));
-                assert!(!state.sql_modal.completion_mut_for_navigation().visible);
-                assert!(
-                    state
-                        .sql_modal
-                        .completion_mut_for_navigation()
-                        .candidates
-                        .is_empty()
-                );
-                assert_eq!(
-                    state
-                        .sql_modal
-                        .completion_mut_for_navigation()
-                        .selected_index,
-                    0
-                );
+                assert!(!state.sql_modal.completion().visible);
+                assert!(state.sql_modal.completion().candidates.is_empty());
+                assert_eq!(state.sql_modal.completion().selected_index, 0);
             }
 
             #[test]

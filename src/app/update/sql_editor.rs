@@ -29,27 +29,11 @@ pub fn reduce_sql_modal(
     match action {
         // Completion navigation
         Action::CompletionNext => {
-            let completion = state.sql_modal.completion_mut_for_navigation();
-            if !completion.candidates.is_empty() {
-                let max = completion.candidates.len() - 1;
-                completion.selected_index = if completion.selected_index >= max {
-                    0
-                } else {
-                    completion.selected_index + 1
-                };
-            }
+            state.sql_modal.completion_next();
             Some(vec![])
         }
         Action::CompletionPrev => {
-            let completion = state.sql_modal.completion_mut_for_navigation();
-            if !completion.candidates.is_empty() {
-                let max = completion.candidates.len() - 1;
-                completion.selected_index = if completion.selected_index == 0 {
-                    max
-                } else {
-                    completion.selected_index - 1
-                };
-            }
+            state.sql_modal.completion_prev();
             Some(vec![])
         }
         Action::CompletionDismiss => {
@@ -70,7 +54,7 @@ pub fn reduce_sql_modal(
                 .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
             state
                 .sql_modal
-                .schedule_completion(now + Duration::from_millis(100));
+                .schedule_completion_after_dismiss(now + Duration::from_millis(100));
             state.sql_modal.enter_editing();
             Some(vec![])
         }
@@ -303,36 +287,29 @@ pub fn reduce_sql_modal(
 
         // Completion accept
         Action::CompletionAccept => {
-            if state.sql_modal.completion().visible
-                && !state.sql_modal.completion().candidates.is_empty()
+            if let Some((trigger_pos, replacement)) =
+                state.sql_modal.selected_completion_replacement()
             {
-                let selected_idx = state.sql_modal.completion().selected_index;
-                let trigger_pos = state.sql_modal.completion().trigger_position;
-                let candidates =
-                    std::mem::take(&mut state.sql_modal.completion_mut_for_navigation().candidates);
-
-                if let Some(candidate) = candidates.into_iter().nth(selected_idx) {
-                    let start_byte = state.sql_modal.editor.char_to_byte_index(trigger_pos);
-                    let end_byte = state
-                        .sql_modal
-                        .editor
-                        .char_to_byte_index(state.sql_modal.editor.cursor());
-                    // Manually manipulate the underlying content for drain + insert_str at byte level.
-                    // This is the one place where we need byte-level access that MultiLineInputState
-                    // doesn't directly support, so we rebuild via set_content.
-                    let mut content = state.sql_modal.editor.content().to_string();
-                    content.drain(start_byte..end_byte);
-                    content.insert_str(start_byte, &candidate.text);
-                    let new_cursor = trigger_pos + candidate.text.chars().count();
-                    state
-                        .sql_modal
-                        .editor
-                        .set_content_with_cursor(content, new_cursor);
-                    state
-                        .sql_modal
-                        .editor
-                        .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-                }
+                let start_byte = state.sql_modal.editor.char_to_byte_index(trigger_pos);
+                let end_byte = state
+                    .sql_modal
+                    .editor
+                    .char_to_byte_index(state.sql_modal.editor.cursor());
+                // Manually manipulate the underlying content for drain + insert_str at byte level.
+                // This is the one place where we need byte-level access that MultiLineInputState
+                // doesn't directly support, so we rebuild via set_content.
+                let mut content = state.sql_modal.editor.content().to_string();
+                content.drain(start_byte..end_byte);
+                content.insert_str(start_byte, &replacement);
+                let new_cursor = trigger_pos + replacement.chars().count();
+                state
+                    .sql_modal
+                    .editor
+                    .set_content_with_cursor(content, new_cursor);
+                state
+                    .sql_modal
+                    .editor
+                    .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
                 state.sql_modal.dismiss_completion();
             }
             Some(vec![])
@@ -560,11 +537,11 @@ mod tests {
         #[test]
         fn dismisses_completion() {
             let mut state = editing_state();
-            state.sql_modal.completion_mut_for_navigation().visible = true;
+            state.sql_modal.completion_mut_for_test().visible = true;
 
             reduce_sql_modal(&mut state, &Action::Paste("x".to_string()), Instant::now());
 
-            assert!(!state.sql_modal.completion_mut_for_navigation().visible);
+            assert!(!state.sql_modal.completion().visible);
         }
 
         #[test]
@@ -1180,12 +1157,12 @@ mod tests {
         fn enter_normal_transitions_to_normal() {
             let mut state = sql_modal_state();
             state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-            state.sql_modal.completion_mut_for_navigation().visible = true;
+            state.sql_modal.completion_mut_for_test().visible = true;
 
             reduce_sql_modal(&mut state, &Action::SqlModalEnterNormal, Instant::now());
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
-            assert!(!state.sql_modal.completion_mut_for_navigation().visible);
+            assert!(!state.sql_modal.completion().visible);
         }
 
         #[test]

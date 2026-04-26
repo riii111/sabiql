@@ -282,7 +282,7 @@ pub fn reduce_explain_with_services(
             let tab = services
                 .db_capabilities
                 .next_sql_modal_tab(state.sql_modal.active_tab());
-            state.sql_modal.cycle_active_tab(tab);
+            state.sql_modal.set_active_tab(tab);
             Some(vec![])
         }
 
@@ -290,7 +290,7 @@ pub fn reduce_explain_with_services(
             let tab = services
                 .db_capabilities
                 .prev_sql_modal_tab(state.sql_modal.active_tab());
-            state.sql_modal.cycle_active_tab(tab);
+            state.sql_modal.set_active_tab(tab);
             Some(vec![])
         }
 

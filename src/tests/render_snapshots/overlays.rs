@@ -32,12 +32,9 @@ fn sql_modal_completion_popup_with_scroll() {
     state.sql_modal.editor.set_content("SELECT ".to_string());
     state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
-    state.sql_modal.completion_mut_for_navigation().visible = true;
-    state
-        .sql_modal
-        .completion_mut_for_navigation()
-        .selected_index = 5;
-    state.sql_modal.completion_mut_for_navigation().candidates = vec![
+    state.sql_modal.completion_mut_for_test().visible = true;
+    state.sql_modal.completion_mut_for_test().selected_index = 5;
+    state.sql_modal.completion_mut_for_test().candidates = vec![
         CompletionCandidate {
             text: "users".into(),
             kind: CompletionKind::Table,
