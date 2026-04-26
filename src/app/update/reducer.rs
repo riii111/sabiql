@@ -600,6 +600,7 @@ mod tests {
     mod sql_modal_debounce {
         use super::*;
         use crate::model::shared::text_input::TextInputLike;
+        use crate::model::sql_editor::modal::SqlModalStatus;
         use std::time::Duration;
 
         #[test]
@@ -621,7 +622,7 @@ mod tests {
             assert_eq!(state.sql_modal.editor.content(), "a");
             assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
-            assert!(state.sql_modal.completion_debounce.is_some());
+            assert!(state.sql_modal.completion_debounce().is_some());
         }
 
         #[test]
@@ -642,7 +643,7 @@ mod tests {
             assert_eq!(state.sql_modal.editor.content(), "a");
             assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
-            assert!(state.sql_modal.completion_debounce.is_some());
+            assert!(state.sql_modal.completion_debounce().is_some());
         }
 
         #[test]
@@ -661,12 +662,38 @@ mod tests {
             );
 
             let expected = now + Duration::from_millis(100);
-            assert_eq!(state.sql_modal.completion_debounce, Some(expected));
+            assert_eq!(state.sql_modal.completion_debounce(), Some(expected));
+        }
+
+        #[test]
+        fn text_input_preserves_visible_completion_popup() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::SqlModal);
+            state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+            state.sql_modal.completion_mut_for_test().visible = true;
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::TextInput {
+                    target: InputTarget::SqlModal,
+                    ch: 'x',
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert!(state.sql_modal.completion().visible);
+            assert_eq!(
+                state.sql_modal.completion_debounce(),
+                Some(now + Duration::from_millis(100))
+            );
         }
     }
 
     mod completion_ui {
         use super::*;
+        use crate::model::shared::text_input::TextInputLike;
         use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
         fn make_candidate(text: &str) -> CompletionCandidate {
@@ -680,8 +707,9 @@ mod tests {
         #[test]
         fn completion_next_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion.candidates = vec![make_candidate("a"), make_candidate("b")];
-            state.sql_modal.completion.selected_index = 1;
+            state.sql_modal.completion_mut_for_test().candidates =
+                vec![make_candidate("a"), make_candidate("b")];
+            state.sql_modal.completion_mut_for_test().selected_index = 1;
             let now = Instant::now();
 
             let effects = reduce(
@@ -691,15 +719,16 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.completion.selected_index, 0);
+            assert_eq!(state.sql_modal.completion().selected_index, 0);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn completion_prev_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion.candidates = vec![make_candidate("a"), make_candidate("b")];
-            state.sql_modal.completion.selected_index = 0;
+            state.sql_modal.completion_mut_for_test().candidates =
+                vec![make_candidate("a"), make_candidate("b")];
+            state.sql_modal.completion_mut_for_test().selected_index = 0;
             let now = Instant::now();
 
             let effects = reduce(
@@ -709,7 +738,33 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.completion.selected_index, 1);
+            assert_eq!(state.sql_modal.completion().selected_index, 1);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn completion_accept_dismisses_when_cursor_precedes_trigger() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("SELECT ".to_string(), 0);
+            state
+                .sql_modal
+                .apply_completion_update(&[make_candidate("users")], 7, true);
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::CompletionAccept,
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.sql_modal.editor.content(), "SELECT ");
+            assert_eq!(state.sql_modal.editor.cursor(), 0);
+            assert!(!state.sql_modal.completion().visible);
             assert!(effects.is_empty());
         }
     }

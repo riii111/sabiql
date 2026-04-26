@@ -42,7 +42,7 @@ impl SqlModal {
         );
         let active_tab = services
             .db_capabilities
-            .normalize_sql_modal_tab(state.sql_modal.active_tab);
+            .normalize_sql_modal_tab(state.sql_modal.active_tab());
 
         let (area, inner) = if is_confirming {
             match state.sql_modal.status() {
@@ -135,8 +135,8 @@ impl SqlModal {
             status::render_status(frame, status_area, state, theme);
 
             if matches!(state.sql_modal.status(), SqlModalStatus::Editing)
-                && state.sql_modal.completion.visible
-                && !state.sql_modal.completion.candidates.is_empty()
+                && state.sql_modal.completion().visible
+                && !state.sql_modal.completion().candidates.is_empty()
             {
                 completion::render_completion_popup(frame, area, main_area, state, theme);
             }

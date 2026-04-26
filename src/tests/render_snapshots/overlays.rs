@@ -16,7 +16,7 @@ fn sql_modal_with_completion() {
         .sql_modal
         .editor
         .set_content("SELECT * FROM us".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -30,11 +30,11 @@ fn sql_modal_completion_popup_with_scroll() {
 
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor.set_content("SELECT ".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
-    state.sql_modal.completion.visible = true;
-    state.sql_modal.completion.selected_index = 5;
-    state.sql_modal.completion.candidates = vec![
+    state.sql_modal.completion_mut_for_test().visible = true;
+    state.sql_modal.completion_mut_for_test().selected_index = 5;
+    state.sql_modal.completion_mut_for_test().candidates = vec![
         CompletionCandidate {
             text: "users".into(),
             kind: CompletionKind::Table,
@@ -99,7 +99,7 @@ fn sql_modal_cursor_at_head() {
 
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor = MultiLineInputState::new("SELECT 1", 0);
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -113,7 +113,7 @@ fn sql_modal_cursor_at_middle() {
 
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor = MultiLineInputState::new("SELECT 1", 4);
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -127,7 +127,7 @@ fn sql_modal_cursor_at_tail() {
 
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor.set_content("SELECT 1".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -141,7 +141,7 @@ fn sql_modal_normal_cursor_at_tail() {
 
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor.set_content("SELECT 1".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Normal);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -159,7 +159,7 @@ fn sql_modal_success_select() {
         .sql_modal
         .editor
         .set_content("SELECT * FROM users".to_string());
-    state.sql_modal.mark_adhoc_success(AdhocSuccessSnapshot {
+    state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
         command_tag: None,
         row_count: 2,
         execution_time_ms: 15,
@@ -195,7 +195,7 @@ fn sql_modal_success_dml_with_command_tag() {
         .sql_modal
         .editor
         .set_content("DELETE FROM users WHERE id = 1".to_string());
-    state.sql_modal.mark_adhoc_success(AdhocSuccessSnapshot {
+    state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
         command_tag: Some(CommandTag::Delete(3)),
         row_count: 3,
         execution_time_ms: 12,
@@ -228,7 +228,7 @@ fn sql_modal_success_ddl_create_table() {
         .sql_modal
         .editor
         .set_content("CREATE TABLE backup AS SELECT * FROM users".to_string());
-    state.sql_modal.mark_adhoc_success(AdhocSuccessSnapshot {
+    state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
         command_tag: Some(CommandTag::Create("TABLE".to_string())),
         row_count: 0,
         execution_time_ms: 45,
@@ -260,7 +260,7 @@ fn sql_modal_error_with_message() {
         .sql_modal
         .editor
         .set_content("SELECT * FORM users".to_string());
-    state.sql_modal.mark_adhoc_error(
+    state.sql_modal.finish_adhoc_error(
         "ERROR:  syntax error at or near \"FORM\"\nLINE 1: SELECT * FORM users\n                 ^"
             .to_string(),
     );
@@ -282,14 +282,16 @@ fn sql_modal_confirming_high_matched() {
         .set_content("DROP TABLE users".to_string());
     let mut input = TextInputState::default();
     input.set_content("users".to_string());
-    state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
-        decision: AdhocRiskDecision {
-            risk_level: RiskLevel::High,
-            label: "DROP",
-        },
-        input,
-        target_name: Some("users".to_string()),
-    });
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
+            decision: AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "DROP",
+            },
+            input,
+            target_name: Some("users".to_string()),
+        });
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -308,14 +310,16 @@ fn sql_modal_confirming_high_unmatched() {
         .set_content("DROP TABLE users".to_string());
     let mut input = TextInputState::default();
     input.set_content("use".to_string());
-    state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
-        decision: AdhocRiskDecision {
-            risk_level: RiskLevel::High,
-            label: "DROP",
-        },
-        input,
-        target_name: Some("users".to_string()),
-    });
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
+            decision: AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "DROP",
+            },
+            input,
+            target_name: Some("users".to_string()),
+        });
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -332,14 +336,16 @@ fn sql_modal_confirming_high_no_target() {
         .sql_modal
         .editor
         .set_content("DROP TABLE users".to_string());
-    state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
-        decision: AdhocRiskDecision {
-            risk_level: RiskLevel::High,
-            label: "DROP",
-        },
-        input: TextInputState::default(),
-        target_name: None,
-    });
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
+            decision: AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "DROP",
+            },
+            input: TextInputState::default(),
+            target_name: None,
+        });
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -478,7 +484,7 @@ fn sql_modal_plan_tab_placeholder() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.active_tab = SqlModalTab::Plan;
+    state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -491,7 +497,7 @@ fn sql_modal_plan_tab_with_plan_text() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.active_tab = SqlModalTab::Plan;
+    state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)\n  Filter: (id > 10)".to_string(),
         false,
@@ -510,7 +516,7 @@ fn sql_modal_plan_tab_with_error() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.active_tab = SqlModalTab::Plan;
+    state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state
         .explain
         .set_error("ERROR: relation \"nonexistent\" does not exist".to_string());
@@ -526,7 +532,7 @@ fn sql_modal_compare_tab_empty() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.active_tab = SqlModalTab::Compare;
+    state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -547,7 +553,7 @@ fn sql_modal_compare_tab_right_only() {
         "SELECT * FROM users WHERE email_verified",
     );
     // Only right slot populated (first EXPLAIN), no left yet
-    state.sql_modal.active_tab = SqlModalTab::Compare;
+    state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -576,7 +582,7 @@ fn sql_modal_compare_tab_with_verdict() {
         5,
         "SELECT * FROM users WHERE id > 10",
     );
-    state.sql_modal.active_tab = SqlModalTab::Compare;
+    state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -603,7 +609,7 @@ fn sql_modal_compare_tab_unavailable() {
         0,
         "ALTER TABLE foo",
     );
-    state.sql_modal.active_tab = SqlModalTab::Compare;
+    state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -633,7 +639,7 @@ fn sql_modal_compare_tab_narrow_stacked() {
         5,
         "SELECT * FROM users WHERE id > 10",
     );
-    state.sql_modal.active_tab = SqlModalTab::Compare;
+    state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
     let output = render_to_string(&mut terminal, &mut state);
 

@@ -84,8 +84,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::CloseModal(ModalKind::SqlModal) => {
             state.modal.set_mode(InputMode::Normal);
-            state.sql_modal.completion.visible = false;
-            state.sql_modal.completion_debounce = None;
+            state.sql_modal.cleanup_on_close();
             state.flash_timers.clear(FlashId::SqlModal);
             Some(vec![])
         }
@@ -170,8 +169,8 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if state.modal.active_mode() == InputMode::ConfirmDialog {
                 return Some(vec![]);
             }
-            if state.sql_modal.completion.visible
-                && !state.sql_modal.completion.candidates.is_empty()
+            if state.sql_modal.completion().visible
+                && !state.sql_modal.completion().candidates.is_empty()
             {
                 return Some(vec![]);
             }
@@ -250,20 +249,10 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             match origin {
                 InputMode::Normal => {
                     state.modal.set_mode(InputMode::SqlModal);
-                    state.sql_modal.active_tab = crate::model::sql_editor::modal::SqlModalTab::Sql;
-                    state
-                        .sql_modal
-                        .set_status(crate::model::sql_editor::modal::SqlModalStatus::Normal);
-                    state.sql_modal.editor.set_content(query);
-                    state.sql_modal.reset_completion();
+                    state.sql_modal.load_query_from_history(query);
                 }
                 InputMode::SqlModal => {
-                    state.sql_modal.active_tab = crate::model::sql_editor::modal::SqlModalTab::Sql;
-                    state.sql_modal.editor.set_content(query);
-                    state
-                        .sql_modal
-                        .set_status(crate::model::sql_editor::modal::SqlModalStatus::Normal);
-                    state.sql_modal.reset_completion();
+                    state.sql_modal.load_query_from_history(query);
                 }
                 _ => {}
             }
@@ -1094,15 +1083,15 @@ mod tests {
                 state.sql_modal.editor.set_content("old query".to_string());
                 state
                     .sql_modal
-                    .set_status(crate::model::sql_editor::modal::SqlModalStatus::Editing);
-                state.sql_modal.completion.visible = true;
-                state.sql_modal.completion.candidates =
+                    .set_status_for_test(crate::model::sql_editor::modal::SqlModalStatus::Editing);
+                state.sql_modal.completion_mut_for_test().visible = true;
+                state.sql_modal.completion_mut_for_test().candidates =
                     vec![crate::model::sql_editor::completion::CompletionCandidate {
                         text: "stale".to_string(),
                         kind: crate::model::sql_editor::completion::CompletionKind::Keyword,
                         score: 1,
                     }];
-                state.sql_modal.completion.selected_index = 3;
+                state.sql_modal.completion_mut_for_test().selected_index = 3;
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
                     .query_history_picker
@@ -1121,9 +1110,9 @@ mod tests {
                     state.sql_modal.status(),
                     crate::model::sql_editor::modal::SqlModalStatus::Normal
                 ));
-                assert!(!state.sql_modal.completion.visible);
-                assert!(state.sql_modal.completion.candidates.is_empty());
-                assert_eq!(state.sql_modal.completion.selected_index, 0);
+                assert!(!state.sql_modal.completion().visible);
+                assert!(state.sql_modal.completion().candidates.is_empty());
+                assert_eq!(state.sql_modal.completion().selected_index, 0);
             }
 
             #[test]

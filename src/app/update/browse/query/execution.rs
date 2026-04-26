@@ -81,9 +81,9 @@ pub fn reduce(
                     if result.is_error() {
                         state
                             .sql_modal
-                            .mark_adhoc_error(result.error.clone().unwrap_or_default());
+                            .finish_adhoc_error(result.error.clone().unwrap_or_default());
                     } else {
-                        state.sql_modal.mark_adhoc_success(AdhocSuccessSnapshot {
+                        state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
                             command_tag: result.command_tag.clone(),
                             row_count: result.row_count,
                             execution_time_ms: result.execution_time_ms,
@@ -170,7 +170,7 @@ pub fn reduce(
                 } else {
                     let user_message = error.user_message();
                     state.set_error(user_message.clone());
-                    state.sql_modal.mark_adhoc_error(user_message);
+                    state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
             Some(vec![])
@@ -673,7 +673,7 @@ mod tests {
             state.modal.set_mode(InputMode::SqlModal);
             state
                 .sql_modal
-                .mark_adhoc_error("previous adhoc error".to_string());
+                .finish_adhoc_error("previous adhoc error".to_string());
 
             reduce_query(
                 &mut state,
