@@ -1,7 +1,7 @@
 use super::*;
-use crate::app::model::shared::multi_line_input::MultiLineInputState;
-use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
-use crate::domain::{ConnectionId, QueryResult};
+use app::model::shared::multi_line_input::MultiLineInputState;
+use domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+use domain::{ConnectionId, QueryResult};
 use harness::connected_state;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;

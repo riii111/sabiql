@@ -6,5 +6,5 @@ pub mod shell;
 pub mod theme;
 pub mod tui;
 
-pub use sabiql_app as app;
-pub use sabiql_domain as domain;
+pub use app;
+pub use domain;

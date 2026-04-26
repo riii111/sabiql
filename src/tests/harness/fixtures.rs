@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::domain::{
+use domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
     IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };

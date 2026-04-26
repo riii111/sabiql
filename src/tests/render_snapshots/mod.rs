@@ -9,21 +9,21 @@ use harness::{
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
-use crate::app::model::connection::setup::ConnectionField;
-use crate::app::model::er_state::ErStatus;
-use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::text_input::TextInputState;
-use crate::app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
-use crate::app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus, SqlModalTab};
-use crate::app::policy::json::json_diff::compute_json_diff;
-use crate::app::policy::write::write_guardrails::{
+use app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+use app::model::connection::setup::ConnectionField;
+use app::model::er_state::ErStatus;
+use app::model::shared::focused_pane::FocusedPane;
+use app::model::shared::input_mode::InputMode;
+use app::model::shared::text_input::TextInputState;
+use app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+use app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus, SqlModalTab};
+use app::policy::json::json_diff::compute_json_diff;
+use app::policy::write::write_guardrails::{
     AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
     WritePreview,
 };
-use crate::app::policy::write::write_update::normalize_for_diff;
-use crate::domain::{CommandTag, QuerySource};
+use app::policy::write::write_update::normalize_for_diff;
+use domain::{CommandTag, QuerySource};
 
 mod confirm_dialogs;
 mod connection_flow;

@@ -9,10 +9,10 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Position;
 
-use crate::app::model::app_state::AppState;
-use crate::app::services::AppServices;
-use crate::ui::shell::layout::MainLayout;
-use crate::ui::theme::{ThemePalette, palette_for};
+use app::model::app_state::AppState;
+use app::services::AppServices;
+use ui::shell::layout::MainLayout;
+use ui::theme::{ThemePalette, palette_for};
 
 pub const TEST_WIDTH: u16 = 80;
 pub const TEST_HEIGHT: u16 = 24;

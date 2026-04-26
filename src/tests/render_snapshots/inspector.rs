@@ -1,5 +1,5 @@
 use super::*;
-use crate::app::model::shared::inspector_tab::InspectorTab;
+use app::model::shared::inspector_tab::InspectorTab;
 use harness::table_detail_loaded_state;
 
 #[test]

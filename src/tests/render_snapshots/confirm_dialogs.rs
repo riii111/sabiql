@@ -1,6 +1,6 @@
 use super::*;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+use app::model::app_state::AppState;
+use app::model::shared::confirm_dialog::ConfirmIntent;
 use harness::connected_state;
 
 fn make_update_preview(diff: Vec<ColumnDiff>, sql: String) -> WritePreview {

@@ -1,5 +1,5 @@
 [package]
-name = "sabiql-domain"
+name = "domain"
 version.workspace = true
 edition.workspace = true
 description = "Domain layer for sabiql"

@@ -4,11 +4,6 @@ use std::time::{Duration, Instant};
 
 use clap::Parser;
 use color_eyre::eyre::Result;
-use sabiql_app as app;
-#[cfg(test)]
-pub(crate) use sabiql_domain as domain;
-use sabiql_infra as infra;
-use sabiql_ui as ui;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
@@ -21,30 +16,30 @@ mod tests;
 #[path = "tests/render_snapshots/mod.rs"]
 mod render_snapshots;
 
-use crate::app::cmd::cache::TtlCache;
-use crate::app::cmd::completion_engine::CompletionEngine;
-use crate::app::cmd::effect::Effect;
-use crate::app::cmd::render_schedule::next_animation_deadline;
-use crate::app::cmd::runner::EffectRunner;
-use crate::app::model::app_state::AppState;
-use crate::app::model::shared::db_capabilities::DbCapabilities;
-use crate::app::model::shared::input_mode::InputMode;
-use crate::app::ports::outbound::{
+use app::cmd::cache::TtlCache;
+use app::cmd::completion_engine::CompletionEngine;
+use app::cmd::effect::Effect;
+use app::cmd::render_schedule::next_animation_deadline;
+use app::cmd::runner::EffectRunner;
+use app::model::app_state::AppState;
+use app::model::shared::db_capabilities::DbCapabilities;
+use app::model::shared::input_mode::InputMode;
+use app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
     ServiceFileError,
 };
-use crate::app::services::AppServices;
-use crate::app::update::action::Action;
-use crate::app::update::input::handle_event;
-use crate::app::update::reducer::reduce;
-use crate::infra::adapters::{
+use app::services::AppServices;
+use app::update::action::Action;
+use app::update::input::handle_event;
+use app::update::reducer::reduce;
+use infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
     PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
 };
-use crate::infra::config::project_root::{find_project_root, get_project_name};
-use crate::infra::export::DotExporter;
-use crate::ui::adapters::TuiAdapter;
-use crate::ui::tui::TuiRunner;
+use infra::config::project_root::{find_project_root, get_project_name};
+use infra::export::DotExporter;
+use ui::adapters::TuiAdapter;
+use ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

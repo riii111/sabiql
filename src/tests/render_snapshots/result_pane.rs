@@ -1,9 +1,9 @@
 use super::*;
-use crate::app::model::app_state::AppState;
-use crate::app::services::AppServices;
-use crate::app::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use crate::app::update::browse::result::reduce_result;
-use crate::domain::{Column, ColumnAttributes, QueryResult};
+use app::model::app_state::AppState;
+use app::services::AppServices;
+use app::update::action::{Action, CursorMove, InputTarget, ModalKind};
+use app::update::browse::result::reduce_result;
+use domain::{Column, ColumnAttributes, QueryResult};
 use harness::{table_detail_loaded_state, with_current_result};
 
 fn jsonb_detail_state() -> (AppState, std::time::Instant) {

@@ -1,6 +1,6 @@
 use super::*;
-use crate::app::model::shared::ui_state::FocusMode;
-use crate::domain::{QueryResult, QuerySource};
+use app::model::shared::ui_state::FocusMode;
+use domain::{QueryResult, QuerySource};
 use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
 
 fn adhoc_result(now: std::time::Instant, query: &str) -> QueryResult {
