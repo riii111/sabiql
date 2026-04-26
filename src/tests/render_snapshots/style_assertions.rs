@@ -426,7 +426,7 @@ fn sql_modal_keyword_and_number_use_syntax_colors() {
 
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor.set_content("SELECT 42".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Normal);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -467,7 +467,7 @@ fn sql_modal_string_comment_and_operator_use_syntax_colors() {
         .sql_modal
         .editor
         .set_content("SELECT 'x'::text -- note".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -508,7 +508,7 @@ fn test_contrast_theme_applies_sql_syntax_colors() {
         .sql_modal
         .editor
         .set_content("SELECT 'x' + 42 -- note".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let buffer = render_and_get_buffer_at_with_theme(
         &mut terminal,
@@ -582,7 +582,7 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
 
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor.set_content("SELECT 1".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Normal);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
 
     let normal_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let has_block_cursor = (0..TEST_HEIGHT)
@@ -594,7 +594,7 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
             })
         });
 
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let insert_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let has_insert_glyph = (0..TEST_HEIGHT)
@@ -639,7 +639,7 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
         .sql_modal
         .editor
         .set_content_with_cursor(content.clone(), 0);
-    state.sql_modal.set_status(SqlModalStatus::Normal);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
 
     let head_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let head = sql_modal_block_cursor_position(&head_buffer)
@@ -686,7 +686,7 @@ fn sql_modal_insert_cursor_position_tracks_head_middle_and_tail() {
         .sql_modal
         .editor
         .set_content_with_cursor(content.clone(), 0);
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
@@ -719,7 +719,7 @@ fn sql_modal_insert_cursor_uses_display_width_for_wide_chars() {
         .sql_modal
         .editor
         .set_content_with_cursor(content.clone(), 0);
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
@@ -741,7 +741,7 @@ fn sql_modal_insert_cursor_advances_visual_row_when_line_wraps() {
         .sql_modal
         .editor
         .set_content_with_cursor(content.clone(), 0);
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
@@ -846,7 +846,7 @@ fn sql_modal_unterminated_string_keeps_string_highlight() {
         .sql_modal
         .editor
         .set_content("SELECT 'unterminated".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -875,7 +875,7 @@ fn sql_modal_unterminated_block_comment_keeps_comment_highlight() {
         .sql_modal
         .editor
         .set_content("SELECT /* pending".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Editing);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -966,7 +966,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     );
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.set_status(SqlModalStatus::Normal);
+    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
     let sql_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let has_custom_sql_hint = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
@@ -1062,10 +1062,13 @@ fn sql_completion_popup_uses_injected_theme_styles() {
 
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor.set_content("SELECT ".to_string());
-    state.sql_modal.set_status(SqlModalStatus::Editing);
-    state.sql_modal.completion.visible = true;
-    state.sql_modal.completion.selected_index = 0;
-    state.sql_modal.completion.candidates = vec![
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.completion_mut_for_navigation().visible = true;
+    state
+        .sql_modal
+        .completion_mut_for_navigation()
+        .selected_index = 0;
+    state.sql_modal.completion_mut_for_navigation().candidates = vec![
         CompletionCandidate {
             text: "users".into(),
             kind: CompletionKind::Table,
@@ -1108,7 +1111,7 @@ fn sql_completion_popup_uses_injected_theme_styles() {
     let cursor_col = cursor_col as u16;
     let cursor_row = cursor_row as u16;
     let scroll_row = state.sql_modal.editor.scroll_row() as u16;
-    let visible_count = state.sql_modal.completion.candidates.len().min(8) as u16;
+    let visible_count = state.sql_modal.completion().candidates.len().min(8) as u16;
     let popup_height = visible_count + 2;
     let popup_width = 45u16.min(modal_area.width);
     let popup_x = if modal_area.width < popup_width {

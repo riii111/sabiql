@@ -206,10 +206,10 @@ async fn main() -> Result<()> {
             }
         }
 
-        if let Some(debounce_until) = state.sql_modal.completion_debounce
+        if let Some(debounce_until) = state.sql_modal.completion_debounce()
             && Instant::now() >= debounce_until
         {
-            state.sql_modal.completion_debounce = None;
+            state.sql_modal.consume_completion_debounce();
             process_action(
                 Action::CompletionTrigger,
                 &mut state,

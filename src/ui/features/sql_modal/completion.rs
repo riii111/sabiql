@@ -18,7 +18,7 @@ pub(super) fn render_completion_popup(
     let scroll_row = state.sql_modal.editor.scroll_row();
 
     let max_items = 8;
-    let visible_count = state.sql_modal.completion.candidates.len().min(max_items);
+    let visible_count = state.sql_modal.completion().candidates.len().min(max_items);
     let popup_height = (visible_count as u16) + 2;
     let popup_width = 45u16.min(modal_area.width);
 
@@ -40,8 +40,8 @@ pub(super) fn render_completion_popup(
 
     frame.render_widget(Clear, popup_area);
 
-    let selected = state.sql_modal.completion.selected_index;
-    let total = state.sql_modal.completion.candidates.len();
+    let selected = state.sql_modal.completion().selected_index;
+    let total = state.sql_modal.completion().candidates.len();
     let scroll_offset = if total <= max_items {
         0
     } else {
@@ -57,7 +57,7 @@ pub(super) fn render_completion_popup(
 
     let max_text_width = state
         .sql_modal
-        .completion
+        .completion()
         .candidates
         .iter()
         .skip(scroll_offset)
@@ -68,7 +68,7 @@ pub(super) fn render_completion_popup(
 
     let items: Vec<ListItem> = state
         .sql_modal
-        .completion
+        .completion()
         .candidates
         .iter()
         .enumerate()

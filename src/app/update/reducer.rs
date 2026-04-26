@@ -621,7 +621,7 @@ mod tests {
             assert_eq!(state.sql_modal.editor.content(), "a");
             assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
-            assert!(state.sql_modal.completion_debounce.is_some());
+            assert!(state.sql_modal.completion_debounce().is_some());
         }
 
         #[test]
@@ -642,7 +642,7 @@ mod tests {
             assert_eq!(state.sql_modal.editor.content(), "a");
             assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
-            assert!(state.sql_modal.completion_debounce.is_some());
+            assert!(state.sql_modal.completion_debounce().is_some());
         }
 
         #[test]
@@ -661,7 +661,7 @@ mod tests {
             );
 
             let expected = now + Duration::from_millis(100);
-            assert_eq!(state.sql_modal.completion_debounce, Some(expected));
+            assert_eq!(state.sql_modal.completion_debounce(), Some(expected));
         }
     }
 
@@ -680,8 +680,12 @@ mod tests {
         #[test]
         fn completion_next_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion.candidates = vec![make_candidate("a"), make_candidate("b")];
-            state.sql_modal.completion.selected_index = 1;
+            state.sql_modal.completion_mut_for_navigation().candidates =
+                vec![make_candidate("a"), make_candidate("b")];
+            state
+                .sql_modal
+                .completion_mut_for_navigation()
+                .selected_index = 1;
             let now = Instant::now();
 
             let effects = reduce(
@@ -691,15 +695,25 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.completion.selected_index, 0);
+            assert_eq!(
+                state
+                    .sql_modal
+                    .completion_mut_for_navigation()
+                    .selected_index,
+                0
+            );
             assert!(effects.is_empty());
         }
 
         #[test]
         fn completion_prev_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion.candidates = vec![make_candidate("a"), make_candidate("b")];
-            state.sql_modal.completion.selected_index = 0;
+            state.sql_modal.completion_mut_for_navigation().candidates =
+                vec![make_candidate("a"), make_candidate("b")];
+            state
+                .sql_modal
+                .completion_mut_for_navigation()
+                .selected_index = 0;
             let now = Instant::now();
 
             let effects = reduce(
@@ -709,7 +723,13 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.completion.selected_index, 1);
+            assert_eq!(
+                state
+                    .sql_modal
+                    .completion_mut_for_navigation()
+                    .selected_index,
+                1
+            );
             assert!(effects.is_empty());
         }
     }

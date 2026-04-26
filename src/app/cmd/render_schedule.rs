@@ -23,7 +23,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(highlight_until));
     }
 
-    if let Some(debounce_until) = state.sql_modal.completion_debounce {
+    if let Some(debounce_until) = state.sql_modal.completion_debounce() {
         earliest = min_instant(earliest, Some(debounce_until));
     }
 
@@ -223,7 +223,9 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let debounce_until = now + Duration::from_millis(100);
-            state.sql_modal.completion_debounce = Some(debounce_until);
+            state
+                .sql_modal
+                .set_completion_debounce_for_test(Some(debounce_until));
 
             let deadline = next_animation_deadline(&state, now);
 

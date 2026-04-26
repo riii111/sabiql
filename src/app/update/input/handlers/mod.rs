@@ -45,15 +45,15 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
         InputMode::CommandPalette => pickers::handle_command_palette_keys(combo),
         InputMode::Help => overlays::handle_help_keys(combo),
         InputMode::SqlModal => {
-            let completion_visible = state.sql_modal.completion.visible
-                && !state.sql_modal.completion.candidates.is_empty();
+            let completion_visible = state.sql_modal.completion().visible
+                && !state.sql_modal.completion().candidates.is_empty();
             sql_modal::handle_sql_modal_keys_with_prefix(
                 combo,
                 completion_visible,
                 state.sql_modal.status(),
                 services
                     .db_capabilities
-                    .normalize_sql_modal_tab(state.sql_modal.active_tab),
+                    .normalize_sql_modal_tab(state.sql_modal.active_tab()),
                 state.ui.key_sequence.pending_prefix(),
             )
         }
@@ -119,7 +119,9 @@ mod tests {
         #[test]
         fn sql_modal_normalizes_unsupported_tab_before_handling_keys() {
             let mut state = make_state(InputMode::SqlModal);
-            state.sql_modal.active_tab = crate::model::sql_editor::modal::SqlModalTab::Plan;
+            state
+                .sql_modal
+                .set_active_tab(crate::model::sql_editor::modal::SqlModalTab::Plan);
 
             let mut services = AppServices::stub();
             services.db_capabilities = crate::model::shared::db_capabilities::DbCapabilities::new(
