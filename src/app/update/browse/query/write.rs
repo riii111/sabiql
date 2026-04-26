@@ -386,54 +386,6 @@ mod tests {
 
     mod write_flow {
         use super::*;
-        use crate::ports::outbound::SqlDialect;
-
-        struct FakeSqlDialect;
-        impl SqlDialect for FakeSqlDialect {
-            fn build_explain_sql(&self, query: &str) -> Option<String> {
-                Some(format!("EXPLAIN {query}"))
-            }
-
-            fn build_explain_analyze_sql(&self, query: &str) -> Option<String> {
-                Some(format!("EXPLAIN ANALYZE {query}"))
-            }
-
-            fn build_update_sql(
-                &self,
-                schema: &str,
-                table: &str,
-                column: &str,
-                new_value: &str,
-                pk_pairs: &[(String, String)],
-            ) -> String {
-                let set_clause = format!("\"{column}\" = '{new_value}'");
-                let where_clause: Vec<String> = pk_pairs
-                    .iter()
-                    .map(|(k, v)| format!("\"{k}\" = '{v}'"))
-                    .collect();
-                format!(
-                    "UPDATE \"{}\".\"{}\" SET {} WHERE {}",
-                    schema,
-                    table,
-                    set_clause,
-                    where_clause.join(" AND ")
-                )
-            }
-            fn build_bulk_delete_sql(
-                &self,
-                _schema: &str,
-                _table: &str,
-                _pk_pairs_per_row: &[Vec<(String, String)>],
-            ) -> String {
-                String::new()
-            }
-        }
-
-        fn fake_services() -> AppServices {
-            let mut services = AppServices::stub();
-            services.sql_dialect = std::sync::Arc::new(FakeSqlDialect);
-            services
-        }
 
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
@@ -520,7 +472,7 @@ mod tests {
                 &mut state,
                 &Action::SubmitCellEditWrite,
                 Instant::now(),
-                &fake_services(),
+                &AppServices::stub(),
             )
             .unwrap();
             assert_eq!(effects.len(), 1);
@@ -568,7 +520,7 @@ mod tests {
                 &mut state,
                 &Action::SubmitCellEditWrite,
                 Instant::now(),
-                &fake_services(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -601,7 +553,7 @@ mod tests {
                 &mut state,
                 &Action::SubmitCellEditWrite,
                 Instant::now(),
-                &fake_services(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -626,7 +578,7 @@ mod tests {
                 &mut state,
                 &Action::SubmitCellEditWrite,
                 Instant::now(),
-                &fake_services(),
+                &AppServices::stub(),
             )
             .unwrap();
             let preview = match &effects[0] {
