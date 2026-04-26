@@ -693,6 +693,7 @@ mod tests {
 
     mod completion_ui {
         use super::*;
+        use crate::model::shared::text_input::TextInputLike;
         use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
         fn make_candidate(text: &str) -> CompletionCandidate {
@@ -738,6 +739,32 @@ mod tests {
             );
 
             assert_eq!(state.sql_modal.completion().selected_index, 1);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn completion_accept_dismisses_when_cursor_precedes_trigger() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("SELECT ".to_string(), 0);
+            state
+                .sql_modal
+                .apply_completion_update(&[make_candidate("users")], 7, true);
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::CompletionAccept,
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.sql_modal.editor.content(), "SELECT ");
+            assert_eq!(state.sql_modal.editor.cursor(), 0);
+            assert!(!state.sql_modal.completion().visible);
             assert!(effects.is_empty());
         }
     }

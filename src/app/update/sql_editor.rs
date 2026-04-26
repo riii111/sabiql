@@ -290,6 +290,11 @@ pub fn reduce_sql_modal(
             if let Some((trigger_pos, replacement)) =
                 state.sql_modal.selected_completion_replacement()
             {
+                if state.sql_modal.editor.cursor() < trigger_pos {
+                    state.sql_modal.dismiss_completion();
+                    return Some(vec![]);
+                }
+
                 let start_byte = state.sql_modal.editor.char_to_byte_index(trigger_pos);
                 let end_byte = state
                     .sql_modal
