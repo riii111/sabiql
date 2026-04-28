@@ -137,6 +137,7 @@ pub fn handle_sql_modal_keys_with_prefix(
 
         return match combo.key {
             Key::Enter if alt => Action::SqlModalSubmit,
+            Key::F(5) if plain => Action::SqlModalSubmit,
             Key::Up => Action::TextMoveCursor {
                 target: InputTarget::SqlModal,
                 direction: CursorMove::Up,
@@ -236,7 +237,7 @@ pub fn handle_sql_modal_keys_with_prefix(
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
     let ctrl_only = ctrl && !alt && !shift;
 
-    if alt && combo.key == Key::Enter {
+    if (alt && combo.key == Key::Enter) || (!ctrl && !alt && !shift && combo.key == Key::F(5)) {
         return Action::SqlModalSubmit;
     }
 
@@ -599,6 +600,18 @@ mod tests {
         }
 
         #[test]
+        fn f5_submits_query() {
+            let result = handle_sql_modal_keys(
+                combo(Key::F(5)),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+            );
+
+            assert_action(result, Expected::SqlModalSubmit);
+        }
+
+        #[test]
         fn ctrl_o_opens_query_history_picker() {
             let result = handle_sql_modal_keys(
                 combo_ctrl(Key::Char('o')),
@@ -933,6 +946,18 @@ mod tests {
         }
 
         #[test]
+        fn f5_submits() {
+            let result = handle_sql_modal_keys(
+                combo(Key::F(5)),
+                false,
+                &SqlModalStatus::Normal,
+                SqlModalTab::Sql,
+            );
+
+            assert_action(result, Expected::SqlModalSubmit);
+        }
+
+        #[test]
         fn ctrl_o_opens_history() {
             let result = handle_sql_modal_keys(
                 combo_ctrl(Key::Char('o')),
@@ -963,10 +988,12 @@ mod tests {
             let yank =
                 handle_sql_modal_keys(combo(Key::Char('y')), false, &status, SqlModalTab::Sql);
             let enter = handle_sql_modal_keys(combo(Key::Enter), false, &status, SqlModalTab::Sql);
+            let run = handle_sql_modal_keys(combo(Key::F(5)), false, &status, SqlModalTab::Sql);
             let close = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Sql);
 
             assert_action(yank, Expected::SqlModalYank);
             assert_action(enter, Expected::None);
+            assert_action(run, Expected::SqlModalSubmit);
             assert_action(close, Expected::CloseModal(ModalKind::SqlModal));
         }
 

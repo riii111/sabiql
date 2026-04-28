@@ -8,12 +8,12 @@ use crate::update::action::{Action, ModalKind};
 
 pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
     KeyBinding {
-        key_short: "⌥Enter",
-        key: "Alt+Enter",
+        key_short: "F5/⌥Enter",
+        key: "F5 / Alt+Enter",
         desc_short: "Run",
         description: "Execute query",
         action: Action::SqlModalSubmit,
-        combos: &[KeyCombo::alt(Key::Enter)],
+        combos: &[KeyCombo::plain(Key::F(5)), KeyCombo::alt(Key::Enter)],
     },
     KeyBinding {
         key_short: "y",
@@ -229,12 +229,12 @@ pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
 
 pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
     KeyBinding {
-        key_short: "⌥Enter",
-        key: "Alt+Enter",
+        key_short: "F5/⌥Enter",
+        key: "F5 / Alt+Enter",
         desc_short: "Run",
         description: "Execute query",
         action: Action::SqlModalSubmit,
-        combos: &[KeyCombo::alt(Key::Enter)],
+        combos: &[KeyCombo::plain(Key::F(5)), KeyCombo::alt(Key::Enter)],
     },
     KeyBinding {
         key_short: "Esc",
