@@ -75,7 +75,13 @@ curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
 sabiql
 ```
 
-On first run, enter your connection details — saved to `~/.config/sabiql/connections.toml`. Press `?` for help.
+On first run, enter your connection details. They are saved to your platform config
+directory:
+
+- macOS: `~/Library/Application Support/sabiql/connections.toml`
+- Linux: `~/.config/sabiql/connections.toml`
+
+Press `?` for help.
 
 ## Requirements
 
