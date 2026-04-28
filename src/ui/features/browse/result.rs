@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 
@@ -341,7 +341,8 @@ impl ResultPane {
                             } else if is_active_row && active_cell == Some(orig_idx) {
                                 cell = cell.style(
                                     Style::default()
-                                        .bg(theme.component.table.result_cell_active_bg),
+                                        .bg(theme.component.table.result_cell_active_bg)
+                                        .fg(Color::White),
                                 );
                             }
                         }
@@ -349,11 +350,14 @@ impl ResultPane {
                     })
                     .collect();
 
-                let mut r = Row::new(cells);
+                let mut row_style = Style::default();
                 if let Some(bg) = row_bg {
-                    r = r.style(Style::default().bg(bg));
+                    row_style = row_style.bg(bg);
                 }
-                r
+                if is_staged_for_delete || is_active_row {
+                    row_style = row_style.fg(Color::White);
+                }
+                Row::new(cells).style(row_style)
             })
             .collect();
 

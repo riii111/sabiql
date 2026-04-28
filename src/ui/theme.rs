@@ -153,7 +153,7 @@ impl ThemePalette {
     pub fn picker_selected_style(&self) -> Style {
         Style::default()
             .bg(self.component.editor.completion_selected_bg)
-            .fg(self.semantic.text.primary)
+            .fg(Color::White)
             .add_modifier(Modifier::BOLD)
     }
 
@@ -195,72 +195,72 @@ impl ThemePalette {
 pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     semantic: SemanticTokens {
         surface: SurfaceTokens {
-            focus_border: Color::Rgb(0x97, 0xc9, 0xc3),
-            unfocus_border: Color::Rgb(0x45, 0x47, 0x55),
-            highlight_border: Color::Rgb(0xb0, 0xdd, 0xd8),
+            focus_border: Color::Blue,
+            unfocus_border: Color::DarkGray,
+            highlight_border: Color::Yellow,
         },
         text: TextTokens {
-            primary: Color::Rgb(0xe9, 0xdb, 0xdb),
-            secondary: Color::Rgb(0xc0, 0xb8, 0xb8),
-            muted: Color::Rgb(0x5c, 0x63, 0x70),
-            dim: Color::Rgb(0x6a, 0x6e, 0x7a),
-            accent: Color::Rgb(0xd4, 0xa4, 0x85),
-            placeholder: Color::Rgb(0x5b, 0x5f, 0x6e),
+            primary: Color::Reset,
+            secondary: Color::Gray,
+            muted: Color::DarkGray,
+            dim: Color::DarkGray,
+            accent: Color::Blue,
+            placeholder: Color::DarkGray,
         },
         status: StatusTokens {
-            success: Color::Rgb(0x97, 0xc9, 0xc3),
-            error: Color::Rgb(0xc4, 0x74, 0x6e),
-            warning: Color::Rgb(0xe0, 0xaf, 0x68),
-            pending: Color::Rgb(0xd4, 0xa0, 0x60),
-            medium_risk: Color::Rgb(0xd4, 0x70, 0x50),
+            success: Color::Green,
+            error: Color::Red,
+            warning: Color::Yellow,
+            pending: Color::Yellow,
+            medium_risk: Color::Magenta,
         },
         cursor: CursorTokens {
-            fg: Color::White,
-            bg: Color::White,
-            text_fg: Color::Black,
+            fg: Color::Blue,
+            bg: Color::Blue,
+            text_fg: Color::White,
         },
     },
     component: ComponentTokens {
         modal: ModalTokens {
-            title: Color::Rgb(0xe9, 0xdb, 0xdb),
-            hint: Color::Rgb(0xc0, 0xb8, 0xb0),
-            border: Color::Rgb(0x70, 0x68, 0x60),
-            border_highlight: Color::Rgb(0xc0, 0xb8, 0xb8),
+            title: Color::Reset,
+            hint: Color::Blue,
+            border: Color::DarkGray,
+            border_highlight: Color::Blue,
         },
         navigation: NavigationTokens {
-            key_chip_bg: Color::Rgb(0x3a, 0x3a, 0x4a),
-            key_chip_fg: Color::Rgb(0xd4, 0xa4, 0x85),
-            section_header: Color::Rgb(0x6a, 0xb8, 0x9a),
-            scrollbar_active: Color::Rgb(0xc0, 0xb8, 0xb0),
-            scrollbar_inactive: Color::Rgb(0x50, 0x52, 0x5e),
-            tab_active: Color::Rgb(0xd0, 0xc0, 0xa0),
-            tab_inactive: Color::Rgb(0x5b, 0x5f, 0x6e),
-            active_indicator: Color::Rgb(0xff, 0xff, 0xff),
+            key_chip_bg: Color::Blue,
+            key_chip_fg: Color::White,
+            section_header: Color::Blue,
+            scrollbar_active: Color::Blue,
+            scrollbar_inactive: Color::DarkGray,
+            tab_active: Color::Blue,
+            tab_inactive: Color::DarkGray,
+            active_indicator: Color::Blue,
         },
         editor: EditorTokens {
-            current_line_bg: Color::Rgb(0x22, 0x26, 0x33),
-            completion_selected_bg: Color::Rgb(0x45, 0x47, 0x5a),
+            current_line_bg: Color::Reset,
+            completion_selected_bg: Color::Blue,
         },
         table: TableTokens {
-            result_row_active_bg: Color::Rgb(0x2e, 0x2e, 0x44),
-            result_cell_active_bg: Color::Rgb(0x3a, 0x3a, 0x5a),
-            cell_edit_fg: Color::Rgb(0xa8, 0xb8, 0xb5),
-            staged_delete_bg: Color::Rgb(0x3d, 0x22, 0x22),
-            staged_delete_fg: Color::Rgb(0xee, 0x77, 0x77),
-            striped_row_bg: Color::Rgb(0x1e, 0x1e, 0x23),
+            result_row_active_bg: Color::Blue,
+            result_cell_active_bg: Color::Blue,
+            cell_edit_fg: Color::White,
+            staged_delete_bg: Color::Red,
+            staged_delete_fg: Color::White,
+            striped_row_bg: Color::Reset,
         },
         feedback: FeedbackTokens {
-            yank_flash_bg: Color::Rgb(0xF4, 0x9E, 0x4C),
-            yank_flash_fg: Color::Rgb(0x11, 0x14, 0x19),
-            note_text: Color::Rgb(0x66, 0x66, 0x77),
+            yank_flash_bg: Color::Yellow,
+            yank_flash_fg: Color::Black,
+            note_text: Color::DarkGray,
         },
         syntax: SyntaxTokens {
-            sql_keyword: Color::Rgb(0x80, 0x90, 0xa8),
-            sql_string: Color::Rgb(0xcd, 0xc8, 0xdb),
-            sql_number: Color::Rgb(0xd4, 0xa4, 0x85),
-            sql_comment: Color::Rgb(0x62, 0x72, 0xa4),
-            sql_operator: Color::Rgb(0x8a, 0x91, 0xa5),
-            sql_text: Color::Rgb(0xe9, 0xdb, 0xdb),
+            sql_keyword: Color::Blue,
+            sql_string: Color::Green,
+            sql_number: Color::Magenta,
+            sql_comment: Color::DarkGray,
+            sql_operator: Color::Cyan,
+            sql_text: Color::Reset,
         },
     },
 };
@@ -370,7 +370,7 @@ mod tests {
             style.bg,
             Some(DEFAULT_THEME.component.editor.completion_selected_bg)
         );
-        assert_eq!(style.fg, Some(DEFAULT_THEME.semantic.text.primary));
+        assert_eq!(style.fg, Some(Color::White));
         assert!(style.add_modifier.contains(Modifier::BOLD));
     }
 
