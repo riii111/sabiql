@@ -33,8 +33,8 @@ use app::update::action::Action;
 use app::update::input::handle_event;
 use app::update::reducer::reduce;
 use infra::adapters::{
-    ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
-    PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
+    ArboardClipboard, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter,
+    NativeFolderOpener, PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
 };
 use infra::config::project_root::{find_project_root, get_project_name};
 use infra::export::DotExporter;
@@ -86,21 +86,22 @@ async fn main() -> Result<()> {
 
     let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
 
-    let adapter = Arc::new(PostgresAdapter::new());
+    let postgres_adapter = Arc::new(PostgresAdapter::new());
+    let adapter_registry = Arc::new(DbAdapterRegistry::new(Arc::clone(&postgres_adapter)));
     let metadata_cache = TtlCache::new(300);
     let completion_engine = RefCell::new(CompletionEngine::new());
     let connection_store = TomlConnectionStore::new()?;
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
-    let db_capabilities: DbCapabilities = adapter.capabilities().into();
+    let db_capabilities: DbCapabilities = adapter_registry.capabilities().into();
     let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
         Arc::new(PgServiceFileReader::new());
 
     let effect_runner = EffectRunner::builder()
-        .metadata_provider(Arc::clone(&adapter) as _)
-        .query_executor(Arc::clone(&adapter) as _)
-        .dsn_builder(Arc::clone(&adapter) as _)
+        .metadata_provider(Arc::clone(&adapter_registry) as _)
+        .query_executor(Arc::clone(&adapter_registry) as _)
+        .dsn_builder(Arc::clone(&adapter_registry) as _)
         .er_exporter(Arc::new(DotExporter::new()))
         .config_writer(Arc::new(FileConfigWriter::new()))
         .er_log_writer(Arc::new(FsErLogWriter))
@@ -114,8 +115,8 @@ async fn main() -> Result<()> {
         .build();
 
     let services = AppServices {
-        ddl_generator: Arc::clone(&adapter) as _,
-        sql_dialect: Arc::clone(&adapter) as _,
+        ddl_generator: Arc::clone(&adapter_registry) as _,
+        sql_dialect: Arc::clone(&adapter_registry) as _,
         db_capabilities,
     };
 
