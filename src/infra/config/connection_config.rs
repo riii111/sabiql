@@ -103,10 +103,10 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                 id,
                 name.as_str().to_string(),
                 crate::domain::ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
-                    entry.host.clone().unwrap_or_default(),
+                    required_postgres_field(&entry.host, "host")?,
                     entry.port.unwrap_or(5432),
-                    entry.database.clone().unwrap_or_default(),
-                    entry.username.clone().unwrap_or_default(),
+                    required_postgres_field(&entry.database, "database")?,
+                    required_postgres_field(&entry.username, "username")?,
                     entry.password.clone().unwrap_or_default(),
                     entry.ssl_mode.unwrap_or_default(),
                 )),
@@ -116,8 +116,77 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                 name.as_str().to_string(),
                 crate::domain::ConnectionConfig::SQLite(SqliteConnectionConfig::new(
                     entry.path.clone().unwrap_or_default(),
-                )),
+                )?),
             ),
         }
+    }
+}
+
+fn required_postgres_field(
+    value: &Option<String>,
+    field: &'static str,
+) -> Result<String, ConnectionProfileError> {
+    let value = value
+        .as_ref()
+        .ok_or(ConnectionProfileError::MissingPostgresField(field))?;
+    if value.trim().is_empty() {
+        return Err(ConnectionProfileError::MissingPostgresField(field));
+    }
+    Ok(value.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn postgres_entry() -> ConnectionConfigEntry {
+        ConnectionConfigEntry {
+            id: "test-id".to_string(),
+            name: "Test".to_string(),
+            db_type: DatabaseType::PostgreSQL,
+            host: Some("localhost".to_string()),
+            port: Some(5432),
+            database: Some("app".to_string()),
+            username: Some("user".to_string()),
+            password: None,
+            ssl_mode: Some(SslMode::Prefer),
+            path: None,
+        }
+    }
+
+    #[test]
+    fn postgres_entry_rejects_missing_required_field() {
+        let mut entry = postgres_entry();
+        entry.host = None;
+
+        let result = ConnectionProfile::try_from(&entry);
+
+        assert!(matches!(
+            result,
+            Err(ConnectionProfileError::MissingPostgresField("host"))
+        ));
+    }
+
+    #[test]
+    fn sqlite_entry_rejects_invalid_path() {
+        let entry = ConnectionConfigEntry {
+            id: "sqlite-id".to_string(),
+            name: "Local".to_string(),
+            db_type: DatabaseType::SQLite,
+            host: None,
+            port: None,
+            database: None,
+            username: None,
+            password: None,
+            ssl_mode: None,
+            path: Some("/tmp/app\0.db".to_string()),
+        };
+
+        let result = ConnectionProfile::try_from(&entry);
+
+        assert!(matches!(
+            result,
+            Err(ConnectionProfileError::InvalidSqlitePath)
+        ));
     }
 }

@@ -37,10 +37,34 @@ pub struct SqliteConnectionConfig {
     pub path: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SqliteConnectionConfigError {
+    #[error("SQLite database path is required")]
+    EmptyPath,
+    #[error("SQLite database path contains unsupported characters")]
+    UnsupportedPath,
+}
+
 impl SqliteConnectionConfig {
-    pub fn new(path: impl Into<String>) -> Self {
-        Self { path: path.into() }
+    pub fn new(path: impl Into<String>) -> Result<Self, SqliteConnectionConfigError> {
+        let path = path.into();
+        validate_sqlite_path(&path)?;
+        Ok(Self { path })
     }
+
+    pub fn validate(&self) -> Result<(), SqliteConnectionConfigError> {
+        validate_sqlite_path(&self.path)
+    }
+}
+
+fn validate_sqlite_path(path: &str) -> Result<(), SqliteConnectionConfigError> {
+    if path.trim().is_empty() {
+        return Err(SqliteConnectionConfigError::EmptyPath);
+    }
+    if path.chars().any(|c| c == '\0' || c.is_control()) {
+        return Err(SqliteConnectionConfigError::UnsupportedPath);
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

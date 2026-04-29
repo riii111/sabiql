@@ -230,12 +230,22 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
-        Action::ConnectionSaveCompleted(ConnectionTarget { id, dsn, name }) => {
+        Action::ConnectionSaveCompleted(ConnectionTarget {
+            id,
+            dsn,
+            name,
+            database_type,
+        }) => {
             state.connection_setup.is_first_run = false;
             state.modal.set_mode(InputMode::Normal);
             state.session.active_connection_id = Some(id.clone());
             state.session.active_connection_name = Some(name.clone());
             state.session.read_only = false;
+            if *database_type == DatabaseType::SQLite {
+                state.session.dsn = Some(dsn.clone());
+                state.session.mark_disconnected();
+                return Some(vec![]);
+            }
             state.session.begin_connecting(dsn);
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
@@ -425,10 +435,28 @@ mod tests {
                 id: crate::domain::ConnectionId::new(),
                 dsn: "postgres://localhost/new_db".to_string(),
                 name: "new_db".to_string(),
+                database_type: DatabaseType::PostgreSQL,
             });
             reduce(&mut state, &action, Instant::now());
 
             assert!(!state.session.read_only);
+        }
+
+        #[test]
+        fn sqlite_save_completed_does_not_fetch_metadata() {
+            let mut state = AppState::new("test".to_string());
+
+            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
+                id: crate::domain::ConnectionId::new(),
+                dsn: "sqlite:///tmp/app.db".to_string(),
+                name: "app.db".to_string(),
+                database_type: DatabaseType::SQLite,
+            });
+            let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.session.dsn, Some("sqlite:///tmp/app.db".to_string()));
+            assert!(state.session.connection_state().is_not_connected());
         }
     }
 

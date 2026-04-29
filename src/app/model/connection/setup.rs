@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use crate::domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SslMode,
@@ -143,9 +144,7 @@ impl ConnectionSetupState {
             DatabaseType::SQLite => self
                 .sqlite_path
                 .content()
-                .rsplit('/')
-                .next()
-                .filter(|name| !name.is_empty())
+                .file_name_for_display()
                 .unwrap_or("SQLite")
                 .to_string(),
         }
@@ -245,12 +244,26 @@ impl ConnectionSetupState {
                     self.ssl_mode,
                 ),
             ),
-            DatabaseType::SQLite => {
-                ConnectionConfig::SQLite(crate::domain::connection::SqliteConnectionConfig::new(
+            DatabaseType::SQLite => ConnectionConfig::SQLite(
+                crate::domain::connection::SqliteConnectionConfig::new(
                     self.sqlite_path.content().to_string(),
-                ))
-            }
+                )
+                .expect("SQLite connection setup validates path before building config"),
+            ),
         }
+    }
+}
+
+trait PathDisplayName {
+    fn file_name_for_display(&self) -> Option<&str>;
+}
+
+impl PathDisplayName for str {
+    fn file_name_for_display(&self) -> Option<&str> {
+        Path::new(self)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
     }
 }
 
@@ -384,6 +397,17 @@ mod tests {
             let mut state = ConnectionSetupState::default();
             state.database.set_content("mydb".to_string());
             assert_eq!(state.default_name(), "mydb@localhost");
+        }
+
+        #[test]
+        fn sqlite_default_name_uses_path_file_name() {
+            let mut state = ConnectionSetupState {
+                database_type: DatabaseType::SQLite,
+                ..ConnectionSetupState::default()
+            };
+            state.sqlite_path.set_content("/tmp/app.db".to_string());
+
+            assert_eq!(state.default_name(), "app.db");
         }
 
         #[test]

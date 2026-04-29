@@ -48,6 +48,7 @@ pub(crate) async fn run(
             let id = profile.id.clone();
             let dsn = dsn_builder.build_dsn(&profile);
             let name = profile.name.as_str().to_string();
+            let database_type = profile.database_type();
             let store = Arc::clone(connection_store);
             let tx = action_tx.clone();
 
@@ -58,6 +59,7 @@ pub(crate) async fn run(
                             id,
                             dsn,
                             name,
+                            database_type,
                         }))
                         .ok();
                     }
@@ -81,6 +83,7 @@ pub(crate) async fn run(
                                     id,
                                     dsn,
                                     name,
+                                    database_type,
                                 }))
                                 .await
                                 .ok();
@@ -170,8 +173,14 @@ pub(crate) async fn run(
                 let dsn = dsn_builder.build_dsn(profile);
                 let name = profile.display_name().to_string();
                 let id = profile.id.clone();
+                let database_type = profile.database_type();
                 action_tx
-                    .send(Action::SwitchConnection(ConnectionTarget { id, dsn, name }))
+                    .send(Action::SwitchConnection(ConnectionTarget {
+                        id,
+                        dsn,
+                        name,
+                        database_type,
+                    }))
                     .await
                     .ok();
             }
@@ -184,7 +193,12 @@ pub(crate) async fn run(
                 let dsn = entry.to_string();
                 let name = entry.display_name().to_owned();
                 action_tx
-                    .send(Action::SwitchConnection(ConnectionTarget { id, dsn, name }))
+                    .send(Action::SwitchConnection(ConnectionTarget {
+                        id,
+                        dsn,
+                        name,
+                        database_type: DatabaseType::PostgreSQL,
+                    }))
                     .await
                     .ok();
             }
@@ -272,9 +286,9 @@ mod tests {
                     vec![Effect::SaveAndConnect {
                         id: None,
                         name: "Local".to_string(),
-                        config: ConnectionConfig::SQLite(SqliteConnectionConfig::new(
-                            "/tmp/app.db",
-                        )),
+                        config: ConnectionConfig::SQLite(
+                            SqliteConnectionConfig::new("/tmp/app.db").unwrap(),
+                        ),
                     }],
                     &mut renderer,
                     state,
@@ -550,10 +564,16 @@ mod tests {
 
             let action = rx.recv().await.expect("action dispatched");
             match action {
-                Action::SwitchConnection(ConnectionTarget { id, dsn, name }) => {
+                Action::SwitchConnection(ConnectionTarget {
+                    id,
+                    dsn,
+                    name,
+                    database_type,
+                }) => {
                     assert_eq!(dsn, "fake://db.example.com:5432/mydb");
                     assert_eq!(name, "My DB");
                     assert_eq!(id, state.connections()[0].id);
+                    assert_eq!(database_type, DatabaseType::PostgreSQL);
                 }
                 other => panic!("expected SwitchConnection, got {other:?}"),
             }

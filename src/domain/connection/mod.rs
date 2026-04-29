@@ -6,7 +6,9 @@ mod profile;
 mod service_entry;
 mod ssl_mode;
 
-pub use config::{ConnectionConfig, PostgresConnectionConfig, SqliteConnectionConfig};
+pub use config::{
+    ConnectionConfig, PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
+};
 pub use database_type::DatabaseType;
 pub use id::ConnectionId;
 pub use name::{ConnectionName, ConnectionNameError};

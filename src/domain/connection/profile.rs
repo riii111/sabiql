@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::config::{ConnectionConfig, PostgresConnectionConfig, SqliteConnectionConfig};
+use super::config::{
+    ConnectionConfig, PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
+};
 use super::database_type::DatabaseType;
 use super::id::ConnectionId;
 use super::name::{ConnectionName, ConnectionNameError};
@@ -12,6 +14,19 @@ pub enum ConnectionProfileError {
     Name(#[from] ConnectionNameError),
     #[error("SQLite database path is required")]
     EmptySqlitePath,
+    #[error("SQLite database path contains unsupported characters")]
+    InvalidSqlitePath,
+    #[error("PostgreSQL connection field `{0}` is required")]
+    MissingPostgresField(&'static str),
+}
+
+impl From<SqliteConnectionConfigError> for ConnectionProfileError {
+    fn from(error: SqliteConnectionConfigError) -> Self {
+        match error {
+            SqliteConnectionConfigError::EmptyPath => Self::EmptySqlitePath,
+            SqliteConnectionConfigError::UnsupportedPath => Self::InvalidSqlitePath,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,6 +50,12 @@ impl ConnectionProfile {
             match e {
                 ConnectionProfileError::Name(e) => e,
                 ConnectionProfileError::EmptySqlitePath => unreachable!("postgres constructor"),
+                ConnectionProfileError::InvalidSqlitePath => {
+                    unreachable!("postgres constructor")
+                }
+                ConnectionProfileError::MissingPostgresField(_) => {
+                    unreachable!("postgres constructor")
+                }
             }
         })
     }
@@ -61,14 +82,10 @@ impl ConnectionProfile {
         name: impl Into<String>,
         path: impl Into<String>,
     ) -> Result<Self, ConnectionProfileError> {
-        let path = path.into();
-        if path.trim().is_empty() {
-            return Err(ConnectionProfileError::EmptySqlitePath);
-        }
         Ok(Self {
             id: ConnectionId::new(),
             name: ConnectionName::new(name)?,
-            config: ConnectionConfig::SQLite(SqliteConnectionConfig::new(path)),
+            config: ConnectionConfig::SQLite(SqliteConnectionConfig::new(path)?),
         })
     }
 
@@ -86,6 +103,12 @@ impl ConnectionProfile {
             .map_err(|e| match e {
                 ConnectionProfileError::Name(e) => e,
                 ConnectionProfileError::EmptySqlitePath => unreachable!("postgres constructor"),
+                ConnectionProfileError::InvalidSqlitePath => {
+                    unreachable!("postgres constructor")
+                }
+                ConnectionProfileError::MissingPostgresField(_) => {
+                    unreachable!("postgres constructor")
+                }
             })
     }
 
@@ -113,14 +136,10 @@ impl ConnectionProfile {
         name: impl Into<String>,
         path: impl Into<String>,
     ) -> Result<Self, ConnectionProfileError> {
-        let path = path.into();
-        if path.trim().is_empty() {
-            return Err(ConnectionProfileError::EmptySqlitePath);
-        }
         Ok(Self {
             id,
             name: ConnectionName::new(name)?,
-            config: ConnectionConfig::SQLite(SqliteConnectionConfig::new(path)),
+            config: ConnectionConfig::SQLite(SqliteConnectionConfig::new(path)?),
         })
     }
 
@@ -129,10 +148,8 @@ impl ConnectionProfile {
         name: impl Into<String>,
         config: ConnectionConfig,
     ) -> Result<Self, ConnectionProfileError> {
-        if let ConnectionConfig::SQLite(sqlite) = &config
-            && sqlite.path.trim().is_empty()
-        {
-            return Err(ConnectionProfileError::EmptySqlitePath);
+        if let ConnectionConfig::SQLite(sqlite) = &config {
+            sqlite.validate()?;
         }
         Ok(Self {
             id,
@@ -230,6 +247,32 @@ mod tests {
         #[test]
         fn sqlite_profile_rejects_empty_path() {
             let result = ConnectionProfile::new_sqlite("Local", " ");
+
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::EmptySqlitePath)
+            ));
+        }
+
+        #[test]
+        fn sqlite_profile_rejects_unsupported_path_characters() {
+            let result = ConnectionProfile::new_sqlite("Local", "/tmp/app\0.db");
+
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::InvalidSqlitePath)
+            ));
+        }
+
+        #[test]
+        fn profile_rejects_invalid_sqlite_config() {
+            let result = ConnectionProfile::with_id_and_config(
+                ConnectionId::new(),
+                "Local",
+                ConnectionConfig::SQLite(SqliteConnectionConfig {
+                    path: String::new(),
+                }),
+            );
 
             assert!(matches!(
                 result,

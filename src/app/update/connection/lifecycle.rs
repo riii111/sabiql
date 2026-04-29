@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::connection::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
@@ -30,7 +31,12 @@ pub fn reduce(
             }
         }
 
-        Action::SwitchConnection(ConnectionTarget { id, dsn, name }) => {
+        Action::SwitchConnection(ConnectionTarget {
+            id,
+            dsn,
+            name,
+            database_type,
+        }) => {
             if let Some(current_id) = state.session.active_connection_id.clone() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
@@ -43,6 +49,16 @@ pub fn reduce(
                 state.session.dsn = Some(dsn.clone());
                 state.session.active_connection_name = Some(name.clone());
                 state.session.read_only = false;
+                Some(vec![Effect::ClearCompletionEngineCache])
+            } else if *database_type == DatabaseType::SQLite {
+                state.session.reset(&mut state.query);
+                state.result_interaction.reset_view();
+                state.ui.set_explorer_selection(None);
+                state.session.active_connection_id = Some(id.clone());
+                state.session.active_connection_name = Some(name.clone());
+                state.session.dsn = Some(dsn.clone());
+                state.session.read_only = false;
+                state.session.mark_disconnected();
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata
@@ -77,6 +93,7 @@ mod tests {
             id: id.clone(),
             dsn: format!("postgres://localhost/{name}"),
             name: name.to_string(),
+            database_type: DatabaseType::PostgreSQL,
         })
     }
 
@@ -160,6 +177,28 @@ mod tests {
             state.session.connection_state(),
             ConnectionState::Connecting
         );
+    }
+
+    #[test]
+    fn sqlite_switch_without_cache_does_not_fetch_metadata() {
+        let mut state = AppState::new("test".to_string());
+        let new_id = ConnectionId::new();
+        let services = AppServices::stub();
+
+        let action = Action::SwitchConnection(ConnectionTarget {
+            id: new_id,
+            dsn: "sqlite:///tmp/app.db".to_string(),
+            name: "app.db".to_string(),
+            database_type: DatabaseType::SQLite,
+        });
+        let effects = reduce(&mut state, &action, Instant::now(), &services).unwrap();
+
+        assert!(
+            !effects
+                .iter()
+                .any(|e| matches!(e, Effect::FetchMetadata { .. }))
+        );
+        assert!(state.session.connection_state().is_not_connected());
     }
 
     #[test]

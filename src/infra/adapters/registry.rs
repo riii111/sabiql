@@ -20,12 +20,16 @@ impl DbAdapterRegistry {
         Self { postgres }
     }
 
-    fn db_type_from_dsn(dsn: &str) -> DatabaseType {
+    fn db_type_from_dsn(dsn: &str) -> Result<DatabaseType, DbOperationError> {
         if dsn.starts_with("sqlite://") {
-            DatabaseType::SQLite
-        } else {
-            DatabaseType::PostgreSQL
+            return Ok(DatabaseType::SQLite);
         }
+        if dsn.starts_with("postgres://") || dsn.starts_with("service=") {
+            return Ok(DatabaseType::PostgreSQL);
+        }
+        Err(DbOperationError::ConnectionFailed(format!(
+            "Unsupported database DSN scheme: {dsn}"
+        )))
     }
 
     fn sqlite_not_implemented() -> DbOperationError {
@@ -60,7 +64,7 @@ impl DatabaseCapabilityProvider for DbAdapterRegistry {
 #[async_trait]
 impl MetadataProvider for DbAdapterRegistry {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        match Self::db_type_from_dsn(dsn) {
+        match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_metadata(dsn).await,
             DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
         }
@@ -72,7 +76,7 @@ impl MetadataProvider for DbAdapterRegistry {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        match Self::db_type_from_dsn(dsn) {
+        match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_table_detail(dsn, schema, table).await,
             DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
         }
@@ -84,7 +88,7 @@ impl MetadataProvider for DbAdapterRegistry {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        match Self::db_type_from_dsn(dsn) {
+        match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => {
                 self.postgres
                     .fetch_table_columns_and_fks(dsn, schema, table)
@@ -98,7 +102,7 @@ impl MetadataProvider for DbAdapterRegistry {
         &self,
         dsn: &str,
     ) -> Result<Vec<TableSignature>, DbOperationError> {
-        match Self::db_type_from_dsn(dsn) {
+        match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_table_signatures(dsn).await,
             DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
         }
@@ -116,7 +120,7 @@ impl QueryExecutor for DbAdapterRegistry {
         offset: usize,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
-        match Self::db_type_from_dsn(dsn) {
+        match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => {
                 self.postgres
                     .execute_preview(dsn, schema, table, limit, offset, read_only)
@@ -132,7 +136,7 @@ impl QueryExecutor for DbAdapterRegistry {
         query: &str,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
-        match Self::db_type_from_dsn(dsn) {
+        match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.execute_adhoc(dsn, query, read_only).await,
             DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
         }
@@ -144,7 +148,7 @@ impl QueryExecutor for DbAdapterRegistry {
         query: &str,
         read_only: bool,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        match Self::db_type_from_dsn(dsn) {
+        match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.execute_write(dsn, query, read_only).await,
             DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
         }
@@ -156,7 +160,7 @@ impl QueryExecutor for DbAdapterRegistry {
         query: &str,
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
-        match Self::db_type_from_dsn(dsn) {
+        match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.count_query_rows(dsn, query, read_only).await,
             DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
         }
@@ -169,7 +173,7 @@ impl QueryExecutor for DbAdapterRegistry {
         path: &Path,
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
-        match Self::db_type_from_dsn(dsn) {
+        match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => {
                 self.postgres
                     .export_to_csv(dsn, query, path, read_only)
@@ -250,5 +254,14 @@ mod tests {
         let dsn = registry.build_dsn(&profile);
 
         assert_eq!(dsn, "sqlite:///tmp/app.db");
+    }
+
+    #[tokio::test]
+    async fn unknown_dsn_scheme_is_rejected() {
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let result = registry.fetch_metadata("mysql://localhost/db").await;
+
+        assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
     }
 }

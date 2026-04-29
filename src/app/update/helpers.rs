@@ -209,10 +209,20 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
     match field {
         ConnectionField::DatabaseType => {}
         ConnectionField::SqlitePath => {
-            if state.sqlite_path.content().trim().is_empty() {
-                state
-                    .validation_errors
-                    .insert(field, "Required".to_string());
+            match crate::domain::connection::SqliteConnectionConfig::new(
+                state.sqlite_path.content().to_string(),
+            ) {
+                Ok(_) => {}
+                Err(crate::domain::connection::SqliteConnectionConfigError::EmptyPath) => {
+                    state
+                        .validation_errors
+                        .insert(field, "Required".to_string());
+                }
+                Err(crate::domain::connection::SqliteConnectionConfigError::UnsupportedPath) => {
+                    state
+                        .validation_errors
+                        .insert(field, "Unsupported characters".to_string());
+                }
             }
         }
         ConnectionField::Host => {
@@ -347,6 +357,27 @@ mod tests {
             validate_field(&mut state, ConnectionField::Name);
 
             assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
+        }
+    }
+
+    mod validate_sqlite_path {
+        use super::*;
+        use crate::domain::connection::DatabaseType;
+
+        #[test]
+        fn unsupported_path_characters_set_error() {
+            let mut state = ConnectionSetupState {
+                database_type: DatabaseType::SQLite,
+                ..ConnectionSetupState::default()
+            };
+            state.sqlite_path.set_content("/tmp/app\0.db".to_string());
+
+            validate_field(&mut state, ConnectionField::SqlitePath);
+
+            assert_eq!(
+                state.validation_errors.get(&ConnectionField::SqlitePath),
+                Some(&"Unsupported characters".to_string())
+            );
         }
     }
 
