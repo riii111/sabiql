@@ -207,6 +207,14 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
     state.validation_errors.remove(&field);
 
     match field {
+        ConnectionField::DatabaseType => {}
+        ConnectionField::SqlitePath => {
+            if state.sqlite_path.content().trim().is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Required".to_string());
+            }
+        }
         ConnectionField::Host => {
             if state.host.content().trim().is_empty() {
                 state
@@ -261,14 +269,12 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                     .insert(field, "Name must be 50 characters or less".to_string());
             }
         }
-        ConnectionField::Password | ConnectionField::SslMode => {
-            // Optional fields, no validation needed
-        }
+        ConnectionField::Password | ConnectionField::SslMode => {}
     }
 }
 
 pub fn validate_all(state: &mut ConnectionSetupState) {
-    for field in ConnectionField::all() {
+    for field in ConnectionField::fields_for(state.database_type) {
         validate_field(state, *field);
     }
 }

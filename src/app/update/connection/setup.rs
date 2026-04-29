@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::connection::SslMode;
+use crate::domain::connection::{DatabaseType, SslMode};
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
@@ -55,7 +55,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         setup.port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
-                ConnectionField::SslMode => {}
+                ConnectionField::DatabaseType | ConnectionField::SslMode => {}
                 _ => {
                     if let Some(input) = setup.focused_input_mut() {
                         input.insert_str(&clean);
@@ -79,7 +79,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         setup.port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
-                ConnectionField::SslMode => {}
+                ConnectionField::DatabaseType | ConnectionField::SslMode => {}
                 _ => {
                     if let Some(input) = setup.focused_input_mut() {
                         input.insert_char(*c);
@@ -113,7 +113,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::ConnectionSetupNextField => {
             let setup = &mut state.connection_setup;
             validate_field(setup, setup.focused_field);
-            if let Some(next) = setup.focused_field.next() {
+            if let Some(next) = setup.next_field() {
                 setup.focused_field = next;
             }
             Some(vec![])
@@ -121,27 +121,46 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::ConnectionSetupPrevField => {
             let setup = &mut state.connection_setup;
             validate_field(setup, setup.focused_field);
-            if let Some(prev) = setup.focused_field.prev() {
+            if let Some(prev) = setup.prev_field() {
                 setup.focused_field = prev;
             }
             Some(vec![])
         }
         Action::ConnectionSetupToggleDropdown => {
             let setup = &mut state.connection_setup;
-            if setup.focused_field == ConnectionField::SslMode {
-                setup.ssl_dropdown.is_open = !setup.ssl_dropdown.is_open;
-                if setup.ssl_dropdown.is_open {
-                    setup.ssl_dropdown.selected_index = SslMode::all_variants()
-                        .iter()
-                        .position(|v| *v == setup.ssl_mode)
-                        .unwrap_or(2);
+            match setup.focused_field {
+                ConnectionField::DatabaseType => {
+                    setup.database_type_dropdown.is_open = !setup.database_type_dropdown.is_open;
+                    setup.ssl_dropdown.is_open = false;
+                    if setup.database_type_dropdown.is_open {
+                        setup.database_type_dropdown.selected_index = DatabaseType::all()
+                            .iter()
+                            .position(|v| *v == setup.database_type)
+                            .unwrap_or(0);
+                    }
                 }
+                ConnectionField::SslMode => {
+                    setup.ssl_dropdown.is_open = !setup.ssl_dropdown.is_open;
+                    setup.database_type_dropdown.is_open = false;
+                    if setup.ssl_dropdown.is_open {
+                        setup.ssl_dropdown.selected_index = SslMode::all_variants()
+                            .iter()
+                            .position(|v| *v == setup.ssl_mode)
+                            .unwrap_or(2);
+                    }
+                }
+                _ => {}
             }
             Some(vec![])
         }
         Action::ConnectionSetupDropdownNext => {
             let setup = &mut state.connection_setup;
-            if setup.ssl_dropdown.is_open {
+            if setup.database_type_dropdown.is_open {
+                let max = DatabaseType::all().len() - 1;
+                if setup.database_type_dropdown.selected_index < max {
+                    setup.database_type_dropdown.selected_index += 1;
+                }
+            } else if setup.ssl_dropdown.is_open {
                 let max = SslMode::all_variants().len() - 1;
                 if setup.ssl_dropdown.selected_index < max {
                     setup.ssl_dropdown.selected_index += 1;
@@ -151,7 +170,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::ConnectionSetupDropdownPrev => {
             let setup = &mut state.connection_setup;
-            if setup.ssl_dropdown.is_open {
+            if setup.database_type_dropdown.is_open {
+                setup.database_type_dropdown.selected_index = setup
+                    .database_type_dropdown
+                    .selected_index
+                    .saturating_sub(1);
+            } else if setup.ssl_dropdown.is_open {
                 setup.ssl_dropdown.selected_index =
                     setup.ssl_dropdown.selected_index.saturating_sub(1);
             }
@@ -159,7 +183,13 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::ConnectionSetupDropdownConfirm => {
             let setup = &mut state.connection_setup;
-            if setup.ssl_dropdown.is_open {
+            if setup.database_type_dropdown.is_open {
+                if let Some(database_type) =
+                    DatabaseType::all().get(setup.database_type_dropdown.selected_index)
+                {
+                    setup.set_database_type(*database_type);
+                }
+            } else if setup.ssl_dropdown.is_open {
                 if let Some(mode) = SslMode::all_variants().get(setup.ssl_dropdown.selected_index) {
                     setup.ssl_mode = *mode;
                 }
@@ -168,6 +198,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::ConnectionSetupDropdownCancel => {
+            state.connection_setup.database_type_dropdown.is_open = false;
             state.connection_setup.ssl_dropdown.is_open = false;
             Some(vec![])
         }
@@ -175,17 +206,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let setup = &mut state.connection_setup;
             validate_all(setup);
             if setup.validation_errors.is_empty() {
-                let port = setup.port.content().parse().unwrap_or(5432);
                 state.session.mark_connecting();
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.content().to_string(),
-                    host: setup.host.content().to_string(),
-                    port,
-                    database: setup.database.content().to_string(),
-                    user: setup.user.content().to_string(),
-                    password: setup.password.content().to_string(),
-                    ssl_mode: setup.ssl_mode,
+                    config: setup.to_connection_config(),
                 }])
             } else {
                 Some(vec![])
@@ -230,7 +255,6 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 mod tests {
     use super::*;
     use crate::domain::connection::ConnectionProfile;
-
     fn create_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile::new(
             name.to_string(),

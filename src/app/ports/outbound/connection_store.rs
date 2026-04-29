@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::domain::connection::{ConnectionId, ConnectionNameError, ConnectionProfile};
+use crate::domain::connection::{ConnectionId, ConnectionProfile, ConnectionProfileError};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionStoreError {
@@ -14,7 +14,7 @@ pub enum ConnectionStoreError {
     #[error("TOML deserialize error: {0}")]
     TomlDeserialize(#[source] Arc<toml::de::Error>),
     #[error("Invalid profile: {0}")]
-    InvalidProfile(#[source] ConnectionNameError),
+    InvalidProfile(#[source] ConnectionProfileError),
     #[error("Connection name already exists: {0}")]
     DuplicateName(String),
     #[error("Connection not found: {0}")]

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
+use crate::domain::connection::{
+    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SslMode,
+};
 use crate::model::shared::text_input::TextInputState;
 
 pub const CONNECTION_INPUT_WIDTH: u16 = 30;
@@ -8,7 +10,9 @@ pub const CONNECTION_INPUT_VISIBLE_WIDTH: usize = (CONNECTION_INPUT_WIDTH - 4) a
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConnectionField {
+    DatabaseType,
     Name,
+    SqlitePath,
     Host,
     Port,
     Database,
@@ -20,7 +24,9 @@ pub enum ConnectionField {
 impl ConnectionField {
     pub fn all() -> &'static [Self] {
         &[
+            Self::DatabaseType,
             Self::Name,
+            Self::SqlitePath,
             Self::Host,
             Self::Port,
             Self::Database,
@@ -30,40 +36,34 @@ impl ConnectionField {
         ]
     }
 
-    pub fn next(self) -> Option<Self> {
-        match self {
-            Self::Name => Some(Self::Host),
-            Self::Host => Some(Self::Port),
-            Self::Port => Some(Self::Database),
-            Self::Database => Some(Self::User),
-            Self::User => Some(Self::Password),
-            Self::Password => Some(Self::SslMode),
-            Self::SslMode => None,
-        }
-    }
-
-    pub fn prev(self) -> Option<Self> {
-        match self {
-            Self::Name => None,
-            Self::Host => Some(Self::Name),
-            Self::Port => Some(Self::Host),
-            Self::Database => Some(Self::Port),
-            Self::User => Some(Self::Database),
-            Self::Password => Some(Self::User),
-            Self::SslMode => Some(Self::Password),
+    pub fn fields_for(database_type: DatabaseType) -> &'static [Self] {
+        match database_type {
+            DatabaseType::PostgreSQL => &[
+                Self::DatabaseType,
+                Self::Name,
+                Self::Host,
+                Self::Port,
+                Self::Database,
+                Self::User,
+                Self::Password,
+                Self::SslMode,
+            ],
+            DatabaseType::SQLite => &[Self::DatabaseType, Self::Name, Self::SqlitePath],
         }
     }
 
     pub fn is_required(self) -> bool {
         matches!(
             self,
-            Self::Name | Self::Host | Self::Port | Self::Database | Self::User
+            Self::Name | Self::SqlitePath | Self::Host | Self::Port | Self::Database | Self::User
         )
     }
 
     pub fn label(self) -> &'static str {
         match self {
+            Self::DatabaseType => "Type:",
             Self::Name => "Name:",
+            Self::SqlitePath => "Path:",
             Self::Host => "Host:",
             Self::Port => "Port:",
             Self::Database => "Database:",
@@ -80,9 +80,17 @@ pub struct SslModeDropdown {
     pub selected_index: usize,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct DatabaseTypeDropdown {
+    pub is_open: bool,
+    pub selected_index: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct ConnectionSetupState {
+    pub database_type: DatabaseType,
     pub name: TextInputState,
+    pub sqlite_path: TextInputState,
     pub host: TextInputState,
     pub port: TextInputState,
     pub database: TextInputState,
@@ -91,6 +99,7 @@ pub struct ConnectionSetupState {
     pub ssl_mode: SslMode,
 
     pub focused_field: ConnectionField,
+    pub database_type_dropdown: DatabaseTypeDropdown,
     pub ssl_dropdown: SslModeDropdown,
     pub validation_errors: HashMap<ConnectionField, String>,
 
@@ -102,14 +111,17 @@ pub struct ConnectionSetupState {
 impl Default for ConnectionSetupState {
     fn default() -> Self {
         Self {
+            database_type: DatabaseType::PostgreSQL,
             name: TextInputState::default(),
+            sqlite_path: TextInputState::default(),
             host: TextInputState::new("localhost", 9),
             port: TextInputState::new("5432", 4),
             database: TextInputState::default(),
             user: TextInputState::default(),
             password: TextInputState::default(),
             ssl_mode: SslMode::Prefer,
-            focused_field: ConnectionField::Name,
+            focused_field: ConnectionField::DatabaseType,
+            database_type_dropdown: DatabaseTypeDropdown::default(),
             ssl_dropdown: SslModeDropdown::default(),
             validation_errors: HashMap::new(),
             is_first_run: true,
@@ -120,16 +132,30 @@ impl Default for ConnectionSetupState {
 
 impl ConnectionSetupState {
     pub fn default_name(&self) -> String {
-        if self.database.content().is_empty() {
-            self.host.content().to_string()
-        } else {
-            format!("{}@{}", self.database.content(), self.host.content())
+        match self.database_type {
+            DatabaseType::PostgreSQL => {
+                if self.database.content().is_empty() {
+                    self.host.content().to_string()
+                } else {
+                    format!("{}@{}", self.database.content(), self.host.content())
+                }
+            }
+            DatabaseType::SQLite => self
+                .sqlite_path
+                .content()
+                .rsplit('/')
+                .next()
+                .filter(|name| !name.is_empty())
+                .unwrap_or("SQLite")
+                .to_string(),
         }
     }
 
     pub fn field_value(&self, field: ConnectionField) -> &str {
         match field {
+            ConnectionField::DatabaseType => "",
             ConnectionField::Name => self.name.content(),
+            ConnectionField::SqlitePath => self.sqlite_path.content(),
             ConnectionField::Host => self.host.content(),
             ConnectionField::Port => self.port.content(),
             ConnectionField::Database => self.database.content(),
@@ -141,7 +167,9 @@ impl ConnectionSetupState {
 
     pub fn focused_input(&self) -> Option<&TextInputState> {
         match self.focused_field {
+            ConnectionField::DatabaseType => None,
             ConnectionField::Name => Some(&self.name),
+            ConnectionField::SqlitePath => Some(&self.sqlite_path),
             ConnectionField::Host => Some(&self.host),
             ConnectionField::Port => Some(&self.port),
             ConnectionField::Database => Some(&self.database),
@@ -153,7 +181,9 @@ impl ConnectionSetupState {
 
     pub fn focused_input_mut(&mut self) -> Option<&mut TextInputState> {
         match self.focused_field {
+            ConnectionField::DatabaseType => None,
             ConnectionField::Name => Some(&mut self.name),
+            ConnectionField::SqlitePath => Some(&mut self.sqlite_path),
             ConnectionField::Host => Some(&mut self.host),
             ConnectionField::Port => Some(&mut self.port),
             ConnectionField::Database => Some(&mut self.database),
@@ -178,30 +208,115 @@ impl ConnectionSetupState {
     pub fn is_edit_mode(&self) -> bool {
         self.editing_id.is_some()
     }
+
+    pub fn visible_fields(&self) -> &'static [ConnectionField] {
+        ConnectionField::fields_for(self.database_type)
+    }
+
+    pub fn next_field(&self) -> Option<ConnectionField> {
+        next_visible_field(self.visible_fields(), self.focused_field)
+    }
+
+    pub fn prev_field(&self) -> Option<ConnectionField> {
+        prev_visible_field(self.visible_fields(), self.focused_field)
+    }
+
+    pub fn set_database_type(&mut self, database_type: DatabaseType) {
+        self.database_type = database_type;
+        self.database_type_dropdown.is_open = false;
+        self.ssl_dropdown.is_open = false;
+        if !self.visible_fields().contains(&self.focused_field) {
+            self.focused_field = ConnectionField::DatabaseType;
+        }
+        let visible_fields = self.visible_fields();
+        self.validation_errors
+            .retain(|field, _| visible_fields.contains(field));
+    }
+
+    pub fn to_connection_config(&self) -> ConnectionConfig {
+        match self.database_type {
+            DatabaseType::PostgreSQL => ConnectionConfig::PostgreSQL(
+                crate::domain::connection::PostgresConnectionConfig::new(
+                    self.host.content().to_string(),
+                    self.port.content().parse().unwrap_or(5432),
+                    self.database.content().to_string(),
+                    self.user.content().to_string(),
+                    self.password.content().to_string(),
+                    self.ssl_mode,
+                ),
+            ),
+            DatabaseType::SQLite => {
+                ConnectionConfig::SQLite(crate::domain::connection::SqliteConnectionConfig::new(
+                    self.sqlite_path.content().to_string(),
+                ))
+            }
+        }
+    }
+}
+
+fn next_visible_field(
+    fields: &[ConnectionField],
+    current: ConnectionField,
+) -> Option<ConnectionField> {
+    let idx = fields.iter().position(|field| *field == current)?;
+    fields.get(idx + 1).copied()
+}
+
+fn prev_visible_field(
+    fields: &[ConnectionField],
+    current: ConnectionField,
+) -> Option<ConnectionField> {
+    let idx = fields.iter().position(|field| *field == current)?;
+    idx.checked_sub(1).and_then(|idx| fields.get(idx).copied())
 }
 
 impl From<&ConnectionProfile> for ConnectionSetupState {
     fn from(profile: &ConnectionProfile) -> Self {
         let name_len = profile.name.as_str().chars().count();
-        let host_len = profile.host.chars().count();
-        let port_str = profile.port.to_string();
-        let port_len = port_str.chars().count();
-        let db_len = profile.database.chars().count();
-        let user_len = profile.username.chars().count();
-        let pw_len = profile.password.chars().count();
-        Self {
-            name: TextInputState::new(profile.name.as_str(), name_len),
-            host: TextInputState::new(&profile.host, host_len),
-            port: TextInputState::new(&port_str, port_len),
-            database: TextInputState::new(&profile.database, db_len),
-            user: TextInputState::new(&profile.username, user_len),
-            password: TextInputState::new(&profile.password, pw_len),
-            ssl_mode: profile.ssl_mode,
-            focused_field: ConnectionField::Name,
-            ssl_dropdown: SslModeDropdown::default(),
-            validation_errors: HashMap::new(),
-            is_first_run: false,
-            editing_id: Some(profile.id.clone()),
+        match &profile.config {
+            ConnectionConfig::PostgreSQL(config) => {
+                let port_str = config.port.to_string();
+                Self {
+                    database_type: DatabaseType::PostgreSQL,
+                    name: TextInputState::new(profile.name.as_str(), name_len),
+                    sqlite_path: TextInputState::default(),
+                    host: TextInputState::new(&config.host, config.host.chars().count()),
+                    port: TextInputState::new(&port_str, port_str.chars().count()),
+                    database: TextInputState::new(
+                        &config.database,
+                        config.database.chars().count(),
+                    ),
+                    user: TextInputState::new(&config.username, config.username.chars().count()),
+                    password: TextInputState::new(
+                        &config.password,
+                        config.password.chars().count(),
+                    ),
+                    ssl_mode: config.ssl_mode,
+                    focused_field: ConnectionField::DatabaseType,
+                    database_type_dropdown: DatabaseTypeDropdown::default(),
+                    ssl_dropdown: SslModeDropdown::default(),
+                    validation_errors: HashMap::new(),
+                    is_first_run: false,
+                    editing_id: Some(profile.id.clone()),
+                }
+            }
+            ConnectionConfig::SQLite(config) => Self {
+                database_type: DatabaseType::SQLite,
+                name: TextInputState::new(profile.name.as_str(), name_len),
+                sqlite_path: TextInputState::new(&config.path, config.path.chars().count()),
+                host: TextInputState::new("localhost", 9),
+                port: TextInputState::new("5432", 4),
+                database: TextInputState::default(),
+                user: TextInputState::default(),
+                password: TextInputState::default(),
+                ssl_mode: SslMode::Prefer,
+                focused_field: ConnectionField::DatabaseType,
+                database_type_dropdown: DatabaseTypeDropdown::default(),
+                ssl_dropdown: SslModeDropdown::default(),
+                validation_errors: HashMap::new(),
+                is_first_run: false,
+                editing_id: Some(profile.id.clone()),
+            },
         }
     }
 }
@@ -215,37 +330,9 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case(ConnectionField::Name, Some(ConnectionField::Host))]
-        #[case(ConnectionField::Host, Some(ConnectionField::Port))]
-        #[case(ConnectionField::Port, Some(ConnectionField::Database))]
-        #[case(ConnectionField::Database, Some(ConnectionField::User))]
-        #[case(ConnectionField::User, Some(ConnectionField::Password))]
-        #[case(ConnectionField::Password, Some(ConnectionField::SslMode))]
-        #[case(ConnectionField::SslMode, None)]
-        fn next_returns_correct_field(
-            #[case] field: ConnectionField,
-            #[case] expected: Option<ConnectionField>,
-        ) {
-            assert_eq!(field.next(), expected);
-        }
-
-        #[rstest]
-        #[case(ConnectionField::Name, None)]
-        #[case(ConnectionField::Host, Some(ConnectionField::Name))]
-        #[case(ConnectionField::Port, Some(ConnectionField::Host))]
-        #[case(ConnectionField::Database, Some(ConnectionField::Port))]
-        #[case(ConnectionField::User, Some(ConnectionField::Database))]
-        #[case(ConnectionField::Password, Some(ConnectionField::User))]
-        #[case(ConnectionField::SslMode, Some(ConnectionField::Password))]
-        fn prev_returns_correct_field(
-            #[case] field: ConnectionField,
-            #[case] expected: Option<ConnectionField>,
-        ) {
-            assert_eq!(field.prev(), expected);
-        }
-
-        #[rstest]
+        #[case(ConnectionField::DatabaseType, false)]
         #[case(ConnectionField::Name, true)]
+        #[case(ConnectionField::SqlitePath, true)]
         #[case(ConnectionField::Host, true)]
         #[case(ConnectionField::Port, true)]
         #[case(ConnectionField::Database, true)]
@@ -262,9 +349,9 @@ mod tests {
         #[test]
         fn all_returns_fields_in_order() {
             let all = ConnectionField::all();
-            assert_eq!(all.len(), 7);
-            assert_eq!(all[0], ConnectionField::Name);
-            assert_eq!(all[6], ConnectionField::SslMode);
+            assert_eq!(all.len(), 9);
+            assert_eq!(all[0], ConnectionField::DatabaseType);
+            assert_eq!(all[8], ConnectionField::SslMode);
         }
     }
 
@@ -281,7 +368,7 @@ mod tests {
             assert!(state.user.content().is_empty());
             assert!(state.password.content().is_empty());
             assert_eq!(state.ssl_mode, SslMode::Prefer);
-            assert_eq!(state.focused_field, ConnectionField::Name);
+            assert_eq!(state.focused_field, ConnectionField::DatabaseType);
             assert!(state.is_first_run);
             assert!(state.editing_id.is_none());
         }

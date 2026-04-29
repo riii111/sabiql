@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::connection::{ConnectionNameError, ConnectionProfile, ServiceEntry};
+use crate::domain::connection::{ConnectionProfile, ConnectionProfileError, ServiceEntry};
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::Prefix;
@@ -18,7 +18,7 @@ use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Ta
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
     #[error("{0}")]
-    Validation(#[from] ConnectionNameError),
+    Validation(#[from] ConnectionProfileError),
     #[error("{0}")]
     Store(#[from] ConnectionStoreError),
 }

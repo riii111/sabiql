@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::connection::{
-    ConnectionId, ConnectionName, ConnectionNameError, ConnectionProfile, SslMode,
+    ConnectionId, ConnectionName, ConnectionProfile, ConnectionProfileError, DatabaseType,
+    PostgresConnectionConfig, SqliteConnectionConfig, SslMode,
 };
 
-pub const CURRENT_VERSION: u32 = 2;
+pub const CURRENT_VERSION: u32 = 3;
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigVersionCheck {
@@ -21,54 +22,102 @@ pub struct ConnectionConfigFile {
 pub struct ConnectionConfigEntry {
     pub id: String,
     pub name: String,
-    pub host: String,
-    pub port: u16,
-    pub database: String,
-    pub username: String,
-    pub password: String,
-    pub ssl_mode: SslMode,
+    #[serde(default)]
+    pub db_type: DatabaseType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssl_mode: Option<SslMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 impl From<&[ConnectionProfile]> for ConnectionConfigFile {
     fn from(profiles: &[ConnectionProfile]) -> Self {
         Self {
             version: CURRENT_VERSION,
-            connections: profiles
-                .iter()
-                .map(|p| ConnectionConfigEntry {
-                    id: p.id.as_str().to_string(),
-                    name: p.name.as_str().to_string(),
-                    host: p.host.clone(),
-                    port: p.port,
-                    database: p.database.clone(),
-                    username: p.username.clone(),
-                    password: p.password.clone(),
-                    ssl_mode: p.ssl_mode,
-                })
-                .collect(),
+            connections: profiles.iter().map(ConnectionConfigEntry::from).collect(),
         }
     }
 }
 
 impl TryFrom<&ConnectionConfigFile> for Vec<ConnectionProfile> {
-    type Error = ConnectionNameError;
+    type Error = ConnectionProfileError;
 
     fn try_from(config: &ConnectionConfigFile) -> Result<Self, Self::Error> {
         config
             .connections
             .iter()
-            .map(|entry| {
-                Ok(ConnectionProfile {
-                    id: ConnectionId::from_string(&entry.id),
-                    name: ConnectionName::new(&entry.name)?,
-                    host: entry.host.clone(),
-                    port: entry.port,
-                    database: entry.database.clone(),
-                    username: entry.username.clone(),
-                    password: entry.password.clone(),
-                    ssl_mode: entry.ssl_mode,
-                })
-            })
+            .map(ConnectionProfile::try_from)
             .collect()
+    }
+}
+
+impl From<&ConnectionProfile> for ConnectionConfigEntry {
+    fn from(profile: &ConnectionProfile) -> Self {
+        let mut entry = Self {
+            id: profile.id.as_str().to_string(),
+            name: profile.name.as_str().to_string(),
+            db_type: profile.database_type(),
+            host: None,
+            port: None,
+            database: None,
+            username: None,
+            password: None,
+            ssl_mode: None,
+            path: None,
+        };
+        match &profile.config {
+            crate::domain::ConnectionConfig::PostgreSQL(config) => {
+                entry.host = Some(config.host.clone());
+                entry.port = Some(config.port);
+                entry.database = Some(config.database.clone());
+                entry.username = Some(config.username.clone());
+                entry.password = Some(config.password.clone());
+                entry.ssl_mode = Some(config.ssl_mode);
+            }
+            crate::domain::ConnectionConfig::SQLite(config) => {
+                entry.path = Some(config.path.clone());
+            }
+        }
+        entry
+    }
+}
+
+impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
+    type Error = ConnectionProfileError;
+
+    fn try_from(entry: &ConnectionConfigEntry) -> Result<Self, Self::Error> {
+        let id = ConnectionId::from_string(&entry.id);
+        let name = ConnectionName::new(&entry.name)?;
+        match entry.db_type {
+            DatabaseType::PostgreSQL => ConnectionProfile::with_id_and_config(
+                id,
+                name.as_str().to_string(),
+                crate::domain::ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                    entry.host.clone().unwrap_or_default(),
+                    entry.port.unwrap_or(5432),
+                    entry.database.clone().unwrap_or_default(),
+                    entry.username.clone().unwrap_or_default(),
+                    entry.password.clone().unwrap_or_default(),
+                    entry.ssl_mode.unwrap_or_default(),
+                )),
+            ),
+            DatabaseType::SQLite => ConnectionProfile::with_id_and_config(
+                id,
+                name.as_str().to_string(),
+                crate::domain::ConnectionConfig::SQLite(SqliteConnectionConfig::new(
+                    entry.path.clone().unwrap_or_default(),
+                )),
+            ),
+        }
     }
 }
