@@ -1554,6 +1554,10 @@ mod tests {
                 state.session.active_connection_name,
                 Some("Test Connection".to_string())
             );
+            assert_eq!(
+                state.session.active_database_type,
+                Some(DatabaseType::PostgreSQL)
+            );
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::FetchMetadata { .. }));

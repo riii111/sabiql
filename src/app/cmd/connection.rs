@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::effect::Effect;
 use crate::domain::DatabaseMetadata;
-use crate::domain::connection::{ConnectionProfile, DatabaseType};
+use crate::domain::connection::{ConnectionId, ConnectionProfile, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
     ConnectionStore, ConnectionStoreError, DsnBuilder, MetadataProvider, PgServiceEntryReader,
@@ -26,16 +26,8 @@ pub(crate) async fn run(
 ) -> Result<()> {
     match effect {
         Effect::SaveAndConnect { id, name, config } => {
-            let profile = match id {
-                Some(existing_id) => {
-                    ConnectionProfile::with_id_and_config(existing_id, name, config)
-                }
-                None => ConnectionProfile::with_id_and_config(
-                    crate::domain::connection::ConnectionId::new(),
-                    name,
-                    config,
-                ),
-            };
+            let id = id.unwrap_or_else(ConnectionId::new);
+            let profile = ConnectionProfile::with_id_and_config(id, name, config);
             let profile = match profile {
                 Ok(p) => p,
                 Err(e) => {

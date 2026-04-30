@@ -332,7 +332,10 @@ impl ConnectionSetupState {
             DatabaseType::PostgreSQL => ConnectionConfig::PostgreSQL(
                 crate::domain::connection::PostgresConnectionConfig::new(
                     self.host.content().to_string(),
-                    self.port.content().parse().unwrap_or(5432),
+                    self.port
+                        .content()
+                        .parse()
+                        .expect("port validated before building connection config"),
                     self.database.content().to_string(),
                     self.user.content().to_string(),
                     self.password.content().to_string(),

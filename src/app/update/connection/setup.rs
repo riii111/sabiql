@@ -189,6 +189,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.modal.set_mode(InputMode::Normal);
             state.session.active_connection_id = Some(id.clone());
             state.session.active_connection_name = Some(name.clone());
+            state.session.active_database_type = Some(*database_type);
             state.session.read_only = false;
             if *database_type == DatabaseType::SQLite {
                 state.session.dsn = Some(dsn.clone());
@@ -429,6 +430,10 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.session.dsn, Some("sqlite:///tmp/app.db".to_string()));
+            assert_eq!(
+                state.session.active_database_type,
+                Some(DatabaseType::SQLite)
+            );
             assert!(state.session.connection_state().is_not_connected());
         }
     }

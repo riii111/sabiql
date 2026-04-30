@@ -57,6 +57,8 @@ impl DsnBuilder for DbAdapterRegistry {
 
 impl DatabaseCapabilityProvider for DbAdapterRegistry {
     fn capabilities(&self) -> DatabaseCapabilities {
+        // SAB-204 keeps capabilities startup-wide. Per-connection capability
+        // dispatch belongs with the SQLite adapter skeleton.
         self.postgres.capabilities()
     }
 }
