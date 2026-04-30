@@ -19,10 +19,9 @@ fn reset_for_new_connection(
     state.session.reset(&mut state.query);
     state.result_interaction.reset_view();
     state.ui.set_explorer_selection(None);
-    state.session.active_connection_id = Some(id.clone());
-    state.session.active_connection_name = Some(name.to_string());
-    state.session.active_database_type = Some(database_type);
-    state.session.dsn = Some(dsn.to_string());
+    state
+        .session
+        .set_active_connection(id, name, database_type, dsn);
     state.session.read_only = false;
 }
 
@@ -69,10 +68,9 @@ pub fn reduce(
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, services);
-                state.session.active_connection_id = Some(id.clone());
-                state.session.dsn = Some(dsn.clone());
-                state.session.active_connection_name = Some(name.clone());
-                state.session.active_database_type = Some(*database_type);
+                state
+                    .session
+                    .set_active_connection(id, name, *database_type, dsn);
                 state.session.read_only = false;
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else {

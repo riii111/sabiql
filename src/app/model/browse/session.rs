@@ -93,6 +93,19 @@ impl BrowseSession {
         self.mark_connecting();
     }
 
+    pub fn set_active_connection(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+    ) {
+        self.active_connection_id = Some(id.clone());
+        self.active_connection_name = Some(name.to_string());
+        self.active_database_type = Some(database_type);
+        self.dsn = Some(dsn.to_string());
+    }
+
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;

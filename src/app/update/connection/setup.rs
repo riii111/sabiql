@@ -187,12 +187,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }) => {
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
-            state.session.active_connection_id = Some(id.clone());
-            state.session.active_connection_name = Some(name.clone());
-            state.session.active_database_type = Some(*database_type);
+            state
+                .session
+                .set_active_connection(id, name, *database_type, dsn);
             state.session.read_only = false;
             if *database_type == DatabaseType::SQLite {
-                state.session.dsn = Some(dsn.clone());
                 state.session.mark_disconnected();
                 return Some(vec![]);
             }
