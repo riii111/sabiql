@@ -184,6 +184,8 @@ impl QueryExecutor for DbAdapterRegistry {
     }
 }
 
+// SAB-204 only introduces connection groundwork. SQLite DDL/dialect dispatch
+// belongs with the SQLite adapter skeleton.
 impl DdlGenerator for DbAdapterRegistry {
     fn generate_ddl(&self, table: &Table) -> String {
         self.postgres.generate_ddl(table)
