@@ -16,7 +16,7 @@ const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;
 const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
 const SSL_DROPDOWN_ITEM_COUNT: usize = 6;
-const DB_TYPE_DROPDOWN_ITEM_COUNT: usize = 2;
+const DB_TYPE_DROPDOWN_ITEM_COUNT: usize = DatabaseType::all().len();
 
 fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> Line<'static> {
     Line::from(vec![

@@ -224,7 +224,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         return Some(vec![]);
                     }
                 };
-                state.session.mark_connecting();
+                if config.database_type() != DatabaseType::SQLite {
+                    state.session.mark_connecting();
+                }
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.content().to_string(),
@@ -442,6 +444,30 @@ mod tests {
                 ConnectionState::Connecting
             );
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+        }
+
+        #[test]
+        fn sqlite_save_does_not_enter_connecting_state() {
+            let mut state = AppState::new("test".to_string());
+            state.connection_setup.database_type = DatabaseType::SQLite;
+            state.connection_setup.name.set_content("Local".to_string());
+            state
+                .connection_setup
+                .sqlite_path
+                .set_content("/tmp/app.db".to_string());
+
+            let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now())
+                .expect("save handled");
+
+            assert_eq!(
+                state.session.connection_state(),
+                ConnectionState::NotConnected
+            );
+            assert_eq!(state.session.metadata_state(), &MetadataState::NotLoaded);
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SaveAndConnect { .. }]
+            ));
         }
 
         #[test]

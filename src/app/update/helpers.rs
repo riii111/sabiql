@@ -284,7 +284,11 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
 }
 
 pub fn validate_all(state: &mut ConnectionSetupState) {
-    for field in ConnectionField::fields_for(state.database_type) {
+    let active_fields = ConnectionField::fields_for(state.database_type);
+    state
+        .validation_errors
+        .retain(|field, _| active_fields.contains(field));
+    for field in active_fields {
         validate_field(state, *field);
     }
 }
@@ -365,6 +369,22 @@ mod tests {
         use crate::domain::connection::DatabaseType;
 
         #[test]
+        fn empty_path_sets_required_error() {
+            let mut state = ConnectionSetupState {
+                database_type: DatabaseType::SQLite,
+                ..ConnectionSetupState::default()
+            };
+            state.sqlite_path.set_content("   ".to_string());
+
+            validate_field(&mut state, ConnectionField::SqlitePath);
+
+            assert_eq!(
+                state.validation_errors.get(&ConnectionField::SqlitePath),
+                Some(&"Required".to_string())
+            );
+        }
+
+        #[test]
         fn unsupported_path_characters_set_error() {
             let mut state = ConnectionSetupState {
                 database_type: DatabaseType::SQLite,
@@ -378,6 +398,22 @@ mod tests {
                 state.validation_errors.get(&ConnectionField::SqlitePath),
                 Some(&"Unsupported characters".to_string())
             );
+        }
+
+        #[test]
+        fn validate_all_removes_errors_for_hidden_fields() {
+            let mut state = ConnectionSetupState {
+                database_type: DatabaseType::SQLite,
+                ..ConnectionSetupState::default()
+            };
+            state
+                .validation_errors
+                .insert(ConnectionField::Host, "Required".to_string());
+            state.sqlite_path.set_content("/tmp/app.db".to_string());
+
+            validate_all(&mut state);
+
+            assert!(!state.validation_errors.contains_key(&ConnectionField::Host));
         }
     }
 

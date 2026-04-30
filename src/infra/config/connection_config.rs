@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::connection::{
-    ConnectionId, ConnectionName, ConnectionProfile, ConnectionProfileError, DatabaseType,
-    PostgresConnectionConfig, SqliteConnectionConfig, SslMode,
+    ConnectionConfig, ConnectionId, ConnectionName, ConnectionProfile, ConnectionProfileError,
+    DatabaseType, PostgresConnectionConfig, SqliteConnectionConfig, SslMode,
 };
 
 pub const CURRENT_VERSION: u32 = 3;
@@ -76,7 +76,7 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
             path: None,
         };
         match &profile.config {
-            crate::domain::ConnectionConfig::PostgreSQL(config) => {
+            ConnectionConfig::PostgreSQL(config) => {
                 entry.host = Some(config.host.clone());
                 entry.port = Some(config.port);
                 entry.database = Some(config.database.clone());
@@ -84,7 +84,7 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
                 entry.password = Some(config.password.clone());
                 entry.ssl_mode = Some(config.ssl_mode);
             }
-            crate::domain::ConnectionConfig::SQLite(config) => {
+            ConnectionConfig::SQLite(config) => {
                 entry.path = Some(config.path().to_string());
             }
         }
@@ -102,7 +102,7 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
             DatabaseType::PostgreSQL => ConnectionProfile::with_id_and_config(
                 id,
                 name.as_str().to_string(),
-                crate::domain::ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
                     required_postgres_field(&entry.host, "host")?,
                     entry.port.unwrap_or(5432),
                     required_postgres_field(&entry.database, "database")?,
@@ -114,7 +114,7 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
             DatabaseType::SQLite => ConnectionProfile::with_id_and_config(
                 id,
                 name.as_str().to_string(),
-                crate::domain::ConnectionConfig::SQLite(SqliteConnectionConfig::new(
+                ConnectionConfig::SQLite(SqliteConnectionConfig::new(
                     entry.path.clone().unwrap_or_default(),
                 )?),
             ),

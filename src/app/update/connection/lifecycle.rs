@@ -1,13 +1,23 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::connection::DatabaseType;
+use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
 
 use super::helpers::{restore_cache, save_current_cache};
+
+fn reset_for_new_connection(state: &mut AppState, id: &ConnectionId, dsn: &str, name: &str) {
+    state.session.reset(&mut state.query);
+    state.result_interaction.reset_view();
+    state.ui.set_explorer_selection(None);
+    state.session.active_connection_id = Some(id.clone());
+    state.session.active_connection_name = Some(name.to_string());
+    state.session.dsn = Some(dsn.to_string());
+    state.session.read_only = false;
+}
 
 pub fn reduce(
     state: &mut AppState,
@@ -51,23 +61,12 @@ pub fn reduce(
                 state.session.read_only = false;
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else if *database_type == DatabaseType::SQLite {
-                state.session.reset(&mut state.query);
-                state.result_interaction.reset_view();
-                state.ui.set_explorer_selection(None);
-                state.session.active_connection_id = Some(id.clone());
-                state.session.active_connection_name = Some(name.clone());
-                state.session.dsn = Some(dsn.clone());
-                state.session.read_only = false;
+                reset_for_new_connection(state, id, dsn, name);
                 state.session.mark_disconnected();
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata
-                state.session.reset(&mut state.query);
-                state.result_interaction.reset_view();
-                state.ui.set_explorer_selection(None);
-                state.session.active_connection_id = Some(id.clone());
-                state.session.active_connection_name = Some(name.clone());
-                state.session.read_only = false;
+                reset_for_new_connection(state, id, dsn, name);
                 state.session.begin_connecting(dsn);
                 Some(vec![
                     Effect::ClearCompletionEngineCache,

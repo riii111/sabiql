@@ -12,7 +12,7 @@ pub enum DatabaseType {
 }
 
 impl DatabaseType {
-    pub fn all() -> &'static [Self] {
+    pub const fn all() -> &'static [Self] {
         &[Self::PostgreSQL, Self::SQLite]
     }
 

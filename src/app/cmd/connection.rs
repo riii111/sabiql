@@ -40,7 +40,8 @@ pub(crate) async fn run(
                 Ok(p) => p,
                 Err(e) => {
                     action_tx
-                        .blocking_send(Action::ConnectionSaveFailed(e.into()))
+                        .send(Action::ConnectionSaveFailed(e.into()))
+                        .await
                         .ok();
                     return Ok(());
                 }
