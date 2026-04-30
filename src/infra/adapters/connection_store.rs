@@ -440,7 +440,7 @@ ssl_mode = "prefer"
             let loaded = store.load().unwrap().unwrap();
 
             assert_eq!(loaded.database_type(), crate::domain::DatabaseType::SQLite);
-            assert_eq!(loaded.sqlite_config().unwrap().path, "/tmp/app.db");
+            assert_eq!(loaded.sqlite_config().unwrap().path(), "/tmp/app.db");
         }
 
         #[test]

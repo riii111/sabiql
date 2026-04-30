@@ -34,7 +34,7 @@ impl PostgresConnectionConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SqliteConnectionConfig {
-    pub path: String,
+    path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -52,8 +52,12 @@ impl SqliteConnectionConfig {
         Ok(Self { path })
     }
 
-    pub fn validate(&self) -> Result<(), SqliteConnectionConfigError> {
+    pub(crate) fn validate(&self) -> Result<(), SqliteConnectionConfigError> {
         validate_sqlite_path(&self.path)
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
     }
 }
 

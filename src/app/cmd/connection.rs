@@ -253,7 +253,7 @@ mod tests {
         struct SqliteDsnBuilder;
         impl DsnBuilder for SqliteDsnBuilder {
             fn build_dsn(&self, profile: &ConnectionProfile) -> String {
-                format!("sqlite://{}", profile.sqlite_config().unwrap().path)
+                format!("sqlite://{}", profile.sqlite_config().unwrap().path())
             }
         }
 

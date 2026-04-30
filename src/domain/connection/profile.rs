@@ -263,21 +263,5 @@ mod tests {
                 Err(ConnectionProfileError::InvalidSqlitePath)
             ));
         }
-
-        #[test]
-        fn profile_rejects_invalid_sqlite_config() {
-            let result = ConnectionProfile::with_id_and_config(
-                ConnectionId::new(),
-                "Local",
-                ConnectionConfig::SQLite(SqliteConnectionConfig {
-                    path: String::new(),
-                }),
-            );
-
-            assert!(matches!(
-                result,
-                Err(ConnectionProfileError::EmptySqlitePath)
-            ));
-        }
     }
 }

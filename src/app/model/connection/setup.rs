@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::domain::connection::{
-    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SslMode,
+    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SqliteConnectionConfigError,
+    SslMode,
 };
 use crate::model::shared::text_input::TextInputState;
 
@@ -232,8 +233,8 @@ impl ConnectionSetupState {
             .retain(|field, _| visible_fields.contains(field));
     }
 
-    pub fn to_connection_config(&self) -> ConnectionConfig {
-        match self.database_type {
+    pub fn to_connection_config(&self) -> Result<ConnectionConfig, SqliteConnectionConfigError> {
+        Ok(match self.database_type {
             DatabaseType::PostgreSQL => ConnectionConfig::PostgreSQL(
                 crate::domain::connection::PostgresConnectionConfig::new(
                     self.host.content().to_string(),
@@ -244,13 +245,12 @@ impl ConnectionSetupState {
                     self.ssl_mode,
                 ),
             ),
-            DatabaseType::SQLite => ConnectionConfig::SQLite(
-                crate::domain::connection::SqliteConnectionConfig::new(
+            DatabaseType::SQLite => {
+                ConnectionConfig::SQLite(crate::domain::connection::SqliteConnectionConfig::new(
                     self.sqlite_path.content().to_string(),
-                )
-                .expect("SQLite connection setup validates path before building config"),
-            ),
-        }
+                )?)
+            }
+        })
     }
 }
 
@@ -316,7 +316,7 @@ impl From<&ConnectionProfile> for ConnectionSetupState {
             ConnectionConfig::SQLite(config) => Self {
                 database_type: DatabaseType::SQLite,
                 name: TextInputState::new(profile.name.as_str(), name_len),
-                sqlite_path: TextInputState::new(&config.path, config.path.chars().count()),
+                sqlite_path: TextInputState::new(config.path(), config.path().chars().count()),
                 host: TextInputState::new("localhost", 9),
                 port: TextInputState::new("5432", 4),
                 database: TextInputState::default(),
@@ -408,6 +408,21 @@ mod tests {
             state.sqlite_path.set_content("/tmp/app.db".to_string());
 
             assert_eq!(state.default_name(), "app.db");
+        }
+
+        #[test]
+        fn sqlite_config_build_returns_validation_error() {
+            let state = ConnectionSetupState {
+                database_type: DatabaseType::SQLite,
+                ..ConnectionSetupState::default()
+            };
+
+            let result = state.to_connection_config();
+
+            assert!(matches!(
+                result,
+                Err(SqliteConnectionConfigError::EmptyPath)
+            ));
         }
 
         #[test]

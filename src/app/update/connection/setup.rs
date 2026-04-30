@@ -206,11 +206,29 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let setup = &mut state.connection_setup;
             validate_all(setup);
             if setup.validation_errors.is_empty() {
+                let config = match setup.to_connection_config() {
+                    Ok(config) => config,
+                    Err(crate::domain::connection::SqliteConnectionConfigError::EmptyPath) => {
+                        setup
+                            .validation_errors
+                            .insert(ConnectionField::SqlitePath, "Required".to_string());
+                        return Some(vec![]);
+                    }
+                    Err(
+                        crate::domain::connection::SqliteConnectionConfigError::UnsupportedPath,
+                    ) => {
+                        setup.validation_errors.insert(
+                            ConnectionField::SqlitePath,
+                            "Unsupported characters".to_string(),
+                        );
+                        return Some(vec![]);
+                    }
+                };
                 state.session.mark_connecting();
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.content().to_string(),
-                    config: setup.to_connection_config(),
+                    config,
                 }])
             } else {
                 Some(vec![])

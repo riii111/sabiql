@@ -85,7 +85,7 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
                 entry.ssl_mode = Some(config.ssl_mode);
             }
             crate::domain::ConnectionConfig::SQLite(config) => {
-                entry.path = Some(config.path.clone());
+                entry.path = Some(config.path().to_string());
             }
         }
         entry

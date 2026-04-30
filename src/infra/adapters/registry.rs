@@ -48,7 +48,7 @@ impl DsnBuilder for DbAdapterRegistry {
                 let path = &profile
                     .sqlite_config()
                     .expect("SQLite profile requires SQLite config")
-                    .path;
+                    .path();
                 format!("sqlite://{path}")
             }
         }
