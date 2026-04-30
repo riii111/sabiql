@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::connection::{DatabaseType, SslMode};
+use crate::domain::connection::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
@@ -15,7 +15,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::OpenModal(ModalKind::ConnectionSetup) => {
             state.connection_setup.reset();
             if !state.connections().is_empty() || state.session.dsn.is_some() {
-                state.connection_setup.is_first_run = false;
+                state.connection_setup.set_first_run(false);
             }
             state.modal.set_mode(InputMode::ConnectionSetup);
             Some(vec![])
@@ -113,93 +113,33 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::ConnectionSetupNextField => {
             let setup = &mut state.connection_setup;
             validate_field(setup, setup.focused_field);
-            if let Some(next) = setup.next_field() {
-                setup.focused_field = next;
-            }
+            setup.focus_next_field();
             Some(vec![])
         }
         Action::ConnectionSetupPrevField => {
             let setup = &mut state.connection_setup;
             validate_field(setup, setup.focused_field);
-            if let Some(prev) = setup.prev_field() {
-                setup.focused_field = prev;
-            }
+            setup.focus_prev_field();
             Some(vec![])
         }
         Action::ConnectionSetupToggleDropdown => {
-            let setup = &mut state.connection_setup;
-            match setup.focused_field {
-                ConnectionField::DatabaseType => {
-                    setup.database_type_dropdown.is_open = !setup.database_type_dropdown.is_open;
-                    setup.ssl_dropdown.is_open = false;
-                    if setup.database_type_dropdown.is_open {
-                        setup.database_type_dropdown.selected_index = DatabaseType::all()
-                            .iter()
-                            .position(|v| *v == setup.database_type)
-                            .unwrap_or(0);
-                    }
-                }
-                ConnectionField::SslMode => {
-                    setup.ssl_dropdown.is_open = !setup.ssl_dropdown.is_open;
-                    setup.database_type_dropdown.is_open = false;
-                    if setup.ssl_dropdown.is_open {
-                        setup.ssl_dropdown.selected_index = SslMode::all_variants()
-                            .iter()
-                            .position(|v| *v == setup.ssl_mode)
-                            .unwrap_or(2);
-                    }
-                }
-                _ => {}
-            }
+            state.connection_setup.toggle_focused_dropdown();
             Some(vec![])
         }
         Action::ConnectionSetupDropdownNext => {
-            let setup = &mut state.connection_setup;
-            if setup.database_type_dropdown.is_open {
-                let max = DatabaseType::all().len() - 1;
-                if setup.database_type_dropdown.selected_index < max {
-                    setup.database_type_dropdown.selected_index += 1;
-                }
-            } else if setup.ssl_dropdown.is_open {
-                let max = SslMode::all_variants().len() - 1;
-                if setup.ssl_dropdown.selected_index < max {
-                    setup.ssl_dropdown.selected_index += 1;
-                }
-            }
+            state.connection_setup.dropdown_next();
             Some(vec![])
         }
         Action::ConnectionSetupDropdownPrev => {
-            let setup = &mut state.connection_setup;
-            if setup.database_type_dropdown.is_open {
-                setup.database_type_dropdown.selected_index = setup
-                    .database_type_dropdown
-                    .selected_index
-                    .saturating_sub(1);
-            } else if setup.ssl_dropdown.is_open {
-                setup.ssl_dropdown.selected_index =
-                    setup.ssl_dropdown.selected_index.saturating_sub(1);
-            }
+            state.connection_setup.dropdown_prev();
             Some(vec![])
         }
         Action::ConnectionSetupDropdownConfirm => {
-            let setup = &mut state.connection_setup;
-            if setup.database_type_dropdown.is_open {
-                if let Some(database_type) =
-                    DatabaseType::all().get(setup.database_type_dropdown.selected_index)
-                {
-                    setup.set_database_type(*database_type);
-                }
-            } else if setup.ssl_dropdown.is_open {
-                if let Some(mode) = SslMode::all_variants().get(setup.ssl_dropdown.selected_index) {
-                    setup.ssl_mode = *mode;
-                }
-                setup.ssl_dropdown.is_open = false;
-            }
+            state.connection_setup.confirm_dropdown();
             Some(vec![])
         }
         Action::ConnectionSetupDropdownCancel => {
-            state.connection_setup.database_type_dropdown.is_open = false;
-            state.connection_setup.ssl_dropdown.is_open = false;
+            state.connection_setup.cancel_dropdown();
             Some(vec![])
         }
         Action::ConnectionSetupSave => {
@@ -208,19 +148,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if setup.validation_errors.is_empty() {
                 let config = match setup.to_connection_config() {
                     Ok(config) => config,
-                    Err(crate::domain::connection::SqliteConnectionConfigError::EmptyPath) => {
-                        setup
-                            .validation_errors
-                            .insert(ConnectionField::SqlitePath, "Required".to_string());
-                        return Some(vec![]);
-                    }
-                    Err(
-                        crate::domain::connection::SqliteConnectionConfigError::UnsupportedPath,
-                    ) => {
-                        setup.validation_errors.insert(
-                            ConnectionField::SqlitePath,
-                            "Unsupported characters".to_string(),
-                        );
+                    Err(error) => {
+                        setup.record_sqlite_config_error(error);
                         return Some(vec![]);
                     }
                 };
@@ -256,7 +185,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             name,
             database_type,
         }) => {
-            state.connection_setup.is_first_run = false;
+            state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
             state.session.active_connection_id = Some(id.clone());
             state.session.active_connection_name = Some(name.clone());
@@ -284,7 +213,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::ConnectionProfile;
+    use crate::domain::connection::{ConnectionProfile, SslMode};
     fn create_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile::new(
             name.to_string(),

@@ -201,6 +201,10 @@ impl ConnectionSetupState {
         *self = Self::default();
     }
 
+    pub fn set_first_run(&mut self, is_first_run: bool) {
+        self.is_first_run = is_first_run;
+    }
+
     pub fn has_errors(&self) -> bool {
         !self.validation_errors.is_empty()
     }
@@ -221,6 +225,18 @@ impl ConnectionSetupState {
         prev_visible_field(self.visible_fields(), self.focused_field)
     }
 
+    pub fn focus_next_field(&mut self) {
+        if let Some(next) = self.next_field() {
+            self.focused_field = next;
+        }
+    }
+
+    pub fn focus_prev_field(&mut self) {
+        if let Some(prev) = self.prev_field() {
+            self.focused_field = prev;
+        }
+    }
+
     pub fn set_database_type(&mut self, database_type: DatabaseType) {
         self.database_type = database_type;
         self.database_type_dropdown.is_open = false;
@@ -231,6 +247,84 @@ impl ConnectionSetupState {
         let visible_fields = self.visible_fields();
         self.validation_errors
             .retain(|field, _| visible_fields.contains(field));
+    }
+
+    pub fn toggle_focused_dropdown(&mut self) {
+        match self.focused_field {
+            ConnectionField::DatabaseType => {
+                self.database_type_dropdown.is_open = !self.database_type_dropdown.is_open;
+                self.ssl_dropdown.is_open = false;
+                if self.database_type_dropdown.is_open {
+                    self.database_type_dropdown.selected_index = DatabaseType::all()
+                        .iter()
+                        .position(|v| *v == self.database_type)
+                        .unwrap_or(0);
+                }
+            }
+            ConnectionField::SslMode => {
+                self.ssl_dropdown.is_open = !self.ssl_dropdown.is_open;
+                self.database_type_dropdown.is_open = false;
+                if self.ssl_dropdown.is_open {
+                    self.ssl_dropdown.selected_index = SslMode::all_variants()
+                        .iter()
+                        .position(|v| *v == self.ssl_mode)
+                        .unwrap_or(2);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn dropdown_next(&mut self) {
+        if self.database_type_dropdown.is_open {
+            let max = DatabaseType::all().len() - 1;
+            if self.database_type_dropdown.selected_index < max {
+                self.database_type_dropdown.selected_index += 1;
+            }
+        } else if self.ssl_dropdown.is_open {
+            let max = SslMode::all_variants().len() - 1;
+            if self.ssl_dropdown.selected_index < max {
+                self.ssl_dropdown.selected_index += 1;
+            }
+        }
+    }
+
+    pub fn dropdown_prev(&mut self) {
+        if self.database_type_dropdown.is_open {
+            self.database_type_dropdown.selected_index =
+                self.database_type_dropdown.selected_index.saturating_sub(1);
+        } else if self.ssl_dropdown.is_open {
+            self.ssl_dropdown.selected_index = self.ssl_dropdown.selected_index.saturating_sub(1);
+        }
+    }
+
+    pub fn confirm_dropdown(&mut self) {
+        if self.database_type_dropdown.is_open {
+            if let Some(database_type) =
+                DatabaseType::all().get(self.database_type_dropdown.selected_index)
+            {
+                self.set_database_type(*database_type);
+            }
+        } else if self.ssl_dropdown.is_open {
+            if let Some(mode) = SslMode::all_variants().get(self.ssl_dropdown.selected_index) {
+                self.ssl_mode = *mode;
+            }
+            self.ssl_dropdown.is_open = false;
+        }
+    }
+
+    pub fn cancel_dropdown(&mut self) {
+        self.database_type_dropdown.is_open = false;
+        self.ssl_dropdown.is_open = false;
+    }
+
+    pub fn record_sqlite_config_error(&mut self, error: SqliteConnectionConfigError) {
+        let message = match error {
+            SqliteConnectionConfigError::EmptyPath => "Required",
+            SqliteConnectionConfigError::UnsupportedPath => "Unsupported characters",
+        };
+        self.validation_errors
+            .insert(ConnectionField::SqlitePath, message.to_string());
     }
 
     pub fn to_connection_config(&self) -> Result<ConnectionConfig, SqliteConnectionConfigError> {
@@ -251,6 +345,16 @@ impl ConnectionSetupState {
                 )?)
             }
         })
+    }
+}
+
+fn base_from_profile(profile: &ConnectionProfile) -> ConnectionSetupState {
+    let name = profile.name.as_str();
+    ConnectionSetupState {
+        name: TextInputState::new(name, name.chars().count()),
+        is_first_run: false,
+        editing_id: Some(profile.id.clone()),
+        ..ConnectionSetupState::default()
     }
 }
 
@@ -285,52 +389,27 @@ fn prev_visible_field(
 
 impl From<&ConnectionProfile> for ConnectionSetupState {
     fn from(profile: &ConnectionProfile) -> Self {
-        let name_len = profile.name.as_str().chars().count();
+        let mut state = base_from_profile(profile);
         match &profile.config {
             ConnectionConfig::PostgreSQL(config) => {
                 let port_str = config.port.to_string();
-                Self {
-                    database_type: DatabaseType::PostgreSQL,
-                    name: TextInputState::new(profile.name.as_str(), name_len),
-                    sqlite_path: TextInputState::default(),
-                    host: TextInputState::new(&config.host, config.host.chars().count()),
-                    port: TextInputState::new(&port_str, port_str.chars().count()),
-                    database: TextInputState::new(
-                        &config.database,
-                        config.database.chars().count(),
-                    ),
-                    user: TextInputState::new(&config.username, config.username.chars().count()),
-                    password: TextInputState::new(
-                        &config.password,
-                        config.password.chars().count(),
-                    ),
-                    ssl_mode: config.ssl_mode,
-                    focused_field: ConnectionField::DatabaseType,
-                    database_type_dropdown: DatabaseTypeDropdown::default(),
-                    ssl_dropdown: SslModeDropdown::default(),
-                    validation_errors: HashMap::new(),
-                    is_first_run: false,
-                    editing_id: Some(profile.id.clone()),
-                }
+                state.database_type = DatabaseType::PostgreSQL;
+                state.host = TextInputState::new(&config.host, config.host.chars().count());
+                state.port = TextInputState::new(&port_str, port_str.chars().count());
+                state.database =
+                    TextInputState::new(&config.database, config.database.chars().count());
+                state.user = TextInputState::new(&config.username, config.username.chars().count());
+                state.password =
+                    TextInputState::new(&config.password, config.password.chars().count());
+                state.ssl_mode = config.ssl_mode;
             }
-            ConnectionConfig::SQLite(config) => Self {
-                database_type: DatabaseType::SQLite,
-                name: TextInputState::new(profile.name.as_str(), name_len),
-                sqlite_path: TextInputState::new(config.path(), config.path().chars().count()),
-                host: TextInputState::new("localhost", 9),
-                port: TextInputState::new("5432", 4),
-                database: TextInputState::default(),
-                user: TextInputState::default(),
-                password: TextInputState::default(),
-                ssl_mode: SslMode::Prefer,
-                focused_field: ConnectionField::DatabaseType,
-                database_type_dropdown: DatabaseTypeDropdown::default(),
-                ssl_dropdown: SslModeDropdown::default(),
-                validation_errors: HashMap::new(),
-                is_first_run: false,
-                editing_id: Some(profile.id.clone()),
-            },
+            ConnectionConfig::SQLite(config) => {
+                state.database_type = DatabaseType::SQLite;
+                state.sqlite_path =
+                    TextInputState::new(config.path(), config.path().chars().count());
+            }
         }
+        state
     }
 }
 
