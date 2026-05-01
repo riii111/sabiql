@@ -21,11 +21,11 @@ impl ConnectionError {
 
     pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
         let error_state = &state.connection_error;
-        let Some(ref error_info) = error_state.error_info else {
+        let Some(error_info) = error_state.error_info() else {
             return;
         };
 
-        let details_expanded = error_state.details_expanded;
+        let details_expanded = error_state.details_expanded();
         let full_area = frame.area();
         let modal_outer_width = full_area.width * 70 / 100;
         let content_width = modal_outer_width.saturating_sub(4);
@@ -94,8 +94,7 @@ impl ConnectionError {
     fn render_hint(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let hint = state
             .connection_error
-            .error_info
-            .as_ref()
+            .error_info()
             .map_or("", |e| e.kind.hint());
         let mut spans = vec![
             Span::styled("Hint: ", Style::default().fg(theme.semantic.text.accent)),
@@ -136,7 +135,7 @@ impl ConnectionError {
                     .lines()
                     .map(|l| Line::from(l.replace('\t', "    ")))
                     .collect();
-                let scroll = error_state.scroll_offset;
+                let scroll = error_state.scroll_offset();
                 let para = Paragraph::new(lines)
                     .scroll((scroll as u16, 0))
                     .wrap(Wrap { trim: false })

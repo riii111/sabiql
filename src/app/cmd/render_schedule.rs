@@ -15,7 +15,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(now + SPINNER_INTERVAL));
     }
 
-    if let Some(expires_at) = state.messages.expires_at {
+    if let Some(expires_at) = state.messages.expires_at() {
         earliest = min_instant(earliest, Some(expires_at));
     }
 
@@ -115,7 +115,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let expires_at = now + Duration::from_secs(2);
-            state.messages.expires_at = Some(expires_at);
+            state.messages.set_expires_at_for_test(Some(expires_at));
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -194,7 +194,7 @@ mod tests {
             state.query.begin_running(now);
             // Message expires before spinner would update
             let expires_at = now + Duration::from_millis(50);
-            state.messages.expires_at = Some(expires_at);
+            state.messages.set_expires_at_for_test(Some(expires_at));
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -207,7 +207,9 @@ mod tests {
             let now = Instant::now();
 
             state.query.begin_running(now);
-            state.messages.expires_at = Some(now + Duration::from_secs(2));
+            state
+                .messages
+                .set_expires_at_for_test(Some(now + Duration::from_secs(2)));
             state
                 .query
                 .set_result_highlight(now + Duration::from_millis(100));

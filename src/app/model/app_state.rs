@@ -572,19 +572,21 @@ mod tests {
         #[test]
         fn clears_stale_messages() {
             let mut state = prepare_state_for_reload();
-            state.messages.last_error = Some("Old error".to_string());
-            state.messages.last_success = Some("Old success".to_string());
-            state.messages.expires_at = Some(Instant::now());
+            state.messages.set_messages_for_test(
+                Some("Old error".to_string()),
+                Some("Old success".to_string()),
+            );
+            state.messages.set_expires_at_for_test(Some(Instant::now()));
 
-            assert!(state.messages.last_error.is_some());
-            assert!(state.messages.last_success.is_some());
-            assert!(state.messages.expires_at.is_some());
+            assert!(state.messages.last_error().is_some());
+            assert!(state.messages.last_success().is_some());
+            assert!(state.messages.expires_at().is_some());
 
             reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
-            assert!(state.messages.last_error.is_none());
-            assert!(state.messages.last_success.is_none());
-            assert!(state.messages.expires_at.is_none());
+            assert!(state.messages.last_error().is_none());
+            assert!(state.messages.last_success().is_none());
+            assert!(state.messages.expires_at().is_none());
         }
     }
 

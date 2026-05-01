@@ -267,7 +267,7 @@ mod tests {
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
 
         #[test]
@@ -298,7 +298,7 @@ mod tests {
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 
@@ -596,7 +596,7 @@ mod tests {
             .unwrap();
 
             assert!(state.er_preparation.last_signatures().is_empty());
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
             assert!(
                 effects
                     .iter()
@@ -683,7 +683,7 @@ mod tests {
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(effects.is_empty());
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
 
         #[test]

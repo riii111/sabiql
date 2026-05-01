@@ -6,9 +6,6 @@ use harness::{
     render_to_string, test_instant,
 };
 
-use std::sync::Arc;
-use std::time::Duration;
-
 use app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use app::model::connection::setup::ConnectionField;
 use app::model::er_state::ErStatus;
@@ -24,6 +21,7 @@ use app::policy::write::write_guardrails::{
 };
 use app::policy::write::write_update::normalize_for_diff;
 use domain::{CommandTag, DatabaseType, QuerySource};
+use std::sync::Arc;
 
 mod confirm_dialogs;
 mod connection_flow;

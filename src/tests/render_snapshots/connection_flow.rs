@@ -123,7 +123,7 @@ fn connection_error_collapsed() {
             ConnectionErrorKind::HostUnreachable,
             "psql: error: could not translate host name \"db.example.com\" to address",
         ));
-    state.connection_error.details_expanded = false;
+    state.connection_error.reset_view();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -140,7 +140,7 @@ fn connection_error_expanded() {
         ConnectionErrorKind::Timeout,
         "psql: error: connection to server at \"192.168.1.100\", port 5432 failed: timeout expired",
     ));
-    state.connection_error.details_expanded = true;
+    state.connection_error.expand_details();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -157,7 +157,7 @@ fn connection_error_expanded_with_tabs() {
         ConnectionErrorKind::Unknown,
         "psql: error: connection to server at \"localhost\" (127.0.0.1), port 5433 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?",
     ));
-    state.connection_error.details_expanded = true;
+    state.connection_error.expand_details();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -181,7 +181,7 @@ fn connection_error_expanded_long_details_capped() {
             ConnectionErrorKind::Unknown,
             &long_details,
         ));
-    state.connection_error.details_expanded = true;
+    state.connection_error.expand_details();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -193,7 +193,7 @@ fn footer_shows_success_message() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
-    state.messages.last_success = Some("Reconnected!".to_string());
+    state.messages.set_success("Reconnected!".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 

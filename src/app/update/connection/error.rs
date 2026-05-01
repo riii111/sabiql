@@ -13,8 +13,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::CloseConnectionError => {
-            state.connection_error.details_expanded = false;
-            state.connection_error.scroll_offset = 0;
+            state.connection_error.reset_view();
             state.connection_error.clear_copied_feedback();
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
@@ -114,10 +113,10 @@ mod tests {
 
             reduce(&mut state, &action, now);
             reduce(&mut state, &action, now);
-            assert_eq!(state.connection_error.scroll_offset, 2);
+            assert_eq!(state.connection_error.scroll_offset(), 2);
 
             reduce(&mut state, &action, now);
-            assert_eq!(state.connection_error.scroll_offset, 2);
+            assert_eq!(state.connection_error.scroll_offset(), 2);
         }
     }
 

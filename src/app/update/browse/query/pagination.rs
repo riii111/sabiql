@@ -620,19 +620,11 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::OpenFolder { .. }));
+            assert!(state.messages.last_success().unwrap().contains("42"));
             assert!(
                 state
                     .messages
-                    .last_success
-                    .as_deref()
-                    .unwrap()
-                    .contains("42")
-            );
-            assert!(
-                state
-                    .messages
-                    .last_success
-                    .as_deref()
+                    .last_success()
                     .unwrap()
                     .contains("/tmp/export.csv")
             );
@@ -652,7 +644,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Query failed: psql error. Review the database error details and SQL.")
             );
         }

@@ -756,7 +756,7 @@ mod tests {
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
 
         #[test]
@@ -770,7 +770,7 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
             assert_eq!(state.jsonb_detail.editor().cursor(), cursor_before);
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
 
         #[test]

@@ -184,9 +184,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.er_preparation.reset();
                 state.ui.er_selected_tables.clear();
                 state.ui.pending_er_picker = false;
-                state.messages.last_error = None;
-                state.messages.last_success = None;
-                state.messages.expires_at = None;
+                state.messages.clear();
 
                 Some(vec![Effect::Sequence(vec![
                     Effect::CacheInvalidate {

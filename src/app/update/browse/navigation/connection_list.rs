@@ -294,7 +294,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 

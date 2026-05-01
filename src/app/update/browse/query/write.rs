@@ -420,7 +420,7 @@ mod tests {
             );
             assert!(effects.unwrap().is_empty());
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("No active cell edit session")
             );
         }
@@ -438,7 +438,7 @@ mod tests {
             );
             assert!(effects.unwrap().is_empty());
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Write is unavailable while query is running")
             );
         }
@@ -459,7 +459,7 @@ mod tests {
             );
             assert!(effects.unwrap().is_empty());
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Table metadata does not match current preview target")
             );
         }
@@ -661,7 +661,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
             );
         }
@@ -764,10 +764,7 @@ mod tests {
                 state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Select(499)
             );
-            assert_eq!(
-                state.messages.last_success.as_deref(),
-                Some("Deleted 1 row")
-            );
+            assert_eq!(state.messages.last_success(), Some("Deleted 1 row"));
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::ExecutePreview {
@@ -799,7 +796,7 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("DELETE expected 1 row, but affected 0 rows")
             );
             assert_eq!(effects.len(), 1);
@@ -821,7 +818,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Query failed: boom. Review the database error details and SQL.")
             );
         }

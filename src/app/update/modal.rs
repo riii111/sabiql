@@ -445,10 +445,7 @@ mod tests {
                         .unwrap();
 
                 assert!(effects.is_empty());
-                assert_eq!(
-                    state.messages.last_error.as_deref(),
-                    Some("No active connection")
-                );
+                assert_eq!(state.messages.last_error(), Some("No active connection"));
             }
 
             #[test]
@@ -900,11 +897,8 @@ mod tests {
                 )
                 .unwrap();
 
-                assert_eq!(
-                    state.messages.last_error.as_deref(),
-                    Some("IO error: disk error")
-                );
-                assert!(state.messages.expires_at.is_some());
+                assert_eq!(state.messages.last_error(), Some("IO error: disk error"));
+                assert!(state.messages.expires_at().is_some());
             }
 
             #[test]
@@ -921,7 +915,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(state.messages.last_error.is_none());
+                assert!(state.messages.last_error().is_none());
             }
 
             #[test]
@@ -938,7 +932,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(state.messages.last_error.is_none());
+                assert!(state.messages.last_error().is_none());
                 assert!(effects.is_empty());
             }
         }

@@ -262,7 +262,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Table metadata does not match current preview target")
             );
         }
@@ -364,7 +364,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 

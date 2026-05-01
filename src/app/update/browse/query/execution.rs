@@ -665,7 +665,7 @@ mod tests {
                     .as_deref()
                     .is_some_and(|message| message.contains("Permission denied"))
             );
-            assert!(state.messages.last_error.is_none());
+            assert!(state.messages.last_error().is_none());
         }
 
         #[test]

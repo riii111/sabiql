@@ -4,9 +4,9 @@ use super::error::ConnectionErrorInfo;
 
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionErrorState {
-    pub error_info: Option<ConnectionErrorInfo>,
-    pub details_expanded: bool,
-    pub scroll_offset: usize,
+    error_info: Option<ConnectionErrorInfo>,
+    details_expanded: bool,
+    scroll_offset: usize,
     copied_feedback_expires: Option<Instant>,
 }
 
@@ -18,6 +18,31 @@ impl ConnectionErrorState {
         self.details_expanded = false;
         self.scroll_offset = 0;
         self.copied_feedback_expires = None;
+    }
+
+    pub fn error_info(&self) -> Option<&ConnectionErrorInfo> {
+        self.error_info.as_ref()
+    }
+
+    pub fn has_error(&self) -> bool {
+        self.error_info.is_some()
+    }
+
+    pub fn details_expanded(&self) -> bool {
+        self.details_expanded
+    }
+
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    pub fn reset_view(&mut self) {
+        self.details_expanded = false;
+        self.scroll_offset = 0;
+    }
+
+    pub fn expand_details(&mut self) {
+        self.details_expanded = true;
     }
 
     pub fn clear(&mut self) {

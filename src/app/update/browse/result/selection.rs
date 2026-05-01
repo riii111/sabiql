@@ -233,7 +233,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 

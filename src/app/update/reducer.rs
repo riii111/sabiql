@@ -93,7 +93,7 @@ fn reduce_inner(
                     return select_table(state, &table);
                 }
             } else if state.modal.active_mode() == InputMode::Normal {
-                if state.connection_error.error_info.is_some() {
+                if state.connection_error.has_error() {
                     state.modal.replace_mode(InputMode::ConnectionError);
                     return vec![];
                 }
@@ -844,7 +844,7 @@ mod tests {
                 MetadataState::Error(_)
             ));
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.has_error());
             assert!(effects.is_empty());
         }
 
@@ -887,8 +887,8 @@ mod tests {
         #[test]
         fn close_keeps_error_info_for_reopen() {
             let mut state = state_with_error();
-            state.connection_error.details_expanded = true;
-            state.connection_error.scroll_offset = 5;
+            state.connection_error.expand_details();
+            state.connection_error.scroll_down(5);
             let now = Instant::now();
 
             reduce(
@@ -899,11 +899,11 @@ mod tests {
             );
 
             // error_info is kept so Enter can re-open modal
-            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.has_error());
             assert_eq!(state.input_mode(), InputMode::Normal);
             // UI state is reset
-            assert!(!state.connection_error.details_expanded);
-            assert_eq!(state.connection_error.scroll_offset, 0);
+            assert!(!state.connection_error.details_expanded());
+            assert_eq!(state.connection_error.scroll_offset(), 0);
         }
 
         #[test]
@@ -950,14 +950,14 @@ mod tests {
                 &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.has_error());
         }
 
         #[test]
         fn toggle_details_flips_expanded_state() {
             let mut state = state_with_error();
             let now = Instant::now();
-            assert!(!state.connection_error.details_expanded);
+            assert!(!state.connection_error.details_expanded());
 
             reduce(
                 &mut state,
@@ -965,7 +965,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(state.connection_error.details_expanded);
+            assert!(state.connection_error.details_expanded());
 
             reduce(
                 &mut state,
@@ -973,7 +973,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(!state.connection_error.details_expanded);
+            assert!(!state.connection_error.details_expanded());
         }
 
         #[test]
@@ -1188,7 +1188,7 @@ mod tests {
 
             // Check reloading flag is cleared and message is shown
             assert!(!state.session.is_reloading());
-            assert_eq!(state.messages.last_success, Some("Reloaded!".to_string()));
+            assert_eq!(state.messages.last_success(), Some("Reloaded!"));
         }
 
         #[test]
@@ -1296,7 +1296,7 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
             assert!(effects.is_empty());
         }
 
@@ -1575,7 +1575,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
             assert!(effects.is_empty());
         }
 
@@ -1727,14 +1727,7 @@ mod tests {
 
             // After success, preview is cleaned up and delete message is shown
             assert!(state.result_interaction.pending_write_preview().is_none());
-            assert!(
-                state
-                    .messages
-                    .last_success
-                    .as_deref()
-                    .unwrap()
-                    .contains("Deleted")
-            );
+            assert!(state.messages.last_success().unwrap().contains("Deleted"));
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
         }
@@ -2206,7 +2199,7 @@ mod tests {
             );
 
             assert!(state.ui.pending_er_picker);
-            assert!(state.messages.last_success.is_some());
+            assert!(state.messages.last_success().is_some());
             assert_ne!(state.input_mode(), InputMode::ErTablePicker);
             assert!(effects.is_empty());
         }
@@ -2346,7 +2339,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
             assert!(effects.is_empty());
         }
 
@@ -2433,7 +2426,7 @@ mod tests {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
             }));
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 
