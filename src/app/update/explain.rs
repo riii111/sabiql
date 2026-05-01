@@ -100,7 +100,7 @@ pub fn reduce_explain_with_services(
             begin_explain_running(state, now);
 
             Some(vec![Effect::ExecuteExplain {
-                dsn: dsn.to_string(),
+                dsn,
                 query,
                 is_analyze: false,
                 read_only: true,
@@ -194,7 +194,7 @@ pub fn reduce_explain_with_services(
                 };
                 begin_explain_running(state, now);
                 return Some(vec![Effect::ExecuteExplain {
-                    dsn: dsn.to_string(),
+                    dsn,
                     query: explain_query,
                     is_analyze: true,
                     read_only: state.session.is_read_only(),

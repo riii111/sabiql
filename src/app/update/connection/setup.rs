@@ -196,9 +196,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 return Some(vec![]);
             }
             state.session.begin_connecting(dsn);
-            Some(vec![Effect::FetchMetadata {
-                dsn: dsn.to_string(),
-            }])
+            Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
         Action::ConnectionSaveFailed(e) => {
             if !state.session.connection_state().is_connected() {

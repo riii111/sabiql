@@ -79,9 +79,7 @@ pub fn reduce(
                 state.session.begin_connecting(dsn);
                 Some(vec![
                     Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata {
-                        dsn: dsn.to_string(),
-                    },
+                    Effect::FetchMetadata { dsn: dsn.clone() },
                 ])
             }
         }

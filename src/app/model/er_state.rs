@@ -105,36 +105,45 @@ impl ErPreparationState {
         self.run_id
     }
 
-    pub fn set_total_tables(&mut self, total: usize) {
+    pub fn begin_full_prefetch(&mut self, total: usize) {
+        self.clear_table_tracking();
         self.total_tables = total;
+        self.seed_tables.clear();
+        self.fk_expanded = true;
     }
 
-    pub fn set_target_tables(&mut self, tables: Vec<String>) {
+    pub fn begin_scoped_prefetch(&mut self, tables: Vec<String>) {
+        self.clear_table_tracking();
+        self.total_tables = tables.len();
+        self.seed_tables = tables;
+        self.fk_expanded = false;
+    }
+
+    pub fn set_targets(&mut self, tables: Vec<String>) {
         self.target_tables = tables;
     }
 
-    pub fn set_seed_tables(&mut self, tables: Vec<String>) {
-        self.seed_tables = tables;
+    pub fn mark_fk_expanded(&mut self) {
+        self.fk_expanded = true;
     }
 
-    pub fn set_fk_expanded(&mut self, expanded: bool) {
-        self.fk_expanded = expanded;
-    }
-
-    pub fn set_last_signatures(&mut self, signatures: HashMap<String, String>) {
+    pub fn apply_refresh_metadata(
+        &mut self,
+        signatures: HashMap<String, String>,
+        total_tables: usize,
+    ) {
         self.last_signatures = signatures;
+        self.total_tables = total_tables;
     }
 
     pub fn clear_last_signatures(&mut self) {
         self.last_signatures.clear();
     }
 
-    pub fn set_pending_tables(&mut self, tables: HashSet<String>) {
-        self.pending_tables = tables;
-    }
-
-    pub fn set_fetching_tables(&mut self, tables: HashSet<String>) {
-        self.fetching_tables = tables;
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_total_tables_for_test(&mut self, total: usize) {
+        self.total_tables = total;
     }
 
     pub fn clear_table_tracking(&mut self) {

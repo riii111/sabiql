@@ -7,7 +7,7 @@ fn er_waiting_progress() {
     let mut terminal = create_test_terminal();
 
     state.er_preparation.set_status_for_test(ErStatus::Waiting);
-    state.er_preparation.set_total_tables(3);
+    state.er_preparation.set_total_tables_for_test(3);
     state
         .er_preparation
         .insert_pending_table("public.comments".to_string());

@@ -211,7 +211,7 @@ impl ExplainContext {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl ExplainContext {
     pub fn set_plan_text_for_test(&mut self, plan_text: Option<String>) {
         self.plan_text = plan_text;
@@ -239,11 +239,11 @@ mod tests {
     fn default_has_no_content() {
         let ctx = ExplainContext::default();
 
-        assert!(ctx.plan_text.is_none());
-        assert!(ctx.error.is_none());
-        assert!(ctx.left.is_none());
-        assert!(ctx.right.is_none());
-        assert!(ctx.history.is_empty());
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.error().is_none());
+        assert!(ctx.left().is_none());
+        assert!(ctx.right().is_none());
+        assert!(ctx.history().is_empty());
     }
 
     #[test]
@@ -257,14 +257,11 @@ mod tests {
             "SELECT * FROM users",
         );
 
-        assert!(ctx.left.is_none());
-        assert!(ctx.right.is_some());
-        assert_eq!(ctx.right.as_ref().unwrap().plan.total_cost, Some(100.0));
-        assert_eq!(
-            ctx.right.as_ref().unwrap().query_snippet,
-            "SELECT * FROM users"
-        );
-        assert_eq!(ctx.right.as_ref().unwrap().source, SlotSource::AutoLatest);
+        assert!(ctx.left().is_none());
+        assert!(ctx.right().is_some());
+        assert_eq!(ctx.right().unwrap().plan.total_cost, Some(100.0));
+        assert_eq!(ctx.right().unwrap().query_snippet, "SELECT * FROM users");
+        assert_eq!(ctx.right().unwrap().source, SlotSource::AutoLatest);
     }
 
     #[test]
@@ -284,11 +281,11 @@ mod tests {
             "SELECT * FROM users WHERE id = 1",
         );
 
-        assert!(ctx.left.is_some());
-        assert_eq!(ctx.left.as_ref().unwrap().plan.total_cost, Some(100.0));
-        assert_eq!(ctx.left.as_ref().unwrap().source, SlotSource::AutoPrevious);
-        assert_eq!(ctx.right.as_ref().unwrap().plan.total_cost, Some(5.0));
-        assert_eq!(ctx.right.as_ref().unwrap().source, SlotSource::AutoLatest);
+        assert!(ctx.left().is_some());
+        assert_eq!(ctx.left().unwrap().plan.total_cost, Some(100.0));
+        assert_eq!(ctx.left().unwrap().source, SlotSource::AutoPrevious);
+        assert_eq!(ctx.right().unwrap().plan.total_cost, Some(5.0));
+        assert_eq!(ctx.right().unwrap().source, SlotSource::AutoLatest);
     }
 
     #[test]
@@ -313,9 +310,9 @@ mod tests {
             "C",
         );
 
-        assert_eq!(ctx.history.len(), 3);
-        assert_eq!(ctx.history[0].query_snippet, "C");
-        assert_eq!(ctx.history[2].query_snippet, "A");
+        assert_eq!(ctx.history().len(), 3);
+        assert_eq!(ctx.history()[0].query_snippet, "C");
+        assert_eq!(ctx.history()[2].query_snippet, "A");
     }
 
     #[test]
@@ -333,18 +330,18 @@ mod tests {
             0,
             "B",
         );
-        ctx.scroll_offset = 10;
-        ctx.compare_scroll_offset = 5;
+        ctx.scroll_plan_to(10);
+        ctx.scroll_compare_to(5);
 
         ctx.reset();
 
-        assert!(ctx.plan_text.is_none());
-        assert!(ctx.error.is_none());
-        assert_eq!(ctx.scroll_offset, 0);
-        assert_eq!(ctx.compare_scroll_offset, 0);
-        assert!(ctx.left.is_some());
-        assert!(ctx.right.is_some());
-        assert_eq!(ctx.history.len(), 2);
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.error().is_none());
+        assert_eq!(ctx.scroll_offset(), 0);
+        assert_eq!(ctx.compare_scroll_offset(), 0);
+        assert!(ctx.left().is_some());
+        assert!(ctx.right().is_some());
+        assert_eq!(ctx.history().len(), 2);
     }
 
     #[test]
@@ -359,7 +356,7 @@ mod tests {
 
         ctx.set_error("some error".to_string());
 
-        assert!(ctx.right.is_some());
+        assert!(ctx.right().is_some());
     }
 
     #[test]
@@ -374,7 +371,7 @@ mod tests {
             );
         }
 
-        assert_eq!(ctx.history.len(), MAX_EXPLAIN_HISTORY);
+        assert_eq!(ctx.history().len(), MAX_EXPLAIN_HISTORY);
     }
 
     #[test]
@@ -388,7 +385,7 @@ mod tests {
             "SELECT *\nFROM users\nWHERE id = 1",
         );
 
-        assert_eq!(ctx.right.as_ref().unwrap().query_snippet, "SELECT *");
+        assert_eq!(ctx.right().unwrap().query_snippet, "SELECT *");
     }
 
     #[test]

@@ -210,26 +210,14 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::JsonbSearchNext => {
-            let search = state.jsonb_detail.search();
-            if !search.matches().is_empty() {
-                let next = (search.current_match() + 1) % search.matches().len();
-                state.jsonb_detail.search_mut().set_current_match(next);
-                jump_to_current_match(state);
-            }
+            state.jsonb_detail.search_mut().advance_to_next_match();
+            jump_to_current_match(state);
             Some(vec![])
         }
 
         Action::JsonbSearchPrev => {
-            let search = state.jsonb_detail.search();
-            if !search.matches().is_empty() {
-                let prev = if search.current_match() == 0 {
-                    search.matches().len() - 1
-                } else {
-                    search.current_match() - 1
-                };
-                state.jsonb_detail.search_mut().set_current_match(prev);
-                jump_to_current_match(state);
-            }
+            state.jsonb_detail.search_mut().advance_to_prev_match();
+            jump_to_current_match(state);
             Some(vec![])
         }
 

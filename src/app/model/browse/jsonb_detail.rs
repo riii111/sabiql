@@ -43,8 +43,21 @@ impl JsonbSearchState {
         self.current_match = 0;
     }
 
-    pub fn set_current_match(&mut self, current_match: usize) {
-        self.current_match = current_match;
+    pub fn advance_to_next_match(&mut self) {
+        if !self.matches.is_empty() {
+            self.current_match = (self.current_match + 1) % self.matches.len();
+        }
+    }
+
+    pub fn advance_to_prev_match(&mut self) {
+        if self.matches.is_empty() {
+            return;
+        }
+        self.current_match = if self.current_match == 0 {
+            self.matches.len() - 1
+        } else {
+            self.current_match - 1
+        };
     }
 }
 

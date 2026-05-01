@@ -142,10 +142,6 @@ impl SqlModalContext {
         self.failed_prefetch_tables.insert(table, entry);
     }
 
-    pub fn remove_failed_prefetch(&mut self, table: &str) {
-        self.failed_prefetch_tables.remove(table);
-    }
-
     // ── Adhoc status ────────────────────────────────────────────────
 
     pub fn begin_adhoc_running(&mut self) {

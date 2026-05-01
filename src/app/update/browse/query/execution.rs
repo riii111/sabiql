@@ -31,15 +31,13 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
         state.sql_modal.reset_prefetch();
         state.session.set_table_detail_raw(None);
 
-        effects.push(Effect::CacheInvalidate {
-            dsn: dsn.to_string(),
-        });
+        effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
         effects.push(Effect::FetchMetadata { dsn });
     } else if !state.query.pagination.table.is_empty() {
         let page = state.query.pagination.current_page;
         effects.push(Effect::ExecutePreview {
-            dsn: dsn.to_string(),
+            dsn,
             schema: state.query.pagination.schema.clone(),
             table: state.query.pagination.table.clone(),
             generation: state.session.selection_generation(),

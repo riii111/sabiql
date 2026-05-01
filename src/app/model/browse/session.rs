@@ -106,13 +106,6 @@ impl BrowseSession {
         self.dsn = Some(dsn.to_string());
     }
 
-    pub fn clear_active_connection(&mut self) {
-        self.active_connection_id = None;
-        self.active_connection_name = None;
-        self.active_database_type = None;
-        self.dsn = None;
-    }
-
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;

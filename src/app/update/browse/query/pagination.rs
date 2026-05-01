@@ -50,7 +50,7 @@ pub fn reduce(
             let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
 
             Some(vec![Effect::CountRowsForExport {
-                dsn: dsn.to_string(),
+                dsn,
                 count_query,
                 export_query,
                 file_name,
@@ -92,7 +92,7 @@ pub fn reduce(
                     None => return Some(vec![]),
                 };
                 Some(vec![Effect::ExportCsv {
-                    dsn: dsn.to_string(),
+                    dsn,
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
@@ -111,7 +111,7 @@ pub fn reduce(
                 None => return Some(vec![]),
             };
             Some(vec![Effect::ExportCsv {
-                dsn: dsn.to_string(),
+                dsn,
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
@@ -156,7 +156,7 @@ pub fn reduce(
                 state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 Some(vec![Effect::ExecutePreview {
-                    dsn: dsn.to_string(),
+                    dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.session.selection_generation(),
@@ -183,7 +183,7 @@ pub fn reduce(
                 state.result_interaction.reset_view();
                 state.query.pagination.reached_end = false;
                 Some(vec![Effect::ExecutePreview {
-                    dsn: dsn.to_string(),
+                    dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.session.selection_generation(),

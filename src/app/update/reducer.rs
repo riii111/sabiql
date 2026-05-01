@@ -888,7 +888,7 @@ mod tests {
         fn close_keeps_error_info_for_reopen() {
             let mut state = state_with_error();
             state.connection_error.expand_details();
-            state.connection_error.scroll_down(5);
+            state.connection_error.set_scroll_offset_for_test(5);
             let now = Instant::now();
 
             reduce(
@@ -2350,7 +2350,7 @@ mod tests {
             state.sql_modal.begin_prefetch();
             state
                 .er_preparation
-                .set_target_tables(vec!["public.users".to_string()]);
+                .set_targets(vec!["public.users".to_string()]);
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -2370,8 +2370,7 @@ mod tests {
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
             state.er_preparation.set_status_for_test(ErStatus::Waiting);
-            state.er_preparation.set_total_tables(1);
-            state.er_preparation.set_fk_expanded(true);
+            state.er_preparation.begin_full_prefetch(1);
             state
                 .er_preparation
                 .insert_pending_table("public.users".to_string());
@@ -2401,8 +2400,7 @@ mod tests {
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
             state.er_preparation.set_status_for_test(ErStatus::Waiting);
-            state.er_preparation.set_total_tables(2);
-            state.er_preparation.set_fk_expanded(true);
+            state.er_preparation.begin_full_prefetch(2);
             state
                 .er_preparation
                 .on_table_failed("public.posts", "timeout".to_string());

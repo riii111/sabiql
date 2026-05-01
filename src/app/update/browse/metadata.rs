@@ -187,9 +187,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.messages.clear();
 
                 Some(vec![Effect::Sequence(vec![
-                    Effect::CacheInvalidate {
-                        dsn: dsn.to_string(),
-                    },
+                    Effect::CacheInvalidate { dsn: dsn.clone() },
                     Effect::ClearCompletionEngineCache,
                     Effect::FetchMetadata { dsn },
                 ])])
@@ -203,11 +201,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 && let Some(metadata) = state.session.metadata()
             {
                 state.sql_modal.begin_prefetch();
-                state.er_preparation.clear_table_tracking();
                 state
                     .er_preparation
-                    .set_total_tables(metadata.table_summaries.len());
-                state.er_preparation.set_fk_expanded(true);
+                    .begin_full_prefetch(metadata.table_summaries.len());
 
                 let table_count = metadata.table_summaries.len();
                 let resize_capacity = table_count.clamp(500, 10_000);
@@ -233,10 +229,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 Some(vec![])
             } else {
                 state.sql_modal.begin_prefetch();
-                state.er_preparation.clear_table_tracking();
-                state.er_preparation.set_fk_expanded(false);
-                state.er_preparation.set_seed_tables(tables.clone());
-                state.er_preparation.set_total_tables(tables.len());
+                state.er_preparation.begin_scoped_prefetch(tables.clone());
 
                 for qualified_name in tables {
                     state.sql_modal.enqueue_prefetch(qualified_name.clone());
@@ -254,7 +247,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::FkNeighborsDiscovered { tables } => {
-            state.er_preparation.set_fk_expanded(true);
+            state.er_preparation.mark_fk_expanded();
 
             if tables.is_empty() {
                 // No new neighbors — proceed to generate with what we have
@@ -523,7 +516,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
             state.er_preparation.set_status_for_test(ErStatus::Waiting);
-            state.er_preparation.set_fk_expanded(true);
+            state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             // Only table remaining; retry limit exceeded
             state.er_preparation.insert_pending_table(qualified.clone());
@@ -559,7 +552,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
             state.er_preparation.set_status_for_test(ErStatus::Waiting);
-            state.er_preparation.set_fk_expanded(true);
+            state.er_preparation.mark_fk_expanded();
             let failed = "public.users".to_string();
             let remaining = "public.posts".to_string();
             // users exhausted retries; posts still awaiting in queue
@@ -954,7 +947,7 @@ mod tests {
         fn complete_not_fk_expanded_dispatches_expand() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.set_status_for_test(ErStatus::Waiting);
-            state.er_preparation.set_fk_expanded(false);
+            state.er_preparation.begin_scoped_prefetch(Vec::new());
             // pending and fetching are empty → is_complete() = true
 
             let effects = check_er_completion(&mut state);
@@ -970,7 +963,7 @@ mod tests {
         fn complete_fk_expanded_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.set_status_for_test(ErStatus::Waiting);
-            state.er_preparation.set_fk_expanded(true);
+            state.er_preparation.mark_fk_expanded();
 
             let effects = check_er_completion(&mut state);
 
@@ -1047,7 +1040,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
             state.er_preparation.set_status_for_test(ErStatus::Waiting);
-            state.er_preparation.set_fk_expanded(true);
+            state.er_preparation.mark_fk_expanded();
             let neighbor = "public.posts".to_string();
             state.er_preparation.insert_pending_table(neighbor.clone());
             state.sql_modal.record_prefetch_failure(

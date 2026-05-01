@@ -51,10 +51,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             let run_id = state.er_preparation.start_waiting_run();
             state.set_success("Checking for schema changes...".to_string());
 
-            Some(vec![Effect::SmartErRefresh {
-                dsn: dsn.to_string(),
-                run_id,
-            }])
+            Some(vec![Effect::SmartErRefresh { dsn, run_id }])
         }
 
         Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -73,10 +70,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             state.session.set_metadata(Some(Arc::clone(new_metadata)));
             state
                 .er_preparation
-                .set_last_signatures(new_signatures.clone());
-            state
-                .er_preparation
-                .set_total_tables(new_metadata.table_summaries.len());
+                .apply_refresh_metadata(new_signatures.clone(), new_metadata.table_summaries.len());
 
             let mut effects: Vec<Effect> = Vec::new();
 
@@ -138,8 +132,9 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             let is_scoped = !state.er_preparation.target_tables().is_empty()
                 && state.er_preparation.target_tables().len() < total_table_count;
 
-            state.er_preparation.set_total_tables(total_table_count);
-            state.er_preparation.clear_last_signatures();
+            state
+                .er_preparation
+                .apply_refresh_metadata(Default::default(), total_table_count);
             state.set_error(format!(
                 "Smart refresh failed ({error}), falling back to full refresh"
             ));
@@ -318,7 +313,7 @@ mod tests {
             })));
             state
                 .er_preparation
-                .set_target_tables(vec!["public.users".to_string()]);
+                .set_targets(vec!["public.users".to_string()]);
 
             let effects =
                 reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now()).unwrap();
@@ -577,12 +572,10 @@ mod tests {
             state.er_preparation.set_run_id_for_test(1);
             state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(5)));
-            state
-                .er_preparation
-                .set_last_signatures(std::collections::HashMap::from([(
-                    "public.old".to_string(),
-                    "sig".to_string(),
-                )]));
+            state.er_preparation.apply_refresh_metadata(
+                std::collections::HashMap::from([("public.old".to_string(), "sig".to_string())]),
+                5,
+            );
 
             let effects = reduce_er(
                 &mut state,
@@ -617,7 +610,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(10)));
             state
                 .er_preparation
-                .set_target_tables(vec!["public.t0".to_string()]);
+                .set_targets(vec!["public.t0".to_string()]);
 
             let effects = reduce_er(
                 &mut state,
