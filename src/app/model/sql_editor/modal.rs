@@ -92,17 +92,11 @@ impl SqlModalContext {
         &mut self.editor
     }
 
-    #[cfg(test)]
-    pub(crate) fn set_editor_content_for_test(&mut self, content: String) {
+    pub fn set_editor_content_for_test(&mut self, content: String) {
         self.editor.set_content(content);
     }
 
-    #[cfg(test)]
-    pub(crate) fn set_editor_content_with_cursor_for_test(
-        &mut self,
-        content: String,
-        cursor: usize,
-    ) {
+    pub fn set_editor_content_with_cursor_for_test(&mut self, content: String, cursor: usize) {
         self.editor.set_content_with_cursor(content, cursor);
     }
 
