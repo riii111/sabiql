@@ -25,7 +25,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
     match action {
         Action::OpenModal(ModalKind::TablePicker) => {
             state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker.clear_filter_and_reset();
+            state.ui.table_picker_mut().clear_filter_and_reset();
             Some(vec![])
         }
         Action::CloseModal(ModalKind::TablePicker)
@@ -37,7 +37,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::OpenModal(ModalKind::CommandPalette) => {
             state.modal.set_mode(InputMode::CommandPalette);
             // Command palette currently reuses the generic picker selection state.
-            state.ui.table_picker.reset();
+            state.ui.table_picker_mut().reset();
             Some(vec![])
         }
         Action::ToggleModal(ModalKind::Help) => {
@@ -90,49 +90,49 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::OpenModal(ModalKind::ErTablePicker) => {
             if state.session.metadata().is_none() {
-                state.ui.pending_er_picker = true;
+                state.ui.set_pending_er_picker(true);
                 state.set_success("Waiting for metadata...".to_string());
                 return Some(vec![]);
             }
-            state.ui.pending_er_picker = false;
-            state.ui.er_selected_tables.clear();
+            state.ui.set_pending_er_picker(false);
+            state.ui.er_selected_tables_mut().clear();
             state.modal.set_mode(InputMode::ErTablePicker);
-            state.ui.er_picker.clear_filter_and_reset();
+            state.ui.er_picker_mut().clear_filter_and_reset();
             Some(vec![])
         }
         Action::CloseModal(ModalKind::ErTablePicker) => {
             state.modal.set_mode(InputMode::Normal);
-            state.ui.er_picker.clear_filter();
-            state.ui.er_selected_tables.clear();
-            state.ui.pending_er_picker = false;
+            state.ui.er_picker_mut().clear_filter();
+            state.ui.er_selected_tables_mut().clear();
+            state.ui.set_pending_er_picker(false);
             Some(vec![])
         }
         Action::TextInput {
             target: InputTarget::ErFilter,
             ch: c,
         } => {
-            state.ui.er_picker.insert_filter_char(*c);
+            state.ui.er_picker_mut().insert_filter_char(*c);
             Some(vec![])
         }
         Action::TextBackspace {
             target: InputTarget::ErFilter,
         } => {
-            state.ui.er_picker.backspace_filter();
+            state.ui.er_picker_mut().backspace_filter();
             Some(vec![])
         }
         Action::TextMoveCursor {
             target: InputTarget::ErFilter,
             direction: movement,
         } => {
-            state.ui.er_picker.move_filter_cursor(*movement);
+            state.ui.er_picker_mut().move_filter_cursor(*movement);
             Some(vec![])
         }
         Action::ErToggleSelection => {
             let filtered = state.er_filtered_tables();
-            if let Some(table) = filtered.get(state.ui.er_picker.selected()) {
+            if let Some(table) = filtered.get(state.ui.er_picker().selected()) {
                 let name = table.qualified_name();
-                if !state.ui.er_selected_tables.remove(&name) {
-                    state.ui.er_selected_tables.insert(name);
+                if !state.ui.er_selected_tables_mut().remove(&name) {
+                    state.ui.er_selected_tables_mut().insert(name);
                 }
             }
             Some(vec![])
@@ -140,24 +140,24 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ErSelectAll => {
             let all_tables: Vec<String> =
                 state.tables().iter().map(|t| t.qualified_name()).collect();
-            if state.ui.er_selected_tables.len() == all_tables.len() {
-                state.ui.er_selected_tables.clear();
+            if state.ui.er_selected_tables().len() == all_tables.len() {
+                state.ui.er_selected_tables_mut().clear();
             } else {
-                state.ui.er_selected_tables = all_tables.into_iter().collect();
+                state.ui.er_selected_tables_mut().extend(all_tables);
             }
             Some(vec![])
         }
         Action::ErConfirmSelection => {
-            if state.ui.er_selected_tables.is_empty() {
+            if state.ui.er_selected_tables().is_empty() {
                 state.set_error("No tables selected".to_string());
                 return Some(vec![]);
             }
             state
                 .er_preparation
-                .set_targets(state.ui.er_selected_tables.iter().cloned().collect());
+                .set_targets(state.ui.er_selected_tables().iter().cloned().collect());
             state.modal.set_mode(InputMode::Normal);
-            state.ui.er_picker.clear_filter();
-            state.ui.er_selected_tables.clear();
+            state.ui.er_picker_mut().clear_filter();
+            state.ui.er_selected_tables_mut().clear();
             Some(vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])])
         }
         Action::OpenModal(ModalKind::QueryHistoryPicker) => {

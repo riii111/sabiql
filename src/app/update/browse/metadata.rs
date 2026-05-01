@@ -110,13 +110,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
 
-            if state.ui.pending_er_picker && state.modal.active_mode() == InputMode::Normal {
-                state.ui.pending_er_picker = false;
+            if state.ui.pending_er_picker() && state.modal.active_mode() == InputMode::Normal {
+                state.ui.set_pending_er_picker(false);
                 effects.push(Effect::DispatchActions(vec![Action::OpenModal(
                     ModalKind::ErTablePicker,
                 )]));
             } else {
-                state.ui.pending_er_picker = false;
+                state.ui.set_pending_er_picker(false);
             }
 
             Some(effects)
@@ -177,8 +177,8 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();
-                state.ui.er_selected_tables.clear();
-                state.ui.pending_er_picker = false;
+                state.ui.er_selected_tables_mut().clear();
+                state.ui.set_pending_er_picker(false);
                 state.messages.clear();
 
                 Some(vec![Effect::Sequence(vec![

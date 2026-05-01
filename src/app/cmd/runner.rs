@@ -268,16 +268,16 @@ impl EffectRunner {
                     state.ui.set_connection_list_pane_height(height);
                 }
                 if let Some(height) = output.table_picker_pane_height {
-                    state.ui.table_picker.set_pane_height(height);
+                    state.ui.table_picker_mut().set_pane_height(height);
                 }
                 if let Some(width) = output.table_picker_filter_visible_width {
-                    state.ui.table_picker.set_filter_visible_width(width);
+                    state.ui.table_picker_mut().set_filter_visible_width(width);
                 }
                 if let Some(height) = output.er_picker_pane_height {
-                    state.ui.er_picker.set_pane_height(height);
+                    state.ui.er_picker_mut().set_pane_height(height);
                 }
                 if let Some(width) = output.er_picker_filter_visible_width {
-                    state.ui.er_picker.set_filter_visible_width(width);
+                    state.ui.er_picker_mut().set_filter_visible_width(width);
                 }
                 if let Some(height) = output.query_history_picker_pane_height {
                     state.query_history_picker.set_pane_height(height);

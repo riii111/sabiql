@@ -164,11 +164,11 @@ pub struct UiState {
     connection_list_scroll_offset: usize,
     connection_list_pane_height: u16,
 
-    pub table_picker: PickerState,
+    table_picker: PickerState,
 
-    pub er_picker: PickerState,
-    pub er_selected_tables: BTreeSet<String>,
-    pub pending_er_picker: bool,
+    er_picker: PickerState,
+    er_selected_tables: BTreeSet<String>,
+    pending_er_picker: bool,
 
     pub inspector_tab: InspectorTab,
     pub inspector_scroll_offset: usize,

@@ -25,7 +25,7 @@ impl CommandPalette {
         let items: Vec<ListItem> = palette_commands()
             .enumerate()
             .map(|(i, kb)| {
-                let style = if i == state.ui.table_picker.selected() {
+                let style = if i == state.ui.table_picker().selected() {
                     theme.picker_selected_style()
                 } else {
                     Style::default().fg(theme.semantic.text.secondary)

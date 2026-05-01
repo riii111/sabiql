@@ -383,7 +383,7 @@ fn table_picker_overlay() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::TablePicker);
-    state.ui.table_picker.insert_filter_str("user");
+    state.ui.table_picker_mut().insert_filter_str("user");
 
     let output = render_to_string(&mut terminal, &mut state);
 

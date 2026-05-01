@@ -8,11 +8,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
         Action::Paste(text) => match state.modal.active_mode() {
             InputMode::TablePicker => {
-                state.ui.table_picker.insert_filter_str(text);
+                state.ui.table_picker_mut().insert_filter_str(text);
                 Some(vec![])
             }
             InputMode::ErTablePicker => {
-                state.ui.er_picker.insert_filter_str(text);
+                state.ui.er_picker_mut().insert_filter_str(text);
                 Some(vec![])
             }
             InputMode::CommandLine => {
@@ -42,20 +42,20 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: InputTarget::Filter,
             ch: c,
         } => {
-            state.ui.table_picker.insert_filter_char(*c);
+            state.ui.table_picker_mut().insert_filter_char(*c);
             Some(vec![])
         }
         Action::TextBackspace {
             target: InputTarget::Filter,
         } => {
-            state.ui.table_picker.backspace_filter();
+            state.ui.table_picker_mut().backspace_filter();
             Some(vec![])
         }
         Action::TextMoveCursor {
             target: InputTarget::Filter,
             direction: movement,
         } => {
-            state.ui.table_picker.move_filter_cursor(*movement);
+            state.ui.table_picker_mut().move_filter_cursor(*movement);
             Some(vec![])
         }
 
@@ -106,11 +106,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             motion: ListMotion::Next,
         } => {
             let max = state.filtered_tables().len().saturating_sub(1);
-            if state.ui.table_picker.selected() < max {
-                state
-                    .ui
-                    .table_picker
-                    .set_selection(state.ui.table_picker.selected() + 1);
+            let selected = state.ui.table_picker().selected();
+            if selected < max {
+                state.ui.table_picker_mut().set_selection(selected + 1);
             }
             Some(vec![])
         }
@@ -118,10 +116,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: ListTarget::TablePicker | ListTarget::CommandPalette,
             motion: ListMotion::Previous,
         } => {
+            let selected = state.ui.table_picker().selected();
             state
                 .ui
-                .table_picker
-                .set_selection(state.ui.table_picker.selected().saturating_sub(1));
+                .table_picker_mut()
+                .set_selection(selected.saturating_sub(1));
             Some(vec![])
         }
         Action::ListSelect {
@@ -129,11 +128,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             motion: ListMotion::Next,
         } => {
             let max = state.er_filtered_tables().len().saturating_sub(1);
-            if state.ui.er_picker.selected() < max {
-                state
-                    .ui
-                    .er_picker
-                    .set_selection(state.ui.er_picker.selected() + 1);
+            let selected = state.ui.er_picker().selected();
+            if selected < max {
+                state.ui.er_picker_mut().set_selection(selected + 1);
             }
             Some(vec![])
         }
@@ -141,10 +138,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: ListTarget::ErTablePicker,
             motion: ListMotion::Previous,
         } => {
+            let selected = state.ui.er_picker().selected();
             state
                 .ui
-                .er_picker
-                .set_selection(state.ui.er_picker.selected().saturating_sub(1));
+                .er_picker_mut()
+                .set_selection(selected.saturating_sub(1));
             Some(vec![])
         }
         Action::ListSelect {
@@ -152,11 +150,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             motion: ListMotion::Next,
         } => {
             let max = palette_command_count().saturating_sub(1);
-            if state.ui.table_picker.selected() < max {
-                state
-                    .ui
-                    .table_picker
-                    .set_selection(state.ui.table_picker.selected() + 1);
+            let selected = state.ui.table_picker().selected();
+            if selected < max {
+                state.ui.table_picker_mut().set_selection(selected + 1);
             }
             Some(vec![])
         }
@@ -188,7 +184,7 @@ mod tests {
             );
 
             assert!(effects.is_some());
-            assert_eq!(state.ui.table_picker.filter_input().content(), "hello");
+            assert_eq!(state.ui.table_picker().filter_input().content(), "hello");
         }
 
         #[test]
@@ -203,14 +199,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.table_picker.filter_input().content(), "hello");
+            assert_eq!(state.ui.table_picker().filter_input().content(), "hello");
         }
 
         #[test]
         fn table_picker_resets_selection() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker.set_selection(5);
+            state.ui.table_picker_mut().set_selection(5);
 
             reduce_navigation(
                 &mut state,
@@ -219,7 +215,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.table_picker.selected(), 0);
+            assert_eq!(state.ui.table_picker().selected(), 0);
         }
 
         #[test]
@@ -280,8 +276,11 @@ mod tests {
             );
 
             assert!(effects.is_some());
-            assert_eq!(state.ui.er_picker.filter_input().content(), "public.users");
-            assert_eq!(state.ui.er_picker.selected(), 0);
+            assert_eq!(
+                state.ui.er_picker().filter_input().content(),
+                "public.users"
+            );
+            assert_eq!(state.ui.er_picker().selected(), 0);
         }
 
         #[test]
@@ -296,7 +295,10 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.er_picker.filter_input().content(), "public.users");
+            assert_eq!(
+                state.ui.er_picker().filter_input().content(),
+                "public.users"
+            );
         }
 
         #[test]
@@ -414,14 +416,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.table_picker.selected(), 1);
+            assert_eq!(state.ui.table_picker().selected(), 1);
         }
 
         #[test]
         fn table_picker_next_stops_at_last() {
             let mut state = state_with_tables(3);
             state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker.set_selection(2);
+            state.ui.table_picker_mut().set_selection(2);
 
             reduce_navigation(
                 &mut state,
@@ -433,14 +435,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.table_picker.selected(), 2);
+            assert_eq!(state.ui.table_picker().selected(), 2);
         }
 
         #[test]
         fn table_picker_previous_decrements() {
             let mut state = state_with_tables(5);
             state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker.set_selection(3);
+            state.ui.table_picker_mut().set_selection(3);
 
             reduce_navigation(
                 &mut state,
@@ -452,7 +454,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.table_picker.selected(), 2);
+            assert_eq!(state.ui.table_picker().selected(), 2);
         }
 
         #[test]
@@ -470,7 +472,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.table_picker.selected(), 0);
+            assert_eq!(state.ui.table_picker().selected(), 0);
         }
 
         #[test]
@@ -488,7 +490,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.er_picker.selected(), 1);
+            assert_eq!(state.ui.er_picker().selected(), 1);
         }
 
         #[test]
@@ -506,7 +508,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.er_picker.selected(), 0);
+            assert_eq!(state.ui.er_picker().selected(), 0);
         }
 
         #[test]
@@ -524,7 +526,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.table_picker.selected(), 1);
+            assert_eq!(state.ui.table_picker().selected(), 1);
         }
 
         #[test]
@@ -542,7 +544,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.table_picker.selected(), 0);
+            assert_eq!(state.ui.table_picker().selected(), 0);
         }
     }
 }

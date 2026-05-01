@@ -87,7 +87,7 @@ fn reduce_inner(
             if state.modal.active_mode() == InputMode::TablePicker {
                 let table = state
                     .filtered_tables()
-                    .get(state.ui.table_picker.selected())
+                    .get(state.ui.table_picker().selected())
                     .copied()
                     .cloned();
                 if let Some(table) = table {
@@ -113,7 +113,7 @@ fn reduce_inner(
             } else if state.modal.active_mode() == InputMode::CommandPalette {
                 use crate::update::input::palette::palette_action_for_index;
 
-                let cmd_action = palette_action_for_index(state.ui.table_picker.selected());
+                let cmd_action = palette_action_for_index(state.ui.table_picker().selected());
                 state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
             }
@@ -520,7 +520,7 @@ mod tests {
         #[test]
         fn open_table_picker_sets_mode_and_clears_filter() {
             let mut state = create_test_state();
-            state.ui.table_picker.insert_filter_str("test");
+            state.ui.table_picker_mut().insert_filter_str("test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -531,8 +531,8 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::TablePicker);
-            assert!(state.ui.table_picker.filter_input().content().is_empty());
-            assert_eq!(state.ui.table_picker.selected(), 0);
+            assert!(state.ui.table_picker().filter_input().content().is_empty());
+            assert_eq!(state.ui.table_picker().selected(), 0);
             assert!(effects.is_empty());
         }
 
@@ -1077,7 +1077,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
             state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker.set_selection(0);
+            state.ui.table_picker_mut().set_selection(0);
 
             reduce(
                 &mut state,
@@ -2272,7 +2272,7 @@ mod tests {
         #[test]
         fn open_clears_selections_and_filter() {
             let mut state = state_with_metadata();
-            state.ui.er_picker.insert_filter_str("old");
+            state.ui.er_picker_mut().insert_filter_str("old");
             state
                 .ui
                 .er_selected_tables
@@ -2287,8 +2287,8 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
-            assert!(state.ui.er_picker.filter_input().content().is_empty());
-            assert!(state.ui.er_selected_tables.is_empty());
+            assert!(state.ui.er_picker().filter_input().content().is_empty());
+            assert!(state.ui.er_selected_tables().is_empty());
             assert!(effects.is_empty());
         }
 
@@ -2304,7 +2304,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.ui.pending_er_picker);
+            assert!(state.ui.pending_er_picker());
             assert!(state.messages.last_success().is_some());
             assert_ne!(state.input_mode(), InputMode::ErTablePicker);
             assert!(effects.is_empty());
@@ -2334,7 +2334,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_dispatches_open() {
             let mut state = create_test_state();
-            state.ui.pending_er_picker = true;
+            state.ui.set_pending_er_picker(true);
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
@@ -2345,14 +2345,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(!state.ui.pending_er_picker);
+            assert!(!state.ui.pending_er_picker());
             assert!(has_open_er_dispatch(&effects));
         }
 
         #[test]
         fn metadata_loaded_without_pending_does_not_dispatch_open() {
             let mut state = create_test_state();
-            state.ui.pending_er_picker = false;
+            state.ui.set_pending_er_picker(false);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2368,7 +2368,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_but_non_normal_mode_discards() {
             let mut state = create_test_state();
-            state.ui.pending_er_picker = true;
+            state.ui.set_pending_er_picker(true);
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
 
@@ -2379,7 +2379,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(!state.ui.pending_er_picker);
+            assert!(!state.ui.pending_er_picker());
             assert!(!has_open_er_dispatch(&effects));
         }
 
@@ -2388,7 +2388,7 @@ mod tests {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            state.ui.er_picker.insert_filter_str("test");
+            state.ui.er_picker_mut().insert_filter_str("test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -2399,7 +2399,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.ui.er_picker.filter_input().content().is_empty());
+            assert!(state.ui.er_picker().filter_input().content().is_empty());
             assert!(effects.is_empty());
         }
 
@@ -2697,7 +2697,7 @@ mod tests {
             let entry_index = palette_index_of(|a| same_palette_action(a, &target_action));
 
             let mut state = state_in_palette_mode();
-            state.ui.table_picker.set_selection(entry_index);
+            state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
             reduce(
@@ -2716,7 +2716,7 @@ mod tests {
 
             let mut state = state_in_palette_mode();
             state.session.set_dsn_for_test("postgres://localhost/test");
-            state.ui.table_picker.set_selection(entry_index);
+            state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2738,7 +2738,7 @@ mod tests {
                 palette_index_of(|a| matches!(a, Action::OpenModal(ModalKind::ConnectionSelector)));
 
             let mut state = state_in_palette_mode();
-            state.ui.table_picker.set_selection(entry_index);
+            state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
             reduce(
