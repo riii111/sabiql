@@ -1403,7 +1403,6 @@ mod tests {
 
     mod connection_setup_validation {
         use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
-        use crate::model::shared::text_input::TextInputState;
         use crate::update::helpers::{validate_all, validate_field};
         use rstest::rstest;
 
@@ -1443,10 +1442,7 @@ mod tests {
 
             validate_field(&mut state, field);
 
-            assert_eq!(
-                state.validation_errors_for_test().contains_key(&field),
-                has_error
-            );
+            assert_eq!(state.has_validation_error(field), has_error);
         }
 
         #[rstest]
@@ -1461,11 +1457,7 @@ mod tests {
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Port)
-            );
+            assert!(state.has_validation_error(ConnectionField::Port));
         }
 
         #[rstest]
@@ -1481,11 +1473,7 @@ mod tests {
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Port)
-            );
+            assert!(state.has_validation_error(ConnectionField::Port));
         }
 
         #[rstest]
@@ -1501,11 +1489,7 @@ mod tests {
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(
-                !state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Port)
-            );
+            assert!(!state.has_validation_error(ConnectionField::Port));
         }
 
         #[rstest]
@@ -1513,56 +1497,32 @@ mod tests {
         #[case(ConnectionField::SslMode)]
         fn optional_fields_never_error(#[case] field: ConnectionField) {
             let mut state = setup_state();
-            state.set_input_for_test(ConnectionField::Password, TextInputState::default());
+            state.input_mut(ConnectionField::Password).unwrap().clear();
 
             validate_field(&mut state, field);
 
-            assert!(!state.validation_errors_for_test().contains_key(&field));
+            assert!(!state.has_validation_error(field));
         }
 
         #[test]
         fn validate_all_checks_all_required_fields() {
             let mut state = setup_state();
-            state.set_input_for_test(ConnectionField::Host, TextInputState::default());
+            state.input_mut(ConnectionField::Host).unwrap().clear();
             state
                 .input_mut(ConnectionField::Port)
                 .unwrap()
                 .set_content("invalid".to_string());
-            state.set_input_for_test(ConnectionField::Database, TextInputState::default());
-            state.set_input_for_test(ConnectionField::User, TextInputState::default());
+            state.input_mut(ConnectionField::Database).unwrap().clear();
+            state.input_mut(ConnectionField::User).unwrap().clear();
 
             validate_all(&mut state);
 
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Host)
-            );
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Port)
-            );
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Database)
-            );
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::User)
-            );
-            assert!(
-                !state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Password)
-            );
-            assert!(
-                !state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::SslMode)
-            );
+            assert!(state.has_validation_error(ConnectionField::Host));
+            assert!(state.has_validation_error(ConnectionField::Port));
+            assert!(state.has_validation_error(ConnectionField::Database));
+            assert!(state.has_validation_error(ConnectionField::User));
+            assert!(!state.has_validation_error(ConnectionField::Password));
+            assert!(!state.has_validation_error(ConnectionField::SslMode));
         }
     }
 

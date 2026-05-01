@@ -10,6 +10,8 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Position;
 
 use app::model::app_state::AppState;
+use app::model::connection::setup::ConnectionField;
+use app::model::shared::text_input::TextInputState;
 use app::services::AppServices;
 use ui::shell::layout::MainLayout;
 use ui::theme::{ThemePalette, palette_for};
@@ -27,6 +29,21 @@ pub fn create_test_state() -> AppState {
         .session
         .set_active_connection_name_for_test(Some("localhost:5432/test".to_string()));
     state
+}
+
+pub fn focus_connection_field(state: &mut AppState, field: ConnectionField) {
+    for _ in 0..state.connection_setup.visible_fields().len() {
+        if state.connection_setup.focused_field() == field {
+            return;
+        }
+        state.connection_setup.focus_next_field();
+    }
+}
+
+pub fn set_connection_input(state: &mut AppState, field: ConnectionField, input: TextInputState) {
+    if let Some(target) = state.connection_setup.input_mut(field) {
+        *target = input;
+    }
 }
 
 pub fn create_test_terminal() -> Terminal<TestBackend> {

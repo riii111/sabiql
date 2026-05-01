@@ -236,12 +236,16 @@ mod tests {
     mod paste {
         use super::*;
         use crate::model::connection::setup::ConnectionField;
-        use crate::model::shared::text_input::TextInputState;
 
         fn setup_state_with_field(field: ConnectionField) -> AppState {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.set_focused_field_for_test(field);
+            for _ in 0..state.connection_setup.visible_fields().len() {
+                if state.connection_setup.focused_field() == field {
+                    break;
+                }
+                state.connection_setup.focus_next_field();
+            }
             // Clear default values so tests start clean
             for field in [
                 ConnectionField::Host,
@@ -251,9 +255,7 @@ mod tests {
                 ConnectionField::Name,
                 ConnectionField::Password,
             ] {
-                state
-                    .connection_setup
-                    .set_input_for_test(field, TextInputState::default());
+                state.connection_setup.input_mut(field).unwrap().clear();
             }
             state
         }

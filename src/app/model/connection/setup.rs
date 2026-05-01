@@ -406,53 +406,6 @@ impl ConnectionSetupState {
         self.database_type_dropdown.is_open || self.ssl_dropdown.is_open
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn open_ssl_dropdown_for_test(&mut self) {
-        self.ssl_dropdown.is_open = true;
-        self.ssl_dropdown.selected_index = SslMode::all_variants()
-            .iter()
-            .position(|v| *v == self.ssl_mode)
-            .unwrap_or(2);
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn open_database_type_dropdown_for_test(&mut self) {
-        self.database_type_dropdown.is_open = true;
-        self.database_type_dropdown.selected_index = DatabaseType::all()
-            .iter()
-            .position(|v| *v == self.database_type)
-            .unwrap_or(0);
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_focused_field_for_test(&mut self, field: ConnectionField) {
-        self.focused_field = field;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_input_for_test(&mut self, field: ConnectionField, input: TextInputState) {
-        match field {
-            ConnectionField::DatabaseType | ConnectionField::SslMode => {}
-            ConnectionField::Name => self.name = input,
-            ConnectionField::SqlitePath => self.sqlite_path = input,
-            ConnectionField::Host => self.host = input,
-            ConnectionField::Port => self.port = input,
-            ConnectionField::Database => self.database = input,
-            ConnectionField::User => self.user = input,
-            ConnectionField::Password => self.password = input,
-        }
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn validation_errors_for_test(&self) -> &HashMap<ConnectionField, String> {
-        &self.validation_errors
-    }
-
     pub fn record_sqlite_config_error(&mut self, error: SqliteConnectionConfigError) {
         let message = match error {
             SqliteConnectionConfigError::EmptyPath => "Required",
