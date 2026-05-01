@@ -28,14 +28,17 @@ impl PostgresAdapter {
 
 impl DsnBuilder for PostgresAdapter {
     fn build_dsn(&self, profile: &ConnectionProfile) -> String {
+        let config = profile
+            .postgres_config()
+            .expect("PostgresAdapter requires a PostgreSQL profile");
         format!(
             "postgres://{}:{}@{}:{}/{}?sslmode={}",
-            urlencoding::encode(&profile.username),
-            urlencoding::encode(&profile.password),
-            &profile.host,
-            profile.port,
-            urlencoding::encode(&profile.database),
-            profile.ssl_mode
+            urlencoding::encode(&config.username),
+            urlencoding::encode(&config.password),
+            &config.host,
+            config.port,
+            urlencoding::encode(&config.database),
+            config.ssl_mode
         )
     }
 }

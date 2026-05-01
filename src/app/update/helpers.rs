@@ -207,6 +207,24 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
     state.validation_errors.remove(&field);
 
     match field {
+        ConnectionField::DatabaseType => {}
+        ConnectionField::SqlitePath => {
+            match crate::domain::connection::SqliteConnectionConfig::new(
+                state.sqlite_path.content().to_string(),
+            ) {
+                Ok(_) => {}
+                Err(crate::domain::connection::SqliteConnectionConfigError::EmptyPath) => {
+                    state
+                        .validation_errors
+                        .insert(field, "Required".to_string());
+                }
+                Err(crate::domain::connection::SqliteConnectionConfigError::UnsupportedPath) => {
+                    state
+                        .validation_errors
+                        .insert(field, "Unsupported characters".to_string());
+                }
+            }
+        }
         ConnectionField::Host => {
             if state.host.content().trim().is_empty() {
                 state
@@ -261,14 +279,16 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                     .insert(field, "Name must be 50 characters or less".to_string());
             }
         }
-        ConnectionField::Password | ConnectionField::SslMode => {
-            // Optional fields, no validation needed
-        }
+        ConnectionField::Password | ConnectionField::SslMode => {}
     }
 }
 
 pub fn validate_all(state: &mut ConnectionSetupState) {
-    for field in ConnectionField::all() {
+    let active_fields = ConnectionField::fields_for(state.database_type);
+    state
+        .validation_errors
+        .retain(|field, _| active_fields.contains(field));
+    for field in active_fields {
         validate_field(state, *field);
     }
 }
@@ -341,6 +361,59 @@ mod tests {
             validate_field(&mut state, ConnectionField::Name);
 
             assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
+        }
+    }
+
+    mod validate_sqlite_path {
+        use super::*;
+        use crate::domain::connection::DatabaseType;
+
+        #[test]
+        fn empty_path_sets_required_error() {
+            let mut state = ConnectionSetupState {
+                database_type: DatabaseType::SQLite,
+                ..ConnectionSetupState::default()
+            };
+            state.sqlite_path.set_content("   ".to_string());
+
+            validate_field(&mut state, ConnectionField::SqlitePath);
+
+            assert_eq!(
+                state.validation_errors.get(&ConnectionField::SqlitePath),
+                Some(&"Required".to_string())
+            );
+        }
+
+        #[test]
+        fn unsupported_path_characters_set_error() {
+            let mut state = ConnectionSetupState {
+                database_type: DatabaseType::SQLite,
+                ..ConnectionSetupState::default()
+            };
+            state.sqlite_path.set_content("/tmp/app\0.db".to_string());
+
+            validate_field(&mut state, ConnectionField::SqlitePath);
+
+            assert_eq!(
+                state.validation_errors.get(&ConnectionField::SqlitePath),
+                Some(&"Unsupported characters".to_string())
+            );
+        }
+
+        #[test]
+        fn validate_all_removes_errors_for_hidden_fields() {
+            let mut state = ConnectionSetupState {
+                database_type: DatabaseType::SQLite,
+                ..ConnectionSetupState::default()
+            };
+            state
+                .validation_errors
+                .insert(ConnectionField::Host, "Required".to_string());
+            state.sqlite_path.set_content("/tmp/app.db".to_string());
+
+            validate_all(&mut state);
+
+            assert!(!state.validation_errors.contains_key(&ConnectionField::Host));
         }
     }
 

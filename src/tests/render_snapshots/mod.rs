@@ -23,7 +23,7 @@ use app::policy::write::write_guardrails::{
     WritePreview,
 };
 use app::policy::write::write_update::normalize_for_diff;
-use domain::{CommandTag, QuerySource};
+use domain::{CommandTag, DatabaseType, QuerySource};
 
 mod confirm_dialogs;
 mod connection_flow;

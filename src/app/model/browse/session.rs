@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::domain::{
-    ConnectionId, DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary,
+    ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult, Table, TableSummary,
 };
 use crate::model::browse::query_execution::{PaginationState, QueryExecution};
 use crate::model::browse::result_history::ResultHistory;
@@ -40,6 +40,7 @@ pub struct BrowseSession {
     pub dsn: Option<String>,
     pub active_connection_id: Option<ConnectionId>,
     pub active_connection_name: Option<String>,
+    pub active_database_type: Option<DatabaseType>,
     pub read_only: bool,
     pub is_reloading: bool,
 }
@@ -90,6 +91,19 @@ impl BrowseSession {
     pub fn begin_connecting(&mut self, dsn: &str) {
         self.dsn = Some(dsn.to_string());
         self.mark_connecting();
+    }
+
+    pub fn set_active_connection(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+    ) {
+        self.active_connection_id = Some(id.clone());
+        self.active_connection_name = Some(name.to_string());
+        self.active_database_type = Some(database_type);
+        self.dsn = Some(dsn.to_string());
     }
 
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
@@ -175,6 +189,7 @@ impl BrowseSession {
         self.dsn = None;
         self.active_connection_id = None;
         self.active_connection_name = None;
+        self.active_database_type = None;
         self.read_only = false;
         self.is_reloading = false;
         query.pagination.reset();
@@ -619,6 +634,7 @@ mod tests {
             session.dsn = Some("postgres://host/db".to_string());
             session.active_connection_id = Some(ConnectionId::new());
             session.active_connection_name = Some("mydb".to_string());
+            session.active_database_type = Some(DatabaseType::PostgreSQL);
             session.read_only = true;
             session.is_reloading = true;
             let mut query = QueryExecution::default();
@@ -644,6 +660,7 @@ mod tests {
             assert!(session.dsn.is_none());
             assert!(session.active_connection_id.is_none());
             assert!(session.active_connection_name.is_none());
+            assert!(session.active_database_type.is_none());
             assert!(!session.read_only);
             assert!(!session.is_reloading);
             assert_eq!(query.pagination.current_page, 0);
