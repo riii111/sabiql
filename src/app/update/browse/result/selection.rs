@@ -11,12 +11,13 @@ use super::scroll::{result_col_count, result_row_count};
 fn ensure_cell_visible(state: &mut AppState) {
     if let Some(col) = state.result_interaction.selection().cell() {
         let plan = &state.ui.result_viewport_plan;
-        let h_offset = state.result_interaction.horizontal_offset;
+        let h_offset = state.result_interaction.horizontal_offset();
         if col < h_offset {
-            state.result_interaction.horizontal_offset = col;
+            state.result_interaction.set_horizontal_offset(col);
         } else if col >= h_offset + plan.column_count {
-            state.result_interaction.horizontal_offset =
-                col.saturating_sub(plan.column_count.saturating_sub(1));
+            state
+                .result_interaction
+                .set_horizontal_offset(col.saturating_sub(plan.column_count.saturating_sub(1)));
         }
     }
 }
@@ -27,8 +28,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let rows = result_row_count(state);
             let cols = result_col_count(state);
             if rows > 0 && cols > 0 {
-                let row = state.result_interaction.scroll_offset.min(rows - 1);
-                let col = state.result_interaction.horizontal_offset.min(cols - 1);
+                let row = state.result_interaction.scroll_offset().min(rows - 1);
+                let col = state.result_interaction.horizontal_offset().min(cols - 1);
                 state.result_interaction.activate_cell(row, col);
             }
             Some(vec![])

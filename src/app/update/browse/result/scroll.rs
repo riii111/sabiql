@@ -25,10 +25,13 @@ fn ensure_row_visible(state: &mut AppState) {
         if visible == 0 {
             return;
         }
-        if row < state.result_interaction.scroll_offset {
-            state.result_interaction.scroll_offset = row;
-        } else if row >= state.result_interaction.scroll_offset + visible {
-            state.result_interaction.scroll_offset = row - visible + 1;
+        let offset = state.result_interaction.scroll_offset();
+        if row < offset {
+            state.result_interaction.set_scroll_offset(row);
+        } else if row >= offset + visible {
+            state
+                .result_interaction
+                .set_scroll_offset(row - visible + 1);
         }
     }
 }
@@ -48,8 +51,13 @@ fn page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
 
 fn scroll_result_by(state: &mut AppState, direction: ScrollDirection, delta: usize) {
     let max_scroll = result_max_scroll(state);
-    state.result_interaction.scroll_offset =
-        direction.clamp_vertical_offset(state.result_interaction.scroll_offset, max_scroll, delta);
+    state
+        .result_interaction
+        .set_scroll_offset(direction.clamp_vertical_offset(
+            state.result_interaction.scroll_offset(),
+            max_scroll,
+            delta,
+        ));
 }
 
 fn move_result_row_and_scroll(state: &mut AppState, direction: ScrollDirection, delta: usize) {
@@ -80,8 +88,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             match new_row {
                 Some(r) => move_row_or_scroll(state, r, |_| {}),
                 None if state.result_interaction.selection().row().is_none() => {
-                    state.result_interaction.scroll_offset =
-                        state.result_interaction.scroll_offset.saturating_sub(1);
+                    state.result_interaction.set_scroll_offset(
+                        state.result_interaction.scroll_offset().saturating_sub(1),
+                    );
                 }
                 _ => {} // row == 0, no-op
             }
@@ -100,8 +109,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .map_or(0, |r| (r + 1).min(max_row));
             move_row_or_scroll(state, new_row, |s| {
                 let max_scroll = result_max_scroll(s);
-                if s.result_interaction.scroll_offset < max_scroll {
-                    s.result_interaction.scroll_offset += 1;
+                if s.result_interaction.scroll_offset() < max_scroll {
+                    s.result_interaction
+                        .set_scroll_offset(s.result_interaction.scroll_offset() + 1);
                 }
             });
             Some(vec![])
@@ -111,7 +121,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             direction: ScrollDirection::Up,
             amount: ScrollAmount::ToStart,
         } => {
-            move_row_or_scroll(state, 0, |s| s.result_interaction.scroll_offset = 0);
+            move_row_or_scroll(state, 0, |s| s.result_interaction.set_scroll_offset(0));
             Some(vec![])
         }
         Action::Scroll {
@@ -122,7 +132,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             let max_row = result_row_count(state).saturating_sub(1);
             let max_scroll = result_max_scroll(state);
             move_row_or_scroll(state, max_row, |s| {
-                s.result_interaction.scroll_offset = max_scroll;
+                s.result_interaction.set_scroll_offset(max_scroll);
             });
             Some(vec![])
         }
@@ -134,7 +144,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             if state.result_interaction.selection().row().is_some() {
                 let visible = state.result_visible_rows();
                 let total = result_row_count(state);
-                let offset = state.result_interaction.scroll_offset;
+                let offset = state.result_interaction.scroll_offset();
                 let displayed = visible.min(total.saturating_sub(offset));
                 let target_row = offset + displayed / 2;
                 state.result_interaction.move_row(target_row);
@@ -148,7 +158,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             amount: ScrollAmount::ViewportTop,
         } => {
             if state.result_interaction.selection().row().is_some() {
-                let target = state.result_interaction.scroll_offset;
+                let target = state.result_interaction.scroll_offset();
                 state.result_interaction.move_row(target);
                 ensure_row_visible(state);
             }
@@ -162,7 +172,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             if state.result_interaction.selection().row().is_some() {
                 let visible = state.result_visible_rows();
                 let total = result_row_count(state);
-                let offset = state.result_interaction.scroll_offset;
+                let offset = state.result_interaction.scroll_offset();
                 let displayed = visible.min(total.saturating_sub(offset));
                 let target = offset + displayed.saturating_sub(1);
                 state.result_interaction.move_row(target);
@@ -191,8 +201,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
                     let max_scroll = result_max_scroll(state);
-                    state.result_interaction.scroll_offset =
-                        row.saturating_sub(visible / 2).min(max_scroll);
+                    state
+                        .result_interaction
+                        .set_scroll_offset(row.saturating_sub(visible / 2).min(max_scroll));
                 }
             }
             Some(vec![])
@@ -206,7 +217,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
                     let max_scroll = result_max_scroll(state);
-                    state.result_interaction.scroll_offset = row.min(max_scroll);
+                    state
+                        .result_interaction
+                        .set_scroll_offset(row.min(max_scroll));
                 }
             }
             Some(vec![])
@@ -220,9 +233,10 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
                     let max_scroll = result_max_scroll(state);
-                    state.result_interaction.scroll_offset = row
-                        .saturating_sub(visible.saturating_sub(1))
-                        .min(max_scroll);
+                    state.result_interaction.set_scroll_offset(
+                        row.saturating_sub(visible.saturating_sub(1))
+                            .min(max_scroll),
+                    );
                 }
             }
             Some(vec![])
@@ -232,8 +246,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             direction: ScrollDirection::Left,
             amount: ScrollAmount::Line,
         } => {
-            state.result_interaction.horizontal_offset =
-                calculate_prev_column_offset(state.result_interaction.horizontal_offset);
+            state
+                .result_interaction
+                .set_horizontal_offset(calculate_prev_column_offset(
+                    state.result_interaction.horizontal_offset(),
+                ));
             Some(vec![])
         }
         Action::Scroll {
@@ -243,11 +260,13 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         } => {
             let plan = &state.ui.result_viewport_plan;
             let all_widths_len = plan.max_offset + plan.column_count;
-            state.result_interaction.horizontal_offset = calculate_next_column_offset(
-                all_widths_len,
-                state.result_interaction.horizontal_offset,
-                plan.column_count,
-            );
+            state
+                .result_interaction
+                .set_horizontal_offset(calculate_next_column_offset(
+                    all_widths_len,
+                    state.result_interaction.horizontal_offset(),
+                    plan.column_count,
+                ));
             Some(vec![])
         }
         _ => None,

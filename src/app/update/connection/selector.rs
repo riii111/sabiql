@@ -328,8 +328,8 @@ mod tests {
             state.query.enter_history(2);
             state.query.pagination.set_page_for_test(3);
             state.result_interaction.activate_cell(5, 0);
-            state.result_interaction.scroll_offset = 10;
-            state.result_interaction.horizontal_offset = 20;
+            state.result_interaction.set_scroll_offset(10);
+            state.result_interaction.set_horizontal_offset(20);
             state.result_interaction.stage_row(0);
 
             reduce(
@@ -344,8 +344,8 @@ mod tests {
                 state.result_interaction.selection().mode(),
                 crate::model::shared::ui_state::ResultNavMode::Scroll
             );
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-            assert_eq!(state.result_interaction.horizontal_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset(), 0);
+            assert_eq!(state.result_interaction.horizontal_offset(), 0);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert!(state.result_interaction.pending_write_preview().is_none());
         }

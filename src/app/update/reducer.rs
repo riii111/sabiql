@@ -259,7 +259,7 @@ mod tests {
         #[test]
         fn result_scroll_up_decrements_offset() {
             let mut state = create_test_state();
-            state.result_interaction.scroll_offset = 5;
+            state.result_interaction.set_scroll_offset(5);
             let now = Instant::now();
 
             let effects = reduce(
@@ -273,14 +273,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.result_interaction.scroll_offset, 4);
+            assert_eq!(state.result_interaction.scroll_offset(), 4);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn result_scroll_up_saturates_at_zero() {
             let mut state = create_test_state();
-            state.result_interaction.scroll_offset = 0;
+            state.result_interaction.set_scroll_offset(0);
             let now = Instant::now();
 
             let effects = reduce(
@@ -294,14 +294,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.result_interaction.scroll_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset(), 0);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn result_scroll_top_resets_to_zero() {
             let mut state = create_test_state();
-            state.result_interaction.scroll_offset = 10;
+            state.result_interaction.set_scroll_offset(10);
             let now = Instant::now();
 
             let effects = reduce(
@@ -315,7 +315,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.result_interaction.scroll_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset(), 0);
             assert!(effects.is_empty());
         }
 

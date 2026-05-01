@@ -30,11 +30,11 @@ pub fn reduce(
                     .and_then(|row| row.get(col_idx))
                     .cloned();
                 if let Some(value) = content {
-                    state.result_interaction.yank_flash = Some(YankFlash {
+                    state.result_interaction.set_yank_flash(Some(YankFlash {
                         row: row_idx,
                         col: Some(col_idx),
                         until: now + Duration::from_millis(200),
-                    });
+                    }));
                     Some(vec![Effect::CopyToClipboard {
                         content: value,
                         on_success: Some(Action::CellCopied),
@@ -85,11 +85,11 @@ pub fn reduce(
                             .join("\t")
                     });
                 if let Some(tsv) = content {
-                    state.result_interaction.yank_flash = Some(YankFlash {
+                    state.result_interaction.set_yank_flash(Some(YankFlash {
                         row: row_idx,
                         col: None,
                         until: now + Duration::from_millis(200),
-                    });
+                    }));
                     Some(vec![Effect::CopyToClipboard {
                         content: tsv,
                         on_success: Some(Action::CellCopied),
