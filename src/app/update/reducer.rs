@@ -904,6 +904,10 @@ mod tests {
             for _ in 0..5 {
                 state.connection_error.scroll_down(10);
             }
+            assert!(
+                state.connection_error.scroll_offset() > 0,
+                "test setup must create a non-zero scroll offset"
+            );
             let now = Instant::now();
 
             reduce(

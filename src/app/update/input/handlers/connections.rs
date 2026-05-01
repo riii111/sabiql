@@ -119,16 +119,27 @@ mod tests {
         }
 
         fn focus_field(state: &mut AppState, field: ConnectionField) {
-            for _ in 0..state.connection_setup.visible_fields().len() {
-                if state.connection_setup.focused_field() == field {
+            let fields = state.connection_setup.visible_fields();
+            let target_idx = fields
+                .iter()
+                .position(|candidate| *candidate == field)
+                .unwrap_or_else(|| panic!("field {field:?} is not visible: {fields:?}"));
+
+            loop {
+                let current = state.connection_setup.focused_field();
+                if current == field {
                     return;
                 }
-                state.connection_setup.focus_next_field();
+                let current_idx = fields
+                    .iter()
+                    .position(|candidate| *candidate == current)
+                    .expect("focused field must be visible");
+                if target_idx > current_idx {
+                    state.connection_setup.focus_next_field();
+                } else {
+                    state.connection_setup.focus_prev_field();
+                }
             }
-            panic!(
-                "field {field:?} not reachable in visible_fields: {:?}",
-                state.connection_setup.visible_fields()
-            );
         }
 
         #[test]
