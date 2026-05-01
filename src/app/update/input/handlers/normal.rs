@@ -66,7 +66,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Key sequence FSM: two-key sequences (zz, zt, zb)
     // Must be resolved before history whitelist and global actions so that
     // the second key (t, b, z) is never swallowed and the sequence is always cleared.
-    if let Some(prefix) = state.ui.key_sequence.pending_prefix() {
+    if let Some(prefix) = state.ui.key_sequence().pending_prefix() {
         if combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
             return Action::CancelKeySequence;
         }
@@ -159,7 +159,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         }
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
         Key::Char('e') => Action::OpenModal(ModalKind::ErTablePicker),
-        Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
+        Key::Char('c') if state.ui.focused_pane() == FocusedPane::Explorer => {
             Action::OpenModal(ModalKind::ConnectionSelector)
         }
 
@@ -194,20 +194,22 @@ mod tests {
 
     fn focus_mode_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-        state.ui.focused_pane = FocusedPane::Result;
+        state
+            .ui
+            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+        state.ui.set_focused_pane(FocusedPane::Result);
         state
     }
 
     fn result_focused_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Result;
+        state.ui.set_focused_pane(FocusedPane::Result);
         state
     }
 
     fn inspector_focused_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Inspector;
+        state.ui.set_focused_pane(FocusedPane::Inspector);
         state
     }
 
@@ -375,7 +377,7 @@ mod tests {
             #[test]
             fn enter_confirms_selection_when_explorer_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
 
                 let result = handle_normal_mode(combo(Key::Enter), &state);
 
@@ -409,7 +411,7 @@ mod tests {
             #[test]
             fn enter_noop_when_inspector_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
 
                 let result = handle_normal_mode(combo(Key::Enter), &state);
 
@@ -419,7 +421,7 @@ mod tests {
             #[test]
             fn enter_activates_cell_when_result_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Result;
+                state.ui.set_focused_pane(FocusedPane::Result);
 
                 let result = handle_normal_mode(combo(Key::Enter), &state);
 
@@ -445,7 +447,7 @@ mod tests {
             #[test]
             fn tab_switches_inspector_tab_when_inspector_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
 
                 let result = handle_normal_mode(combo(Key::Tab), &state);
 
@@ -455,7 +457,7 @@ mod tests {
             #[test]
             fn shift_tab_prev_when_inspector_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
 
                 let result = handle_normal_mode(combo(Key::BackTab), &state);
 
@@ -465,7 +467,7 @@ mod tests {
             #[test]
             fn tab_noop_when_explorer_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
 
                 let result = handle_normal_mode(combo(Key::Tab), &state);
 
@@ -475,7 +477,7 @@ mod tests {
             #[test]
             fn tab_noop_when_result_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Result;
+                state.ui.set_focused_pane(FocusedPane::Result);
 
                 let result = handle_normal_mode(combo(Key::Tab), &state);
 
@@ -485,7 +487,7 @@ mod tests {
             #[test]
             fn backtab_noop_when_explorer_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
 
                 let result = handle_normal_mode(combo(Key::BackTab), &state);
 
@@ -1179,7 +1181,9 @@ mod tests {
                 #[test]
                 fn bracket_nav_falls_through_when_not_in_history() {
                     let mut state = AppState::new("test".to_string());
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+                    state
+                        .ui
+                        .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
 
                     let next = handle_normal_mode(combo(Key::Char(']')), &state);
                     let prev = handle_normal_mode(combo(Key::Char('[')), &state);
@@ -1240,7 +1244,9 @@ mod tests {
                 ) {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+                    state
+                        .ui
+                        .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
 
                     let result = handle_normal_mode(combo(key), &state);
 
@@ -1258,7 +1264,9 @@ mod tests {
                 fn ctrl_p_and_ctrl_n_are_noop_in_history() {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+                    state
+                        .ui
+                        .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
 
                     let prev = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
                     let next = handle_normal_mode(combo_ctrl(Key::Char('n')), &state);
@@ -1271,7 +1279,9 @@ mod tests {
                 fn ctrl_scroll_is_allowed() {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+                    state
+                        .ui
+                        .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
 
                     assert!(matches!(
                         handle_normal_mode(combo_ctrl(Key::Char('d')), &state),
@@ -1328,7 +1338,9 @@ mod tests {
                 state.query.push_history(qr.clone());
                 state.query.set_current_result(qr);
                 state.query.enter_history(0);
-                state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                state
+                    .ui
+                    .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
                 state
             }
 
@@ -1363,7 +1375,9 @@ mod tests {
                 #[case(Key::Char('b'), CursorPosition::Bottom)]
                 fn z_prefix_scrolls_cursor(#[case] key: Key, #[case] position: CursorPosition) {
                     let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(key), &state);
 
@@ -1386,7 +1400,9 @@ mod tests {
                 #[case(Key::Char('b'), CursorPosition::Bottom)]
                 fn z_prefix_scrolls_cursor(#[case] key: Key, #[case] position: CursorPosition) {
                     let mut state = result_focused_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(key), &state);
 
@@ -1406,7 +1422,9 @@ mod tests {
                 #[test]
                 fn zz_cancels_sequence() {
                     let mut state = inspector_focused_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1420,7 +1438,9 @@ mod tests {
                 #[test]
                 fn zz_scrolls_cursor_to_center() {
                     let mut state = focus_mode_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1474,7 +1494,9 @@ mod tests {
                 #[test]
                 fn unknown_key_cancels_sequence() {
                     let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(Key::Char('x')), &state);
 
@@ -1484,7 +1506,9 @@ mod tests {
                 #[test]
                 fn takes_priority_over_global_actions() {
                     let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(Key::Char('?')), &state);
 
@@ -1494,7 +1518,9 @@ mod tests {
                 #[test]
                 fn ctrl_modifier_cancels_sequence() {
                     let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo_ctrl(Key::Char('t')), &state);
 
@@ -1504,7 +1530,9 @@ mod tests {
                 #[test]
                 fn alt_modifier_cancels_sequence() {
                     let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(KeyCombo::alt(Key::Char('b')), &state);
 
@@ -1561,8 +1589,10 @@ mod tests {
             state.query.push_history(qr.clone());
             state.query.set_current_result(qr);
             state.query.enter_history(0);
-            state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-            state.ui.focused_pane = FocusedPane::Result;
+            state
+                .ui
+                .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+            state.ui.set_focused_pane(FocusedPane::Result);
             state
         }
 
@@ -1719,7 +1749,9 @@ mod tests {
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
             let key_label = format!("{key:?}");
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);
@@ -1742,15 +1774,15 @@ mod tests {
 
             fn history_explorer_ctx() -> AppState {
                 let mut state = history_focus_ctx();
-                state.ui.focused_pane = FocusedPane::Explorer;
-                state.ui.focus_mode = FocusMode::Normal;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
+                state.ui.set_focus_mode(FocusMode::Normal);
                 state
             }
 
             fn history_inspector_ctx() -> AppState {
                 let mut state = history_focus_ctx();
-                state.ui.focused_pane = FocusedPane::Inspector;
-                state.ui.focus_mode = FocusMode::Normal;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
+                state.ui.set_focus_mode(FocusMode::Normal);
                 state
             }
 
@@ -1804,7 +1836,9 @@ mod tests {
             #[test]
             fn history_zz_explorer_scrolls_cursor() {
                 let mut state = history_explorer_ctx();
-                state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                state
+                    .ui
+                    .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
                 let actual = handle_normal_mode(combo(Key::Char('z')), &state);
                 assert_action(
                     actual,
@@ -1820,7 +1854,9 @@ mod tests {
             #[test]
             fn history_zz_inspector_clears() {
                 let mut state = history_inspector_ctx();
-                state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                state
+                    .ui
+                    .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
                 let actual = handle_normal_mode(combo(Key::Char('z')), &state);
                 assert_action(
                     actual,

@@ -30,11 +30,11 @@ pub fn reduce(
                     .and_then(|row| row.get(col_idx))
                     .cloned();
                 if let Some(value) = content {
-                    state.result_interaction.yank_flash = Some(YankFlash {
+                    state.result_interaction.set_yank_flash(Some(YankFlash {
                         row: row_idx,
                         col: Some(col_idx),
                         until: now + Duration::from_millis(200),
-                    });
+                    }));
                     Some(vec![Effect::CopyToClipboard {
                         content: value,
                         on_success: Some(Action::CellCopied),
@@ -55,7 +55,7 @@ pub fn reduce(
             Some(vec![])
         }
         Action::DdlYank => {
-            if state.ui.inspector_tab == InspectorTab::Ddl
+            if state.ui.inspector_tab() == InspectorTab::Ddl
                 && let Some(table) = state.session.table_detail().as_ref()
             {
                 let ddl = services.ddl_generator.generate_ddl(table);
@@ -85,11 +85,11 @@ pub fn reduce(
                             .join("\t")
                     });
                 if let Some(tsv) = content {
-                    state.result_interaction.yank_flash = Some(YankFlash {
+                    state.result_interaction.set_yank_flash(Some(YankFlash {
                         row: row_idx,
                         col: None,
                         until: now + Duration::from_millis(200),
-                    });
+                    }));
                     Some(vec![Effect::CopyToClipboard {
                         content: tsv,
                         on_success: Some(Action::CellCopied),
@@ -442,7 +442,7 @@ mod tests {
 
         fn state_with_ddl_tab() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
@@ -497,7 +497,7 @@ mod tests {
         #[test]
         fn without_table_detail_returns_empty() {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.ui.set_inspector_tab(InspectorTab::Ddl);
 
             let effects = reduce(
                 &mut state,
@@ -513,7 +513,7 @@ mod tests {
         #[test]
         fn on_non_ddl_tab_returns_empty() {
             let mut state = state_with_ddl_tab();
-            state.ui.inspector_tab = InspectorTab::Info;
+            state.ui.set_inspector_tab(InspectorTab::Info);
 
             let effects = reduce(
                 &mut state,

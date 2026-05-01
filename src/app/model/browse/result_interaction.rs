@@ -12,9 +12,9 @@ use crate::policy::write::write_guardrails::WritePreview;
 // - Callers must restore `input_mode` themselves when leaving `CellEdit`.
 #[derive(Debug, Clone, Default)]
 pub struct ResultInteraction {
-    pub scroll_offset: usize,
-    pub horizontal_offset: usize,
-    pub yank_flash: Option<YankFlash>,
+    scroll_offset: usize,
+    horizontal_offset: usize,
+    yank_flash: Option<YankFlash>,
 
     delete_op_pending: bool,
     yank_op_pending: bool,
@@ -45,6 +45,30 @@ impl ResultInteraction {
 
     pub fn pending_write_preview(&self) -> Option<&WritePreview> {
         self.pending_write_preview.as_ref()
+    }
+
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    pub fn horizontal_offset(&self) -> usize {
+        self.horizontal_offset
+    }
+
+    pub fn yank_flash(&self) -> Option<YankFlash> {
+        self.yank_flash
+    }
+
+    pub fn set_scroll_offset(&mut self, offset: usize) {
+        self.scroll_offset = offset;
+    }
+
+    pub fn set_horizontal_offset(&mut self, offset: usize) {
+        self.horizontal_offset = offset;
+    }
+
+    pub fn set_yank_flash(&mut self, flash: Option<YankFlash>) {
+        self.yank_flash = flash;
     }
 
     pub fn activate_cell(&mut self, row: usize, col: usize) {

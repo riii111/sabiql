@@ -23,7 +23,7 @@ pub(super) fn render_editor(
     now: Instant,
     theme: &ThemePalette,
 ) {
-    let content = state.sql_modal.editor.content();
+    let content = state.sql_modal.editor().content();
 
     // Cursor and highlight are omitted to reinforce that the SQL is not editable here.
     if matches!(
@@ -39,7 +39,7 @@ pub(super) fn render_editor(
                 ))
             })
             .collect();
-        let scroll_row = state.sql_modal.editor.scroll_row() as u16;
+        let scroll_row = state.sql_modal.editor().scroll_row() as u16;
         frame.render_widget(
             Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
@@ -54,7 +54,7 @@ pub(super) fn render_editor(
         SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
     );
 
-    let (cursor_row, cursor_col) = state.sql_modal.editor.cursor_to_position();
+    let (cursor_row, cursor_col) = state.sql_modal.editor().cursor_to_position();
     let cursor_kind = if is_normal {
         CursorKind::Block
     } else {
@@ -64,7 +64,7 @@ pub(super) fn render_editor(
         content,
         cursor_row,
         cursor_col,
-        scroll_row: state.sql_modal.editor.scroll_row(),
+        scroll_row: state.sql_modal.editor().scroll_row(),
         cursor_kind,
         empty_placeholder: if is_normal {
             " Press i to edit..."

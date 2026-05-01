@@ -78,7 +78,7 @@ pub fn reduce_explain_with_services(
             if reject_unsupported_explain(state, services) {
                 return Some(vec![]);
             }
-            let content = state.sql_modal.editor.content().trim().to_string();
+            let content = state.sql_modal.editor().content().trim().to_string();
             if content.is_empty() {
                 return Some(vec![]);
             }
@@ -111,7 +111,7 @@ pub fn reduce_explain_with_services(
             if reject_unsupported_explain(state, services) {
                 return Some(vec![]);
             }
-            let content = state.sql_modal.editor.content().trim().to_string();
+            let content = state.sql_modal.editor().content().trim().to_string();
             if content.is_empty() {
                 return Some(vec![]);
             }
@@ -218,7 +218,7 @@ pub fn reduce_explain_with_services(
             is_analyze,
             execution_time_ms,
         } => {
-            let query = state.sql_modal.editor.content().to_string();
+            let query = state.sql_modal.editor().content().to_string();
             finish_explain_success(
                 state,
                 plan_text.clone(),
@@ -247,20 +247,22 @@ pub fn reduce_explain_with_services(
                     // blank + title + blank + separator + blank + warning(2) + blank = 8
                     const CONFIRM_HEADER_LINES: usize = 8;
                     let content_lines =
-                        CONFIRM_HEADER_LINES + state.sql_modal.editor.content().lines().count();
-                    let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
+                        CONFIRM_HEADER_LINES + state.sql_modal.editor().content().lines().count();
+                    let modal_inner =
+                        ExplainContext::modal_inner_height(state.ui.terminal_height());
                     (
                         state.explain.confirm_scroll_offset(),
                         content_lines.saturating_sub(modal_inner),
                     )
                 }
                 ScrollTarget::ExplainPlan => {
-                    let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
+                    let modal_inner =
+                        ExplainContext::modal_inner_height(state.ui.terminal_height());
                     let max = state.explain.line_count().saturating_sub(modal_inner);
                     (state.explain.scroll_offset(), max)
                 }
                 ScrollTarget::ExplainCompare => {
-                    let max = state.explain.compare_max_scroll(state.ui.terminal_height);
+                    let max = state.explain.compare_max_scroll(state.ui.terminal_height());
                     (state.explain.compare_scroll_offset(), max)
                 }
                 _ => unreachable!(),
@@ -336,7 +338,10 @@ mod tests {
         #[test]
         fn empty_query_is_noop() {
             let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("  ".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("  ".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -348,7 +353,10 @@ mod tests {
         #[test]
         fn no_dsn_is_noop() {
             let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
@@ -359,7 +367,10 @@ mod tests {
         #[test]
         fn running_is_noop() {
             let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
@@ -372,7 +383,10 @@ mod tests {
         #[test]
         fn unsupported_database_sets_error_without_effects() {
             let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects = reduce_explain_with_services(
@@ -396,7 +410,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("SELECT 1; DELETE FROM users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
@@ -414,7 +428,10 @@ mod tests {
         #[test]
         fn starts_query_timer() {
             let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainRequest, Instant::now());
@@ -426,7 +443,10 @@ mod tests {
         #[test]
         fn emits_execute_explain_effect() {
             let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -466,7 +486,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("SELECT 1; DELETE FROM users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
@@ -485,7 +505,10 @@ mod tests {
         #[test]
         fn unsupported_database_sets_error_without_effects() {
             let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects = reduce_explain_with_services(
@@ -507,7 +530,10 @@ mod tests {
         #[test]
         fn select_executes_immediately_without_confirm() {
             let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -529,7 +555,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("INSERT INTO users VALUES (1)".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
@@ -552,7 +578,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("UPDATE users SET name='x' WHERE id=1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
@@ -575,7 +601,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("DELETE FROM users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
@@ -595,7 +621,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("DELETE FROM users WHERE id=1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
@@ -618,7 +644,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("DROP TABLE users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
@@ -638,7 +664,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("TRUNCATE users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
@@ -662,7 +688,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("DELETE FROM users WHERE id=1".to_string());
             state.session.set_dsn_for_test("dsn://test");
             state.session.enable_read_only();
@@ -680,7 +706,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("SELECT * FROM users".to_string());
             state.session.set_dsn_for_test("dsn://test");
             state.session.enable_read_only();
@@ -704,7 +730,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content("INSERT INTO users VALUES (1)".to_string());
             state.session.set_dsn_for_test("dsn://test");
             state.session.enable_read_only();
@@ -839,7 +865,10 @@ mod tests {
         #[test]
         fn two_explains_auto_advance_returns_comparable_slots() {
             let mut state = sql_modal_state();
-            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
             let now = Instant::now();
 
@@ -858,7 +887,10 @@ mod tests {
             assert!(state.explain.left().is_none());
 
             // Step 2: Second EXPLAIN — auto-advance moves right→left
-            state.sql_modal.editor.set_content("SELECT 2".to_string());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("SELECT 2".to_string());
             reduce_explain(&mut state, &Action::ExplainRequest, now);
             reduce_explain(
                 &mut state,
@@ -901,7 +933,7 @@ mod tests {
         #[test]
         fn plan_scroll_down_increments() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
@@ -924,14 +956,14 @@ mod tests {
         #[test]
         fn plan_scroll_down_clamps_at_max() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
             let modal_inner = crate::model::explain_context::ExplainContext::modal_inner_height(
-                state.ui.terminal_height,
+                state.ui.terminal_height(),
             );
             let max = state.explain.line_count().saturating_sub(modal_inner);
             state.explain.scroll_plan_to(max);
@@ -993,7 +1025,7 @@ mod tests {
         #[test]
         fn compare_scroll_down_stops_at_max() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
@@ -1001,7 +1033,7 @@ mod tests {
             state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
             state.explain.set_plan(long_plan, false, 0, "Q2");
 
-            let max = state.explain.compare_max_scroll(state.ui.terminal_height);
+            let max = state.explain.compare_max_scroll(state.ui.terminal_height());
 
             // Scroll to max
             for _ in 0..max + 5 {
@@ -1034,7 +1066,7 @@ mod tests {
         #[test]
         fn right_only_plan_scroll_down_increments() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()

@@ -186,7 +186,7 @@ pub async fn run(
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
             let history_tx = action_tx.clone();
-            let project = state.runtime.project_name.clone();
+            let project = state.runtime.project_name().to_string();
             let conn_id = state.session.active_connection_id().cloned();
             let query_for_history = query.clone();
 
@@ -250,7 +250,7 @@ pub async fn run(
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
             let history_tx = action_tx.clone();
-            let project = state.runtime.project_name.clone();
+            let project = state.runtime.project_name().to_string();
             let conn_id = state.session.active_connection_id().cloned();
             let query_for_history = query.clone();
 

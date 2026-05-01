@@ -16,7 +16,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         // ===== Connection Deletion =====
         Action::RequestDeleteSelectedConnection => {
             use crate::model::connection::list::ConnectionListItem;
-            let selected_idx = state.ui.connection_list_selected;
+            let selected_idx = state.ui.connection_list_selected();
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
                 _ => return Some(vec![]),
@@ -55,7 +55,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.connection_caches.remove(id);
 
             let list_len = state.connection_list_items().len();
-            if state.ui.connection_list_selected >= list_len && list_len > 0 {
+            if state.ui.connection_list_selected() >= list_len && list_len > 0 {
                 state.ui.set_connection_list_selection(Some(list_len - 1));
             }
 
@@ -78,7 +78,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         // ===== Connection Edit =====
         Action::RequestEditSelectedConnection => {
             use crate::model::connection::list::ConnectionListItem;
-            let selected_idx = state.ui.connection_list_selected;
+            let selected_idx = state.ui.connection_list_selected();
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
                 _ => return Some(vec![]),
@@ -143,7 +143,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
     }
 
@@ -155,7 +155,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
             state.set_connections(vec![profile]);
-            state.ui.connection_list_selected = 0;
+            state.ui.set_connection_list_selected_raw(0);
 
             reduce(
                 &mut state,
@@ -180,7 +180,7 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.ui.connection_list_selected = 0;
+            state.ui.set_connection_list_selected_raw(0);
             state
                 .session
                 .set_active_connection_id_for_test(Some(profile_id));
@@ -210,7 +210,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
             state.set_connections(vec![profile]);
-            state.ui.connection_list_selected = 0;
+            state.ui.set_connection_list_selected_raw(0);
 
             reduce(
                 &mut state,
@@ -246,7 +246,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
             state.set_connections(vec![profile]);
-            state.ui.connection_list_selected = 0;
+            state.ui.set_connection_list_selected_raw(0);
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.modal.set_mode(InputMode::ConnectionSelector);
 
@@ -328,8 +328,8 @@ mod tests {
             state.query.enter_history(2);
             state.query.pagination.set_page_for_test(3);
             state.result_interaction.activate_cell(5, 0);
-            state.result_interaction.scroll_offset = 10;
-            state.result_interaction.horizontal_offset = 20;
+            state.result_interaction.set_scroll_offset(10);
+            state.result_interaction.set_horizontal_offset(20);
             state.result_interaction.stage_row(0);
 
             reduce(
@@ -344,8 +344,8 @@ mod tests {
                 state.result_interaction.selection().mode(),
                 crate::model::shared::ui_state::ResultNavMode::Scroll
             );
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-            assert_eq!(state.result_interaction.horizontal_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset(), 0);
+            assert_eq!(state.result_interaction.horizontal_offset(), 0);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert!(state.result_interaction.pending_write_preview().is_none());
         }
@@ -357,7 +357,7 @@ mod tests {
             let profile2 = create_profile("Second");
             let id_to_delete = profile2.id.clone();
             state.set_connections(vec![profile1, profile2]);
-            state.ui.connection_list_selected = 1;
+            state.ui.set_connection_list_selected_raw(1);
 
             reduce(
                 &mut state,
@@ -365,7 +365,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
 
         #[test]

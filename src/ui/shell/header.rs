@@ -32,7 +32,7 @@ impl Header {
         let connection_name = state.session.active_connection_name().unwrap_or("-");
 
         let mut line = Line::from(vec![
-            Span::styled(&state.runtime.project_name, item_style),
+            Span::styled(state.runtime.project_name(), item_style),
             Span::styled(" | ", sep_style),
             Span::styled(db_name, item_style),
             Span::styled(" | ", sep_style),

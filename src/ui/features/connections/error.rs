@@ -101,7 +101,7 @@ impl ConnectionError {
             Span::styled(hint, Style::default().fg(theme.semantic.text.secondary)),
         ];
         if state.session.is_service_connection()
-            && let Some(ref path) = state.runtime.service_file_path
+            && let Some(path) = state.runtime.service_file_path()
         {
             spans.push(Span::styled(
                 format!("  (edit {})", path.display()),

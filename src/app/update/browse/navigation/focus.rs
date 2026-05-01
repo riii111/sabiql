@@ -22,7 +22,7 @@ pub fn reduce(
                     state.modal.set_mode(InputMode::Normal);
                 }
             }
-            state.ui.focused_pane = *pane;
+            state.ui.set_focused_pane(*pane);
             Some(vec![])
         }
         Action::ToggleFocus => {
@@ -47,15 +47,19 @@ pub fn reduce(
             Some(vec![])
         }
         Action::InspectorNextTab => {
-            state.ui.inspector_tab = services
-                .db_capabilities
-                .next_inspector_tab(state.ui.inspector_tab);
+            state.ui.set_inspector_tab(
+                services
+                    .db_capabilities
+                    .next_inspector_tab(state.ui.inspector_tab()),
+            );
             Some(vec![])
         }
         Action::InspectorPrevTab => {
-            state.ui.inspector_tab = services
-                .db_capabilities
-                .prev_inspector_tab(state.ui.inspector_tab);
+            state.ui.set_inspector_tab(
+                services
+                    .db_capabilities
+                    .prev_inspector_tab(state.ui.inspector_tab()),
+            );
             Some(vec![])
         }
 
@@ -124,7 +128,7 @@ mod tests {
         #[test]
         fn next_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Info;
+            state.ui.set_inspector_tab(InspectorTab::Info);
 
             reduce_navigation(
                 &mut state,
@@ -133,13 +137,13 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.inspector_tab, InspectorTab::Columns);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Columns);
         }
 
         #[test]
         fn prev_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Info;
+            state.ui.set_inspector_tab(InspectorTab::Info);
 
             reduce_navigation(
                 &mut state,
@@ -148,7 +152,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.inspector_tab, InspectorTab::Columns);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Columns);
         }
     }
 }

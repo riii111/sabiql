@@ -30,7 +30,7 @@ impl ResultPane {
         now: Instant,
         theme: &ThemePalette,
     ) -> (ViewportPlan, ColumnWidthsCache) {
-        let is_focused = state.ui.focused_pane == FocusedPane::Result;
+        let is_focused = state.ui.focused_pane() == FocusedPane::Result;
         let should_highlight = state
             .query
             .result_highlight_until()
@@ -57,10 +57,10 @@ impl ResultPane {
                     area,
                     result,
                     block,
-                    state.result_interaction.scroll_offset,
-                    state.result_interaction.horizontal_offset,
-                    &state.ui.result_viewport_plan,
-                    &state.ui.result_widths_cache,
+                    state.result_interaction.scroll_offset(),
+                    state.result_interaction.horizontal_offset(),
+                    state.ui.result_viewport_plan(),
+                    state.ui.result_widths_cache(),
                     state.query.result_generation(),
                     state.query.history_index(),
                     state.result_interaction.selection(),
@@ -86,7 +86,7 @@ impl ResultPane {
                     },
                     state.result_interaction.staged_delete_rows(),
                     history_bar,
-                    state.result_interaction.yank_flash,
+                    state.result_interaction.yank_flash(),
                     now,
                     theme,
                 )

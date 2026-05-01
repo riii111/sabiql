@@ -110,13 +110,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
 
-            if state.ui.pending_er_picker && state.modal.active_mode() == InputMode::Normal {
-                state.ui.pending_er_picker = false;
+            if state.ui.pending_er_picker() && state.modal.active_mode() == InputMode::Normal {
+                state.ui.set_pending_er_picker(false);
                 effects.push(Effect::DispatchActions(vec![Action::OpenModal(
                     ModalKind::ErTablePicker,
                 )]));
             } else {
-                state.ui.pending_er_picker = false;
+                state.ui.set_pending_er_picker(false);
             }
 
             Some(effects)
@@ -136,7 +136,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
         Action::TableDetailLoaded(detail, generation) => {
             if state.session.set_table_detail(*detail.clone(), *generation) {
-                state.ui.inspector_scroll_offset = 0;
+                state.ui.set_inspector_scroll_offset(0);
             }
             Some(vec![])
         }
@@ -177,8 +177,8 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();
-                state.ui.er_selected_tables.clear();
-                state.ui.pending_er_picker = false;
+                state.ui.clear_er_selected_tables();
+                state.ui.set_pending_er_picker(false);
                 state.messages.clear();
 
                 Some(vec![Effect::Sequence(vec![
@@ -724,7 +724,7 @@ mod tests {
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert!(state.session.selected_table_key().is_none());
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]
@@ -742,7 +742,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.query.pagination.table(), "users");
-            assert_eq!(state.ui.explorer_selected, 1);
+            assert_eq!(state.ui.explorer_selected(), 1);
             assert!(
                 effects
                     .iter()
@@ -766,7 +766,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]

@@ -22,7 +22,7 @@ fn focus_on_result_pane() {
     state
         .query
         .set_current_result(Arc::new(fixtures::sample_query_result(now)));
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -37,7 +37,9 @@ fn focus_mode_fullscreen_result() {
     state
         .query
         .set_current_result(Arc::new(fixtures::sample_query_result(now)));
-    state.ui.focus_mode = FocusMode::focused(state.ui.focused_pane);
+    state
+        .ui
+        .set_focus_mode(FocusMode::focused(state.ui.focused_pane()));
 
     let output = render_to_string(&mut terminal, &mut state);
 

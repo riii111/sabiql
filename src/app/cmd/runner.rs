@@ -240,55 +240,68 @@ impl EffectRunner {
                 let now = Instant::now();
                 let output = tui.draw(state, services, now)?;
                 if !state.ui.is_focus_mode() {
-                    state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
+                    state
+                        .ui
+                        .set_inspector_viewport_plan(output.inspector_viewport_plan);
                 }
-                state.ui.result_viewport_plan = output.result_viewport_plan;
-                state.ui.result_widths_cache = output.result_widths_cache;
-                state.ui.explorer_pane_height = output.explorer_pane_height;
-                state.ui.explorer_content_width = output.explorer_content_width;
+                state
+                    .ui
+                    .set_result_viewport_plan(output.result_viewport_plan);
+                state.ui.set_result_widths_cache(output.result_widths_cache);
+                state
+                    .ui
+                    .set_explorer_pane_height(output.explorer_pane_height);
+                state
+                    .ui
+                    .set_explorer_content_width(output.explorer_content_width);
                 let max_name_width = state
                     .tables()
                     .iter()
                     .map(|table| table.qualified_name().chars().count())
                     .max()
                     .unwrap_or(0);
-                let max_offset = scroll_max_offset(max_name_width, state.ui.explorer_content_width);
-                state.ui.explorer_horizontal_offset =
-                    state.ui.explorer_horizontal_offset.min(max_offset);
-                state.ui.inspector_pane_height = output.inspector_pane_height;
-                state.ui.result_pane_height = output.result_pane_height;
+                let max_offset =
+                    scroll_max_offset(max_name_width, state.ui.explorer_content_width());
+                state.ui.set_explorer_horizontal_offset(
+                    state.ui.explorer_horizontal_offset().min(max_offset),
+                );
+                state
+                    .ui
+                    .set_inspector_pane_height(output.inspector_pane_height);
+                state.ui.set_result_pane_height(output.result_pane_height);
                 if let Some(width) = output.command_line_visible_width {
                     state.command_line_visible_width = width;
                 }
                 if let Some(height) = output.connection_list_pane_height {
-                    state.ui.connection_list_pane_height = height;
+                    state.ui.set_connection_list_pane_height(height);
                 }
                 if let Some(height) = output.table_picker_pane_height {
-                    state.ui.table_picker.pane_height = height;
+                    state.ui.table_picker_mut().set_pane_height(height);
                 }
                 if let Some(width) = output.table_picker_filter_visible_width {
-                    state.ui.table_picker.filter_visible_width = width;
+                    state.ui.table_picker_mut().set_filter_visible_width(width);
                 }
                 if let Some(height) = output.er_picker_pane_height {
-                    state.ui.er_picker.pane_height = height;
+                    state.ui.er_picker_mut().set_pane_height(height);
                 }
                 if let Some(width) = output.er_picker_filter_visible_width {
-                    state.ui.er_picker.filter_visible_width = width;
+                    state.ui.er_picker_mut().set_filter_visible_width(width);
                 }
                 if let Some(height) = output.query_history_picker_pane_height {
-                    state.query_history_picker.pane_height = height;
+                    state.query_history_picker.set_pane_height(height);
                 }
                 if let Some(width) = output.query_history_picker_filter_visible_width {
-                    state.query_history_picker.filter_visible_width = width;
+                    state.query_history_picker.set_filter_visible_width(width);
                 }
                 if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
-                    state.ui.jsonb_detail_editor_visible_rows = visible_rows;
+                    state.ui.set_jsonb_detail_editor_visible_rows(visible_rows);
                     state.jsonb_detail.editor_mut().update_scroll(visible_rows);
                 }
-                state.confirm_dialog.preview_viewport_height =
-                    output.confirm_preview_viewport_height;
-                state.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
-                state.confirm_dialog.preview_scroll = output.confirm_preview_scroll;
+                state.confirm_dialog.apply_preview_metrics(
+                    output.confirm_preview_viewport_height,
+                    output.confirm_preview_content_height,
+                    output.confirm_preview_scroll,
+                );
                 if let Some(height) = output.explain_compare_viewport_height {
                     state.explain.set_compare_viewport_height(height);
                 }
@@ -516,7 +529,7 @@ mod tests {
                 )],
                 fetched_at: Instant::now(),
             })));
-            state.ui.explorer_horizontal_offset = 20;
+            state.ui.set_explorer_horizontal_offset(20);
 
             let ce = RefCell::new(CompletionEngine::new());
             let mut renderer = ExplorerWidthRenderer {
@@ -534,7 +547,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.explorer_horizontal_offset, 9);
+            assert_eq!(state.ui.explorer_horizontal_offset(), 9);
         }
 
         #[tokio::test]
@@ -575,7 +588,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.jsonb_detail_editor_visible_rows, 2);
+            assert_eq!(state.ui.jsonb_detail_editor_visible_rows(), 2);
             assert_eq!(state.jsonb_detail.editor().cursor_to_position().0, 3);
             assert_eq!(state.jsonb_detail.editor().scroll_row(), 2);
         }

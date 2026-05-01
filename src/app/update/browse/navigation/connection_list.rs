@@ -12,7 +12,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             motion: ListMotion::Next,
         } => {
             let len = state.connection_list_items().len();
-            let next = state.ui.connection_list_selected + 1;
+            let next = state.ui.connection_list_selected() + 1;
             if next < len {
                 state.ui.set_connection_list_selection(Some(next));
             }
@@ -22,10 +22,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             target: ListTarget::ConnectionList,
             motion: ListMotion::Previous,
         } => {
-            if state.ui.connection_list_selected > 0 {
+            if state.ui.connection_list_selected() > 0 {
                 state
                     .ui
-                    .set_connection_list_selection(Some(state.ui.connection_list_selected - 1));
+                    .set_connection_list_selection(Some(state.ui.connection_list_selected() - 1));
             }
             Some(vec![])
         }
@@ -45,8 +45,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.set_connections_and_services(sorted, services.clone());
             state
                 .runtime
-                .service_file_path
-                .clone_from(service_file_path);
+                .set_service_file_path(service_file_path.clone());
 
             if let Some(warning) = profile_load_warning {
                 state.messages.set_error_at(warning.clone(), now);
@@ -58,20 +57,20 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let list_len = state.connection_list_items().len();
             if list_len == 0 {
                 state.ui.set_connection_list_selection(Some(0));
-            } else if state.ui.connection_list_selected >= list_len {
+            } else if state.ui.connection_list_selected() >= list_len {
                 state
                     .ui
                     .set_connection_list_selection(Some(list_len.saturating_sub(1)));
             } else {
                 state
                     .ui
-                    .set_connection_list_selection(Some(state.ui.connection_list_selected));
+                    .set_connection_list_selection(Some(state.ui.connection_list_selected()));
             }
             Some(vec![])
         }
         Action::ConfirmConnectionSelection => {
             use crate::model::connection::list::ConnectionListItem;
-            let selected_idx = state.ui.connection_list_selected;
+            let selected_idx = state.ui.connection_list_selected();
 
             let effect = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => state
@@ -144,7 +143,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 1);
+            assert_eq!(state.ui.connection_list_selected(), 1);
         }
 
         #[test]
@@ -163,7 +162,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 1);
+            assert_eq!(state.ui.connection_list_selected(), 1);
         }
 
         #[test]
@@ -182,7 +181,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
 
         #[test]
@@ -201,7 +200,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
     }
 
@@ -253,7 +252,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
 
         #[test]
@@ -274,7 +273,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.runtime.service_file_path, Some(path));
+            assert_eq!(state.runtime.service_file_path(), Some(path.as_path()));
         }
 
         #[test]

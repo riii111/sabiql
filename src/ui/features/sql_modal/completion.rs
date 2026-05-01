@@ -14,8 +14,8 @@ pub(super) fn render_completion_popup(
     state: &AppState,
     theme: &ThemePalette,
 ) {
-    let (cursor_row, cursor_col) = state.sql_modal.editor.cursor_to_position();
-    let scroll_row = state.sql_modal.editor.scroll_row();
+    let (cursor_row, cursor_col) = state.sql_modal.editor().cursor_to_position();
+    let scroll_row = state.sql_modal.editor().scroll_row();
 
     let completion = state.sql_modal.completion();
     let max_items = 8;

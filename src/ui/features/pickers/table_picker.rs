@@ -45,7 +45,7 @@ impl TablePicker {
 
         let raw_width = filter_area.width.saturating_sub(4) as usize; // "  > " prefix
 
-        let input = state.ui.table_picker.filter_input();
+        let input = state.ui.table_picker().filter_input();
         let visible_width = filter_visible_width(raw_width, input.cursor(), input.char_count());
         let cursor_spans = text_cursor_spans(
             input.content(),
@@ -77,13 +77,13 @@ impl TablePicker {
             .highlight_symbol("▸ ");
 
         let selected = if filtered_count > 0 {
-            Some(state.ui.table_picker.selected())
+            Some(state.ui.table_picker().selected())
         } else {
             None
         };
         let mut list_state = ListState::default()
             .with_selected(selected)
-            .with_offset(state.ui.table_picker.scroll_offset());
+            .with_offset(state.ui.table_picker().scroll_offset());
         frame.render_stateful_widget(list, list_area, &mut list_state);
         TablePickerRenderMetrics {
             pane_height: list_area.height,

@@ -70,7 +70,7 @@ pub enum SqlModalStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct SqlModalContext {
-    pub editor: MultiLineInputState,
+    editor: MultiLineInputState,
     status: SqlModalStatus,
     last_adhoc_success: Option<AdhocSuccessSnapshot>,
     last_adhoc_error: Option<String>,
@@ -84,6 +84,14 @@ pub struct SqlModalContext {
 }
 
 impl SqlModalContext {
+    pub fn editor(&self) -> &MultiLineInputState {
+        &self.editor
+    }
+
+    pub fn editor_mut_for_input(&mut self) -> &mut MultiLineInputState {
+        &mut self.editor
+    }
+
     // ── Prefetch lifecycle ──────────────────────────────────────────
 
     pub fn reset_prefetch(&mut self) {

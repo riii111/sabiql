@@ -45,7 +45,7 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
         command_tag: None,
     }));
     state.query.pagination.set_table_for_test("public", "users");
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
     (state, now)
 }
@@ -56,7 +56,7 @@ fn result_pane_first_cell_active_mode() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -70,7 +70,7 @@ fn result_pane_cell_active_mode() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -84,7 +84,7 @@ fn result_pane_cell_edit_mode() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
     state
@@ -106,7 +106,7 @@ fn result_pane_cell_edit_cursor_at_head() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
     state
@@ -125,7 +125,7 @@ fn result_pane_cell_edit_cursor_at_middle() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
     state
@@ -144,7 +144,7 @@ fn result_pane_cell_active_pending_draft() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
     state
@@ -166,7 +166,7 @@ fn result_pane_cell_edit_cursor_at_tail() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
     state
@@ -189,7 +189,7 @@ fn result_pane_staged_delete_row() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 

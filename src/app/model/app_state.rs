@@ -126,7 +126,7 @@ impl AppState {
     }
 
     pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
-        self.ui.jsonb_detail_editor_visible_rows
+        self.ui.jsonb_detail_editor_visible_rows()
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
@@ -134,7 +134,12 @@ impl AppState {
     }
 
     pub fn filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.table_picker.filter_input().content().to_lowercase();
+        let filter_lower = self
+            .ui
+            .table_picker()
+            .filter_input()
+            .content()
+            .to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -147,7 +152,7 @@ impl AppState {
     }
 
     pub fn er_filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.er_picker.filter_input().content().to_lowercase();
+        let filter_lower = self.ui.er_picker().filter_input().content().to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -288,7 +293,7 @@ mod tests {
         #[case(30, 25)]
         fn result_rows_follow_pane_height(#[case] pane_height: u16, #[case] expected: usize) {
             let mut state = make_state();
-            state.ui.result_pane_height = pane_height;
+            state.ui.set_result_pane_height(pane_height);
 
             let visible = state.result_visible_rows();
 
@@ -298,7 +303,7 @@ mod tests {
         #[test]
         fn result_rows_clamp_small_heights() {
             let mut state = make_state();
-            state.ui.result_pane_height = 2;
+            state.ui.set_result_pane_height(2);
 
             let visible = state.result_visible_rows();
 
@@ -308,7 +313,7 @@ mod tests {
         #[test]
         fn result_rows_stay_zero_at_minimum() {
             let mut state = make_state();
-            state.ui.result_pane_height = 1;
+            state.ui.set_result_pane_height(1);
 
             let visible = state.result_visible_rows();
 
@@ -318,7 +323,7 @@ mod tests {
         #[test]
         fn result_rows_scale_with_height() {
             let mut state = make_state();
-            state.ui.result_pane_height = 50;
+            state.ui.set_result_pane_height(50);
 
             let visible = state.result_visible_rows();
 
@@ -328,7 +333,7 @@ mod tests {
         #[test]
         fn inspector_ddl_rows_exceed_standard_rows() {
             let mut state = make_state();
-            state.ui.inspector_pane_height = 20;
+            state.ui.set_inspector_pane_height(20);
 
             let standard = state.inspector_visible_rows();
             let ddl = state.inspector_ddl_visible_rows();
@@ -343,7 +348,7 @@ mod tests {
         #[case(20, 17)]
         fn inspector_ddl_rows_subtract_three(#[case] pane_height: u16, #[case] expected: usize) {
             let mut state = make_state();
-            state.ui.inspector_pane_height = pane_height;
+            state.ui.set_inspector_pane_height(pane_height);
 
             let visible = state.inspector_ddl_visible_rows();
 
@@ -353,7 +358,7 @@ mod tests {
         #[test]
         fn inspector_ddl_rows_clamp_small_heights() {
             let mut state = make_state();
-            state.ui.inspector_pane_height = 2;
+            state.ui.set_inspector_pane_height(2);
 
             let visible = state.inspector_ddl_visible_rows();
 
@@ -371,7 +376,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ])));
-            state.ui.table_picker.clear_filter();
+            state.ui.table_picker_mut().clear_filter();
 
             let filtered = state.filtered_tables();
 
@@ -385,7 +390,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ])));
-            state.ui.table_picker.insert_filter_str("user");
+            state.ui.table_picker_mut().insert_filter_str("user");
 
             let filtered = state.filtered_tables();
 
@@ -404,7 +409,7 @@ mod tests {
                     Some(100),
                     false,
                 )])));
-            state.ui.table_picker.insert_filter_str("user");
+            state.ui.table_picker_mut().insert_filter_str("user");
 
             let filtered = state.filtered_tables();
 
@@ -596,15 +601,15 @@ mod tests {
         #[test]
         fn toggle_focus_enters_focus_mode() {
             let mut state = make_state();
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
 
             let result = state.toggle_focus();
 
             assert!(result);
             assert!(state.ui.is_focus_mode());
-            assert_eq!(state.ui.focused_pane, FocusedPane::Result);
+            assert_eq!(state.ui.focused_pane(), FocusedPane::Result);
             assert_eq!(
-                state.ui.focus_mode.previous_pane(),
+                state.ui.focus_mode().previous_pane(),
                 Some(FocusedPane::Explorer)
             );
         }
@@ -612,14 +617,14 @@ mod tests {
         #[test]
         fn toggle_focus_restores_previous_pane() {
             let mut state = make_state();
-            state.ui.focused_pane = FocusedPane::Inspector;
+            state.ui.set_focused_pane(FocusedPane::Inspector);
             state.toggle_focus();
 
             let result = state.toggle_focus();
 
             assert!(result);
             assert!(!state.ui.is_focus_mode());
-            assert_eq!(state.ui.focused_pane, FocusedPane::Inspector);
+            assert_eq!(state.ui.focused_pane(), FocusedPane::Inspector);
         }
 
         #[test]
@@ -679,7 +684,7 @@ mod tests {
                     .session
                     .select_table("public", "users", &mut state.query.pagination);
                 let generation = state.session.selection_generation();
-                state.ui.inspector_scroll_offset = 42;
+                state.ui.set_inspector_scroll_offset(42);
 
                 reduce_metadata(
                     &mut state,
@@ -687,14 +692,14 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.ui.inspector_scroll_offset, 0);
+                assert_eq!(state.ui.inspector_scroll_offset(), 0);
             }
 
             #[test]
             fn offset_defaults_to_zero() {
                 let state = make_state();
 
-                assert_eq!(state.ui.inspector_scroll_offset, 0);
+                assert_eq!(state.ui.inspector_scroll_offset(), 0);
                 assert!(state.session.table_detail().is_none());
             }
         }
