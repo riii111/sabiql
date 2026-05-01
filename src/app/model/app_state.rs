@@ -456,24 +456,20 @@ mod tests {
         fn prefetch_queue_starts_empty() {
             let state = make_state();
 
-            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(state.sql_modal.prefetch_queue().is_empty());
             assert!(!state.sql_modal.is_prefetch_started());
         }
 
         #[test]
         fn prefetch_queue_is_fifo() {
             let mut state = make_state();
+            state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
-            state
-                .sql_modal
-                .prefetch_queue
-                .push_back("public.orders".to_string());
+                .enqueue_prefetch("public.orders".to_string());
 
-            let first = state.sql_modal.prefetch_queue.pop_front();
-            let second = state.sql_modal.prefetch_queue.pop_front();
+            let first = state.sql_modal.pop_prefetch();
+            let second = state.sql_modal.pop_prefetch();
 
             assert_eq!(first, Some("public.users".to_string()));
             assert_eq!(second, Some("public.orders".to_string()));
@@ -483,13 +479,20 @@ mod tests {
         fn prefetching_tables_track_in_flight() {
             let mut state = make_state();
 
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert("public.users".to_string());
+            state.sql_modal.mark_prefetching("public.users".to_string());
 
-            assert!(state.sql_modal.prefetching_tables.contains("public.users"));
-            assert!(!state.sql_modal.prefetching_tables.contains("public.orders"));
+            assert!(
+                state
+                    .sql_modal
+                    .prefetching_tables()
+                    .contains("public.users")
+            );
+            assert!(
+                !state
+                    .sql_modal
+                    .prefetching_tables()
+                    .contains("public.orders")
+            );
         }
 
         #[test]
@@ -497,7 +500,7 @@ mod tests {
             let mut state = make_state();
             let now = Instant::now();
 
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.record_prefetch_failure(
                 "public.users".to_string(),
                 crate::model::sql_editor::modal::FailedPrefetchEntry {
                     failed_at: now,
@@ -509,12 +512,12 @@ mod tests {
             assert!(
                 state
                     .sql_modal
-                    .failed_prefetch_tables
+                    .failed_prefetch_tables()
                     .contains_key("public.users")
             );
             let entry = state
                 .sql_modal
-                .failed_prefetch_tables
+                .failed_prefetch_tables()
                 .get("public.users")
                 .unwrap();
             assert_eq!(entry.failed_at, now);
@@ -529,15 +532,11 @@ mod tests {
             let mut state = make_state();
             state.session.begin_connecting("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
+            state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert("public.orders".to_string());
-            state.sql_modal.failed_prefetch_tables.insert(
+                .mark_prefetching("public.orders".to_string());
+            state.sql_modal.record_prefetch_failure(
                 "public.failed".to_string(),
                 crate::model::sql_editor::modal::FailedPrefetchEntry {
                     failed_at: Instant::now(),
@@ -555,9 +554,9 @@ mod tests {
             reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(!state.sql_modal.is_prefetch_started());
-            assert!(state.sql_modal.prefetch_queue.is_empty());
-            assert!(state.sql_modal.prefetching_tables.is_empty());
-            assert!(state.sql_modal.failed_prefetch_tables.is_empty());
+            assert!(state.sql_modal.prefetch_queue().is_empty());
+            assert!(state.sql_modal.prefetching_tables().is_empty());
+            assert!(state.sql_modal.failed_prefetch_tables().is_empty());
         }
 
         #[test]

@@ -785,10 +785,7 @@ mod tests {
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
             state.sql_modal.begin_prefetch();
-            state
-                .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
+            state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
@@ -805,7 +802,7 @@ mod tests {
             );
 
             assert!(!state.sql_modal.is_prefetch_started());
-            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(state.sql_modal.prefetch_queue().is_empty());
             assert!(state.session.table_detail().is_none());
         }
 

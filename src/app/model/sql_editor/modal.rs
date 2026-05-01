@@ -76,9 +76,9 @@ pub struct SqlModalContext {
     last_adhoc_error: Option<String>,
     completion: CompletionState,
     completion_debounce: Option<Instant>,
-    pub prefetch_queue: VecDeque<String>,
-    pub prefetching_tables: HashSet<String>,
-    pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
+    prefetch_queue: VecDeque<String>,
+    prefetching_tables: HashSet<String>,
+    failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     prefetch_started: bool,
     active_tab: SqlModalTab,
 }
@@ -106,6 +106,44 @@ impl SqlModalContext {
 
     pub fn is_prefetch_started(&self) -> bool {
         self.prefetch_started
+    }
+
+    pub fn prefetch_queue(&self) -> &VecDeque<String> {
+        &self.prefetch_queue
+    }
+
+    pub fn prefetching_tables(&self) -> &HashSet<String> {
+        &self.prefetching_tables
+    }
+
+    pub fn failed_prefetch_tables(&self) -> &HashMap<String, FailedPrefetchEntry> {
+        &self.failed_prefetch_tables
+    }
+
+    pub fn enqueue_prefetch(&mut self, table: String) {
+        self.prefetch_queue.push_back(table);
+    }
+
+    pub fn pop_prefetch(&mut self) -> Option<String> {
+        self.prefetch_queue.pop_front()
+    }
+
+    pub fn mark_prefetching(&mut self, table: String) {
+        self.prefetching_tables.insert(table);
+    }
+
+    pub fn finish_prefetch(&mut self, table: &str) {
+        self.prefetching_tables.remove(table);
+        self.failed_prefetch_tables.remove(table);
+    }
+
+    pub fn record_prefetch_failure(&mut self, table: String, entry: FailedPrefetchEntry) {
+        self.prefetching_tables.remove(&table);
+        self.failed_prefetch_tables.insert(table, entry);
+    }
+
+    pub fn remove_failed_prefetch(&mut self, table: &str) {
+        self.failed_prefetch_tables.remove(table);
     }
 
     // ── Adhoc status ────────────────────────────────────────────────
