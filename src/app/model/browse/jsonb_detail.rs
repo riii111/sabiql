@@ -175,10 +175,6 @@ impl JsonbDetailState {
         &mut self.search
     }
 
-    pub fn set_mode(&mut self, mode: JsonbDetailMode) {
-        self.mode = mode;
-    }
-
     pub fn enter_search(&mut self) {
         self.mode = JsonbDetailMode::Searching;
         self.search.reset();

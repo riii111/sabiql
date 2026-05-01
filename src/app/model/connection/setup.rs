@@ -410,12 +410,20 @@ impl ConnectionSetupState {
     #[doc(hidden)]
     pub fn open_ssl_dropdown_for_test(&mut self) {
         self.ssl_dropdown.is_open = true;
+        self.ssl_dropdown.selected_index = SslMode::all_variants()
+            .iter()
+            .position(|v| *v == self.ssl_mode)
+            .unwrap_or(2);
     }
 
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
     pub fn open_database_type_dropdown_for_test(&mut self) {
         self.database_type_dropdown.is_open = true;
+        self.database_type_dropdown.selected_index = DatabaseType::all()
+            .iter()
+            .position(|v| *v == self.database_type)
+            .unwrap_or(0);
     }
 
     #[cfg(any(test, feature = "test-support"))]

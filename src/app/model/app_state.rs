@@ -468,8 +468,8 @@ mod tests {
                 .sql_modal
                 .enqueue_prefetch("public.orders".to_string());
 
-            let first = state.sql_modal.pop_prefetch();
-            let second = state.sql_modal.pop_prefetch();
+            let first = state.sql_modal.start_prefetch();
+            let second = state.sql_modal.start_prefetch();
 
             assert_eq!(first, Some("public.users".to_string()));
             assert_eq!(second, Some("public.orders".to_string()));

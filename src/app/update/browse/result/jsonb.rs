@@ -696,7 +696,7 @@ mod tests {
             state.ui.jsonb_detail_editor_visible_rows = 3;
             open_detail(&mut state);
             state.modal.replace_mode(InputMode::JsonbEdit);
-            state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
+            state.jsonb_detail.enter_edit();
             state
                 .jsonb_detail
                 .editor_mut()
@@ -722,7 +722,7 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
             state.modal.replace_mode(InputMode::JsonbEdit);
-            state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
+            state.jsonb_detail.enter_edit();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::G);
 
             reduce(

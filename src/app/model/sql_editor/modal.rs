@@ -121,25 +121,46 @@ impl SqlModalContext {
     }
 
     pub fn enqueue_prefetch(&mut self, table: String) {
+        if self.prefetching_tables.contains(&table) || self.prefetch_queue.contains(&table) {
+            return;
+        }
         self.prefetch_queue.push_back(table);
     }
 
-    pub fn pop_prefetch(&mut self) -> Option<String> {
-        self.prefetch_queue.pop_front()
+    pub fn start_prefetch(&mut self) -> Option<String> {
+        while let Some(table) = self.prefetch_queue.pop_front() {
+            if self.prefetching_tables.insert(table.clone()) {
+                return Some(table);
+            }
+        }
+        None
     }
 
     pub fn mark_prefetching(&mut self, table: String) {
+        self.prefetch_queue.retain(|queued| queued != &table);
         self.prefetching_tables.insert(table);
     }
 
     pub fn finish_prefetch(&mut self, table: &str) {
+        self.prefetch_queue.retain(|queued| queued != table);
         self.prefetching_tables.remove(table);
         self.failed_prefetch_tables.remove(table);
     }
 
     pub fn record_prefetch_failure(&mut self, table: String, entry: FailedPrefetchEntry) {
+        self.prefetch_queue.retain(|queued| queued != &table);
         self.prefetching_tables.remove(&table);
         self.failed_prefetch_tables.insert(table, entry);
+    }
+
+    pub fn defer_prefetch_retry(&mut self, table: String) {
+        self.prefetching_tables.remove(&table);
+        self.enqueue_prefetch(table);
+    }
+
+    pub fn abandon_prefetch(&mut self, table: &str) {
+        self.prefetch_queue.retain(|queued| queued != table);
+        self.prefetching_tables.remove(table);
     }
 
     // ── Adhoc status ────────────────────────────────────────────────

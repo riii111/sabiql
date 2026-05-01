@@ -270,7 +270,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             let mut actions = Vec::new();
             for _ in 0..available_slots {
-                if let Some(qualified_name) = state.sql_modal.pop_prefetch()
+                if let Some(qualified_name) = state.sql_modal.start_prefetch()
                     && let Some((schema, table)) = qualified_name.split_once('.')
                 {
                     actions.push(Action::PrefetchTableDetail {
@@ -290,25 +290,19 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         Action::PrefetchTableDetail { schema, table } => {
             let qualified_name = format!("{schema}.{table}");
 
-            if state
-                .sql_modal
-                .prefetching_tables()
-                .contains(&qualified_name)
-            {
-                return Some(vec![]);
-            }
-
             if let Some(entry) = state
                 .sql_modal
                 .failed_prefetch_tables()
                 .get(&qualified_name)
             {
-                if entry.retry_count >= MAX_PREFETCH_RETRIES {
+                let retry_count = entry.retry_count;
+                let failed_at = entry.failed_at;
+                let error = entry.error.clone();
+                if retry_count >= MAX_PREFETCH_RETRIES {
                     // Exceeded retry limit — give up, don't re-queue
+                    state.sql_modal.abandon_prefetch(&qualified_name);
                     state.er_preparation.remove_pending_table(&qualified_name);
-                    state
-                        .er_preparation
-                        .on_table_failed(&qualified_name, entry.error.clone());
+                    state.er_preparation.on_table_failed(&qualified_name, error);
                     let mut effects = check_er_completion(state);
                     // No fetch started → no completion event to re-drive the queue.
                     if effects.is_empty() && state.er_preparation.status() == ErStatus::Waiting {
@@ -318,13 +312,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 }
 
                 let backoff_secs =
-                    (BASE_BACKOFF_SECS * 2u64.pow(entry.retry_count)).min(MAX_BACKOFF_SECS);
-                let elapsed = entry.failed_at.elapsed().as_secs();
+                    (BASE_BACKOFF_SECS * 2u64.pow(retry_count)).min(MAX_BACKOFF_SECS);
+                let elapsed = failed_at.elapsed().as_secs();
                 if elapsed < backoff_secs {
                     // Still in backoff — re-queue at tail and schedule a delayed retry
                     // to avoid busy-looping while waiting for the backoff to expire.
                     let remaining = backoff_secs - elapsed;
-                    state.sql_modal.enqueue_prefetch(qualified_name);
+                    state.sql_modal.defer_prefetch_retry(qualified_name);
                     return Some(vec![Effect::DelayedProcessPrefetchQueue {
                         delay_secs: remaining,
                     }]);
