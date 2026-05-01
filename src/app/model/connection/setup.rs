@@ -233,32 +233,8 @@ impl ConnectionSetupState {
         }
     }
 
-    pub fn name(&self) -> &TextInputState {
-        &self.name
-    }
-
-    pub fn sqlite_path(&self) -> &TextInputState {
-        &self.sqlite_path
-    }
-
-    pub fn host(&self) -> &TextInputState {
-        &self.host
-    }
-
-    pub fn port(&self) -> &TextInputState {
-        &self.port
-    }
-
-    pub fn database(&self) -> &TextInputState {
-        &self.database
-    }
-
-    pub fn user(&self) -> &TextInputState {
-        &self.user
-    }
-
-    pub fn password(&self) -> &TextInputState {
-        &self.password
+    pub fn port_mut(&mut self) -> &mut TextInputState {
+        &mut self.port
     }
 
     pub fn default_name(&self) -> String {
@@ -276,20 +252,6 @@ impl ConnectionSetupState {
                 .file_name_for_display()
                 .unwrap_or("SQLite")
                 .to_string(),
-        }
-    }
-
-    pub fn field_value(&self, field: ConnectionField) -> &str {
-        match field {
-            ConnectionField::DatabaseType => "",
-            ConnectionField::Name => self.name.content(),
-            ConnectionField::SqlitePath => self.sqlite_path.content(),
-            ConnectionField::Host => self.host.content(),
-            ConnectionField::Port => self.port.content(),
-            ConnectionField::Database => self.database.content(),
-            ConnectionField::User => self.user.content(),
-            ConnectionField::Password => self.password.content(),
-            ConnectionField::SslMode => "",
         }
     }
 
@@ -331,10 +293,6 @@ impl ConnectionSetupState {
 
     pub fn set_first_run(&mut self, is_first_run: bool) {
         self.is_first_run = is_first_run;
-    }
-
-    pub fn has_errors(&self) -> bool {
-        self.has_validation_errors()
     }
 
     pub fn is_edit_mode(&self) -> bool {
@@ -679,7 +637,7 @@ mod tests {
         #[test]
         fn has_errors_returns_false_when_empty() {
             let state = ConnectionSetupState::default();
-            assert!(!state.has_errors());
+            assert!(!state.has_validation_errors());
         }
 
         #[test]
@@ -688,7 +646,7 @@ mod tests {
             state
                 .validation_errors
                 .insert(ConnectionField::Host, "Required".to_string());
-            assert!(state.has_errors());
+            assert!(state.has_validation_errors());
         }
 
         #[test]
@@ -701,7 +659,7 @@ mod tests {
                 .validation_errors
                 .insert(ConnectionField::Port, "Invalid".to_string());
             state.clear_errors();
-            assert!(!state.has_errors());
+            assert!(!state.has_validation_errors());
         }
 
         #[test]

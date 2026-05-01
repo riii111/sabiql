@@ -129,7 +129,7 @@ impl ConnectionSetup {
         theme: &ThemePalette,
     ) {
         let is_focused = field == state.focused_field();
-        let value = state.field_value(field);
+        let value = state.input(field).map_or("", |input| input.content());
         let error = state.validation_error(field);
 
         let chunks = Layout::horizontal([

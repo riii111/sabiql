@@ -2080,11 +2080,46 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.connection_setup.host().content(), "custom-host");
-            assert_eq!(state.connection_setup.port().content(), "5433");
-            assert_eq!(state.connection_setup.database().content(), "mydb");
-            assert_eq!(state.connection_setup.user().content(), "admin");
-            assert_eq!(state.connection_setup.password().content(), "secret");
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Host)
+                    .unwrap()
+                    .content(),
+                "custom-host"
+            );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Port)
+                    .unwrap()
+                    .content(),
+                "5433"
+            );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Database)
+                    .unwrap()
+                    .content(),
+                "mydb"
+            );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::User)
+                    .unwrap()
+                    .content(),
+                "admin"
+            );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Password)
+                    .unwrap()
+                    .content(),
+                "secret"
+            );
         }
 
         #[test]

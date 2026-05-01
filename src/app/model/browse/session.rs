@@ -166,8 +166,7 @@ impl BrowseSession {
         }
     }
 
-    // Caller must also call `result_interaction.reset_view()` and restore UI state.
-    pub fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
+    fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
         self.metadata.clone_from(&cache.metadata);
         self.table_detail.clone_from(&cache.table_detail);
         self.selected_table_key

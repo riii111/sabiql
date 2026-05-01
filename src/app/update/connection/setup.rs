@@ -43,9 +43,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let setup = &mut state.connection_setup;
             match setup.focused_field() {
                 ConnectionField::Port => {
-                    let port = setup
-                        .input_mut(ConnectionField::Port)
-                        .expect("port is a text input");
+                    let port = setup.port_mut();
                     let current_len = port.char_count();
                     let remaining = 5usize.saturating_sub(current_len);
                     let digits: String = clean
@@ -77,9 +75,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let setup = &mut state.connection_setup;
             match setup.focused_field() {
                 ConnectionField::Port => {
-                    let port = setup
-                        .input_mut(ConnectionField::Port)
-                        .expect("port is a text input");
+                    let port = setup.port_mut();
                     if c.is_ascii_digit() && port.char_count() < 5 {
                         port.insert_char(*c);
                         port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
@@ -272,7 +268,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.host().content(), "db.example.com");
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Host)
+                    .unwrap()
+                    .content(),
+                "db.example.com"
+            );
         }
 
         #[test]
@@ -285,7 +288,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.port().content(), "5432");
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Port)
+                    .unwrap()
+                    .content(),
+                "5432"
+            );
         }
 
         #[test]
@@ -303,7 +313,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.port().content(), "54321");
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Port)
+                    .unwrap()
+                    .content(),
+                "54321"
+            );
         }
 
         #[test]
@@ -317,7 +334,14 @@ mod tests {
 
             reduce(&mut state, &Action::Paste("6".to_string()), Instant::now());
 
-            assert_eq!(state.connection_setup.port().content(), "12345");
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Port)
+                    .unwrap()
+                    .content(),
+                "12345"
+            );
         }
 
         #[test]
@@ -330,7 +354,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.host().content(), "localhost");
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Host)
+                    .unwrap()
+                    .content(),
+                "localhost"
+            );
         }
 
         #[test]
@@ -357,7 +388,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.host().cursor(), 14);
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Host)
+                    .unwrap()
+                    .cursor(),
+                14
+            );
         }
     }
 
