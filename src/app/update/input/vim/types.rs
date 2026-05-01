@@ -107,7 +107,7 @@ impl From<&AppState> for BrowseVimContext {
         }
 
         if state.ui.focused_pane() == FocusedPane::Inspector {
-            let inspector_ctx = if state.ui.inspector_tab == InspectorTab::Ddl {
+            let inspector_ctx = if state.ui.inspector_tab() == InspectorTab::Ddl {
                 InspectorVimContext::Ddl
             } else {
                 InspectorVimContext::Other

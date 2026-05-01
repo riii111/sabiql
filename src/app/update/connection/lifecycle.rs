@@ -112,7 +112,7 @@ mod tests {
             .session
             .set_active_connection_id_for_test(Some(current_id.clone()));
         state.ui.set_explorer_selected_raw(5);
-        state.ui.inspector_tab = InspectorTab::Indexes;
+        state.ui.set_inspector_tab(InspectorTab::Indexes);
 
         let action = create_switch_action(&new_id, "new_db");
         reduce(&mut state, &action, Instant::now(), &services);
@@ -139,7 +139,7 @@ mod tests {
         reduce(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(state.ui.explorer_selected(), 42);
-        assert_eq!(state.ui.inspector_tab, InspectorTab::ForeignKeys);
+        assert_eq!(state.ui.inspector_tab(), InspectorTab::ForeignKeys);
         assert_eq!(
             state.session.active_database_type(),
             Some(DatabaseType::PostgreSQL)
@@ -166,7 +166,7 @@ mod tests {
         let action = create_switch_action(&target_id, "cached_db");
         reduce(&mut state, &action, Instant::now(), &services);
 
-        assert_eq!(state.ui.inspector_tab, InspectorTab::Info);
+        assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
     }
 
     #[test]

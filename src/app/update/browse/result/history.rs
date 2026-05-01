@@ -139,12 +139,12 @@ mod tests {
     #[test]
     fn navigation_resets_scroll_offset() {
         let mut state = state_with_history(3);
-        state.result_interaction.scroll_offset = 10;
-        state.result_interaction.horizontal_offset = 5;
+        state.result_interaction.set_scroll_offset(10);
+        state.result_interaction.set_horizontal_offset(5);
 
         reduce(&mut state, &Action::OpenResultHistory);
 
-        assert_eq!(state.result_interaction.scroll_offset, 0);
-        assert_eq!(state.result_interaction.horizontal_offset, 0);
+        assert_eq!(state.result_interaction.scroll_offset(), 0);
+        assert_eq!(state.result_interaction.horizontal_offset(), 0);
     }
 }

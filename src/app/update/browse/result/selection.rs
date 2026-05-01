@@ -10,7 +10,7 @@ use super::scroll::{result_col_count, result_row_count};
 
 fn ensure_cell_visible(state: &mut AppState) {
     if let Some(col) = state.result_interaction.selection().cell() {
-        let plan = &state.ui.result_viewport_plan;
+        let plan = state.ui.result_viewport_plan();
         let h_offset = state.result_interaction.horizontal_offset();
         if col < h_offset {
             state.result_interaction.set_horizontal_offset(col);

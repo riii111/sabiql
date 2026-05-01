@@ -136,7 +136,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
         Action::TableDetailLoaded(detail, generation) => {
             if state.session.set_table_detail(*detail.clone(), *generation) {
-                state.ui.inspector_scroll_offset = 0;
+                state.ui.set_inspector_scroll_offset(0);
             }
             Some(vec![])
         }

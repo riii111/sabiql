@@ -53,7 +53,7 @@ fn er_table_picker_single_select() {
     state.modal.set_mode(InputMode::ErTablePicker);
     state
         .ui
-        .er_selected_tables
+        .er_selected_tables_mut()
         .insert("public.users".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -69,11 +69,11 @@ fn er_table_picker_multi_select() {
     state.modal.set_mode(InputMode::ErTablePicker);
     state
         .ui
-        .er_selected_tables
+        .er_selected_tables_mut()
         .insert("public.users".to_string());
     state
         .ui
-        .er_selected_tables
+        .er_selected_tables_mut()
         .insert("public.posts".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -89,15 +89,15 @@ fn er_table_picker_all_selected() {
     state.modal.set_mode(InputMode::ErTablePicker);
     state
         .ui
-        .er_selected_tables
+        .er_selected_tables_mut()
         .insert("public.users".to_string());
     state
         .ui
-        .er_selected_tables
+        .er_selected_tables_mut()
         .insert("public.posts".to_string());
     state
         .ui
-        .er_selected_tables
+        .er_selected_tables_mut()
         .insert("public.comments".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);

@@ -2242,7 +2242,7 @@ mod tests {
             assert_eq!(state.session.active_connection_id().cloned(), Some(conn_b));
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.ui.explorer_selected(), 10);
-            assert_eq!(state.ui.inspector_tab, InspectorTab::Indexes);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Indexes);
             assert_eq!(
                 state.session.metadata().as_ref().unwrap().database_name,
                 "cached_db"
@@ -2275,7 +2275,7 @@ mod tests {
             state.ui.er_picker_mut().insert_filter_str("old");
             state
                 .ui
-                .er_selected_tables
+                .er_selected_tables_mut()
                 .insert("public.users".to_string());
             let now = Instant::now();
 
@@ -2410,7 +2410,7 @@ mod tests {
 
             state
                 .ui
-                .er_selected_tables
+                .er_selected_tables_mut()
                 .insert("public.users".to_string());
             let now = Instant::now();
 

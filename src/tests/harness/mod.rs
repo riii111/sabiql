@@ -69,11 +69,17 @@ pub fn render_and_get_buffer_at_with_theme(
                 now,
                 theme,
             );
-            state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
-            state.ui.result_viewport_plan = output.result_viewport_plan;
-            state.ui.result_widths_cache = output.result_widths_cache;
-            state.ui.inspector_pane_height = output.inspector_pane_height;
-            state.ui.result_pane_height = output.result_pane_height;
+            state
+                .ui
+                .set_inspector_viewport_plan(output.inspector_viewport_plan);
+            state
+                .ui
+                .set_result_viewport_plan(output.result_viewport_plan);
+            state.ui.set_result_widths_cache(output.result_widths_cache);
+            state
+                .ui
+                .set_inspector_pane_height(output.inspector_pane_height);
+            state.ui.set_result_pane_height(output.result_pane_height);
         })
         .unwrap();
 

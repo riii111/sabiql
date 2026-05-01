@@ -170,18 +170,18 @@ pub struct UiState {
     er_selected_tables: BTreeSet<String>,
     pending_er_picker: bool,
 
-    pub inspector_tab: InspectorTab,
-    pub inspector_scroll_offset: usize,
-    pub inspector_horizontal_offset: usize,
-    pub inspector_viewport_plan: ViewportPlan,
-    pub inspector_pane_height: u16,
+    inspector_tab: InspectorTab,
+    inspector_scroll_offset: usize,
+    inspector_horizontal_offset: usize,
+    inspector_viewport_plan: ViewportPlan,
+    inspector_pane_height: u16,
 
-    pub explorer_pane_height: u16,
+    explorer_pane_height: u16,
 
-    pub result_viewport_plan: ViewportPlan,
-    pub result_widths_cache: ColumnWidthsCache,
-    pub result_pane_height: u16,
-    pub jsonb_detail_editor_visible_rows: usize,
+    result_viewport_plan: ViewportPlan,
+    result_widths_cache: ColumnWidthsCache,
+    result_pane_height: u16,
+    jsonb_detail_editor_visible_rows: usize,
 
     help_scroll_offset: usize,
 

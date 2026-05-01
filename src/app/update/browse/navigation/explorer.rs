@@ -225,7 +225,7 @@ mod tests {
 
     fn state_with_tables(count: usize, pane_height: u16) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.ui.explorer_pane_height = pane_height;
+        state.ui.set_explorer_pane_height(pane_height);
         state.ui.set_focused_pane(FocusedPane::Explorer);
         let tables: Vec<TableSummary> = (0..count)
             .map(|i| TableSummary::new("public".to_string(), format!("table_{i}"), Some(0), false))
@@ -321,7 +321,7 @@ mod tests {
         #[test]
         fn empty_list_does_nothing() {
             let mut state = AppState::new("test".to_string());
-            state.ui.explorer_pane_height = 23;
+            state.ui.set_explorer_pane_height(23);
 
             let effects = reduce_navigation(
                 &mut state,

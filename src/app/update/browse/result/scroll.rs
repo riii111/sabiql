@@ -258,7 +258,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             direction: ScrollDirection::Right,
             amount: ScrollAmount::Line,
         } => {
-            let plan = &state.ui.result_viewport_plan;
+            let plan = state.ui.result_viewport_plan();
             let all_widths_len = plan.max_offset + plan.column_count;
             state
                 .result_interaction
@@ -283,7 +283,7 @@ mod tests {
 
     fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.ui.result_pane_height = pane_height;
+        state.ui.set_result_pane_height(pane_height);
         let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
         let row_count = result_rows.len();
         state
@@ -322,13 +322,13 @@ mod tests {
                 );
 
                 assert!(effects.is_some());
-                assert_eq!(state.result_interaction.scroll_offset, 10);
+                assert_eq!(state.result_interaction.scroll_offset(), 10);
             }
 
             #[test]
             fn half_page_up_from_middle() {
                 let mut state = state_with_result_rows(100, 25);
-                state.result_interaction.scroll_offset = 50;
+                state.result_interaction.set_scroll_offset(50);
 
                 reduce(
                     &mut state,
@@ -339,14 +339,14 @@ mod tests {
                     },
                 );
 
-                assert_eq!(state.result_interaction.scroll_offset, 40);
+                assert_eq!(state.result_interaction.scroll_offset(), 40);
             }
 
             #[test]
             fn full_page_down_clamped_at_max() {
                 let mut state = state_with_result_rows(30, 25);
                 // visible = 20, max_scroll = 30-20 = 10
-                state.result_interaction.scroll_offset = 5;
+                state.result_interaction.set_scroll_offset(5);
 
                 reduce(
                     &mut state,
@@ -357,13 +357,13 @@ mod tests {
                     },
                 );
 
-                assert_eq!(state.result_interaction.scroll_offset, 10);
+                assert_eq!(state.result_interaction.scroll_offset(), 10);
             }
 
             #[test]
             fn full_page_up_clamped_at_zero() {
                 let mut state = state_with_result_rows(100, 25);
-                state.result_interaction.scroll_offset = 5;
+                state.result_interaction.set_scroll_offset(5);
 
                 reduce(
                     &mut state,
@@ -374,7 +374,7 @@ mod tests {
                     },
                 );
 
-                assert_eq!(state.result_interaction.scroll_offset, 0);
+                assert_eq!(state.result_interaction.scroll_offset(), 0);
             }
         }
 
@@ -412,7 +412,7 @@ mod tests {
                     },
                 );
 
-                assert_eq!(state.result_interaction.scroll_offset, 0);
+                assert_eq!(state.result_interaction.scroll_offset(), 0);
             }
         }
 
@@ -423,7 +423,7 @@ mod tests {
             fn half_page_down_moves_both_cursor_and_viewport() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(10, 0);
-                state.result_interaction.scroll_offset = 5;
+                state.result_interaction.set_scroll_offset(5);
 
                 reduce(
                     &mut state,
@@ -435,14 +435,14 @@ mod tests {
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
-                assert_eq!(state.result_interaction.scroll_offset, 15);
+                assert_eq!(state.result_interaction.scroll_offset(), 15);
             }
 
             #[test]
             fn half_page_up_moves_both_cursor_and_viewport() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(30, 0);
-                state.result_interaction.scroll_offset = 25;
+                state.result_interaction.set_scroll_offset(25);
 
                 reduce(
                     &mut state,
@@ -454,14 +454,14 @@ mod tests {
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
-                assert_eq!(state.result_interaction.scroll_offset, 15);
+                assert_eq!(state.result_interaction.scroll_offset(), 15);
             }
 
             #[test]
             fn half_page_down_preserves_relative_position() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(15, 3);
-                state.result_interaction.scroll_offset = 10;
+                state.result_interaction.set_scroll_offset(10);
 
                 reduce(
                     &mut state,
@@ -474,9 +474,9 @@ mod tests {
 
                 assert_eq!(state.result_interaction.selection().row(), Some(25));
                 assert_eq!(state.result_interaction.selection().cell(), Some(3));
-                assert_eq!(state.result_interaction.scroll_offset, 20);
+                assert_eq!(state.result_interaction.scroll_offset(), 20);
                 let relative = state.result_interaction.selection().row().unwrap()
-                    - state.result_interaction.scroll_offset;
+                    - state.result_interaction.scroll_offset();
                 assert_eq!(relative, 5);
             }
 
@@ -484,7 +484,7 @@ mod tests {
             fn half_page_down_preserves_column() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(10, 3);
-                state.result_interaction.scroll_offset = 5;
+                state.result_interaction.set_scroll_offset(5);
 
                 reduce(
                     &mut state,
@@ -497,14 +497,14 @@ mod tests {
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
                 assert_eq!(state.result_interaction.selection().cell(), Some(3));
-                assert_eq!(state.result_interaction.scroll_offset, 15);
+                assert_eq!(state.result_interaction.scroll_offset(), 15);
             }
 
             #[test]
             fn full_page_down_moves_both() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(10, 0);
-                state.result_interaction.scroll_offset = 5;
+                state.result_interaction.set_scroll_offset(5);
 
                 reduce(
                     &mut state,
@@ -516,14 +516,14 @@ mod tests {
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(30));
-                assert_eq!(state.result_interaction.scroll_offset, 25);
+                assert_eq!(state.result_interaction.scroll_offset(), 25);
             }
 
             #[test]
             fn full_page_up_moves_both() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(40, 0);
-                state.result_interaction.scroll_offset = 30;
+                state.result_interaction.set_scroll_offset(30);
 
                 reduce(
                     &mut state,
@@ -535,7 +535,7 @@ mod tests {
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(20));
-                assert_eq!(state.result_interaction.scroll_offset, 10);
+                assert_eq!(state.result_interaction.scroll_offset(), 10);
             }
         }
 
@@ -554,14 +554,14 @@ mod tests {
                     },
                 );
 
-                assert_eq!(state.result_interaction.scroll_offset, 0);
+                assert_eq!(state.result_interaction.scroll_offset(), 0);
             }
 
             #[test]
             fn half_page_down_clamps_near_bottom() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(95, 0);
-                state.result_interaction.scroll_offset = 75;
+                state.result_interaction.set_scroll_offset(75);
 
                 reduce(
                     &mut state,
@@ -573,14 +573,14 @@ mod tests {
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(99));
-                assert_eq!(state.result_interaction.scroll_offset, 80);
+                assert_eq!(state.result_interaction.scroll_offset(), 80);
             }
 
             #[test]
             fn half_page_up_clamps_near_top() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(5, 0);
-                state.result_interaction.scroll_offset = 3;
+                state.result_interaction.set_scroll_offset(3);
 
                 reduce(
                     &mut state,
@@ -592,14 +592,14 @@ mod tests {
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(0));
-                assert_eq!(state.result_interaction.scroll_offset, 0);
+                assert_eq!(state.result_interaction.scroll_offset(), 0);
             }
 
             #[test]
             fn visible_zero_cell_active_is_noop() {
                 let mut state = state_with_result_rows(100, 0);
                 state.result_interaction.activate_cell(5, 1);
-                state.result_interaction.scroll_offset = 3;
+                state.result_interaction.set_scroll_offset(3);
 
                 reduce(
                     &mut state,
@@ -612,7 +612,7 @@ mod tests {
 
                 assert_eq!(state.result_interaction.selection().row(), Some(5));
                 assert_eq!(state.result_interaction.selection().cell(), Some(1));
-                assert_eq!(state.result_interaction.scroll_offset, 3);
+                assert_eq!(state.result_interaction.scroll_offset(), 3);
             }
 
             #[test]
@@ -630,14 +630,14 @@ mod tests {
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(9));
-                assert_eq!(state.result_interaction.scroll_offset, 0);
+                assert_eq!(state.result_interaction.scroll_offset(), 0);
             }
 
             #[test]
             fn full_page_down_clamps_near_bottom() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(90, 0);
-                state.result_interaction.scroll_offset = 75;
+                state.result_interaction.set_scroll_offset(75);
 
                 reduce(
                     &mut state,
@@ -649,14 +649,14 @@ mod tests {
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(99));
-                assert_eq!(state.result_interaction.scroll_offset, 80);
+                assert_eq!(state.result_interaction.scroll_offset(), 80);
             }
 
             #[test]
             fn full_page_up_clamps_near_top() {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.activate_cell(10, 0);
-                state.result_interaction.scroll_offset = 5;
+                state.result_interaction.set_scroll_offset(5);
 
                 reduce(
                     &mut state,
@@ -668,14 +668,14 @@ mod tests {
                 );
 
                 assert_eq!(state.result_interaction.selection().row(), Some(0));
-                assert_eq!(state.result_interaction.scroll_offset, 0);
+                assert_eq!(state.result_interaction.scroll_offset(), 0);
             }
 
             #[test]
             fn visible_zero_cell_active_full_page_is_noop() {
                 let mut state = state_with_result_rows(100, 0);
                 state.result_interaction.activate_cell(5, 1);
-                state.result_interaction.scroll_offset = 3;
+                state.result_interaction.set_scroll_offset(3);
 
                 reduce(
                     &mut state,
@@ -688,7 +688,7 @@ mod tests {
 
                 assert_eq!(state.result_interaction.selection().row(), Some(5));
                 assert_eq!(state.result_interaction.selection().cell(), Some(1));
-                assert_eq!(state.result_interaction.scroll_offset, 3);
+                assert_eq!(state.result_interaction.scroll_offset(), 3);
             }
         }
     }
@@ -701,7 +701,7 @@ mod tests {
             let mut state = state_with_result_rows(100, 25);
             // visible = 20
             state.result_interaction.activate_cell(50, 0);
-            state.result_interaction.scroll_offset = 50;
+            state.result_interaction.set_scroll_offset(50);
             state
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
@@ -715,7 +715,7 @@ mod tests {
             );
 
             // row=50, visible=20, offset=50-10=40, max=80 → 40
-            assert_eq!(state.result_interaction.scroll_offset, 40);
+            assert_eq!(state.result_interaction.scroll_offset(), 40);
             assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
@@ -723,7 +723,7 @@ mod tests {
         fn scroll_cursor_top_puts_row_at_top() {
             let mut state = state_with_result_rows(100, 25);
             state.result_interaction.activate_cell(30, 0);
-            state.result_interaction.scroll_offset = 20;
+            state.result_interaction.set_scroll_offset(20);
             state
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
@@ -736,7 +736,7 @@ mod tests {
                 },
             );
 
-            assert_eq!(state.result_interaction.scroll_offset, 30);
+            assert_eq!(state.result_interaction.scroll_offset(), 30);
             assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
@@ -744,7 +744,7 @@ mod tests {
         fn scroll_cursor_bottom_puts_row_at_bottom() {
             let mut state = state_with_result_rows(100, 25);
             state.result_interaction.activate_cell(30, 0);
-            state.result_interaction.scroll_offset = 30;
+            state.result_interaction.set_scroll_offset(30);
             state
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
@@ -758,14 +758,14 @@ mod tests {
             );
 
             // row=30, visible=20, offset=30-19=11, max=80 → 11
-            assert_eq!(state.result_interaction.scroll_offset, 11);
+            assert_eq!(state.result_interaction.scroll_offset(), 11);
             assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
         #[test]
         fn scroll_cursor_center_is_noop_in_scroll_mode() {
             let mut state = state_with_result_rows(100, 25);
-            state.result_interaction.scroll_offset = 20;
+            state.result_interaction.set_scroll_offset(20);
             state
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
@@ -779,7 +779,7 @@ mod tests {
             );
 
             // No row selected, offset unchanged
-            assert_eq!(state.result_interaction.scroll_offset, 20);
+            assert_eq!(state.result_interaction.scroll_offset(), 20);
             assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
@@ -788,7 +788,7 @@ mod tests {
             let mut state = state_with_result_rows(100, 25);
             // visible=20, max_scroll=80
             state.result_interaction.activate_cell(95, 0);
-            state.result_interaction.scroll_offset = 80;
+            state.result_interaction.set_scroll_offset(80);
             state
                 .ui
                 .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
@@ -802,7 +802,7 @@ mod tests {
             );
 
             // row=95, clamped to max_scroll=80
-            assert_eq!(state.result_interaction.scroll_offset, 80);
+            assert_eq!(state.result_interaction.scroll_offset(), 80);
             assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
     }
@@ -832,7 +832,7 @@ mod tests {
         #[test]
         fn page_scroll_uses_history_entry_row_count_not_live_preview() {
             let mut state = AppState::new("test".to_string());
-            state.ui.result_pane_height = 25; // visible = 20, half = 10
+            state.ui.set_result_pane_height(25); // visible = 20, half = 10
             // live preview: 100 rows
             state
                 .query
@@ -844,7 +844,7 @@ mod tests {
             state.query.enter_history(0);
 
             state.result_interaction.activate_cell(2, 0);
-            state.result_interaction.scroll_offset = 0;
+            state.result_interaction.set_scroll_offset(0);
 
             reduce(
                 &mut state,
@@ -858,7 +858,7 @@ mod tests {
             // Should clamp to history entry max_row=4, not live preview max_row=99
             assert_eq!(state.result_interaction.selection().row(), Some(4));
             // max_scroll = 5 - 20 = 0 (history has fewer rows than viewport)
-            assert_eq!(state.result_interaction.scroll_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset(), 0);
         }
 
         #[test]

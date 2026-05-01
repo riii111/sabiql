@@ -146,7 +146,7 @@ impl Footer {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     let active_inspector_tab = services
                         .db_capabilities
-                        .normalize_inspector_tab(state.ui.inspector_tab);
+                        .normalize_inspector_tab(state.ui.inspector_tab());
                     let mut list = vec![
                         GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
                         GLOBAL_KEYS[idx::global::SQL].as_hint(),
