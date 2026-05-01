@@ -15,6 +15,7 @@ const LABEL_WIDTH: u16 = 12;
 const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;
 const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
+const MODAL_VERTICAL_CHROME: u16 = 6;
 const SSL_DROPDOWN_ITEM_COUNT: usize = 6;
 const DB_TYPE_DROPDOWN_ITEM_COUNT: usize = DatabaseType::all().len();
 
@@ -34,12 +35,10 @@ pub struct ConnectionSetup;
 impl ConnectionSetup {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let form_state = &state.connection_setup;
+        let visible_fields = form_state.visible_fields();
 
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
-        let modal_height = match form_state.database_type {
-            DatabaseType::PostgreSQL => 14,
-            DatabaseType::SQLite => 9,
-        };
+        let modal_height = visible_fields.len() as u16 + MODAL_VERTICAL_CHROME;
 
         let (title, hint) = if form_state.is_edit_mode() {
             (
@@ -62,13 +61,13 @@ impl ConnectionSetup {
         );
 
         let inner = modal_inner.inner(Margin::new(2, 1));
-        let field_count = form_state.visible_fields().len();
+        let field_count = visible_fields.len();
         let mut constraints = vec![Constraint::Length(FIELD_HEIGHT); field_count];
         constraints.push(Constraint::Length(1));
         constraints.push(Constraint::Length(1));
         let chunks = Layout::vertical(constraints).split(inner);
 
-        for (idx, field) in form_state.visible_fields().iter().enumerate() {
+        for (idx, field) in visible_fields.iter().enumerate() {
             match field {
                 ConnectionField::DatabaseType => Self::render_database_type_field(
                     frame,
@@ -108,8 +107,7 @@ impl ConnectionSetup {
                 theme,
             );
         } else if form_state.ssl_dropdown.is_open {
-            let ssl_idx = form_state
-                .visible_fields()
+            let ssl_idx = visible_fields
                 .iter()
                 .position(|field| *field == ConnectionField::SslMode)
                 .unwrap_or(0);

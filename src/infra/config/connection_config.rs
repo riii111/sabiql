@@ -168,6 +168,27 @@ mod tests {
     }
 
     #[test]
+    fn v2_entry_defaults_to_postgres() {
+        let entry: ConnectionConfigEntry = serde_json::from_str(
+            r#"{
+                "id": "legacy-id",
+                "name": "Legacy",
+                "host": "localhost",
+                "port": 5432,
+                "database": "app",
+                "username": "user",
+                "password": "secret",
+                "ssl_mode": "prefer"
+            }"#,
+        )
+        .unwrap();
+
+        let profile = ConnectionProfile::try_from(&entry).unwrap();
+
+        assert_eq!(profile.database_type(), DatabaseType::PostgreSQL);
+    }
+
+    #[test]
     fn sqlite_entry_rejects_invalid_path() {
         let entry = ConnectionConfigEntry {
             id: "sqlite-id".to_string(),
