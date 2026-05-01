@@ -69,7 +69,7 @@ fn jsonb_detail_state() -> (AppState, Instant) {
         command_tag: None,
     }));
     state.query.pagination.set_table_for_test("public", "users");
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
     reduce_result(
         &mut state,
@@ -92,7 +92,7 @@ fn pending_draft_cell_uses_orange_fg() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
     state
@@ -124,7 +124,7 @@ fn active_cell_edit_uses_yellow_fg() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
     state
@@ -156,7 +156,7 @@ fn staged_delete_row_uses_dark_red_bg() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
@@ -199,7 +199,7 @@ fn result_highlight_respects_injected_now() {
 
     with_current_result(&mut state, now);
     // Unfocused so highlight border is distinguishable from focus border
-    state.ui.focused_pane = FocusedPane::Explorer;
+    state.ui.set_focused_pane(FocusedPane::Explorer);
 
     let highlight_until = now + Duration::from_millis(500);
     state.query.set_result_highlight(highlight_until);
@@ -923,7 +923,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         },
     };
 
-    state.ui.focused_pane = FocusedPane::Explorer;
+    state.ui.set_focused_pane(FocusedPane::Explorer);
     let shell_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let has_custom_focus_border = (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
@@ -990,7 +990,7 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state, now);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 

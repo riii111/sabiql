@@ -596,15 +596,15 @@ mod tests {
         #[test]
         fn toggle_focus_enters_focus_mode() {
             let mut state = make_state();
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
 
             let result = state.toggle_focus();
 
             assert!(result);
             assert!(state.ui.is_focus_mode());
-            assert_eq!(state.ui.focused_pane, FocusedPane::Result);
+            assert_eq!(state.ui.focused_pane(), FocusedPane::Result);
             assert_eq!(
-                state.ui.focus_mode.previous_pane(),
+                state.ui.focus_mode().previous_pane(),
                 Some(FocusedPane::Explorer)
             );
         }
@@ -612,14 +612,14 @@ mod tests {
         #[test]
         fn toggle_focus_restores_previous_pane() {
             let mut state = make_state();
-            state.ui.focused_pane = FocusedPane::Inspector;
+            state.ui.set_focused_pane(FocusedPane::Inspector);
             state.toggle_focus();
 
             let result = state.toggle_focus();
 
             assert!(result);
             assert!(!state.ui.is_focus_mode());
-            assert_eq!(state.ui.focused_pane, FocusedPane::Inspector);
+            assert_eq!(state.ui.focused_pane(), FocusedPane::Inspector);
         }
 
         #[test]

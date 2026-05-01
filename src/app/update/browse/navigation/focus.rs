@@ -22,7 +22,7 @@ pub fn reduce(
                     state.modal.set_mode(InputMode::Normal);
                 }
             }
-            state.ui.focused_pane = *pane;
+            state.ui.set_focused_pane(*pane);
             Some(vec![])
         }
         Action::ToggleFocus => {

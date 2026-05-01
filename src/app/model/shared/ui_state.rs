@@ -151,8 +151,8 @@ impl ResultSelection {
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
     theme_id: ThemeId,
-    pub focused_pane: FocusedPane,
-    pub focus_mode: FocusMode,
+    focused_pane: FocusedPane,
+    focus_mode: FocusMode,
     pub explorer_selected: usize,
     pub explorer_scroll_offset: usize,
     pub explorer_horizontal_offset: usize,
@@ -201,6 +201,202 @@ impl UiState {
 
     pub fn is_focus_mode(&self) -> bool {
         self.focus_mode.is_active()
+    }
+
+    pub fn focused_pane(&self) -> FocusedPane {
+        self.focused_pane
+    }
+
+    pub fn set_focused_pane(&mut self, pane: FocusedPane) {
+        self.focused_pane = pane;
+    }
+
+    pub fn focus_mode(&self) -> FocusMode {
+        self.focus_mode
+    }
+
+    pub fn set_focus_mode(&mut self, mode: FocusMode) {
+        self.focus_mode = mode;
+    }
+
+    pub fn explorer_selected(&self) -> usize {
+        self.explorer_selected
+    }
+
+    pub fn explorer_scroll_offset(&self) -> usize {
+        self.explorer_scroll_offset
+    }
+
+    pub fn explorer_horizontal_offset(&self) -> usize {
+        self.explorer_horizontal_offset
+    }
+
+    pub fn set_explorer_scroll_offset(&mut self, offset: usize) {
+        self.explorer_scroll_offset = offset;
+    }
+
+    pub fn set_explorer_horizontal_offset(&mut self, offset: usize) {
+        self.explorer_horizontal_offset = offset;
+    }
+
+    pub fn explorer_content_width(&self) -> usize {
+        self.explorer_content_width
+    }
+
+    pub fn set_explorer_content_width(&mut self, width: usize) {
+        self.explorer_content_width = width;
+    }
+
+    pub fn connection_list_selected(&self) -> usize {
+        self.connection_list_selected
+    }
+
+    pub fn connection_list_scroll_offset(&self) -> usize {
+        self.connection_list_scroll_offset
+    }
+
+    pub fn connection_list_pane_height(&self) -> u16 {
+        self.connection_list_pane_height
+    }
+
+    pub fn set_connection_list_pane_height(&mut self, height: u16) {
+        self.connection_list_pane_height = height;
+    }
+
+    pub fn table_picker(&self) -> &PickerState {
+        &self.table_picker
+    }
+
+    pub fn table_picker_mut(&mut self) -> &mut PickerState {
+        &mut self.table_picker
+    }
+
+    pub fn er_picker(&self) -> &PickerState {
+        &self.er_picker
+    }
+
+    pub fn er_picker_mut(&mut self) -> &mut PickerState {
+        &mut self.er_picker
+    }
+
+    pub fn er_selected_tables(&self) -> &BTreeSet<String> {
+        &self.er_selected_tables
+    }
+
+    pub fn er_selected_tables_mut(&mut self) -> &mut BTreeSet<String> {
+        &mut self.er_selected_tables
+    }
+
+    pub fn pending_er_picker(&self) -> bool {
+        self.pending_er_picker
+    }
+
+    pub fn set_pending_er_picker(&mut self, pending: bool) {
+        self.pending_er_picker = pending;
+    }
+
+    pub fn inspector_tab(&self) -> InspectorTab {
+        self.inspector_tab
+    }
+
+    pub fn set_inspector_tab(&mut self, tab: InspectorTab) {
+        self.inspector_tab = tab;
+    }
+
+    pub fn inspector_scroll_offset(&self) -> usize {
+        self.inspector_scroll_offset
+    }
+
+    pub fn set_inspector_scroll_offset(&mut self, offset: usize) {
+        self.inspector_scroll_offset = offset;
+    }
+
+    pub fn inspector_horizontal_offset(&self) -> usize {
+        self.inspector_horizontal_offset
+    }
+
+    pub fn set_inspector_horizontal_offset(&mut self, offset: usize) {
+        self.inspector_horizontal_offset = offset;
+    }
+
+    pub fn inspector_viewport_plan(&self) -> &ViewportPlan {
+        &self.inspector_viewport_plan
+    }
+
+    pub fn set_inspector_viewport_plan(&mut self, plan: ViewportPlan) {
+        self.inspector_viewport_plan = plan;
+    }
+
+    pub fn inspector_pane_height(&self) -> u16 {
+        self.inspector_pane_height
+    }
+
+    pub fn set_inspector_pane_height(&mut self, height: u16) {
+        self.inspector_pane_height = height;
+    }
+
+    pub fn explorer_pane_height(&self) -> u16 {
+        self.explorer_pane_height
+    }
+
+    pub fn set_explorer_pane_height(&mut self, height: u16) {
+        self.explorer_pane_height = height;
+    }
+
+    pub fn result_viewport_plan(&self) -> &ViewportPlan {
+        &self.result_viewport_plan
+    }
+
+    pub fn set_result_viewport_plan(&mut self, plan: ViewportPlan) {
+        self.result_viewport_plan = plan;
+    }
+
+    pub fn result_widths_cache(&self) -> &ColumnWidthsCache {
+        &self.result_widths_cache
+    }
+
+    pub fn set_result_widths_cache(&mut self, cache: ColumnWidthsCache) {
+        self.result_widths_cache = cache;
+    }
+
+    pub fn result_pane_height(&self) -> u16 {
+        self.result_pane_height
+    }
+
+    pub fn set_result_pane_height(&mut self, height: u16) {
+        self.result_pane_height = height;
+    }
+
+    pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
+        self.jsonb_detail_editor_visible_rows
+    }
+
+    pub fn set_jsonb_detail_editor_visible_rows(&mut self, rows: usize) {
+        self.jsonb_detail_editor_visible_rows = rows;
+    }
+
+    pub fn help_scroll_offset(&self) -> usize {
+        self.help_scroll_offset
+    }
+
+    pub fn set_help_scroll_offset(&mut self, offset: usize) {
+        self.help_scroll_offset = offset;
+    }
+
+    pub fn terminal_height(&self) -> u16 {
+        self.terminal_height
+    }
+
+    pub fn set_terminal_height(&mut self, height: u16) {
+        self.terminal_height = height;
+    }
+
+    pub fn key_sequence(&self) -> KeySequenceState {
+        self.key_sequence
+    }
+
+    pub fn set_key_sequence(&mut self, key_sequence: KeySequenceState) {
+        self.key_sequence = key_sequence;
     }
 
     pub fn theme_id(&self) -> ThemeId {

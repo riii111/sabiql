@@ -18,7 +18,7 @@ pub struct Explorer;
 
 impl Explorer {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
-        let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
+        let is_focused = state.ui.focused_pane() == FocusedPane::Explorer;
         let block = panel_block(" [1] Explorer ", is_focused, theme);
         let inner = block.inner(area);
         frame.render_widget(block, area);

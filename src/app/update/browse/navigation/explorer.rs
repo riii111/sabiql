@@ -13,7 +13,7 @@ use super::explorer_item_count;
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
         Action::Select(SelectMotion::Next) => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = state.tables().len();
                 if len > 0 && state.ui.explorer_selected < len - 1 {
                     state
@@ -24,20 +24,20 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::Select(SelectMotion::Previous) => {
-            if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty() {
+            if state.ui.focused_pane() == FocusedPane::Explorer && !state.tables().is_empty() {
                 let new_idx = state.ui.explorer_selected.saturating_sub(1);
                 state.ui.set_explorer_selection(Some(new_idx));
             }
             Some(vec![])
         }
         Action::Select(SelectMotion::First) => {
-            if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty() {
+            if state.ui.focused_pane() == FocusedPane::Explorer && !state.tables().is_empty() {
                 state.ui.set_explorer_selection(Some(0));
             }
             Some(vec![])
         }
         Action::Select(SelectMotion::Last) => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = state.tables().len();
                 if len > 0 {
                     state.ui.set_explorer_selection(Some(len - 1));
@@ -46,7 +46,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::Select(SelectMotion::ViewportMiddle) => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
                 if len > 0 && visible > 0 {
@@ -59,7 +59,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::Select(SelectMotion::ViewportTop) => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 if len > 0 {
                     let target = state.ui.explorer_scroll_offset.min(len.saturating_sub(1));
@@ -69,7 +69,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::Select(SelectMotion::ViewportBottom) => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane() == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
                 if len > 0 && visible > 0 {
@@ -211,7 +211,7 @@ mod tests {
     fn state_with_tables(count: usize, pane_height: u16) -> AppState {
         let mut state = AppState::new("test".to_string());
         state.ui.explorer_pane_height = pane_height;
-        state.ui.focused_pane = FocusedPane::Explorer;
+        state.ui.set_focused_pane(FocusedPane::Explorer);
         let tables: Vec<TableSummary> = (0..count)
             .map(|i| TableSummary::new("public".to_string(), format!("table_{i}"), Some(0), false))
             .collect();
@@ -227,7 +227,7 @@ mod tests {
 
     fn state_with_named_tables(names: &[&str], content_width: usize) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.ui.focused_pane = FocusedPane::Explorer;
+        state.ui.set_focused_pane(FocusedPane::Explorer);
         state.ui.explorer_content_width = content_width;
         let tables: Vec<TableSummary> = names
             .iter()

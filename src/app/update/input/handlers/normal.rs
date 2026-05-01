@@ -159,7 +159,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         }
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
         Key::Char('e') => Action::OpenModal(ModalKind::ErTablePicker),
-        Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
+        Key::Char('c') if state.ui.focused_pane() == FocusedPane::Explorer => {
             Action::OpenModal(ModalKind::ConnectionSelector)
         }
 
@@ -194,20 +194,22 @@ mod tests {
 
     fn focus_mode_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-        state.ui.focused_pane = FocusedPane::Result;
+        state
+            .ui
+            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+        state.ui.set_focused_pane(FocusedPane::Result);
         state
     }
 
     fn result_focused_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Result;
+        state.ui.set_focused_pane(FocusedPane::Result);
         state
     }
 
     fn inspector_focused_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Inspector;
+        state.ui.set_focused_pane(FocusedPane::Inspector);
         state
     }
 
@@ -375,7 +377,7 @@ mod tests {
             #[test]
             fn enter_confirms_selection_when_explorer_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
 
                 let result = handle_normal_mode(combo(Key::Enter), &state);
 
@@ -409,7 +411,7 @@ mod tests {
             #[test]
             fn enter_noop_when_inspector_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
 
                 let result = handle_normal_mode(combo(Key::Enter), &state);
 
@@ -419,7 +421,7 @@ mod tests {
             #[test]
             fn enter_activates_cell_when_result_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Result;
+                state.ui.set_focused_pane(FocusedPane::Result);
 
                 let result = handle_normal_mode(combo(Key::Enter), &state);
 
@@ -445,7 +447,7 @@ mod tests {
             #[test]
             fn tab_switches_inspector_tab_when_inspector_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
 
                 let result = handle_normal_mode(combo(Key::Tab), &state);
 
@@ -455,7 +457,7 @@ mod tests {
             #[test]
             fn shift_tab_prev_when_inspector_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
 
                 let result = handle_normal_mode(combo(Key::BackTab), &state);
 
@@ -465,7 +467,7 @@ mod tests {
             #[test]
             fn tab_noop_when_explorer_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
 
                 let result = handle_normal_mode(combo(Key::Tab), &state);
 
@@ -475,7 +477,7 @@ mod tests {
             #[test]
             fn tab_noop_when_result_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Result;
+                state.ui.set_focused_pane(FocusedPane::Result);
 
                 let result = handle_normal_mode(combo(Key::Tab), &state);
 
@@ -485,7 +487,7 @@ mod tests {
             #[test]
             fn backtab_noop_when_explorer_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
 
                 let result = handle_normal_mode(combo(Key::BackTab), &state);
 
@@ -1179,7 +1181,9 @@ mod tests {
                 #[test]
                 fn bracket_nav_falls_through_when_not_in_history() {
                     let mut state = AppState::new("test".to_string());
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+                    state
+                        .ui
+                        .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
 
                     let next = handle_normal_mode(combo(Key::Char(']')), &state);
                     let prev = handle_normal_mode(combo(Key::Char('[')), &state);
@@ -1240,7 +1244,9 @@ mod tests {
                 ) {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+                    state
+                        .ui
+                        .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
 
                     let result = handle_normal_mode(combo(key), &state);
 
@@ -1258,7 +1264,9 @@ mod tests {
                 fn ctrl_p_and_ctrl_n_are_noop_in_history() {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+                    state
+                        .ui
+                        .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
 
                     let prev = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
                     let next = handle_normal_mode(combo_ctrl(Key::Char('n')), &state);
@@ -1271,7 +1279,9 @@ mod tests {
                 fn ctrl_scroll_is_allowed() {
                     let mut state = state_with_history(3);
                     state.query.enter_history(1);
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+                    state
+                        .ui
+                        .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
 
                     assert!(matches!(
                         handle_normal_mode(combo_ctrl(Key::Char('d')), &state),
@@ -1561,8 +1571,10 @@ mod tests {
             state.query.push_history(qr.clone());
             state.query.set_current_result(qr);
             state.query.enter_history(0);
-            state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-            state.ui.focused_pane = FocusedPane::Result;
+            state
+                .ui
+                .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+            state.ui.set_focused_pane(FocusedPane::Result);
             state
         }
 
@@ -1742,15 +1754,15 @@ mod tests {
 
             fn history_explorer_ctx() -> AppState {
                 let mut state = history_focus_ctx();
-                state.ui.focused_pane = FocusedPane::Explorer;
-                state.ui.focus_mode = FocusMode::Normal;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
+                state.ui.set_focus_mode(FocusMode::Normal);
                 state
             }
 
             fn history_inspector_ctx() -> AppState {
                 let mut state = history_focus_ctx();
-                state.ui.focused_pane = FocusedPane::Inspector;
-                state.ui.focus_mode = FocusMode::Normal;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
+                state.ui.set_focus_mode(FocusMode::Normal);
                 state
             }
 

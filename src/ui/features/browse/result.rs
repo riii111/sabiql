@@ -30,7 +30,7 @@ impl ResultPane {
         now: Instant,
         theme: &ThemePalette,
     ) -> (ViewportPlan, ColumnWidthsCache) {
-        let is_focused = state.ui.focused_pane == FocusedPane::Result;
+        let is_focused = state.ui.focused_pane() == FocusedPane::Result;
         let should_highlight = state
             .query
             .result_highlight_until()

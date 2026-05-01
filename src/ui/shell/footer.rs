@@ -92,7 +92,7 @@ impl Footer {
                 }
 
                 let result_navigation =
-                    state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result;
+                    state.ui.is_focus_mode() || state.ui.focused_pane() == FocusedPane::Result;
                 let nav_mode = state.result_interaction.selection().mode();
 
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
@@ -152,7 +152,7 @@ impl Footer {
                         GLOBAL_KEYS[idx::global::SQL].as_hint(),
                         GLOBAL_KEYS[idx::global::ER_DIAGRAM].as_hint(),
                     ];
-                    if state.ui.focused_pane == FocusedPane::Explorer {
+                    if state.ui.focused_pane() == FocusedPane::Explorer {
                         list.push(GLOBAL_KEYS[idx::global::CONNECTIONS].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::TABLE_PICKER].as_hint());
@@ -169,14 +169,14 @@ impl Footer {
                     if state.can_request_csv_export() {
                         list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
-                    if state.ui.focused_pane == FocusedPane::Inspector {
+                    if state.ui.focused_pane() == FocusedPane::Inspector {
                         use crate::app::model::shared::inspector_tab::InspectorTab;
                         if active_inspector_tab == InspectorTab::Ddl {
                             list.push(INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK].as_hint());
                         }
                     }
                     // Navigation
-                    if state.ui.focused_pane == FocusedPane::Result {
+                    if state.ui.focused_pane() == FocusedPane::Result {
                         list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());
                         if !state.result_interaction.staged_delete_rows().is_empty() {
                             list.push(
@@ -188,7 +188,7 @@ impl Footer {
                             list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
                         }
                     }
-                    if state.ui.focused_pane == FocusedPane::Inspector
+                    if state.ui.focused_pane() == FocusedPane::Inspector
                         && services.db_capabilities.supported_inspector_tabs().len() > 1
                     {
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
@@ -370,7 +370,7 @@ mod tests {
     fn inspector_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
-        state.ui.focused_pane = FocusedPane::Inspector;
+        state.ui.set_focused_pane(FocusedPane::Inspector);
         state
     }
 

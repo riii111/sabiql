@@ -97,7 +97,7 @@ fn reduce_inner(
                     state.modal.replace_mode(InputMode::ConnectionError);
                     return vec![];
                 }
-                if state.ui.focused_pane != FocusedPane::Explorer {
+                if state.ui.focused_pane() != FocusedPane::Explorer {
                     return vec![];
                 }
                 let table = state
@@ -241,7 +241,7 @@ mod tests {
         #[case(Action::Select(SelectMotion::Previous))]
         fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
             let mut state = create_test_state();
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
             state.ui.explorer_selected = 0;
             let now = Instant::now();
 
@@ -856,7 +856,7 @@ mod tests {
             state
                 .connection_error
                 .set_error(ConnectionErrorInfo::new("error"));
-            state.ui.focused_pane = FocusedPane::Result; // Any pane works
+            state.ui.set_focused_pane(FocusedPane::Result); // Any pane works
             let now = Instant::now();
 
             reduce(
@@ -932,7 +932,7 @@ mod tests {
             state
                 .session
                 .set_metadata_state(MetadataState::Error("error".to_string()));
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
             let now = Instant::now();
 
             // Close modal
@@ -1053,7 +1053,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
             state.modal.set_mode(InputMode::Normal);
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selection(Some(0));
 
             reduce(
@@ -2564,7 +2564,7 @@ mod tests {
 
             // ConfirmSelection from Normal mode (explorer focused)
             state.modal.set_mode(InputMode::Normal);
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
             state.ui.explorer_selected = 0;
             let effects = reduce(
                 &mut state,
@@ -2776,7 +2776,7 @@ mod tests {
         #[test]
         fn y_then_d_cancels_yank_starts_delete() {
             let mut state = create_test_state();
-            state.ui.focused_pane = FocusedPane::Result;
+            state.ui.set_focused_pane(FocusedPane::Result);
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 
@@ -2802,7 +2802,7 @@ mod tests {
         #[test]
         fn d_then_y_cancels_delete_starts_yank() {
             let mut state = create_test_state();
-            state.ui.focused_pane = FocusedPane::Result;
+            state.ui.set_focused_pane(FocusedPane::Result);
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 

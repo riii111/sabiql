@@ -95,7 +95,7 @@ impl BrowseVimContext {
 
 impl From<&AppState> for BrowseVimContext {
     fn from(state: &AppState) -> Self {
-        let result_nav = state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result;
+        let result_nav = state.ui.is_focus_mode() || state.ui.focused_pane() == FocusedPane::Result;
 
         if result_nav {
             return Self::Result(ResultVimContext {
@@ -106,7 +106,7 @@ impl From<&AppState> for BrowseVimContext {
             });
         }
 
-        if state.ui.focused_pane == FocusedPane::Inspector {
+        if state.ui.focused_pane() == FocusedPane::Inspector {
             let inspector_ctx = if state.ui.inspector_tab == InspectorTab::Ddl {
                 InspectorVimContext::Ddl
             } else {
@@ -151,7 +151,7 @@ mod tests {
 
         fn result_state() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.focused_pane = FocusedPane::Result;
+            state.ui.set_focused_pane(FocusedPane::Result);
             state.result_interaction.activate_cell(0, 0);
             state
         }

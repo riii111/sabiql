@@ -8,7 +8,7 @@ fn inspector_indexes_tab_with_data() {
     let mut terminal = create_test_terminal();
 
     state.ui.inspector_tab = InspectorTab::Indexes;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.ui.set_focused_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -21,7 +21,7 @@ fn inspector_foreign_keys_tab_with_data() {
     let mut terminal = create_test_terminal();
 
     state.ui.inspector_tab = InspectorTab::ForeignKeys;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.ui.set_focused_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -34,7 +34,7 @@ fn inspector_triggers_tab_with_data() {
     let mut terminal = create_test_terminal();
 
     state.ui.inspector_tab = InspectorTab::Triggers;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.ui.set_focused_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -50,7 +50,7 @@ fn inspector_triggers_tab_empty() {
     table.triggers = vec![];
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Triggers;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.ui.set_focused_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -63,7 +63,7 @@ fn inspector_info_tab_shows_owner_and_comment() {
     let mut terminal = create_test_terminal();
 
     state.ui.inspector_tab = InspectorTab::Info;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.ui.set_focused_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -81,7 +81,7 @@ fn inspector_info_tab_with_no_metadata() {
     table.row_count_estimate = None;
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Info;
-    state.ui.focused_pane = FocusedPane::Inspector;
+    state.ui.set_focused_pane(FocusedPane::Inspector);
 
     let output = render_to_string(&mut terminal, &mut state);
 
