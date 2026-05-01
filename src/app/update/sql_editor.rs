@@ -486,6 +486,10 @@ mod tests {
         state
     }
 
+    fn show_completion_popup(state: &mut AppState) {
+        state.sql_modal.apply_completion_update(&[], 0, true);
+    }
+
     mod paste {
         use super::*;
 
@@ -554,7 +558,7 @@ mod tests {
         #[test]
         fn dismisses_completion() {
             let mut state = editing_state();
-            state.sql_modal.apply_completion_update(&[], 0, true);
+            show_completion_popup(&mut state);
 
             reduce_sql_modal(&mut state, &Action::Paste("x".to_string()), Instant::now());
 
@@ -1177,7 +1181,7 @@ mod tests {
         fn enter_normal_transitions_to_normal() {
             let mut state = sql_modal_state();
             state.sql_modal.enter_editing();
-            state.sql_modal.apply_completion_update(&[], 0, true);
+            show_completion_popup(&mut state);
 
             reduce_sql_modal(&mut state, &Action::SqlModalEnterNormal, Instant::now());
 

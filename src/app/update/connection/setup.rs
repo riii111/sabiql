@@ -246,6 +246,7 @@ mod tests {
                 }
                 state.connection_setup.focus_next_field();
             }
+            assert_eq!(state.connection_setup.focused_field(), field);
             // Clear default values so tests start clean
             for field in [
                 ConnectionField::Host,

@@ -74,6 +74,8 @@ mod tests {
     mod next_animation_deadline_tests {
         use super::*;
 
+        const MESSAGE_TIMEOUT: Duration = Duration::from_secs(3);
+
         #[test]
         fn idle_state_returns_none() {
             let state = create_test_state();
@@ -117,7 +119,7 @@ mod tests {
             let expires_at = now + Duration::from_secs(2);
             state
                 .messages
-                .set_error_at("message".to_string(), expires_at - Duration::from_secs(3));
+                .set_error_at("message".to_string(), expires_at - MESSAGE_TIMEOUT);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -198,7 +200,7 @@ mod tests {
             let expires_at = now + Duration::from_millis(50);
             state
                 .messages
-                .set_error_at("message".to_string(), expires_at - Duration::from_secs(3));
+                .set_error_at("message".to_string(), expires_at - MESSAGE_TIMEOUT);
 
             let deadline = next_animation_deadline(&state, now);
 

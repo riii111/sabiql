@@ -116,7 +116,7 @@ mod tests {
 
     fn scroll_to(state: &mut ConnectionErrorState, offset: usize) {
         for _ in 0..offset {
-            state.scroll_down(offset);
+            state.scroll_down(usize::MAX);
         }
     }
 

@@ -38,12 +38,17 @@ pub fn focus_connection_field(state: &mut AppState, field: ConnectionField) {
         }
         state.connection_setup.focus_next_field();
     }
+    panic!(
+        "field {field:?} not reachable in visible_fields: {:?}",
+        state.connection_setup.visible_fields()
+    );
 }
 
 pub fn set_connection_input(state: &mut AppState, field: ConnectionField, input: TextInputState) {
-    if let Some(target) = state.connection_setup.input_mut(field) {
-        *target = input;
-    }
+    *state
+        .connection_setup
+        .input_mut(field)
+        .expect("expected text input field") = input;
 }
 
 pub fn create_test_terminal() -> Terminal<TestBackend> {

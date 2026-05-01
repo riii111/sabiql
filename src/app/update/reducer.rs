@@ -604,6 +604,10 @@ mod tests {
         use crate::model::shared::text_input::TextInputLike;
         use std::time::Duration;
 
+        fn show_completion_popup(state: &mut AppState) {
+            state.sql_modal.apply_completion_update(&[], 0, true);
+        }
+
         #[test]
         fn sql_modal_input_sets_debounce_state() {
             let mut state = create_test_state();
@@ -674,7 +678,7 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.enter_editing();
-            state.sql_modal.apply_completion_update(&[], 0, true);
+            show_completion_popup(&mut state);
             let now = Instant::now();
 
             reduce(

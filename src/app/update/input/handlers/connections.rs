@@ -125,6 +125,10 @@ mod tests {
                 }
                 state.connection_setup.focus_next_field();
             }
+            panic!(
+                "field {field:?} not reachable in visible_fields: {:?}",
+                state.connection_setup.visible_fields()
+            );
         }
 
         #[test]
@@ -267,6 +271,7 @@ mod tests {
 
             fn database_type_dropdown_state() -> AppState {
                 let mut state = setup_state();
+                focus_field(&mut state, ConnectionField::DatabaseType);
                 state.connection_setup.toggle_focused_dropdown();
                 state
             }
