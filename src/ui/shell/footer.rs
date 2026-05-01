@@ -62,13 +62,12 @@ impl Footer {
         });
         let spinner = spinner_char(now_ms);
 
-        let total = state.er_preparation.total_tables();
-        let failed_count = state.er_preparation.failed_tables().len();
-        let remaining = state.er_preparation.pending_tables().len()
-            + state.er_preparation.fetching_tables().len();
-        let cached = total.saturating_sub(remaining + failed_count);
+        let progress = state.er_preparation.progress();
 
-        let text = format!("{spinner} Preparing ER... ({cached}/{total})");
+        let text = format!(
+            "{spinner} Preparing ER... ({}/{})",
+            progress.cached, progress.total
+        );
         Line::from(Span::styled(
             text,
             Style::default().fg(theme.semantic.text.accent),

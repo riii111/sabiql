@@ -31,12 +31,7 @@ fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     }
 
     state.er_preparation.mark_idle();
-    let failed_data: Vec<(String, String)> = state
-        .er_preparation
-        .failed_tables()
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+    let failed_data = state.er_preparation.failed_table_errors();
     state.set_error(format!(
         "ER failed: {} table(s) failed. 'e' to retry.",
         failed_data.len()
@@ -265,7 +260,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
         Action::ProcessPrefetchQueue => {
             const MAX_CONCURRENT_PREFETCH: usize = 4;
-            let current_in_flight = state.sql_modal.prefetching_tables().len();
+            let current_in_flight = state.sql_modal.prefetch_in_flight_count();
             let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
 
             let mut actions = Vec::new();
@@ -290,11 +285,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         Action::PrefetchTableDetail { schema, table } => {
             let qualified_name = format!("{schema}.{table}");
 
-            if let Some(entry) = state
-                .sql_modal
-                .failed_prefetch_tables()
-                .get(&qualified_name)
-            {
+            if let Some(entry) = state.sql_modal.failed_prefetch_entry(&qualified_name) {
                 let retry_count = entry.retry_count;
                 let failed_at = entry.failed_at;
                 let error = entry.error.clone();
@@ -356,7 +347,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 table: detail.clone(),
             }];
 
-            if !state.sql_modal.prefetch_queue().is_empty() {
+            if state.sql_modal.has_pending_prefetch() {
                 effects.push(Effect::ProcessPrefetchQueue);
             }
 
@@ -373,8 +364,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             let qualified_name = format!("{schema}.{table}");
             let prev_count = state
                 .sql_modal
-                .failed_prefetch_tables()
-                .get(&qualified_name)
+                .failed_prefetch_entry(&qualified_name)
                 .map_or(0, |e| e.retry_count);
             state.sql_modal.record_prefetch_failure(
                 qualified_name.clone(),
@@ -390,7 +380,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             let mut effects = Vec::new();
 
-            if !state.sql_modal.prefetch_queue().is_empty() {
+            if state.sql_modal.has_pending_prefetch() {
                 effects.push(Effect::ProcessPrefetchQueue);
             }
 
@@ -406,7 +396,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             let mut effects = Vec::new();
 
-            if !state.sql_modal.prefetch_queue().is_empty() {
+            if state.sql_modal.has_pending_prefetch() {
                 effects.push(Effect::ProcessPrefetchQueue);
             }
 

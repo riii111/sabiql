@@ -108,14 +108,32 @@ impl SqlModalContext {
         self.prefetch_started
     }
 
+    pub fn has_pending_prefetch(&self) -> bool {
+        !self.prefetch_queue.is_empty()
+    }
+
+    pub fn prefetch_in_flight_count(&self) -> usize {
+        self.prefetching_tables.len()
+    }
+
+    pub fn failed_prefetch_entry(&self, table: &str) -> Option<&FailedPrefetchEntry> {
+        self.failed_prefetch_tables.get(table)
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn prefetch_queue(&self) -> &VecDeque<String> {
         &self.prefetch_queue
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn prefetching_tables(&self) -> &HashSet<String> {
         &self.prefetching_tables
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn failed_prefetch_tables(&self) -> &HashMap<String, FailedPrefetchEntry> {
         &self.failed_prefetch_tables
     }

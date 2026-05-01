@@ -22,6 +22,14 @@ pub struct ErPreparationState {
     run_id: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ErPreparationProgress {
+    pub cached: usize,
+    pub total: usize,
+    pub failed: usize,
+    pub remaining: usize,
+}
+
 impl ErPreparationState {
     pub fn status(&self) -> ErStatus {
         self.status
@@ -31,18 +39,45 @@ impl ErPreparationState {
         self.run_id
     }
 
+    pub fn progress(&self) -> ErPreparationProgress {
+        let failed = self.failed_tables.len();
+        let remaining = self.pending_tables.len() + self.fetching_tables.len();
+        let cached = self.total_tables.saturating_sub(remaining + failed);
+        ErPreparationProgress {
+            cached,
+            total: self.total_tables,
+            failed,
+            remaining,
+        }
+    }
+
+    pub fn failed_table_errors(&self) -> Vec<(String, String)> {
+        self.failed_tables
+            .iter()
+            .map(|(table, error)| (table.clone(), error.clone()))
+            .collect()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn pending_tables(&self) -> &HashSet<String> {
         &self.pending_tables
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn fetching_tables(&self) -> &HashSet<String> {
         &self.fetching_tables
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn failed_tables(&self) -> &HashMap<String, String> {
         &self.failed_tables
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn total_tables(&self) -> usize {
         self.total_tables
     }

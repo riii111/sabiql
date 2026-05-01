@@ -72,10 +72,22 @@ impl ExplainContext {
         self.scroll_offset
     }
 
+    pub fn compare_slots(&self) -> (Option<&CompareSlot>, Option<&CompareSlot>) {
+        (self.left.as_ref(), self.right.as_ref())
+    }
+
+    pub fn can_yank_compare(&self) -> bool {
+        self.left.is_some() && self.right.is_some()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn left(&self) -> Option<&CompareSlot> {
         self.left.as_ref()
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn right(&self) -> Option<&CompareSlot> {
         self.right.as_ref()
     }
