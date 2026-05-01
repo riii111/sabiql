@@ -58,9 +58,7 @@ impl BrowseSession {
         self.selected_table_key = Some(format!("{schema}.{table}"));
         self.table_detail = None;
         self.selection_generation += 1;
-        pagination.reset();
-        pagination.schema = schema.to_string();
-        pagination.table = table.to_string();
+        pagination.reset_for_table(schema, table);
         self.selection_generation
     }
 
@@ -413,21 +411,19 @@ mod tests {
         #[test]
         fn resets_pagination() {
             let mut session = BrowseSession::default();
-            let mut pagination = PaginationState {
-                current_page: 5,
-                total_rows_estimate: Some(10000),
-                reached_end: true,
-                schema: "old".to_string(),
-                table: "old".to_string(),
-            };
+            let mut pagination = PaginationState::default();
+            pagination.set_page(5);
+            pagination.set_total_rows_estimate(Some(10000));
+            pagination.mark_reached_end();
+            pagination.set_table("old", "old");
 
             let _ = session.select_table("public", "users", &mut pagination);
 
-            assert_eq!(pagination.current_page, 0);
-            assert_eq!(pagination.total_rows_estimate, None);
-            assert!(!pagination.reached_end);
-            assert_eq!(pagination.schema, "public");
-            assert_eq!(pagination.table, "users");
+            assert_eq!(pagination.current_page(), 0);
+            assert_eq!(pagination.total_rows_estimate(), None);
+            assert!(!pagination.reached_end());
+            assert_eq!(pagination.schema(), "public");
+            assert_eq!(pagination.table(), "users");
         }
     }
 
@@ -475,7 +471,7 @@ mod tests {
 
         assert!(session.selected_table_key().is_none());
         assert!(session.table_detail().is_none());
-        assert_eq!(pagination.current_page, 0);
+        assert_eq!(pagination.current_page(), 0);
     }
 
     #[test]
@@ -699,13 +695,10 @@ mod tests {
             session.begin_reload();
             let mut query = QueryExecution::default();
             query.set_current_result(make_query_result());
-            query.pagination = PaginationState {
-                current_page: 3,
-                total_rows_estimate: Some(1000),
-                reached_end: true,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            query.pagination.set_page(3);
+            query.pagination.set_total_rows_estimate(Some(1000));
+            query.pagination.mark_reached_end();
+            query.pagination.set_table("public", "users");
             query.enter_history(2);
 
             session.reset(&mut query);
@@ -723,7 +716,7 @@ mod tests {
             assert!(session.active_database_type().is_none());
             assert!(!session.is_read_only());
             assert!(!session.is_reloading());
-            assert_eq!(query.pagination.current_page, 0);
+            assert_eq!(query.pagination.current_page(), 0);
             assert!(query.current_result().is_none());
             assert!(query.history_index().is_none());
         }

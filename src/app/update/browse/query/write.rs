@@ -56,8 +56,8 @@ fn build_update_preview(
 
     let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
     let target = crate::policy::write::write_guardrails::TargetSummary {
-        schema: state.query.pagination.schema.clone(),
-        table: state.query.pagination.table.clone(),
+        schema: state.query.pagination.schema().to_string(),
+        table: state.query.pagination.table().to_string(),
         key_values: pk_pairs.clone().unwrap_or_default(),
     };
     let has_where = pk_pairs.as_ref().is_some_and(|pairs| !pairs.is_empty());
@@ -275,12 +275,12 @@ pub fn reduce(
                     state.modal.set_mode(InputMode::Normal);
 
                     if let Some(dsn) = state.session.dsn() {
-                        let page = state.query.pagination.current_page;
+                        let page = state.query.pagination.current_page();
                         state.query.begin_running(now);
                         Some(vec![Effect::ExecutePreview {
                             dsn: dsn.to_string(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
+                            schema: state.query.pagination.schema().to_string(),
+                            table: state.query.pagination.table().to_string(),
                             generation: state.session.selection_generation(),
                             limit: PREVIEW_PAGE_SIZE,
                             offset: page * PREVIEW_PAGE_SIZE,
@@ -300,7 +300,7 @@ pub fn reduce(
                         .query
                         .take_delete_refresh_target()
                         .unwrap_or(DeleteRefreshTarget {
-                            target_page: state.query.pagination.current_page,
+                            target_page: state.query.pagination.current_page(),
                             target_row: None,
                             expected_delete_count: 1,
                         });
@@ -334,11 +334,11 @@ pub fn reduce(
 
                     if let Some(dsn) = state.session.dsn() {
                         state.query.begin_running(now);
-                        state.query.pagination.reached_end = false;
+                        state.query.pagination.clear_reached_end();
                         Some(vec![Effect::ExecutePreview {
                             dsn: dsn.to_string(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
+                            schema: state.query.pagination.schema().to_string(),
+                            table: state.query.pagination.table().to_string(),
                             generation: state.session.selection_generation(),
                             limit: PREVIEW_PAGE_SIZE,
                             offset: target_page * PREVIEW_PAGE_SIZE,
@@ -394,8 +394,7 @@ mod tests {
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             state
                 .result_interaction
@@ -498,8 +497,7 @@ mod tests {
             state
                 .session
                 .set_table_detail_raw(Some(jsonb_table_detail()));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             // col 2 = metadata (jsonb)
             state
@@ -619,7 +617,7 @@ mod tests {
         #[test]
         fn execute_write_success_refreshes_preview_page() {
             let mut state = editable_state();
-            state.query.pagination.current_page = 2;
+            state.query.pagination.set_page(2);
 
             let effects = reduce_query(
                 &mut state,
@@ -746,8 +744,7 @@ mod tests {
         #[test]
         fn execute_write_success_for_delete_refreshes_target_page() {
             let mut state = create_test_state();
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table("public", "users");
             state.query.set_delete_refresh_target(1, Some(499), 1);
             state.result_interaction.set_write_preview(delete_preview());
 
@@ -782,8 +779,7 @@ mod tests {
         #[test]
         fn execute_write_non_one_rows_for_delete_sets_error() {
             let mut state = create_test_state();
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table("public", "users");
             state.result_interaction.set_write_preview(delete_preview());
 
             let effects = reduce_query(

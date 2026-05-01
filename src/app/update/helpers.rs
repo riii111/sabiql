@@ -81,7 +81,7 @@ pub fn editable_preview_base(
         return Err(EditGuardrailError::NotEditableResult);
     }
 
-    if state.query.pagination.schema.is_empty() || state.query.pagination.table.is_empty() {
+    if state.query.pagination.schema().is_empty() || state.query.pagination.table().is_empty() {
         return Err(EditGuardrailError::UnknownTable);
     }
 
@@ -90,8 +90,8 @@ pub fn editable_preview_base(
         .table_detail()
         .ok_or(EditGuardrailError::TableMetadataNotLoaded)?;
 
-    if table_detail.schema != state.query.pagination.schema
-        || table_detail.name != state.query.pagination.table
+    if table_detail.schema != state.query.pagination.schema()
+        || table_detail.name != state.query.pagination.table()
     {
         return Err(EditGuardrailError::StaleTableMetadata);
     }
@@ -139,8 +139,8 @@ pub fn build_bulk_delete_preview(
     }
 
     let sql = services.sql_dialect.build_bulk_delete_sql(
-        &state.query.pagination.schema,
-        &state.query.pagination.table,
+        state.query.pagination.schema(),
+        state.query.pagination.table(),
         &pk_pairs_per_row,
     );
 
@@ -155,12 +155,12 @@ pub fn build_bulk_delete_preview(
         result.rows.len(),
         staged_count,
         first_deleted_idx,
-        state.query.pagination.current_page,
+        state.query.pagination.current_page(),
     );
 
     let target = TargetSummary {
-        schema: state.query.pagination.schema.clone(),
-        table: state.query.pagination.table.clone(),
+        schema: state.query.pagination.schema().to_string(),
+        table: state.query.pagination.table().to_string(),
         key_values: pk_pairs_per_row.first().cloned().unwrap_or_default(),
     };
     let guardrail = evaluate_guardrails(true, true, Some(target.clone()));

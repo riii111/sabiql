@@ -18,7 +18,7 @@ fn is_jsonb_cell(state: &AppState) -> bool {
         return false;
     };
     // Ensure table_detail matches current preview target
-    if td.schema != state.query.pagination.schema || td.name != state.query.pagination.table {
+    if td.schema != state.query.pagination.schema() || td.name != state.query.pagination.table() {
         return false;
     }
     td.columns
@@ -189,8 +189,7 @@ mod tests {
                 error: None,
                 command_tag: None,
             }));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table("public", "users");
             state.result_interaction.activate_cell(0, 1);
             state
         }

@@ -29,8 +29,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
             let table_detail = match state.session.table_detail() {
                 Some(td)
-                    if td.schema == state.query.pagination.schema
-                        && td.name == state.query.pagination.table =>
+                    if td.schema == state.query.pagination.schema()
+                        && td.name == state.query.pagination.table() =>
                 {
                     td
                 }
@@ -444,8 +444,7 @@ mod tests {
             error: None,
             command_tag: None,
         }));
-        state.query.pagination.schema = "public".to_string();
-        state.query.pagination.table = "users".to_string();
+        state.query.pagination.set_table("public", "users");
         state.session.set_table_detail_raw(Some(jsonb_table()));
         state.result_interaction.activate_cell(0, 1);
         state

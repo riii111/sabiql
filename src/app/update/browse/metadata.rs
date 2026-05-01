@@ -54,28 +54,28 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             let mut effects = vec![];
 
-            if state.query.pagination.table.is_empty() {
+            if !state.query.pagination.has_table() {
                 state
                     .ui
                     .set_explorer_selection(if has_tables { Some(0) } else { None });
             } else {
-                let prev_schema = &state.query.pagination.schema;
-                let prev_table = &state.query.pagination.table;
+                let prev_schema = state.query.pagination.schema();
+                let prev_table = state.query.pagination.table();
                 let found_index = metadata
                     .table_summaries
                     .iter()
-                    .position(|t| &t.schema == prev_schema && &t.name == prev_table);
+                    .position(|t| t.schema == prev_schema && t.name == prev_table);
                 if let Some(idx) = found_index {
                     state.ui.set_explorer_selection(Some(idx));
                     // Refresh preview and detail: DDL or reload may have changed
                     // data/schema even though the table still exists.
                     if let Some(dsn) = state.session.dsn() {
-                        let page = state.query.pagination.current_page;
+                        let page = state.query.pagination.current_page();
                         let generation = state.session.selection_generation();
                         effects.push(Effect::ExecutePreview {
                             dsn: dsn.to_string(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
+                            schema: state.query.pagination.schema().to_string(),
+                            table: state.query.pagination.table().to_string(),
                             generation,
                             limit: PREVIEW_PAGE_SIZE,
                             offset: page * PREVIEW_PAGE_SIZE,
@@ -84,8 +84,8 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         });
                         effects.push(Effect::FetchTableDetail {
                             dsn: dsn.to_string(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
+                            schema: state.query.pagination.schema().to_string(),
+                            table: state.query.pagination.table().to_string(),
                             generation,
                         });
                     }
@@ -736,7 +736,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.query.pagination.table.is_empty());
+            assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert!(state.session.selected_table_key().is_none());
@@ -746,8 +746,7 @@ mod tests {
         #[test]
         fn table_still_exists_preserves_pagination_and_emits_refresh_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table("public", "users");
 
             // "orders" comes before "users" alphabetically, so "users" → index 1
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
@@ -758,7 +757,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.query.pagination.table, "users");
+            assert_eq!(state.query.pagination.table(), "users");
             assert_eq!(state.ui.explorer_selected, 1);
             assert!(
                 effects

@@ -2513,11 +2513,11 @@ mod tests {
         fn confirm_selection_initializes_pagination_via_dispatch() {
             let (state, _now) = state_after_confirm_and_complete();
 
-            assert_eq!(state.query.pagination.schema, "public");
-            assert_eq!(state.query.pagination.table, "users");
-            assert_eq!(state.query.pagination.total_rows_estimate, Some(1200));
-            assert_eq!(state.query.pagination.current_page, 0);
-            assert!(!state.query.pagination.reached_end);
+            assert_eq!(state.query.pagination.schema(), "public");
+            assert_eq!(state.query.pagination.table(), "users");
+            assert_eq!(state.query.pagination.total_rows_estimate(), Some(1200));
+            assert_eq!(state.query.pagination.current_page(), 0);
+            assert!(!state.query.pagination.reached_end());
         }
 
         #[test]

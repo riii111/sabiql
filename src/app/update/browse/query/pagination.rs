@@ -31,7 +31,7 @@ pub fn reduce(
             let export_query = result.query.clone();
             let file_name = match result.source {
                 QuerySource::Preview => {
-                    let table = &state.query.pagination.table;
+                    let table = state.query.pagination.table();
                     table
                         .chars()
                         .map(|c| {
@@ -152,13 +152,13 @@ pub fn reduce(
                 return Some(vec![]);
             }
             if let Some(dsn) = state.session.dsn().map(str::to_string) {
-                let next_page = state.query.pagination.current_page + 1;
+                let next_page = state.query.pagination.current_page() + 1;
                 state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 Some(vec![Effect::ExecutePreview {
                     dsn,
-                    schema: state.query.pagination.schema.clone(),
-                    table: state.query.pagination.table.clone(),
+                    schema: state.query.pagination.schema().to_string(),
+                    table: state.query.pagination.table().to_string(),
                     generation: state.session.selection_generation(),
                     limit: PREVIEW_PAGE_SIZE,
                     offset: next_page * PREVIEW_PAGE_SIZE,
@@ -178,14 +178,14 @@ pub fn reduce(
                 return Some(vec![]);
             }
             if let Some(dsn) = state.session.dsn().map(str::to_string) {
-                let prev_page = state.query.pagination.current_page - 1;
+                let prev_page = state.query.pagination.current_page() - 1;
                 state.query.begin_running(now);
                 state.result_interaction.reset_view();
-                state.query.pagination.reached_end = false;
+                state.query.pagination.clear_reached_end();
                 Some(vec![Effect::ExecutePreview {
                     dsn,
-                    schema: state.query.pagination.schema.clone(),
-                    table: state.query.pagination.table.clone(),
+                    schema: state.query.pagination.schema().to_string(),
+                    table: state.query.pagination.table().to_string(),
                     generation: state.session.selection_generation(),
                     limit: PREVIEW_PAGE_SIZE,
                     offset: prev_page * PREVIEW_PAGE_SIZE,
@@ -207,7 +207,6 @@ mod tests {
     use crate::domain::{QueryResult, QuerySource};
     use std::sync::Arc;
 
-    use crate::model::browse::query_execution::PaginationState;
     use crate::update::browse::query::reduce_query;
     use crate::update::browse::query::tests::*;
 
@@ -237,13 +236,9 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination = PaginationState {
-                current_page: 0,
-                total_rows_estimate: Some(1500),
-                reached_end: false,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            state.query.pagination.set_page(0);
+            state.query.pagination.set_total_rows_estimate(Some(1500));
+            state.query.pagination.set_table("public", "users");
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -272,7 +267,7 @@ mod tests {
         fn noop_when_reached_end() {
             let mut state = create_test_state();
             state.query.set_current_result(preview_result(100));
-            state.query.pagination.reached_end = true;
+            state.query.pagination.mark_reached_end();
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -329,7 +324,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(100));
-            state.query.pagination.reached_end = true;
+            state.query.pagination.mark_reached_end();
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
@@ -351,13 +346,9 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination = PaginationState {
-                current_page: 0,
-                total_rows_estimate: Some(1500),
-                reached_end: false,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            state.query.pagination.set_page(0);
+            state.query.pagination.set_total_rows_estimate(Some(1500));
+            state.query.pagination.set_table("public", "users");
             state.result_interaction.activate_cell(3, 1);
             state.result_interaction.stage_row(3);
 
@@ -383,13 +374,9 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination = PaginationState {
-                current_page: 2,
-                total_rows_estimate: Some(1500),
-                reached_end: false,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            state.query.pagination.set_page(2);
+            state.query.pagination.set_total_rows_estimate(Some(1500));
+            state.query.pagination.set_table("public", "users");
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -420,7 +407,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination.current_page = 0;
+            state.query.pagination.set_page(0);
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -440,7 +427,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(PREVIEW_PAGE_SIZE));
-            state.query.pagination.current_page = 0;
+            state.query.pagination.set_page(0);
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
@@ -472,9 +459,8 @@ mod tests {
         fn request_with_preview_result_emits_count_effect() {
             let mut state = export_test_state();
             state.query.set_current_result(preview_result(10));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
-            state.query.pagination.total_rows_estimate = Some(100);
+            state.query.pagination.set_table("public", "users");
+            state.query.pagination.set_total_rows_estimate(Some(100));
 
             let effects = reduce_query(
                 &mut state,

@@ -23,14 +23,38 @@ pub enum QueryStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct PaginationState {
-    pub current_page: usize,
-    pub total_rows_estimate: Option<i64>,
-    pub reached_end: bool,
-    pub schema: String,
-    pub table: String,
+    current_page: usize,
+    total_rows_estimate: Option<i64>,
+    reached_end: bool,
+    schema: String,
+    table: String,
 }
 
 impl PaginationState {
+    pub fn current_page(&self) -> usize {
+        self.current_page
+    }
+
+    pub fn total_rows_estimate(&self) -> Option<i64> {
+        self.total_rows_estimate
+    }
+
+    pub fn reached_end(&self) -> bool {
+        self.reached_end
+    }
+
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    pub fn table(&self) -> &str {
+        &self.table
+    }
+
+    pub fn has_table(&self) -> bool {
+        !self.table.is_empty()
+    }
+
     pub fn offset(&self) -> usize {
         self.current_page * PREVIEW_PAGE_SIZE
     }
@@ -56,6 +80,38 @@ impl PaginationState {
         self.reached_end = false;
         self.schema.clear();
         self.table.clear();
+    }
+
+    pub fn reset_for_table(&mut self, schema: &str, table: &str) {
+        self.reset();
+        self.schema = schema.to_string();
+        self.table = table.to_string();
+    }
+
+    pub fn set_table(&mut self, schema: &str, table: &str) {
+        self.schema = schema.to_string();
+        self.table = table.to_string();
+    }
+
+    pub fn set_page(&mut self, page: usize) {
+        self.current_page = page;
+    }
+
+    pub fn set_total_rows_estimate(&mut self, estimate: Option<i64>) {
+        self.total_rows_estimate = estimate;
+    }
+
+    pub fn mark_reached_end(&mut self) {
+        self.reached_end = true;
+    }
+
+    pub fn clear_reached_end(&mut self) {
+        self.reached_end = false;
+    }
+
+    pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
+        self.current_page = page;
+        self.reached_end = reached_end;
     }
 }
 
