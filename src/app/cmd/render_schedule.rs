@@ -115,7 +115,9 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let expires_at = now + Duration::from_secs(2);
-            state.messages.set_expires_at_for_test(Some(expires_at));
+            state
+                .messages
+                .set_error_at("message".to_string(), expires_at - Duration::from_secs(3));
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -194,7 +196,9 @@ mod tests {
             state.query.begin_running(now);
             // Message expires before spinner would update
             let expires_at = now + Duration::from_millis(50);
-            state.messages.set_expires_at_for_test(Some(expires_at));
+            state
+                .messages
+                .set_error_at("message".to_string(), expires_at - Duration::from_secs(3));
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -207,9 +211,10 @@ mod tests {
             let now = Instant::now();
 
             state.query.begin_running(now);
-            state
-                .messages
-                .set_expires_at_for_test(Some(now + Duration::from_secs(2)));
+            state.messages.set_error_at(
+                "message".to_string(),
+                now.checked_sub(Duration::from_secs(1)).unwrap(),
+            );
             state
                 .query
                 .set_result_highlight(now + Duration::from_millis(100));

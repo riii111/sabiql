@@ -64,18 +64,6 @@ impl MessageState {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
-impl MessageState {
-    pub fn set_messages_for_test(&mut self, error: Option<String>, success: Option<String>) {
-        self.last_error = error;
-        self.last_success = success;
-    }
-
-    pub fn set_expires_at_for_test(&mut self, expires_at: Option<Instant>) {
-        self.expires_at = expires_at;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,8 +117,11 @@ mod tests {
     fn clear_expired_at_removes_expired_messages() {
         let now = fixed_instant();
         let mut state = MessageState::default();
-        state.set_error_at("Error".to_string(), now);
-        state.set_expires_at_for_test(Some(now.checked_sub(Duration::from_secs(1)).unwrap()));
+        state.set_error_at(
+            "Error".to_string(),
+            now.checked_sub(Duration::from_secs(MessageState::ERROR_TIMEOUT_SECS + 1))
+                .unwrap(),
+        );
 
         state.clear_expired_at(now);
 
@@ -143,7 +134,6 @@ mod tests {
         let now = fixed_instant();
         let mut state = MessageState::default();
         state.set_error_at("Error".to_string(), now);
-        state.set_expires_at_for_test(Some(now + Duration::from_secs(10)));
 
         state.clear_expired_at(now);
 

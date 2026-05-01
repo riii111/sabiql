@@ -897,7 +897,9 @@ mod tests {
         fn close_keeps_error_info_for_reopen() {
             let mut state = state_with_error();
             state.connection_error.expand_details();
-            state.connection_error.set_scroll_offset_for_test(5);
+            for _ in 0..5 {
+                state.connection_error.scroll_down(10);
+            }
             let now = Instant::now();
 
             reduce(
