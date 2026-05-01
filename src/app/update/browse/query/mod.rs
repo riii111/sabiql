@@ -181,7 +181,7 @@ pub(super) mod tests {
 
     pub fn state_with_table(schema: &str, table: &str) -> AppState {
         let mut state = create_test_state();
-        state.query.pagination.set_table(schema, table);
+        state.query.pagination.set_table_for_test(schema, table);
         state
     }
 }

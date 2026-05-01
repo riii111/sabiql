@@ -329,7 +329,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if matches!(intent, Some(ConfirmIntent::QuitNoConnection)) {
                 state.connection_setup.reset();
                 if !state.connections().is_empty() || state.session.dsn().is_some() {
-                    state.connection_setup.is_first_run = false;
+                    state.connection_setup.set_first_run(false);
                 }
                 state.modal.pop_mode_override(InputMode::ConnectionSetup);
                 Some(vec![])

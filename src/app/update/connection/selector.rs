@@ -61,7 +61,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
             if state.connections().is_empty() && state.service_entries().is_empty() {
                 state.connection_setup.reset();
-                state.connection_setup.is_first_run = false;
+                state.connection_setup.set_first_run(false);
                 state.modal.set_mode(InputMode::ConnectionSetup);
             }
 
@@ -326,7 +326,7 @@ mod tests {
 
             // Set state that was previously not reset by ConnectionDeleted
             state.query.enter_history(2);
-            state.query.pagination.set_page(3);
+            state.query.pagination.set_page_for_test(3);
             state.result_interaction.activate_cell(5, 0);
             state.result_interaction.scroll_offset = 10;
             state.result_interaction.horizontal_offset = 20;

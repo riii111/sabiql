@@ -189,7 +189,7 @@ mod tests {
                 error: None,
                 command_tag: None,
             }));
-            state.query.pagination.set_table("public", "users");
+            state.query.pagination.set_table_for_test("public", "users");
             state.result_interaction.activate_cell(0, 1);
             state
         }

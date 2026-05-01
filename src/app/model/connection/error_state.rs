@@ -134,6 +134,25 @@ mod tests {
             assert!(state.error_info().is_some());
             assert!(!state.details_expanded());
             assert_eq!(state.scroll_offset(), 0);
+            assert!(!state.is_copied_visible_at(now()));
+        }
+    }
+
+    mod reset_view {
+        use super::*;
+
+        #[test]
+        fn collapses_details_and_resets_scroll_without_clearing_error() {
+            let mut state = ConnectionErrorState::default();
+            state.set_error(sample_error());
+            state.expand_details();
+            state.set_scroll_offset_for_test(4);
+
+            state.reset_view();
+
+            assert!(state.error_info().is_some());
+            assert!(!state.details_expanded());
+            assert_eq!(state.scroll_offset(), 0);
         }
     }
 

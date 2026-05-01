@@ -72,15 +72,15 @@ impl ConnectionSetup {
                 ConnectionField::DatabaseType => Self::render_database_type_field(
                     frame,
                     chunks[idx],
-                    form_state.database_type,
-                    form_state.focused_field == ConnectionField::DatabaseType,
+                    form_state.database_type(),
+                    form_state.focused_field() == ConnectionField::DatabaseType,
                     theme,
                 ),
                 ConnectionField::SslMode => Self::render_ssl_field(
                     frame,
                     chunks[idx],
-                    form_state.ssl_mode,
-                    form_state.focused_field == ConnectionField::SslMode,
+                    form_state.ssl_mode(),
+                    form_state.focused_field() == ConnectionField::SslMode,
                     theme,
                 ),
                 field => Self::render_text_field(
@@ -99,14 +99,14 @@ impl ConnectionSetup {
             Paragraph::new(notice).style(Style::default().fg(theme.component.feedback.note_text));
         frame.render_widget(notice_para, chunks[field_count + 1]);
 
-        if form_state.database_type_dropdown.is_open() {
+        if form_state.database_type_dropdown().is_open() {
             Self::render_database_type_dropdown(
                 frame,
                 chunks[0],
-                form_state.database_type_dropdown.selected_index(),
+                form_state.database_type_dropdown().selected_index(),
                 theme,
             );
-        } else if form_state.ssl_dropdown.is_open() {
+        } else if form_state.ssl_dropdown().is_open() {
             let ssl_idx = visible_fields
                 .iter()
                 .position(|field| *field == ConnectionField::SslMode)
@@ -114,7 +114,7 @@ impl ConnectionSetup {
             Self::render_dropdown(
                 frame,
                 chunks[ssl_idx],
-                form_state.ssl_dropdown.selected_index(),
+                form_state.ssl_dropdown().selected_index(),
                 theme,
             );
         }
@@ -128,9 +128,9 @@ impl ConnectionSetup {
         mask: bool,
         theme: &ThemePalette,
     ) {
-        let is_focused = field == state.focused_field;
+        let is_focused = field == state.focused_field();
         let value = state.field_value(field);
-        let error = state.validation_errors.get(&field);
+        let error = state.validation_error(field);
 
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),

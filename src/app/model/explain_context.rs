@@ -158,7 +158,7 @@ impl ExplainContext {
         self.right.as_ref().map(|slot| slot.full_query.as_str())
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset_for_new_run(&mut self) {
         let left = self.left.take();
         let right = self.right.take();
         let history = std::mem::take(&mut self.history);
@@ -333,7 +333,7 @@ mod tests {
         ctx.scroll_plan_to(10);
         ctx.scroll_compare_to(5);
 
-        ctx.reset();
+        ctx.reset_for_new_run();
 
         assert!(ctx.plan_text().is_none());
         assert!(ctx.error().is_none());

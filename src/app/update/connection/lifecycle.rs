@@ -67,11 +67,7 @@ pub fn reduce(
                 state.session.mark_disconnected();
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else if let Some(cached) = state.connection_caches.get(id).cloned() {
-                restore_cache(state, &cached, services);
-                state
-                    .session
-                    .set_active_connection(id, name, *database_type, dsn);
-                state.session.disable_read_only();
+                restore_cache(state, &cached, id, name, *database_type, dsn, services);
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata

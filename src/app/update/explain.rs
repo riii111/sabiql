@@ -32,7 +32,7 @@ fn show_explain_error_on_plan(state: &mut AppState, message: impl Into<String>) 
 fn begin_explain_running(state: &mut AppState, now: Instant) {
     state.sql_modal.begin_adhoc_running();
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
-    state.explain.reset();
+    state.explain.reset_for_new_run();
     state.query.begin_running(now);
 }
 

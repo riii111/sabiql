@@ -59,6 +59,20 @@ impl JsonbSearchState {
             self.current_match - 1
         };
     }
+
+    pub fn activate(&mut self) {
+        self.active = true;
+    }
+
+    pub fn deactivate(&mut self) {
+        self.active = false;
+    }
+
+    pub fn reset(&mut self) {
+        self.input.set_content(String::new());
+        self.matches.clear();
+        self.current_match = 0;
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -167,19 +181,17 @@ impl JsonbDetailState {
 
     pub fn enter_search(&mut self) {
         self.mode = JsonbDetailMode::Searching;
-        self.search.active = true;
-        self.search.input.set_content(String::new());
-        self.search.matches.clear();
-        self.search.current_match = 0;
+        self.search.reset();
+        self.search.activate();
     }
 
     pub fn exit_search(&mut self) {
-        self.search.active = false;
+        self.search.deactivate();
         self.mode = JsonbDetailMode::Viewing;
     }
 
     pub fn enter_edit(&mut self) {
-        self.search.active = false;
+        self.search.deactivate();
         self.validation_error = None;
         self.mode = JsonbDetailMode::Editing;
     }

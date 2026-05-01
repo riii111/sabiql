@@ -204,79 +204,91 @@ pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
 }
 
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
-    state.validation_errors.remove(&field);
+    state.clear_validation_error(field);
 
     match field {
         ConnectionField::DatabaseType => {}
         ConnectionField::SqlitePath => {
             match crate::domain::connection::SqliteConnectionConfig::new(
-                state.sqlite_path.content().to_string(),
+                state
+                    .input(ConnectionField::SqlitePath)
+                    .expect("sqlite path is a text input")
+                    .content()
+                    .to_string(),
             ) {
                 Ok(_) => {}
                 Err(crate::domain::connection::SqliteConnectionConfigError::EmptyPath) => {
-                    state
-                        .validation_errors
-                        .insert(field, "Required".to_string());
+                    state.set_validation_error(field, "Required");
                 }
                 Err(crate::domain::connection::SqliteConnectionConfigError::UnsupportedPath) => {
-                    state
-                        .validation_errors
-                        .insert(field, "Unsupported characters".to_string());
+                    state.set_validation_error(field, "Unsupported characters");
                 }
             }
         }
         ConnectionField::Host => {
-            if state.host.content().trim().is_empty() {
-                state
-                    .validation_errors
-                    .insert(field, "Required".to_string());
+            if state
+                .input(ConnectionField::Host)
+                .expect("host is a text input")
+                .content()
+                .trim()
+                .is_empty()
+            {
+                state.set_validation_error(field, "Required");
             }
         }
         ConnectionField::Port => {
-            if state.port.content().trim().is_empty() {
-                state
-                    .validation_errors
-                    .insert(field, "Required".to_string());
+            let port = state
+                .input(ConnectionField::Port)
+                .expect("port is a text input")
+                .content()
+                .trim();
+            if port.is_empty() {
+                state.set_validation_error(field, "Required");
             } else {
-                match state.port.content().trim().parse::<u16>() {
+                match port.parse::<u16>() {
                     Err(_) => {
-                        state
-                            .validation_errors
-                            .insert(field, "Invalid port".to_string());
+                        state.set_validation_error(field, "Invalid port");
                     }
                     Ok(0) => {
-                        state
-                            .validation_errors
-                            .insert(field, "Port must be > 0".to_string());
+                        state.set_validation_error(field, "Port must be > 0");
                     }
                     Ok(_) => {}
                 }
             }
         }
         ConnectionField::Database => {
-            if state.database.content().trim().is_empty() {
-                state
-                    .validation_errors
-                    .insert(field, "Required".to_string());
+            if state
+                .input(ConnectionField::Database)
+                .expect("database is a text input")
+                .content()
+                .trim()
+                .is_empty()
+            {
+                state.set_validation_error(field, "Required");
             }
         }
         ConnectionField::User => {
-            if state.user.content().trim().is_empty() {
-                state
-                    .validation_errors
-                    .insert(field, "Required".to_string());
+            if state
+                .input(ConnectionField::User)
+                .expect("user is a text input")
+                .content()
+                .trim()
+                .is_empty()
+            {
+                state.set_validation_error(field, "Required");
             }
         }
         ConnectionField::Name => {
-            let name = state.name.content().trim().to_string();
+            let name = state
+                .input(ConnectionField::Name)
+                .expect("name is a text input")
+                .content()
+                .trim()
+                .to_string();
             if name.is_empty() {
-                state
-                    .validation_errors
-                    .insert(field, "Name is required".to_string());
+                state.set_validation_error(field, "Name is required");
             } else if name.chars().count() > 50 {
-                state
-                    .validation_errors
-                    .insert(field, "Name must be 50 characters or less".to_string());
+                state.set_validation_error(field, "Name must be 50 characters or less");
             }
         }
         ConnectionField::Password | ConnectionField::SslMode => {}
@@ -284,10 +296,8 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
 }
 
 pub fn validate_all(state: &mut ConnectionSetupState) {
-    let active_fields = ConnectionField::fields_for(state.database_type);
-    state
-        .validation_errors
-        .retain(|field, _| active_fields.contains(field));
+    let active_fields = ConnectionField::fields_for(state.database_type());
+    state.retain_validation_errors_for_visible_fields();
     for field in active_fields {
         validate_field(state, *field);
     }
@@ -309,7 +319,9 @@ mod tests {
             validate_field(&mut state, ConnectionField::Name);
 
             assert_eq!(
-                state.validation_errors.get(&ConnectionField::Name),
+                state
+                    .validation_errors_for_test()
+                    .get(&ConnectionField::Name),
                 Some(&"Name is required".to_string())
             );
         }
@@ -321,12 +333,14 @@ mod tests {
         )]
         fn whitespace_only_name_sets_error() {
             let mut state = ConnectionSetupState::default();
-            state.name = TextInputState::new("   ", 3);
+            state.set_input_for_test(ConnectionField::Name, TextInputState::new("   ", 3));
 
             validate_field(&mut state, ConnectionField::Name);
 
             assert_eq!(
-                state.validation_errors.get(&ConnectionField::Name),
+                state
+                    .validation_errors_for_test()
+                    .get(&ConnectionField::Name),
                 Some(&"Name is required".to_string())
             );
         }
@@ -337,17 +351,23 @@ mod tests {
         fn name_length_validation(#[case] name: String, #[case] expect_error: bool) {
             let mut state = ConnectionSetupState::default();
             let len = name.chars().count();
-            state.name = TextInputState::new(name, len);
+            state.set_input_for_test(ConnectionField::Name, TextInputState::new(name, len));
 
             validate_field(&mut state, ConnectionField::Name);
 
             if expect_error {
                 assert_eq!(
-                    state.validation_errors.get(&ConnectionField::Name),
+                    state
+                        .validation_errors_for_test()
+                        .get(&ConnectionField::Name),
                     Some(&"Name must be 50 characters or less".to_string())
                 );
             } else {
-                assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
+                assert!(
+                    !state
+                        .validation_errors_for_test()
+                        .contains_key(&ConnectionField::Name)
+                );
             }
         }
 
@@ -355,12 +375,23 @@ mod tests {
         fn valid_name_clears_previous_error() {
             let mut state = ConnectionSetupState::default();
             validate_field(&mut state, ConnectionField::Name);
-            assert!(state.validation_errors.contains_key(&ConnectionField::Name));
+            assert!(
+                state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Name)
+            );
 
-            state.name.set_content("Valid Name".to_string());
+            state
+                .input_mut(ConnectionField::Name)
+                .unwrap()
+                .set_content("Valid Name".to_string());
             validate_field(&mut state, ConnectionField::Name);
 
-            assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
+            assert!(
+                !state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Name)
+            );
         }
     }
 
@@ -370,50 +401,59 @@ mod tests {
 
         #[test]
         fn empty_path_sets_required_error() {
-            let mut state = ConnectionSetupState {
-                database_type: DatabaseType::SQLite,
-                ..ConnectionSetupState::default()
-            };
-            state.sqlite_path.set_content("   ".to_string());
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::SQLite);
+            state
+                .input_mut(ConnectionField::SqlitePath)
+                .unwrap()
+                .set_content("   ".to_string());
 
             validate_field(&mut state, ConnectionField::SqlitePath);
 
             assert_eq!(
-                state.validation_errors.get(&ConnectionField::SqlitePath),
+                state
+                    .validation_errors_for_test()
+                    .get(&ConnectionField::SqlitePath),
                 Some(&"Required".to_string())
             );
         }
 
         #[test]
         fn unsupported_path_characters_set_error() {
-            let mut state = ConnectionSetupState {
-                database_type: DatabaseType::SQLite,
-                ..ConnectionSetupState::default()
-            };
-            state.sqlite_path.set_content("/tmp/app\0.db".to_string());
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::SQLite);
+            state
+                .input_mut(ConnectionField::SqlitePath)
+                .unwrap()
+                .set_content("/tmp/app\0.db".to_string());
 
             validate_field(&mut state, ConnectionField::SqlitePath);
 
             assert_eq!(
-                state.validation_errors.get(&ConnectionField::SqlitePath),
+                state
+                    .validation_errors_for_test()
+                    .get(&ConnectionField::SqlitePath),
                 Some(&"Unsupported characters".to_string())
             );
         }
 
         #[test]
         fn validate_all_removes_errors_for_hidden_fields() {
-            let mut state = ConnectionSetupState {
-                database_type: DatabaseType::SQLite,
-                ..ConnectionSetupState::default()
-            };
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::SQLite);
+            state.set_validation_error(ConnectionField::Host, "Required");
             state
-                .validation_errors
-                .insert(ConnectionField::Host, "Required".to_string());
-            state.sqlite_path.set_content("/tmp/app.db".to_string());
+                .input_mut(ConnectionField::SqlitePath)
+                .unwrap()
+                .set_content("/tmp/app.db".to_string());
 
             validate_all(&mut state);
 
-            assert!(!state.validation_errors.contains_key(&ConnectionField::Host));
+            assert!(
+                !state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Host)
+            );
         }
     }
 

@@ -1421,15 +1421,27 @@ mod tests {
         ) {
             let mut state = setup_state();
             match field {
-                ConnectionField::Host => state.host.set_content(value.to_string()),
-                ConnectionField::Database => state.database.set_content(value.to_string()),
-                ConnectionField::User => state.user.set_content(value.to_string()),
+                ConnectionField::Host => state
+                    .input_mut(ConnectionField::Host)
+                    .unwrap()
+                    .set_content(value.to_string()),
+                ConnectionField::Database => state
+                    .input_mut(ConnectionField::Database)
+                    .unwrap()
+                    .set_content(value.to_string()),
+                ConnectionField::User => state
+                    .input_mut(ConnectionField::User)
+                    .unwrap()
+                    .set_content(value.to_string()),
                 _ => {}
             }
 
             validate_field(&mut state, field);
 
-            assert_eq!(state.validation_errors.contains_key(&field), has_error);
+            assert_eq!(
+                state.validation_errors_for_test().contains_key(&field),
+                has_error
+            );
         }
 
         #[rstest]
@@ -1437,11 +1449,18 @@ mod tests {
         #[case("abc")]
         fn port_validation_invalid_format(#[case] value: &str) {
             let mut state = setup_state();
-            state.port.set_content(value.to_string());
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
+            assert!(
+                state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Port)
+            );
         }
 
         #[rstest]
@@ -1450,11 +1469,18 @@ mod tests {
         #[case("99999")]
         fn port_validation_out_of_range(#[case] value: &str) {
             let mut state = setup_state();
-            state.port.set_content(value.to_string());
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
+            assert!(
+                state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Port)
+            );
         }
 
         #[rstest]
@@ -1463,11 +1489,18 @@ mod tests {
         #[case("65535")]
         fn port_validation_valid_range(#[case] value: &str) {
             let mut state = setup_state();
-            state.port.set_content(value.to_string());
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(!state.validation_errors.contains_key(&ConnectionField::Port));
+            assert!(
+                !state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Port)
+            );
         }
 
         #[rstest]
@@ -1475,39 +1508,54 @@ mod tests {
         #[case(ConnectionField::SslMode)]
         fn optional_fields_never_error(#[case] field: ConnectionField) {
             let mut state = setup_state();
-            state.password = TextInputState::default();
+            state.set_input_for_test(ConnectionField::Password, TextInputState::default());
 
             validate_field(&mut state, field);
 
-            assert!(!state.validation_errors.contains_key(&field));
+            assert!(!state.validation_errors_for_test().contains_key(&field));
         }
 
         #[test]
         fn validate_all_checks_all_required_fields() {
             let mut state = setup_state();
-            state.host = TextInputState::default();
-            state.port.set_content("invalid".to_string());
-            state.database = TextInputState::default();
-            state.user = TextInputState::default();
+            state.set_input_for_test(ConnectionField::Host, TextInputState::default());
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("invalid".to_string());
+            state.set_input_for_test(ConnectionField::Database, TextInputState::default());
+            state.set_input_for_test(ConnectionField::User, TextInputState::default());
 
             validate_all(&mut state);
 
-            assert!(state.validation_errors.contains_key(&ConnectionField::Host));
-            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
             assert!(
                 state
-                    .validation_errors
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Host)
+            );
+            assert!(
+                state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Port)
+            );
+            assert!(
+                state
+                    .validation_errors_for_test()
                     .contains_key(&ConnectionField::Database)
             );
-            assert!(state.validation_errors.contains_key(&ConnectionField::User));
+            assert!(
+                state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::User)
+            );
             assert!(
                 !state
-                    .validation_errors
+                    .validation_errors_for_test()
                     .contains_key(&ConnectionField::Password)
             );
             assert!(
                 !state
-                    .validation_errors
+                    .validation_errors_for_test()
                     .contains_key(&ConnectionField::SslMode)
             );
         }
@@ -1516,20 +1564,27 @@ mod tests {
     mod connection_setup_transitions {
         use super::*;
         use crate::domain::{ConnectionId, DatabaseType};
+        use crate::model::connection::setup::ConnectionField;
 
         #[test]
         fn save_completed_sets_dsn_and_returns_fetch_effect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.is_first_run = true;
+            state.connection_setup.set_first_run(true);
             state
                 .connection_setup
-                .host
+                .input_mut(ConnectionField::Host)
+                .unwrap()
                 .set_content("db.example.com".to_string());
-            state.connection_setup.port.set_content("5432".to_string());
             state
                 .connection_setup
-                .database
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("5432".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Database)
+                .unwrap()
                 .set_content("mydb".to_string());
             let now = Instant::now();
 
@@ -1545,7 +1600,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(!state.connection_setup.is_first_run);
+            assert!(!state.connection_setup.is_first_run());
             assert_eq!(state.session.dsn(), Some("postgres://db.example.com/mydb"));
             assert_eq!(
                 state.session.active_connection_name(),
@@ -1583,7 +1638,7 @@ mod tests {
         fn cancel_on_first_run_opens_confirm_dialog() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.is_first_run = true;
+            state.connection_setup.set_first_run(true);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1605,7 +1660,7 @@ mod tests {
         fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.is_first_run = false;
+            state.connection_setup.set_first_run(false);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1793,6 +1848,7 @@ mod tests {
     mod connection_state_tests {
         use super::*;
         use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, MetadataState};
+        use crate::model::connection::setup::ConnectionField;
         use crate::model::connection::state::ConnectionState;
 
         #[test]
@@ -1991,17 +2047,28 @@ mod tests {
             let mut state = create_test_state();
             state
                 .connection_setup
-                .host
+                .input_mut(ConnectionField::Host)
+                .unwrap()
                 .set_content("custom-host".to_string());
-            state.connection_setup.port.set_content("5433".to_string());
             state
                 .connection_setup
-                .database
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("5433".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Database)
+                .unwrap()
                 .set_content("mydb".to_string());
-            state.connection_setup.user.set_content("admin".to_string());
             state
                 .connection_setup
-                .password
+                .input_mut(ConnectionField::User)
+                .unwrap()
+                .set_content("admin".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Password)
+                .unwrap()
                 .set_content("secret".to_string());
             state.session.set_connection_state(ConnectionState::Failed);
             let now = Instant::now();
@@ -2013,11 +2080,11 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.connection_setup.host.content(), "custom-host");
-            assert_eq!(state.connection_setup.port.content(), "5433");
-            assert_eq!(state.connection_setup.database.content(), "mydb");
-            assert_eq!(state.connection_setup.user.content(), "admin");
-            assert_eq!(state.connection_setup.password.content(), "secret");
+            assert_eq!(state.connection_setup.host().content(), "custom-host");
+            assert_eq!(state.connection_setup.port().content(), "5433");
+            assert_eq!(state.connection_setup.database().content(), "mydb");
+            assert_eq!(state.connection_setup.user().content(), "admin");
+            assert_eq!(state.connection_setup.password().content(), "secret");
         }
 
         #[test]

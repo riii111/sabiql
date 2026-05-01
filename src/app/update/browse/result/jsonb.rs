@@ -444,7 +444,7 @@ mod tests {
             error: None,
             command_tag: None,
         }));
-        state.query.pagination.set_table("public", "users");
+        state.query.pagination.set_table_for_test("public", "users");
         state.session.set_table_detail_raw(Some(jsonb_table()));
         state.result_interaction.activate_cell(0, 1);
         state

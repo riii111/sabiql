@@ -136,6 +136,11 @@ impl ErPreparationState {
         self.total_tables = total_tables;
     }
 
+    pub fn invalidate_refresh_signatures(&mut self, total_tables: usize) {
+        self.last_signatures.clear();
+        self.total_tables = total_tables;
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
     pub fn set_total_tables_for_test(&mut self, total: usize) {

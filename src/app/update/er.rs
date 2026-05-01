@@ -134,7 +134,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
 
             state
                 .er_preparation
-                .apply_refresh_metadata(Default::default(), total_table_count);
+                .invalidate_refresh_signatures(total_table_count);
             state.set_error(format!(
                 "Smart refresh failed ({error}), falling back to full refresh"
             ));

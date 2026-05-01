@@ -334,7 +334,7 @@ pub fn reduce(
 
                     if let Some(dsn) = state.session.dsn() {
                         state.query.begin_running(now);
-                        state.query.pagination.clear_reached_end();
+                        state.query.pagination.allow_next_page_after_refresh();
                         Some(vec![Effect::ExecutePreview {
                             dsn: dsn.to_string(),
                             schema: state.query.pagination.schema().to_string(),
@@ -394,7 +394,7 @@ mod tests {
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
-            state.query.pagination.set_table("public", "users");
+            state.query.pagination.set_table_for_test("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             state
                 .result_interaction
@@ -497,7 +497,7 @@ mod tests {
             state
                 .session
                 .set_table_detail_raw(Some(jsonb_table_detail()));
-            state.query.pagination.set_table("public", "users");
+            state.query.pagination.set_table_for_test("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             // col 2 = metadata (jsonb)
             state
@@ -617,7 +617,7 @@ mod tests {
         #[test]
         fn execute_write_success_refreshes_preview_page() {
             let mut state = editable_state();
-            state.query.pagination.set_page(2);
+            state.query.pagination.set_page_for_test(2);
 
             let effects = reduce_query(
                 &mut state,
@@ -744,7 +744,7 @@ mod tests {
         #[test]
         fn execute_write_success_for_delete_refreshes_target_page() {
             let mut state = create_test_state();
-            state.query.pagination.set_table("public", "users");
+            state.query.pagination.set_table_for_test("public", "users");
             state.query.set_delete_refresh_target(1, Some(499), 1);
             state.result_interaction.set_write_preview(delete_preview());
 
@@ -779,7 +779,7 @@ mod tests {
         #[test]
         fn execute_write_non_one_rows_for_delete_sets_error() {
             let mut state = create_test_state();
-            state.query.pagination.set_table("public", "users");
+            state.query.pagination.set_table_for_test("public", "users");
             state.result_interaction.set_write_preview(delete_preview());
 
             let effects = reduce_query(

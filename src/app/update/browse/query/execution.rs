@@ -218,8 +218,6 @@ pub fn reduce(
             if let Some(dsn) = state.session.dsn() {
                 state.query.begin_running(now);
 
-                state.query.pagination.reset_for_table(schema, table);
-
                 let row_estimate = state
                     .session
                     .table_detail()
@@ -233,7 +231,10 @@ pub fn reduce(
                             }
                         })
                     });
-                state.query.pagination.set_total_rows_estimate(row_estimate);
+                state
+                    .query
+                    .pagination
+                    .reset_for_table_with_estimate(schema, table, row_estimate);
 
                 Some(vec![Effect::ExecutePreview {
                     dsn: dsn.to_string(),
@@ -348,10 +349,16 @@ mod tests {
         #[test]
         fn resets_pagination() {
             let mut state = create_test_state();
-            state.query.pagination.set_page(5);
-            state.query.pagination.set_total_rows_estimate(Some(10000));
-            state.query.pagination.mark_reached_end();
-            state.query.pagination.set_table("old_schema", "old_table");
+            state.query.pagination.set_page_for_test(5);
+            state
+                .query
+                .pagination
+                .set_total_rows_estimate_for_test(Some(10000));
+            state.query.pagination.mark_reached_end_for_test();
+            state
+                .query
+                .pagination
+                .set_table_for_test("old_schema", "old_table");
             let now = Instant::now();
 
             reduce_query(
@@ -422,7 +429,7 @@ mod tests {
         #[test]
         fn adhoc_does_not_update_pagination() {
             let mut state = create_test_state();
-            state.query.pagination.set_page(3);
+            state.query.pagination.set_page_for_test(3);
             let result = adhoc_result();
             let now = Instant::now();
 

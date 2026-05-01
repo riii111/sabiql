@@ -88,30 +88,48 @@ impl PaginationState {
         self.table = table.to_string();
     }
 
-    pub fn set_table(&mut self, schema: &str, table: &str) {
-        self.schema = schema.to_string();
-        self.table = table.to_string();
-    }
-
-    pub fn set_page(&mut self, page: usize) {
-        self.current_page = page;
-    }
-
-    pub fn set_total_rows_estimate(&mut self, estimate: Option<i64>) {
+    pub fn reset_for_table_with_estimate(
+        &mut self,
+        schema: &str,
+        table: &str,
+        estimate: Option<i64>,
+    ) {
+        self.reset_for_table(schema, table);
         self.total_rows_estimate = estimate;
     }
 
-    pub fn mark_reached_end(&mut self) {
-        self.reached_end = true;
-    }
-
-    pub fn clear_reached_end(&mut self) {
+    pub fn allow_next_page_after_refresh(&mut self) {
         self.reached_end = false;
     }
 
     pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
         self.current_page = page;
         self.reached_end = reached_end;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_table_for_test(&mut self, schema: &str, table: &str) {
+        self.schema = schema.to_string();
+        self.table = table.to_string();
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_page_for_test(&mut self, page: usize) {
+        self.current_page = page;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_total_rows_estimate_for_test(&mut self, estimate: Option<i64>) {
+        self.total_rows_estimate = estimate;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn mark_reached_end_for_test(&mut self) {
+        self.reached_end = true;
     }
 }
 
@@ -738,6 +756,49 @@ mod tests {
             assert!(!p.reached_end);
             assert!(p.schema.is_empty());
             assert!(p.table.is_empty());
+        }
+
+        #[test]
+        fn reset_for_table_with_estimate_sets_target_and_resets_page_state() {
+            let mut p = PaginationState {
+                current_page: 5,
+                total_rows_estimate: Some(1),
+                reached_end: true,
+                schema: "old".to_string(),
+                table: "old".to_string(),
+            };
+
+            p.reset_for_table_with_estimate("public", "users", Some(1200));
+
+            assert_eq!(p.current_page(), 0);
+            assert_eq!(p.total_rows_estimate(), Some(1200));
+            assert!(!p.reached_end());
+            assert_eq!(p.schema(), "public");
+            assert_eq!(p.table(), "users");
+        }
+
+        #[test]
+        fn set_page_result_updates_page_and_reached_end_together() {
+            let mut p = PaginationState::default();
+
+            p.set_page_result(2, true);
+
+            assert_eq!(p.current_page(), 2);
+            assert!(p.reached_end());
+        }
+
+        #[test]
+        fn allow_next_page_after_refresh_clears_reached_end_only() {
+            let mut p = PaginationState {
+                current_page: 3,
+                reached_end: true,
+                ..Default::default()
+            };
+
+            p.allow_next_page_after_refresh();
+
+            assert_eq!(p.current_page(), 3);
+            assert!(!p.reached_end());
         }
     }
 }

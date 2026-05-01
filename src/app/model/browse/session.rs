@@ -184,6 +184,20 @@ impl BrowseSession {
         query.exit_history();
     }
 
+    pub fn restore_from_cache_for_connection(
+        &mut self,
+        cache: &ConnectionCache,
+        query: &mut QueryExecution,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+    ) {
+        self.restore_from_cache(cache, query);
+        self.set_active_connection(id, name, database_type, dsn);
+        self.disable_read_only();
+    }
+
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn reset(&mut self, query: &mut QueryExecution) {
         self.metadata = None;
@@ -412,10 +426,10 @@ mod tests {
         fn resets_pagination() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
-            pagination.set_page(5);
-            pagination.set_total_rows_estimate(Some(10000));
-            pagination.mark_reached_end();
-            pagination.set_table("old", "old");
+            pagination.set_page_for_test(5);
+            pagination.set_total_rows_estimate_for_test(Some(10000));
+            pagination.mark_reached_end_for_test();
+            pagination.set_table_for_test("old", "old");
 
             let _ = session.select_table("public", "users", &mut pagination);
 
@@ -695,10 +709,12 @@ mod tests {
             session.begin_reload();
             let mut query = QueryExecution::default();
             query.set_current_result(make_query_result());
-            query.pagination.set_page(3);
-            query.pagination.set_total_rows_estimate(Some(1000));
-            query.pagination.mark_reached_end();
-            query.pagination.set_table("public", "users");
+            query.pagination.set_page_for_test(3);
+            query
+                .pagination
+                .set_total_rows_estimate_for_test(Some(1000));
+            query.pagination.mark_reached_end_for_test();
+            query.pagination.set_table_for_test("public", "users");
             query.enter_history(2);
 
             session.reset(&mut query);

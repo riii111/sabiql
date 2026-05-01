@@ -41,9 +41,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::Paste(text) if state.modal.active_mode() == InputMode::ConnectionSetup => {
             let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
             let setup = &mut state.connection_setup;
-            match setup.focused_field {
+            match setup.focused_field() {
                 ConnectionField::Port => {
-                    let current_len = setup.port.char_count();
+                    let port = setup
+                        .input_mut(ConnectionField::Port)
+                        .expect("port is a text input");
+                    let current_len = port.char_count();
                     let remaining = 5usize.saturating_sub(current_len);
                     let digits: String = clean
                         .chars()
@@ -51,8 +54,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         .take(remaining)
                         .collect();
                     if !digits.is_empty() {
-                        setup.port.insert_str(&digits);
-                        setup.port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                        port.insert_str(&digits);
+                        port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
                 ConnectionField::DatabaseType | ConnectionField::SslMode => {}
@@ -72,11 +75,14 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             ch: c,
         } => {
             let setup = &mut state.connection_setup;
-            match setup.focused_field {
+            match setup.focused_field() {
                 ConnectionField::Port => {
-                    if c.is_ascii_digit() && setup.port.char_count() < 5 {
-                        setup.port.insert_char(*c);
-                        setup.port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                    let port = setup
+                        .input_mut(ConnectionField::Port)
+                        .expect("port is a text input");
+                    if c.is_ascii_digit() && port.char_count() < 5 {
+                        port.insert_char(*c);
+                        port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
                 ConnectionField::DatabaseType | ConnectionField::SslMode => {}
@@ -112,13 +118,13 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::ConnectionSetupNextField => {
             let setup = &mut state.connection_setup;
-            validate_field(setup, setup.focused_field);
+            validate_field(setup, setup.focused_field());
             setup.focus_next_field();
             Some(vec![])
         }
         Action::ConnectionSetupPrevField => {
             let setup = &mut state.connection_setup;
-            validate_field(setup, setup.focused_field);
+            validate_field(setup, setup.focused_field());
             setup.focus_prev_field();
             Some(vec![])
         }
@@ -145,7 +151,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::ConnectionSetupSave => {
             let setup = &mut state.connection_setup;
             validate_all(setup);
-            if setup.validation_errors.is_empty() {
+            if !setup.has_validation_errors() {
                 let config = match setup.to_connection_config() {
                     Ok(config) => config,
                     Err(error) => {
@@ -157,8 +163,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     state.session.mark_connecting();
                 }
                 Some(vec![Effect::SaveAndConnect {
-                    id: setup.editing_id.clone(),
-                    name: setup.name.content().to_string(),
+                    id: setup.editing_id().cloned(),
+                    name: setup
+                        .input(ConnectionField::Name)
+                        .expect("name is a text input")
+                        .content()
+                        .to_string(),
                     config,
                 }])
             } else {
@@ -166,7 +176,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
         }
         Action::ConnectionSetupCancel => {
-            if state.connection_setup.is_first_run {
+            if state.connection_setup.is_first_run() {
                 state.confirm_dialog.open(
                     "Confirm",
                     "No connection configured.\nAre you sure you want to quit?",
@@ -235,14 +245,20 @@ mod tests {
         fn setup_state_with_field(field: ConnectionField) -> AppState {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.focused_field = field;
+            state.connection_setup.set_focused_field_for_test(field);
             // Clear default values so tests start clean
-            state.connection_setup.host = TextInputState::default();
-            state.connection_setup.port = TextInputState::default();
-            state.connection_setup.database = TextInputState::default();
-            state.connection_setup.user = TextInputState::default();
-            state.connection_setup.name = TextInputState::default();
-            state.connection_setup.password = TextInputState::default();
+            for field in [
+                ConnectionField::Host,
+                ConnectionField::Port,
+                ConnectionField::Database,
+                ConnectionField::User,
+                ConnectionField::Name,
+                ConnectionField::Password,
+            ] {
+                state
+                    .connection_setup
+                    .set_input_for_test(field, TextInputState::default());
+            }
             state
         }
 
@@ -256,7 +272,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.host.content(), "db.example.com");
+            assert_eq!(state.connection_setup.host().content(), "db.example.com");
         }
 
         #[test]
@@ -269,13 +285,17 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.port.content(), "5432");
+            assert_eq!(state.connection_setup.port().content(), "5432");
         }
 
         #[test]
         fn port_respects_limit() {
             let mut state = setup_state_with_field(ConnectionField::Port);
-            state.connection_setup.port.set_content("54".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("54".to_string());
 
             reduce(
                 &mut state,
@@ -283,17 +303,21 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.port.content(), "54321");
+            assert_eq!(state.connection_setup.port().content(), "54321");
         }
 
         #[test]
         fn full_port_does_nothing() {
             let mut state = setup_state_with_field(ConnectionField::Port);
-            state.connection_setup.port.set_content("12345".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("12345".to_string());
 
             reduce(&mut state, &Action::Paste("6".to_string()), Instant::now());
 
-            assert_eq!(state.connection_setup.port.content(), "12345");
+            assert_eq!(state.connection_setup.port().content(), "12345");
         }
 
         #[test]
@@ -306,13 +330,13 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.host.content(), "localhost");
+            assert_eq!(state.connection_setup.host().content(), "localhost");
         }
 
         #[test]
         fn ssl_mode_ignored() {
             let mut state = setup_state_with_field(ConnectionField::SslMode);
-            let ssl_mode_before = state.connection_setup.ssl_mode;
+            let ssl_mode_before = state.connection_setup.ssl_mode();
 
             reduce(
                 &mut state,
@@ -320,7 +344,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.ssl_mode, ssl_mode_before);
+            assert_eq!(state.connection_setup.ssl_mode(), ssl_mode_before);
         }
 
         #[test]
@@ -333,7 +357,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.host.cursor(), 14);
+            assert_eq!(state.connection_setup.host().cursor(), 14);
         }
     }
 
@@ -344,20 +368,35 @@ mod tests {
         use crate::update::action::ConnectionTarget;
 
         fn fill_valid_form(state: &mut AppState) {
-            state.connection_setup.name.set_content("test".to_string());
             state
                 .connection_setup
-                .host
+                .input_mut(ConnectionField::Name)
+                .unwrap()
+                .set_content("test".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Host)
+                .unwrap()
                 .set_content("localhost".to_string());
-            state.connection_setup.port.set_content("5432".to_string());
             state
                 .connection_setup
-                .database
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("5432".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Database)
+                .unwrap()
                 .set_content("db".to_string());
-            state.connection_setup.user.set_content("user".to_string());
             state
                 .connection_setup
-                .password
+                .input_mut(ConnectionField::User)
+                .unwrap()
+                .set_content("user".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Password)
+                .unwrap()
                 .set_content("pass".to_string());
         }
 
@@ -378,11 +417,18 @@ mod tests {
         #[test]
         fn sqlite_save_does_not_enter_connecting_state() {
             let mut state = AppState::new("test".to_string());
-            state.connection_setup.database_type = DatabaseType::SQLite;
-            state.connection_setup.name.set_content("Local".to_string());
             state
                 .connection_setup
-                .sqlite_path
+                .set_database_type(DatabaseType::SQLite);
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Name)
+                .unwrap()
+                .set_content("Local".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::SqlitePath)
+                .unwrap()
                 .set_content("/tmp/app.db".to_string());
 
             let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now())
@@ -450,7 +496,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.connection_setup.is_first_run);
+            assert!(state.connection_setup.is_first_run());
         }
 
         #[test]
@@ -465,7 +511,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(!state.connection_setup.is_first_run);
+            assert!(!state.connection_setup.is_first_run());
         }
 
         #[test]
@@ -479,7 +525,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(!state.connection_setup.is_first_run);
+            assert!(!state.connection_setup.is_first_run());
         }
     }
 }

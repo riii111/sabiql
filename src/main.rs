@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
         Ok(profiles) if profiles.is_empty() => {
             load_service_entries(&mut state, Some(&*pg_service_entry_reader));
             if state.service_entries().is_empty() {
-                state.connection_setup.is_first_run = true;
+                state.connection_setup.set_first_run(true);
                 state.modal.set_mode(InputMode::ConnectionSetup);
             } else {
                 state.modal.set_mode(InputMode::ConnectionSelector);
@@ -156,7 +156,7 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
         Err(_) => {
-            state.connection_setup.is_first_run = true;
+            state.connection_setup.set_first_run(true);
             state.modal.set_mode(InputMode::ConnectionSetup);
         }
     }

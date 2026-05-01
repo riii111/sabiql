@@ -36,7 +36,7 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
 
         Key::Enter
             if matches!(
-                state.connection_setup.focused_field,
+                state.connection_setup.focused_field(),
                 ConnectionField::DatabaseType | ConnectionField::SslMode
             ) =>
         {
@@ -229,7 +229,9 @@ mod tests {
         #[test]
         fn enter_on_ssl_field_toggles_dropdown() {
             let mut state = setup_state();
-            state.connection_setup.focused_field = ConnectionField::SslMode;
+            state
+                .connection_setup
+                .set_focused_field_for_test(ConnectionField::SslMode);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
@@ -239,7 +241,9 @@ mod tests {
         #[test]
         fn enter_on_database_type_field_toggles_dropdown() {
             let mut state = setup_state();
-            state.connection_setup.focused_field = ConnectionField::DatabaseType;
+            state
+                .connection_setup
+                .set_focused_field_for_test(ConnectionField::DatabaseType);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 

@@ -110,24 +110,24 @@ impl DatabaseTypeDropdown {
 
 #[derive(Debug, Clone)]
 pub struct ConnectionSetupState {
-    pub database_type: DatabaseType,
-    pub name: TextInputState,
-    pub sqlite_path: TextInputState,
-    pub host: TextInputState,
-    pub port: TextInputState,
-    pub database: TextInputState,
-    pub user: TextInputState,
-    pub password: TextInputState,
-    pub ssl_mode: SslMode,
+    database_type: DatabaseType,
+    name: TextInputState,
+    sqlite_path: TextInputState,
+    host: TextInputState,
+    port: TextInputState,
+    database: TextInputState,
+    user: TextInputState,
+    password: TextInputState,
+    ssl_mode: SslMode,
 
-    pub focused_field: ConnectionField,
-    pub database_type_dropdown: DatabaseTypeDropdown,
-    pub ssl_dropdown: SslModeDropdown,
-    pub validation_errors: HashMap<ConnectionField, String>,
+    focused_field: ConnectionField,
+    database_type_dropdown: DatabaseTypeDropdown,
+    ssl_dropdown: SslModeDropdown,
+    validation_errors: HashMap<ConnectionField, String>,
 
-    pub is_first_run: bool,
+    is_first_run: bool,
 
-    pub editing_id: Option<ConnectionId>,
+    editing_id: Option<ConnectionId>,
 }
 
 impl Default for ConnectionSetupState {
@@ -153,6 +153,114 @@ impl Default for ConnectionSetupState {
 }
 
 impl ConnectionSetupState {
+    pub fn database_type(&self) -> DatabaseType {
+        self.database_type
+    }
+
+    pub fn ssl_mode(&self) -> SslMode {
+        self.ssl_mode
+    }
+
+    pub fn focused_field(&self) -> ConnectionField {
+        self.focused_field
+    }
+
+    pub fn is_first_run(&self) -> bool {
+        self.is_first_run
+    }
+
+    pub fn editing_id(&self) -> Option<&ConnectionId> {
+        self.editing_id.as_ref()
+    }
+
+    pub fn database_type_dropdown(&self) -> &DatabaseTypeDropdown {
+        &self.database_type_dropdown
+    }
+
+    pub fn ssl_dropdown(&self) -> &SslModeDropdown {
+        &self.ssl_dropdown
+    }
+
+    pub fn validation_error(&self, field: ConnectionField) -> Option<&str> {
+        self.validation_errors.get(&field).map(String::as_str)
+    }
+
+    pub fn has_validation_error(&self, field: ConnectionField) -> bool {
+        self.validation_errors.contains_key(&field)
+    }
+
+    pub fn has_validation_errors(&self) -> bool {
+        !self.validation_errors.is_empty()
+    }
+
+    pub fn clear_validation_error(&mut self, field: ConnectionField) {
+        self.validation_errors.remove(&field);
+    }
+
+    pub fn set_validation_error(&mut self, field: ConnectionField, message: impl Into<String>) {
+        self.validation_errors.insert(field, message.into());
+    }
+
+    pub fn retain_validation_errors_for_visible_fields(&mut self) {
+        let visible_fields = self.visible_fields();
+        self.validation_errors
+            .retain(|field, _| visible_fields.contains(field));
+    }
+
+    pub fn input(&self, field: ConnectionField) -> Option<&TextInputState> {
+        match field {
+            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
+            ConnectionField::Name => Some(&self.name),
+            ConnectionField::SqlitePath => Some(&self.sqlite_path),
+            ConnectionField::Host => Some(&self.host),
+            ConnectionField::Port => Some(&self.port),
+            ConnectionField::Database => Some(&self.database),
+            ConnectionField::User => Some(&self.user),
+            ConnectionField::Password => Some(&self.password),
+        }
+    }
+
+    pub fn input_mut(&mut self, field: ConnectionField) -> Option<&mut TextInputState> {
+        match field {
+            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
+            ConnectionField::Name => Some(&mut self.name),
+            ConnectionField::SqlitePath => Some(&mut self.sqlite_path),
+            ConnectionField::Host => Some(&mut self.host),
+            ConnectionField::Port => Some(&mut self.port),
+            ConnectionField::Database => Some(&mut self.database),
+            ConnectionField::User => Some(&mut self.user),
+            ConnectionField::Password => Some(&mut self.password),
+        }
+    }
+
+    pub fn name(&self) -> &TextInputState {
+        &self.name
+    }
+
+    pub fn sqlite_path(&self) -> &TextInputState {
+        &self.sqlite_path
+    }
+
+    pub fn host(&self) -> &TextInputState {
+        &self.host
+    }
+
+    pub fn port(&self) -> &TextInputState {
+        &self.port
+    }
+
+    pub fn database(&self) -> &TextInputState {
+        &self.database
+    }
+
+    pub fn user(&self) -> &TextInputState {
+        &self.user
+    }
+
+    pub fn password(&self) -> &TextInputState {
+        &self.password
+    }
+
     pub fn default_name(&self) -> String {
         match self.database_type {
             DatabaseType::PostgreSQL => {
@@ -226,7 +334,7 @@ impl ConnectionSetupState {
     }
 
     pub fn has_errors(&self) -> bool {
-        !self.validation_errors.is_empty()
+        self.has_validation_errors()
     }
 
     pub fn is_edit_mode(&self) -> bool {
@@ -264,9 +372,7 @@ impl ConnectionSetupState {
         if !self.visible_fields().contains(&self.focused_field) {
             self.focused_field = ConnectionField::DatabaseType;
         }
-        let visible_fields = self.visible_fields();
-        self.validation_errors
-            .retain(|field, _| visible_fields.contains(field));
+        self.retain_validation_errors_for_visible_fields();
     }
 
     pub fn toggle_focused_dropdown(&mut self) {
@@ -342,12 +448,43 @@ impl ConnectionSetupState {
         self.database_type_dropdown.is_open || self.ssl_dropdown.is_open
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn open_ssl_dropdown_for_test(&mut self) {
         self.ssl_dropdown.is_open = true;
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn open_database_type_dropdown_for_test(&mut self) {
         self.database_type_dropdown.is_open = true;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_focused_field_for_test(&mut self, field: ConnectionField) {
+        self.focused_field = field;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_input_for_test(&mut self, field: ConnectionField, input: TextInputState) {
+        match field {
+            ConnectionField::DatabaseType | ConnectionField::SslMode => {}
+            ConnectionField::Name => self.name = input,
+            ConnectionField::SqlitePath => self.sqlite_path = input,
+            ConnectionField::Host => self.host = input,
+            ConnectionField::Port => self.port = input,
+            ConnectionField::Database => self.database = input,
+            ConnectionField::User => self.user = input,
+            ConnectionField::Password => self.password = input,
+        }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn validation_errors_for_test(&self) -> &HashMap<ConnectionField, String> {
+        &self.validation_errors
     }
 
     pub fn record_sqlite_config_error(&mut self, error: SqliteConnectionConfigError) {

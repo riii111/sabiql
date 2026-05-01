@@ -746,7 +746,7 @@ mod tests {
         #[test]
         fn table_still_exists_preserves_pagination_and_emits_refresh_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.query.pagination.set_table("public", "users");
+            state.query.pagination.set_table_for_test("public", "users");
 
             // "orders" comes before "users" alphabetically, so "users" → index 1
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
