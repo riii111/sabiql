@@ -1217,7 +1217,7 @@ mod tests {
         #[test]
         fn er_open_while_rendering_returns_no_effects() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Rendering;
+            state.er_preparation.mark_rendering();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1238,13 +1238,12 @@ mod tests {
             state.sql_modal.begin_prefetch();
             state
                 .er_preparation
-                .pending_tables
-                .insert("public.users".to_string());
+                .insert_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert!(!state.sql_modal.is_prefetch_started());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
@@ -1284,7 +1283,7 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -1304,7 +1303,7 @@ mod tests {
         #[test]
         fn metadata_failed_resets_er_waiting_to_idle() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             let now = Instant::now();
 
             reduce(
@@ -1316,7 +1315,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
     }
 
@@ -2323,7 +2322,7 @@ mod tests {
             );
 
             assert_eq!(
-                state.er_preparation.target_tables,
+                state.er_preparation.target_tables(),
                 vec!["public.users".to_string()]
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -2355,7 +2354,9 @@ mod tests {
             let mut state = state_with_metadata();
             state.session.set_dsn_for_test("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
-            state.er_preparation.target_tables = vec!["public.users".to_string()];
+            state
+                .er_preparation
+                .set_target_tables(vec!["public.users".to_string()]);
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -2363,7 +2364,7 @@ mod tests {
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
             assert_eq!(
-                state.er_preparation.target_tables,
+                state.er_preparation.target_tables(),
                 vec!["public.users".to_string()]
             );
         }
@@ -2374,13 +2375,12 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.total_tables = 1;
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.set_total_tables(1);
+            state.er_preparation.set_fk_expanded(true);
             state
                 .er_preparation
-                .pending_tables
-                .insert("public.users".to_string());
+                .insert_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2393,7 +2393,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
@@ -2406,17 +2406,15 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.total_tables = 2;
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.set_total_tables(2);
+            state.er_preparation.set_fk_expanded(true);
             state
                 .er_preparation
-                .failed_tables
-                .insert("public.posts".to_string(), "timeout".to_string());
+                .on_table_failed("public.posts", "timeout".to_string());
             state
                 .er_preparation
-                .pending_tables
-                .insert("public.users".to_string());
+                .insert_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2429,7 +2427,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(!effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))

@@ -6,16 +6,14 @@ fn er_waiting_progress() {
     let (mut state, _now) = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    state.er_preparation.status = ErStatus::Waiting;
-    state.er_preparation.total_tables = 3;
+    state.er_preparation.set_status_for_test(ErStatus::Waiting);
+    state.er_preparation.set_total_tables(3);
     state
         .er_preparation
-        .pending_tables
-        .insert("public.comments".to_string());
+        .insert_pending_table("public.comments".to_string());
     state
         .er_preparation
-        .fetching_tables
-        .insert("public.posts".to_string());
+        .insert_fetching_table("public.posts".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 

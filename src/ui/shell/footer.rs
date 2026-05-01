@@ -34,7 +34,7 @@ impl Footer {
         theme: &ThemePalette,
     ) {
         let base_style = Style::default().fg(theme.semantic.text.primary);
-        if state.er_preparation.status == ErStatus::Waiting {
+        if state.er_preparation.status() == ErStatus::Waiting {
             let line = Self::build_er_waiting_line(state, time_ms, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else if let Some(error) = &state.messages.last_error {
@@ -65,10 +65,10 @@ impl Footer {
         });
         let spinner = spinner_char(now_ms);
 
-        let total = state.er_preparation.total_tables;
-        let failed_count = state.er_preparation.failed_tables.len();
-        let remaining =
-            state.er_preparation.pending_tables.len() + state.er_preparation.fetching_tables.len();
+        let total = state.er_preparation.total_tables();
+        let failed_count = state.er_preparation.failed_tables().len();
+        let remaining = state.er_preparation.pending_tables().len()
+            + state.er_preparation.fetching_tables().len();
         let cached = total.saturating_sub(remaining + failed_count);
 
         let text = format!("{spinner} Preparing ER... ({cached}/{total})");

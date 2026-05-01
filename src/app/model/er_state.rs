@@ -10,19 +10,59 @@ pub enum ErStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct ErPreparationState {
-    pub pending_tables: HashSet<String>,
-    pub fetching_tables: HashSet<String>,
-    pub failed_tables: HashMap<String, String>,
-    pub status: ErStatus,
-    pub total_tables: usize,
-    pub target_tables: Vec<String>,
-    pub seed_tables: Vec<String>,
-    pub fk_expanded: bool,
-    pub last_signatures: HashMap<String, String>,
-    pub run_id: u64,
+    pending_tables: HashSet<String>,
+    fetching_tables: HashSet<String>,
+    failed_tables: HashMap<String, String>,
+    status: ErStatus,
+    total_tables: usize,
+    target_tables: Vec<String>,
+    seed_tables: Vec<String>,
+    fk_expanded: bool,
+    last_signatures: HashMap<String, String>,
+    run_id: u64,
 }
 
 impl ErPreparationState {
+    pub fn status(&self) -> ErStatus {
+        self.status
+    }
+
+    pub fn run_id(&self) -> u64 {
+        self.run_id
+    }
+
+    pub fn pending_tables(&self) -> &HashSet<String> {
+        &self.pending_tables
+    }
+
+    pub fn fetching_tables(&self) -> &HashSet<String> {
+        &self.fetching_tables
+    }
+
+    pub fn failed_tables(&self) -> &HashMap<String, String> {
+        &self.failed_tables
+    }
+
+    pub fn total_tables(&self) -> usize {
+        self.total_tables
+    }
+
+    pub fn target_tables(&self) -> &[String] {
+        &self.target_tables
+    }
+
+    pub fn seed_tables(&self) -> &[String] {
+        &self.seed_tables
+    }
+
+    pub fn fk_expanded(&self) -> bool {
+        self.fk_expanded
+    }
+
+    pub fn last_signatures(&self) -> &HashMap<String, String> {
+        &self.last_signatures
+    }
+
     pub fn is_complete(&self) -> bool {
         self.pending_tables.is_empty() && self.fetching_tables.is_empty()
     }
@@ -49,6 +89,82 @@ impl ErPreparationState {
 
     pub fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    pub fn mark_idle(&mut self) {
+        self.status = ErStatus::Idle;
+    }
+
+    pub fn mark_rendering(&mut self) {
+        self.status = ErStatus::Rendering;
+    }
+
+    pub fn start_waiting_run(&mut self) -> u64 {
+        self.run_id += 1;
+        self.status = ErStatus::Waiting;
+        self.run_id
+    }
+
+    pub fn set_total_tables(&mut self, total: usize) {
+        self.total_tables = total;
+    }
+
+    pub fn set_target_tables(&mut self, tables: Vec<String>) {
+        self.target_tables = tables;
+    }
+
+    pub fn set_seed_tables(&mut self, tables: Vec<String>) {
+        self.seed_tables = tables;
+    }
+
+    pub fn set_fk_expanded(&mut self, expanded: bool) {
+        self.fk_expanded = expanded;
+    }
+
+    pub fn set_last_signatures(&mut self, signatures: HashMap<String, String>) {
+        self.last_signatures = signatures;
+    }
+
+    pub fn clear_last_signatures(&mut self) {
+        self.last_signatures.clear();
+    }
+
+    pub fn set_pending_tables(&mut self, tables: HashSet<String>) {
+        self.pending_tables = tables;
+    }
+
+    pub fn set_fetching_tables(&mut self, tables: HashSet<String>) {
+        self.fetching_tables = tables;
+    }
+
+    pub fn clear_table_tracking(&mut self) {
+        self.pending_tables.clear();
+        self.fetching_tables.clear();
+        self.failed_tables.clear();
+    }
+
+    pub fn insert_pending_table(&mut self, table: String) {
+        self.pending_tables.insert(table);
+    }
+
+    pub fn remove_pending_table(&mut self, table: &str) {
+        self.pending_tables.remove(table);
+    }
+
+    pub fn insert_fetching_table(&mut self, table: String) {
+        self.fetching_tables.insert(table);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_status_for_test(&mut self, status: ErStatus) {
+        self.status = status;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_run_id_for_test(&mut self, run_id: u64) {
+        self.run_id = run_id;
     }
 }
 

@@ -563,11 +563,11 @@ mod tests {
         #[test]
         fn resets_er_preparation() {
             let mut state = prepare_state_for_reload();
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
 
             reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
 
         #[test]
@@ -653,7 +653,7 @@ mod tests {
             fn defaults_to_idle() {
                 let state = make_state();
 
-                assert_eq!(state.er_preparation.status, ErStatus::Idle);
+                assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             }
 
             #[rstest]
@@ -662,9 +662,9 @@ mod tests {
             fn accepts_status(#[case] status: ErStatus) {
                 let mut state = make_state();
 
-                state.er_preparation.status = status;
+                state.er_preparation.set_status_for_test(status);
 
-                assert_eq!(state.er_preparation.status, status);
+                assert_eq!(state.er_preparation.status(), status);
             }
         }
 

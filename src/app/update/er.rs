@@ -13,7 +13,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             table_count,
             total_tables,
         }) => {
-            state.er_preparation.status = ErStatus::Idle;
+            state.er_preparation.mark_idle();
             // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
             state.sql_modal.invalidate_prefetch();
             state.set_success(format!(
@@ -22,7 +22,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             Some(vec![])
         }
         Action::ErDiagramFailed(error) => {
-            state.er_preparation.status = ErStatus::Idle;
+            state.er_preparation.mark_idle();
             state.set_error(error.to_string());
             Some(vec![])
         }
@@ -32,7 +32,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
         }
         Action::ErOpenDiagram => {
             if matches!(
-                state.er_preparation.status,
+                state.er_preparation.status(),
                 ErStatus::Rendering | ErStatus::Waiting
             ) {
                 return Some(vec![]);
@@ -48,13 +48,12 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             }
 
             state.sql_modal.invalidate_prefetch();
-            state.er_preparation.run_id += 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            let run_id = state.er_preparation.start_waiting_run();
             state.set_success("Checking for schema changes...".to_string());
 
             Some(vec![Effect::SmartErRefresh {
                 dsn: dsn.to_string(),
-                run_id: state.er_preparation.run_id,
+                run_id,
             }])
         }
 
@@ -67,16 +66,17 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             missing_in_cache,
             new_signatures,
         }) => {
-            if *run_id != state.er_preparation.run_id {
+            if *run_id != state.er_preparation.run_id() {
                 return Some(vec![]);
             }
 
             state.session.set_metadata(Some(Arc::clone(new_metadata)));
             state
                 .er_preparation
-                .last_signatures
-                .clone_from(new_signatures);
-            state.er_preparation.total_tables = new_metadata.table_summaries.len();
+                .set_last_signatures(new_signatures.clone());
+            state
+                .er_preparation
+                .set_total_tables(new_metadata.table_summaries.len());
 
             let mut effects: Vec<Effect> = Vec::new();
 
@@ -121,7 +121,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             error,
             new_metadata,
         }) => {
-            if *run_id != state.er_preparation.run_id {
+            if *run_id != state.er_preparation.run_id() {
                 return Some(vec![]);
             }
 
@@ -130,22 +130,22 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             }
 
             let Some(metadata) = &state.session.metadata() else {
-                state.er_preparation.status = ErStatus::Idle;
+                state.er_preparation.mark_idle();
                 state.set_error("Metadata not loaded yet".to_string());
                 return Some(vec![]);
             };
             let total_table_count = metadata.table_summaries.len();
-            let is_scoped = !state.er_preparation.target_tables.is_empty()
-                && state.er_preparation.target_tables.len() < total_table_count;
+            let is_scoped = !state.er_preparation.target_tables().is_empty()
+                && state.er_preparation.target_tables().len() < total_table_count;
 
-            state.er_preparation.total_tables = total_table_count;
-            state.er_preparation.last_signatures.clear();
+            state.er_preparation.set_total_tables(total_table_count);
+            state.er_preparation.clear_last_signatures();
             state.set_error(format!(
                 "Smart refresh failed ({error}), falling back to full refresh"
             ));
 
             if is_scoped {
-                let scoped_tables = state.er_preparation.target_tables.clone();
+                let scoped_tables = state.er_preparation.target_tables().to_vec();
                 Some(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchScoped {
@@ -162,13 +162,13 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
 
         Action::ErGenerateFromCache => {
             if !matches!(
-                state.er_preparation.status,
+                state.er_preparation.status(),
                 ErStatus::Idle | ErStatus::Waiting
             ) {
                 return Some(vec![]);
             }
 
-            state.er_preparation.status = ErStatus::Rendering;
+            state.er_preparation.mark_rendering();
             let total_tables = state
                 .session
                 .metadata()
@@ -177,7 +177,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             Some(vec![Effect::GenerateErDiagramFromCache {
                 total_tables,
                 project_name: state.runtime.project_name.clone(),
-                target_tables: state.er_preparation.target_tables.clone(),
+                target_tables: state.er_preparation.target_tables().to_vec(),
             }])
         }
 
@@ -221,8 +221,8 @@ mod tests {
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert_eq!(state.er_preparation.run_id, 1);
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
+            assert_eq!(state.er_preparation.run_id(), 1);
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
@@ -234,11 +234,11 @@ mod tests {
         fn increments_run_id_on_each_call() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(5)));
-            state.er_preparation.run_id = 3;
+            state.er_preparation.set_run_id_for_test(3);
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
-            assert_eq!(state.er_preparation.run_id, 4);
+            assert_eq!(state.er_preparation.run_id(), 4);
             assert!(matches!(
                 &effects[0],
                 Effect::SmartErRefresh { run_id: 4, .. }
@@ -254,7 +254,7 @@ mod tests {
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert!(!state.sql_modal.is_prefetch_started());
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -273,7 +273,7 @@ mod tests {
         #[test]
         fn rendering_status_returns_empty_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.status = ErStatus::Rendering;
+            state.er_preparation.mark_rendering();
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
@@ -283,7 +283,7 @@ mod tests {
         #[test]
         fn waiting_status_returns_empty_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
@@ -309,14 +309,16 @@ mod tests {
         #[test]
         fn idle_status_returns_generate_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.status = ErStatus::Idle;
+            state.er_preparation.mark_idle();
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
                 fetched_at: Instant::now(),
             })));
-            state.er_preparation.target_tables = vec!["public.users".to_string()];
+            state
+                .er_preparation
+                .set_target_tables(vec!["public.users".to_string()]);
 
             let effects =
                 reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now()).unwrap();
@@ -327,13 +329,13 @@ mod tests {
                 Effect::GenerateErDiagramFromCache { target_tables, .. }
                     if target_tables == &vec!["public.users".to_string()]
             ));
-            assert_eq!(state.er_preparation.status, ErStatus::Rendering);
+            assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
         }
 
         #[test]
         fn rendering_status_returns_empty_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.status = ErStatus::Rendering;
+            state.er_preparation.mark_rendering();
 
             let effects =
                 reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now()).unwrap();
@@ -363,8 +365,8 @@ mod tests {
         #[test]
         fn no_changes_dispatches_generate_from_cache() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -389,8 +391,8 @@ mod tests {
         #[test]
         fn stale_tables_trigger_evict_and_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -420,8 +422,8 @@ mod tests {
         #[test]
         fn added_tables_trigger_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -446,8 +448,8 @@ mod tests {
         #[test]
         fn removed_tables_trigger_evict() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -472,8 +474,8 @@ mod tests {
         #[test]
         fn missing_in_cache_triggers_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -498,8 +500,8 @@ mod tests {
         #[test]
         fn mismatched_run_id_returns_empty_for_completed() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 5;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(5);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 3,
@@ -519,8 +521,8 @@ mod tests {
         #[test]
         fn updates_metadata_and_signatures() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(0)));
 
             let new_sigs: HashMap<String, String> =
@@ -548,7 +550,7 @@ mod tests {
                     .len(),
                 5
             );
-            assert_eq!(state.er_preparation.last_signatures, new_sigs);
+            assert_eq!(state.er_preparation.last_signatures(), &new_sigs);
         }
     }
 
@@ -572,13 +574,15 @@ mod tests {
         #[test]
         fn falls_back_to_full_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(5)));
             state
                 .er_preparation
-                .last_signatures
-                .insert("public.old".to_string(), "sig".to_string());
+                .set_last_signatures(std::collections::HashMap::from([(
+                    "public.old".to_string(),
+                    "sig".to_string(),
+                )]));
 
             let effects = reduce_er(
                 &mut state,
@@ -591,7 +595,7 @@ mod tests {
             )
             .unwrap();
 
-            assert!(state.er_preparation.last_signatures.is_empty());
+            assert!(state.er_preparation.last_signatures().is_empty());
             assert!(state.messages.last_error.is_some());
             assert!(
                 effects
@@ -608,10 +612,12 @@ mod tests {
         #[test]
         fn falls_back_to_scoped_prefetch_when_targets_set() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(10)));
-            state.er_preparation.target_tables = vec!["public.t0".to_string()];
+            state
+                .er_preparation
+                .set_target_tables(vec!["public.t0".to_string()]);
 
             let effects = reduce_er(
                 &mut state,
@@ -634,14 +640,14 @@ mod tests {
                 Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
             )));
-            assert!(state.er_preparation.last_signatures.is_empty());
+            assert!(state.er_preparation.last_signatures().is_empty());
         }
 
         #[test]
         fn mismatched_run_id_returns_empty_for_failed() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 5;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(5);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(5)));
 
             let effects = reduce_er(
@@ -661,8 +667,8 @@ mod tests {
         #[test]
         fn no_metadata_sets_idle_and_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
 
             let effects = reduce_er(
                 &mut state,
@@ -675,7 +681,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
         }
@@ -683,8 +689,8 @@ mod tests {
         #[test]
         fn new_metadata_applied_before_fallback() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             state.session.set_metadata(Some(make_metadata(3)));
 
             let effects = reduce_er(

@@ -42,7 +42,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
 }
 
 fn has_active_spinner(state: &AppState) -> bool {
-    state.query.is_running() || state.er_preparation.status == ErStatus::Waiting
+    state.query.is_running() || state.er_preparation.status() == ErStatus::Waiting
 }
 
 fn has_blinking_cursor(state: &AppState) -> bool {
@@ -100,7 +100,7 @@ mod tests {
         #[test]
         fn er_waiting_returns_spinner_interval() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             let now = Instant::now();
 
             let deadline = next_animation_deadline(&state, now);
@@ -261,7 +261,7 @@ mod tests {
         #[test]
         fn er_waiting_returns_true() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
 
             assert!(has_active_spinner(&state));
         }
@@ -269,7 +269,7 @@ mod tests {
         #[test]
         fn er_rendering_returns_false() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Rendering;
+            state.er_preparation.mark_rendering();
 
             assert!(!has_active_spinner(&state));
         }

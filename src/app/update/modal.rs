@@ -152,8 +152,9 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state.set_error("No tables selected".to_string());
                 return Some(vec![]);
             }
-            state.er_preparation.target_tables =
-                state.ui.er_selected_tables.iter().cloned().collect();
+            state
+                .er_preparation
+                .set_target_tables(state.ui.er_selected_tables.iter().cloned().collect());
             state.modal.set_mode(InputMode::Normal);
             state.ui.er_picker.clear_filter();
             state.ui.er_selected_tables.clear();
