@@ -173,7 +173,7 @@ fn result_pane_cell_edit_cursor_at_tail() {
     state
         .result_interaction
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
-    let len = state.result_interaction.cell_edit().input.content().len();
+    let len = state.result_interaction.cell_edit().input().content().len();
     state
         .result_interaction
         .cell_edit_input_mut()

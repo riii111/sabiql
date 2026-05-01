@@ -2,10 +2,10 @@ use crate::model::shared::text_input::TextInputState;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CellEditState {
-    pub row: Option<usize>,
-    pub col: Option<usize>,
-    pub original_value: String,
-    pub input: TextInputState,
+    row: Option<usize>,
+    col: Option<usize>,
+    original_value: String,
+    input: TextInputState,
 }
 
 impl CellEditState {
@@ -18,6 +18,26 @@ impl CellEditState {
 
     pub fn is_active(&self) -> bool {
         self.row.is_some() && self.col.is_some()
+    }
+
+    pub fn row(&self) -> Option<usize> {
+        self.row
+    }
+
+    pub fn col(&self) -> Option<usize> {
+        self.col
+    }
+
+    pub fn original_value(&self) -> &str {
+        &self.original_value
+    }
+
+    pub fn input(&self) -> &TextInputState {
+        &self.input
+    }
+
+    pub fn input_mut(&mut self) -> &mut TextInputState {
+        &mut self.input
     }
 
     pub fn has_pending_draft(&self) -> bool {

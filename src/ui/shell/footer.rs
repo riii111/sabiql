@@ -290,7 +290,7 @@ impl Footer {
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::JsonbDetail => {
-                if state.jsonb_detail.search().active {
+                if state.jsonb_detail.search().is_active() {
                     vec![
                         JSONB_SEARCH_KEYS[idx::jsonb_search::TYPE_SEARCH].as_hint(),
                         JSONB_SEARCH_KEYS[idx::jsonb_search::CONFIRM].as_hint(),

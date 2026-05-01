@@ -83,8 +83,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
             match editable_cell_context(state) {
                 Ok((row_idx, col_idx, value)) => {
-                    if state.result_interaction.cell_edit().row != Some(row_idx)
-                        || state.result_interaction.cell_edit().col != Some(col_idx)
+                    if state.result_interaction.cell_edit().row() != Some(row_idx)
+                        || state.result_interaction.cell_edit().col() != Some(col_idx)
                     {
                         state
                             .result_interaction
@@ -236,7 +236,7 @@ mod tests {
             reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert_eq!(state.result_interaction.cell_edit().col, Some(1));
+            assert_eq!(state.result_interaction.cell_edit().col(), Some(1));
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "alice");
         }
 
@@ -397,7 +397,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "acd");
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
 
         #[test]
@@ -428,7 +428,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
 
         #[test]
@@ -444,7 +444,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 2);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 2);
         }
 
         #[test]
@@ -460,7 +460,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 0);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 0);
         }
 
         #[test]
@@ -476,7 +476,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 3);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 3);
         }
 
         #[test]
@@ -493,7 +493,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "abc");
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 2);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 2);
         }
 
         #[test]
@@ -509,7 +509,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "ac");
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
     }
 }

@@ -54,7 +54,7 @@ impl Renderer for TuiAdapter<'_> {
 fn uses_insert_cursor(state: &AppState) -> bool {
     match state.input_mode() {
         InputMode::JsonbEdit => true,
-        InputMode::JsonbDetail => state.jsonb_detail.search().active,
+        InputMode::JsonbDetail => state.jsonb_detail.search().is_active(),
         InputMode::SqlModal => matches!(
             state.sql_modal.status(),
             crate::app::model::sql_editor::modal::SqlModalStatus::Editing

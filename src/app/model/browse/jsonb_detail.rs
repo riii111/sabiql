@@ -11,10 +11,41 @@ pub enum JsonbDetailMode {
 
 #[derive(Debug, Clone, Default)]
 pub struct JsonbSearchState {
-    pub input: TextInputState,
-    pub matches: Vec<usize>,
-    pub current_match: usize,
-    pub active: bool,
+    input: TextInputState,
+    matches: Vec<usize>,
+    current_match: usize,
+    active: bool,
+}
+
+impl JsonbSearchState {
+    pub fn input(&self) -> &TextInputState {
+        &self.input
+    }
+
+    pub fn input_mut(&mut self) -> &mut TextInputState {
+        &mut self.input
+    }
+
+    pub fn matches(&self) -> &[usize] {
+        &self.matches
+    }
+
+    pub fn current_match(&self) -> usize {
+        self.current_match
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
+    pub fn set_matches(&mut self, matches: Vec<usize>) {
+        self.matches = matches;
+        self.current_match = 0;
+    }
+
+    pub fn set_current_match(&mut self, current_match: usize) {
+        self.current_match = current_match;
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -236,6 +267,6 @@ mod tests {
 
         state.enter_edit();
 
-        assert!(!state.search().active);
+        assert!(!state.search().is_active());
     }
 }

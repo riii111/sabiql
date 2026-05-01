@@ -32,12 +32,12 @@ fn build_update_preview(
     let row_idx = state
         .result_interaction
         .cell_edit()
-        .row
+        .row()
         .ok_or(EditGuardrailError::NoRowSelectedForEdit)?;
     let col_idx = state
         .result_interaction
         .cell_edit()
-        .col
+        .col()
         .ok_or(EditGuardrailError::NoColumnSelectedForEdit)?;
 
     let row = result
@@ -82,7 +82,7 @@ fn build_update_preview(
         sql,
         target_summary: target,
         diff: {
-            let before = normalize_for_diff(&state.result_interaction.cell_edit().original_value);
+            let before = normalize_for_diff(state.result_interaction.cell_edit().original_value());
             let after = normalize_for_diff(state.result_interaction.cell_edit().draft_value());
             let is_jsonb = state
                 .session
