@@ -74,12 +74,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             direction,
             amount: ScrollAmount::Line,
         } => {
-            let max_scroll = state.confirm_dialog.max_scroll() as usize;
-            state.confirm_dialog.preview_scroll = direction.clamp_vertical_offset(
-                state.confirm_dialog.preview_scroll as usize,
-                max_scroll,
-                1,
-            ) as u16;
+            state.confirm_dialog.scroll_preview(*direction);
             Some(vec![])
         }
         Action::CloseModal(ModalKind::SqlModal) => {
@@ -575,8 +570,9 @@ mod tests {
                         blocked: false,
                     },
                 );
-                state.confirm_dialog.preview_viewport_height = Some(10);
-                state.confirm_dialog.preview_content_height = Some(25);
+                state
+                    .confirm_dialog
+                    .apply_preview_metrics(Some(10), Some(25), 0);
                 state
             }
 
@@ -594,13 +590,15 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 1);
+                assert_eq!(state.confirm_dialog.preview_scroll(), 1);
             }
 
             #[test]
             fn up_decrements_offset() {
                 let mut state = state_with_scrollable_preview();
-                state.confirm_dialog.preview_scroll = 5;
+                state
+                    .confirm_dialog
+                    .apply_preview_metrics(Some(10), Some(25), 5);
 
                 reduce_modal(
                     &mut state,
@@ -612,13 +610,15 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 4);
+                assert_eq!(state.confirm_dialog.preview_scroll(), 4);
             }
 
             #[test]
             fn up_clamps_at_zero() {
                 let mut state = state_with_scrollable_preview();
-                state.confirm_dialog.preview_scroll = 0;
+                state
+                    .confirm_dialog
+                    .apply_preview_metrics(Some(10), Some(25), 0);
 
                 reduce_modal(
                     &mut state,
@@ -630,13 +630,15 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 0);
+                assert_eq!(state.confirm_dialog.preview_scroll(), 0);
             }
 
             #[test]
             fn down_clamps_at_max() {
                 let mut state = state_with_scrollable_preview();
-                state.confirm_dialog.preview_scroll = 15;
+                state
+                    .confirm_dialog
+                    .apply_preview_metrics(Some(10), Some(25), 15);
 
                 reduce_modal(
                     &mut state,
@@ -648,13 +650,15 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 15);
+                assert_eq!(state.confirm_dialog.preview_scroll(), 15);
             }
 
             #[test]
             fn open_resets_scroll_to_zero() {
                 let mut state = create_test_state();
-                state.confirm_dialog.preview_scroll = 10;
+                state
+                    .confirm_dialog
+                    .apply_preview_metrics(Some(10), Some(25), 10);
 
                 state.confirm_dialog.open(
                     "",
@@ -665,9 +669,9 @@ mod tests {
                     },
                 );
 
-                assert_eq!(state.confirm_dialog.preview_scroll, 0);
-                assert!(state.confirm_dialog.preview_viewport_height.is_none());
-                assert!(state.confirm_dialog.preview_content_height.is_none());
+                assert_eq!(state.confirm_dialog.preview_scroll(), 0);
+                assert!(state.confirm_dialog.preview_viewport_height().is_none());
+                assert!(state.confirm_dialog.preview_content_height().is_none());
             }
         }
 

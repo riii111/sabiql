@@ -259,7 +259,7 @@ impl ConfirmDialog {
 
         let scroll = state
             .confirm_dialog
-            .preview_scroll
+            .preview_scroll()
             .min(wrapped_height.saturating_sub(inner.height));
 
         let para = Paragraph::new(content_lines)

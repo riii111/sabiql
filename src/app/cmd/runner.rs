@@ -285,10 +285,11 @@ impl EffectRunner {
                     state.ui.jsonb_detail_editor_visible_rows = visible_rows;
                     state.jsonb_detail.editor_mut().update_scroll(visible_rows);
                 }
-                state.confirm_dialog.preview_viewport_height =
-                    output.confirm_preview_viewport_height;
-                state.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
-                state.confirm_dialog.preview_scroll = output.confirm_preview_scroll;
+                state.confirm_dialog.apply_preview_metrics(
+                    output.confirm_preview_viewport_height,
+                    output.confirm_preview_content_height,
+                    output.confirm_preview_scroll,
+                );
                 if let Some(height) = output.explain_compare_viewport_height {
                     state.explain.set_compare_viewport_height(height);
                 }
