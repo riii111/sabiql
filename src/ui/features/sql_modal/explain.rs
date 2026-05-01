@@ -38,11 +38,11 @@ pub fn render(
     } = state.sql_modal.status()
     {
         let lines = build_analyze_confirm_lines(area, query, input, target_name.as_deref(), theme);
-        render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
+        render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset());
         return area.height;
     }
 
-    if let Some(ref error) = state.explain.error {
+    if let Some(error) = state.explain.error() {
         let lines: Vec<Line> = error
             .lines()
             .map(|line| {
@@ -54,8 +54,8 @@ pub fn render(
             .collect();
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         area.height
-    } else if let Some(ref plan_text) = state.explain.plan_text {
-        let (label, label_style) = if state.explain.is_analyze {
+    } else if let Some(plan_text) = state.explain.plan_text() {
+        let (label, label_style) = if state.explain.is_analyze() {
             (
                 "EXPLAIN ANALYZE",
                 Style::default()
@@ -70,7 +70,7 @@ pub fn render(
                     .add_modifier(Modifier::BOLD),
             )
         };
-        let time_secs = state.explain.execution_time_ms as f64 / 1000.0;
+        let time_secs = state.explain.execution_time_ms() as f64 / 1000.0;
         let header = Line::from(vec![
             Span::styled(format!("{label} "), label_style),
             Span::styled(
@@ -79,7 +79,7 @@ pub fn render(
             ),
         ]);
 
-        let query_snippet = state.explain.plan_query_snippet.as_deref().unwrap_or("");
+        let query_snippet = state.explain.plan_query_snippet().unwrap_or("");
         let query_line = Line::from(vec![
             Span::styled("  ", Style::default()),
             Span::styled(
@@ -88,7 +88,7 @@ pub fn render(
             ),
         ]);
 
-        let scroll = state.explain.scroll_offset;
+        let scroll = state.explain.scroll_offset();
         let mut lines = vec![header, query_line, Line::raw("")];
         lines.extend(
             plan_text

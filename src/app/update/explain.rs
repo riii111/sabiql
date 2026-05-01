@@ -141,7 +141,7 @@ pub fn reduce_explain_with_services(
                 return Some(vec![]);
             }
 
-            state.explain.confirm_scroll_offset = 0;
+            state.explain.reset_confirm_scroll();
 
             match risk.confirmation {
                 ConfirmationType::TableNameInput { target } => {
@@ -250,28 +250,34 @@ pub fn reduce_explain_with_services(
                         CONFIRM_HEADER_LINES + state.sql_modal.editor.content().lines().count();
                     let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
                     (
-                        &mut state.explain.confirm_scroll_offset,
+                        state.explain.confirm_scroll_offset(),
                         content_lines.saturating_sub(modal_inner),
                     )
                 }
                 ScrollTarget::ExplainPlan => {
                     let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
                     let max = state.explain.line_count().saturating_sub(modal_inner);
-                    (&mut state.explain.scroll_offset, max)
+                    (state.explain.scroll_offset(), max)
                 }
                 ScrollTarget::ExplainCompare => {
                     let max = state.explain.compare_max_scroll(state.ui.terminal_height);
-                    (&mut state.explain.compare_scroll_offset, max)
+                    (state.explain.compare_scroll_offset(), max)
                 }
                 _ => unreachable!(),
             };
-            *offset = direction.clamp_vertical_offset(*offset, max, 1);
+            let next_offset = direction.clamp_vertical_offset(offset, max, 1);
+            match target {
+                ScrollTarget::ExplainConfirm => state.explain.scroll_confirm_to(next_offset),
+                ScrollTarget::ExplainPlan => state.explain.scroll_plan_to(next_offset),
+                ScrollTarget::ExplainCompare => state.explain.scroll_compare_to(next_offset),
+                _ => unreachable!(),
+            }
             Some(vec![])
         }
 
         Action::CompareEditQuery => {
-            if let Some(ref right) = state.explain.right {
-                let query = right.full_query.clone();
+            if let Some(query) = state.explain.right_full_query() {
+                let query = query.to_string();
                 state.sql_modal.load_query_for_editing(query);
             }
             Some(vec![])
@@ -379,7 +385,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN is unavailable for this database")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
@@ -399,7 +405,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN does not support multiple statements")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
@@ -469,7 +475,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN ANALYZE does not support multiple statements")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
@@ -492,7 +498,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN is unavailable for this database")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
@@ -663,15 +669,8 @@ mod tests {
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
-            assert!(state.explain.error.is_some());
-            assert!(
-                state
-                    .explain
-                    .error
-                    .as_deref()
-                    .unwrap()
-                    .contains("Read-only")
-            );
+            assert!(state.explain.error().is_some());
+            assert!(state.explain.error().unwrap().contains("Read-only"));
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(state.confirm_dialog.intent().is_none());
         }
@@ -689,7 +688,7 @@ mod tests {
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
 
-            assert!(state.explain.error.is_none());
+            assert!(state.explain.error().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
@@ -712,14 +711,7 @@ mod tests {
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
-            assert!(
-                state
-                    .explain
-                    .error
-                    .as_deref()
-                    .unwrap()
-                    .contains("Read-only")
-            );
+            assert!(state.explain.error().unwrap().contains("Read-only"));
         }
     }
 
@@ -809,7 +801,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.plan_text.as_deref(), Some("Seq Scan"));
+            assert_eq!(state.explain.plan_text(), Some("Seq Scan"));
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(!state.query.is_running());
@@ -832,7 +824,7 @@ mod tests {
             );
 
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("Query failed: syntax error. Review the database error details and SQL.")
             );
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
@@ -862,8 +854,8 @@ mod tests {
                 },
                 now,
             );
-            assert!(state.explain.right.is_some());
-            assert!(state.explain.left.is_none());
+            assert!(state.explain.right().is_some());
+            assert!(state.explain.left().is_none());
 
             // Step 2: Second EXPLAIN — auto-advance moves right→left
             state.sql_modal.editor.set_content("SELECT 2".to_string());
@@ -878,16 +870,10 @@ mod tests {
                 now,
             );
 
-            assert!(state.explain.left.is_some());
-            assert!(state.explain.right.is_some());
-            assert_eq!(
-                state.explain.left.as_ref().unwrap().plan.total_cost,
-                Some(100.0)
-            );
-            assert_eq!(
-                state.explain.right.as_ref().unwrap().plan.total_cost,
-                Some(5.0)
-            );
+            assert!(state.explain.left().is_some());
+            assert!(state.explain.right().is_some());
+            assert_eq!(state.explain.left().unwrap().plan.total_cost, Some(100.0));
+            assert_eq!(state.explain.right().unwrap().plan.total_cost, Some(5.0));
         }
     }
 
@@ -897,7 +883,7 @@ mod tests {
         #[test]
         fn plan_scroll_up_saturates_at_zero() {
             let mut state = sql_modal_state();
-            state.explain.scroll_offset = 0;
+            state.explain.scroll_plan_to(0);
 
             reduce_explain(
                 &mut state,
@@ -909,7 +895,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, 0);
+            assert_eq!(state.explain.scroll_offset(), 0);
         }
 
         #[test]
@@ -932,7 +918,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, 1);
+            assert_eq!(state.explain.scroll_offset(), 1);
         }
 
         #[test]
@@ -948,7 +934,7 @@ mod tests {
                 state.ui.terminal_height,
             );
             let max = state.explain.line_count().saturating_sub(modal_inner);
-            state.explain.scroll_offset = max;
+            state.explain.scroll_plan_to(max);
 
             reduce_explain(
                 &mut state,
@@ -960,13 +946,13 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, max);
+            assert_eq!(state.explain.scroll_offset(), max);
         }
 
         #[test]
         fn compare_plan_scroll_up_saturates_at_zero() {
             let mut state = sql_modal_state();
-            state.explain.compare_scroll_offset = 0;
+            state.explain.scroll_compare_to(0);
 
             reduce_explain(
                 &mut state,
@@ -978,7 +964,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 0);
+            assert_eq!(state.explain.compare_scroll_offset(), 0);
         }
 
         #[test]
@@ -1001,7 +987,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 1);
+            assert_eq!(state.explain.compare_scroll_offset(), 1);
         }
 
         #[test]
@@ -1030,7 +1016,7 @@ mod tests {
                 );
             }
 
-            assert_eq!(state.explain.compare_scroll_offset, max);
+            assert_eq!(state.explain.compare_scroll_offset(), max);
 
             // k should immediately scroll back
             reduce_explain(
@@ -1042,7 +1028,7 @@ mod tests {
                 },
                 Instant::now(),
             );
-            assert_eq!(state.explain.compare_scroll_offset, max.saturating_sub(1));
+            assert_eq!(state.explain.compare_scroll_offset(), max.saturating_sub(1));
         }
 
         #[test]
@@ -1065,7 +1051,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 1);
+            assert_eq!(state.explain.compare_scroll_offset(), 1);
         }
 
         #[test]
@@ -1082,7 +1068,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 0);
+            assert_eq!(state.explain.compare_scroll_offset(), 0);
         }
     }
 

@@ -355,8 +355,8 @@ pub fn reduce_sql_modal(
                 .db_capabilities
                 .normalize_sql_modal_tab(state.sql_modal.active_tab());
             let content = match active_tab {
-                SqlModalTab::Plan => state.explain.plan_text.clone(),
-                SqlModalTab::Compare => match (&state.explain.left, &state.explain.right) {
+                SqlModalTab::Plan => state.explain.plan_text().map(str::to_string),
+                SqlModalTab::Compare => match (state.explain.left(), state.explain.right()) {
                     (Some(l), Some(r)) => {
                         let result = compare_plans(&l.plan, &r.plan);
                         let verdict = match result.verdict {
@@ -1339,7 +1339,9 @@ mod tests {
         fn plan_tab_yank_copies_plan_text() {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
-            state.explain.plan_text = Some("Seq Scan on users".to_string());
+            state
+                .explain
+                .set_plan_text_for_test(Some("Seq Scan on users".to_string()));
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1354,7 +1356,7 @@ mod tests {
         fn plan_tab_yank_no_plan_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
-            state.explain.plan_text = None;
+            state.explain.set_plan_text_for_test(None);
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1366,8 +1368,10 @@ mod tests {
         fn plan_tab_yank_error_state_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
-            state.explain.plan_text = None;
-            state.explain.error = Some("syntax error".to_string());
+            state.explain.set_plan_text_for_test(None);
+            state
+                .explain
+                .set_error_for_test(Some("syntax error".to_string()));
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1379,8 +1383,10 @@ mod tests {
         fn compare_tab_yank_both_slots() {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
-            state.explain.left = Some(make_slot("Seq Scan", false, 420, SlotSource::AutoPrevious));
-            state.explain.right = Some(make_slot("Index Scan", true, 50, SlotSource::AutoLatest));
+            state.explain.set_compare_slots_for_test(
+                Some(make_slot("Seq Scan", false, 420, SlotSource::AutoPrevious)),
+                Some(make_slot("Index Scan", true, 50, SlotSource::AutoLatest)),
+            );
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1403,8 +1409,10 @@ mod tests {
         fn both_auto_slots_yank_returns_distinguishable_headers() {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
-            state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::AutoPrevious));
-            state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
+            state.explain.set_compare_slots_for_test(
+                Some(make_slot("Seq Scan", false, 300, SlotSource::AutoPrevious)),
+                Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest)),
+            );
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1422,8 +1430,10 @@ mod tests {
         fn compare_tab_yank_right_only_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
-            state.explain.left = None;
-            state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
+            state.explain.set_compare_slots_for_test(
+                None,
+                Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest)),
+            );
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1435,8 +1445,10 @@ mod tests {
         fn compare_tab_yank_left_only_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
-            state.explain.left = Some(make_slot("Seq Scan", false, 200, SlotSource::AutoPrevious));
-            state.explain.right = None;
+            state.explain.set_compare_slots_for_test(
+                Some(make_slot("Seq Scan", false, 200, SlotSource::AutoPrevious)),
+                None,
+            );
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1448,8 +1460,7 @@ mod tests {
         fn compare_tab_yank_empty_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
-            state.explain.left = None;
-            state.explain.right = None;
+            state.explain.set_compare_slots_for_test(None, None);
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1462,7 +1473,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             // Use parseable EXPLAIN output so compare_plans produces a real verdict
-            state.explain.left = Some(CompareSlot {
+            let left = CompareSlot {
                 plan: ExplainPlan {
                     raw_text: "Seq Scan on users  (cost=0.00..100.00 rows=10 width=32)".to_string(),
                     top_node_type: Some("Seq Scan".to_string()),
@@ -1474,8 +1485,8 @@ mod tests {
                 query_snippet: "SELECT *".to_string(),
                 full_query: "SELECT * FROM users".to_string(),
                 source: SlotSource::AutoPrevious,
-            });
-            state.explain.right = Some(CompareSlot {
+            };
+            let right = CompareSlot {
                 plan: ExplainPlan {
                     raw_text: "Index Scan using idx on users  (cost=0.00..5.00 rows=1 width=32)"
                         .to_string(),
@@ -1488,7 +1499,10 @@ mod tests {
                 query_snippet: "SELECT *".to_string(),
                 full_query: "SELECT * FROM users WHERE id=1".to_string(),
                 source: SlotSource::AutoLatest,
-            });
+            };
+            state
+                .explain
+                .set_compare_slots_for_test(Some(left), Some(right));
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();

@@ -30,24 +30,68 @@ const MAX_EXPLAIN_HISTORY: usize = 10;
 
 #[derive(Debug, Clone, Default)]
 pub struct ExplainContext {
-    pub plan_text: Option<String>,
-    pub plan_query_snippet: Option<String>,
-    pub error: Option<String>,
-    pub is_analyze: bool,
-    pub execution_time_ms: u64,
-    pub scroll_offset: usize,
+    plan_text: Option<String>,
+    plan_query_snippet: Option<String>,
+    error: Option<String>,
+    is_analyze: bool,
+    execution_time_ms: u64,
+    scroll_offset: usize,
 
-    pub left: Option<CompareSlot>,
-    pub right: Option<CompareSlot>,
-    pub compare_scroll_offset: usize,
+    left: Option<CompareSlot>,
+    right: Option<CompareSlot>,
+    compare_scroll_offset: usize,
 
-    pub history: VecDeque<CompareSlot>,
+    history: VecDeque<CompareSlot>,
 
-    pub compare_viewport_height: Option<u16>,
-    pub confirm_scroll_offset: usize,
+    compare_viewport_height: Option<u16>,
+    confirm_scroll_offset: usize,
 }
 
 impl ExplainContext {
+    pub fn plan_text(&self) -> Option<&str> {
+        self.plan_text.as_deref()
+    }
+
+    pub fn plan_query_snippet(&self) -> Option<&str> {
+        self.plan_query_snippet.as_deref()
+    }
+
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    pub fn is_analyze(&self) -> bool {
+        self.is_analyze
+    }
+
+    pub fn execution_time_ms(&self) -> u64 {
+        self.execution_time_ms
+    }
+
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    pub fn left(&self) -> Option<&CompareSlot> {
+        self.left.as_ref()
+    }
+
+    pub fn right(&self) -> Option<&CompareSlot> {
+        self.right.as_ref()
+    }
+
+    pub fn history(&self) -> &VecDeque<CompareSlot> {
+        &self.history
+    }
+
+    pub fn compare_scroll_offset(&self) -> usize {
+        self.compare_scroll_offset
+    }
+
+    pub fn confirm_scroll_offset(&self) -> usize {
+        self.confirm_scroll_offset
+    }
+
     pub fn set_plan(
         &mut self,
         text: String,
@@ -88,6 +132,30 @@ impl ExplainContext {
         self.error = Some(error);
         self.plan_text = None;
         self.scroll_offset = 0;
+    }
+
+    pub fn reset_confirm_scroll(&mut self) {
+        self.confirm_scroll_offset = 0;
+    }
+
+    pub fn set_compare_viewport_height(&mut self, height: u16) {
+        self.compare_viewport_height = Some(height);
+    }
+
+    pub fn scroll_confirm_to(&mut self, offset: usize) {
+        self.confirm_scroll_offset = offset;
+    }
+
+    pub fn scroll_plan_to(&mut self, offset: usize) {
+        self.scroll_offset = offset;
+    }
+
+    pub fn scroll_compare_to(&mut self, offset: usize) {
+        self.compare_scroll_offset = offset;
+    }
+
+    pub fn right_full_query(&self) -> Option<&str> {
+        self.right.as_ref().map(|slot| slot.full_query.as_str())
     }
 
     pub fn reset(&mut self) {
@@ -140,6 +208,26 @@ impl ExplainContext {
             .compare_viewport_height
             .map_or_else(|| Self::modal_inner_height(terminal_height), |h| h as usize);
         self.compare_line_count().saturating_sub(viewport)
+    }
+}
+
+#[cfg(test)]
+impl ExplainContext {
+    pub fn set_plan_text_for_test(&mut self, plan_text: Option<String>) {
+        self.plan_text = plan_text;
+    }
+
+    pub fn set_error_for_test(&mut self, error: Option<String>) {
+        self.error = error;
+    }
+
+    pub fn set_compare_slots_for_test(
+        &mut self,
+        left: Option<CompareSlot>,
+        right: Option<CompareSlot>,
+    ) {
+        self.left = left;
+        self.right = right;
     }
 }
 

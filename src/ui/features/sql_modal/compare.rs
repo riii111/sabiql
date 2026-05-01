@@ -19,10 +19,10 @@ pub fn render(
     now: Instant,
     theme: &ThemePalette,
 ) -> u16 {
-    let can_yank = state.explain.left.is_some() && state.explain.right.is_some();
-    let left = state.explain.left.as_ref();
-    let right = state.explain.right.as_ref();
-    let scroll_offset = state.explain.compare_scroll_offset;
+    let can_yank = state.explain.left().is_some() && state.explain.right().is_some();
+    let left = state.explain.left();
+    let right = state.explain.right();
+    let scroll_offset = state.explain.compare_scroll_offset();
 
     let mut lines: Vec<Line> = Vec::new();
     let mut flash_mask: Vec<bool> = Vec::new();
