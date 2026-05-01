@@ -2275,8 +2275,7 @@ mod tests {
             state.ui.er_picker_mut().insert_filter_str("old");
             state
                 .ui
-                .er_selected_tables_mut()
-                .insert("public.users".to_string());
+                .replace_er_selected_tables(["public.users".to_string()]);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2410,8 +2409,7 @@ mod tests {
 
             state
                 .ui
-                .er_selected_tables_mut()
-                .insert("public.users".to_string());
+                .replace_er_selected_tables(["public.users".to_string()]);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2446,6 +2444,25 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
             assert!(state.messages.last_error().is_some());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn select_all_replaces_stale_selection_entries() {
+            let mut state = state_with_metadata();
+            state.modal.set_mode(InputMode::ErTablePicker);
+            state
+                .ui
+                .replace_er_selected_tables(["missing.table".to_string()]);
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErSelectAll, now, &AppServices::stub());
+
+            let selected: Vec<_> = state.ui.er_selected_tables().iter().cloned().collect();
+            assert_eq!(
+                selected,
+                vec!["public.posts".to_string(), "public.users".to_string()]
+            );
             assert!(effects.is_empty());
         }
 

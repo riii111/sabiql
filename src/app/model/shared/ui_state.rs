@@ -235,6 +235,7 @@ impl UiState {
         self.explorer_scroll_offset = offset;
     }
 
+    // Restores cached selection before the normal selection API recalculates scroll state.
     pub fn set_explorer_selected_raw(&mut self, selected: usize) {
         self.explorer_selected = selected;
     }
@@ -267,6 +268,7 @@ impl UiState {
         self.connection_list_pane_height = height;
     }
 
+    // Test/setup helper for selection-only states where scroll is controlled separately.
     pub fn set_connection_list_selected_raw(&mut self, selected: usize) {
         self.connection_list_selected = selected;
     }
@@ -295,8 +297,18 @@ impl UiState {
         &self.er_selected_tables
     }
 
-    pub fn er_selected_tables_mut(&mut self) -> &mut BTreeSet<String> {
-        &mut self.er_selected_tables
+    pub fn clear_er_selected_tables(&mut self) {
+        self.er_selected_tables.clear();
+    }
+
+    pub fn toggle_er_selected_table(&mut self, table: String) {
+        if !self.er_selected_tables.remove(&table) {
+            self.er_selected_tables.insert(table);
+        }
+    }
+
+    pub fn replace_er_selected_tables(&mut self, tables: impl IntoIterator<Item = String>) {
+        self.er_selected_tables = tables.into_iter().collect();
     }
 
     pub fn pending_er_picker(&self) -> bool {

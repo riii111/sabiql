@@ -95,7 +95,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 return Some(vec![]);
             }
             state.ui.set_pending_er_picker(false);
-            state.ui.er_selected_tables_mut().clear();
+            state.ui.clear_er_selected_tables();
             state.modal.set_mode(InputMode::ErTablePicker);
             state.ui.er_picker_mut().clear_filter_and_reset();
             Some(vec![])
@@ -103,7 +103,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::CloseModal(ModalKind::ErTablePicker) => {
             state.modal.set_mode(InputMode::Normal);
             state.ui.er_picker_mut().clear_filter();
-            state.ui.er_selected_tables_mut().clear();
+            state.ui.clear_er_selected_tables();
             state.ui.set_pending_er_picker(false);
             Some(vec![])
         }
@@ -130,10 +130,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ErToggleSelection => {
             let filtered = state.er_filtered_tables();
             if let Some(table) = filtered.get(state.ui.er_picker().selected()) {
-                let name = table.qualified_name();
-                if !state.ui.er_selected_tables_mut().remove(&name) {
-                    state.ui.er_selected_tables_mut().insert(name);
-                }
+                state.ui.toggle_er_selected_table(table.qualified_name());
             }
             Some(vec![])
         }
@@ -141,9 +138,9 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             let all_tables: Vec<String> =
                 state.tables().iter().map(|t| t.qualified_name()).collect();
             if state.ui.er_selected_tables().len() == all_tables.len() {
-                state.ui.er_selected_tables_mut().clear();
+                state.ui.clear_er_selected_tables();
             } else {
-                state.ui.er_selected_tables_mut().extend(all_tables);
+                state.ui.replace_er_selected_tables(all_tables);
             }
             Some(vec![])
         }
@@ -157,7 +154,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 .set_targets(state.ui.er_selected_tables().iter().cloned().collect());
             state.modal.set_mode(InputMode::Normal);
             state.ui.er_picker_mut().clear_filter();
-            state.ui.er_selected_tables_mut().clear();
+            state.ui.clear_er_selected_tables();
             Some(vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])])
         }
         Action::OpenModal(ModalKind::QueryHistoryPicker) => {

@@ -177,7 +177,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();
-                state.ui.er_selected_tables_mut().clear();
+                state.ui.clear_er_selected_tables();
                 state.ui.set_pending_er_picker(false);
                 state.messages.clear();
 

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeState {
@@ -18,8 +18,8 @@ impl RuntimeState {
         &self.project_name
     }
 
-    pub fn service_file_path(&self) -> Option<&PathBuf> {
-        self.service_file_path.as_ref()
+    pub fn service_file_path(&self) -> Option<&Path> {
+        self.service_file_path.as_deref()
     }
 
     pub fn set_service_file_path(&mut self, path: Option<PathBuf>) {

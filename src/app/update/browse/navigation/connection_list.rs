@@ -273,7 +273,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.runtime.service_file_path(), Some(&path));
+            assert_eq!(state.runtime.service_file_path(), Some(path.as_path()));
         }
 
         #[test]

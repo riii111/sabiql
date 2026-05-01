@@ -92,10 +92,12 @@ impl SqlModalContext {
         &mut self.editor
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub fn set_editor_content_for_test(&mut self, content: String) {
         self.editor.set_content(content);
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub fn set_editor_content_with_cursor_for_test(&mut self, content: String, cursor: usize) {
         self.editor.set_content_with_cursor(content, cursor);
     }
