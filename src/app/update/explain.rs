@@ -372,7 +372,7 @@ mod tests {
                 .editor_mut_for_input()
                 .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
@@ -743,7 +743,6 @@ mod tests {
 
     mod analyze_confirm_cancel {
         use super::*;
-        use crate::model::shared::text_input::TextInputState;
 
         #[test]
         fn confirm_from_high_with_matching_table_emits_effect() {
@@ -753,13 +752,11 @@ mod tests {
             for c in "users".chars() {
                 input.insert_char(c);
             }
-            state
-                .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
-                    query: "DELETE FROM users".to_string(),
-                    input,
-                    target_name: Some("users".to_string()),
-                });
+            state.sql_modal.begin_confirming_analyze_high(
+                "DELETE FROM users".to_string(),
+                Some("users".to_string()),
+            );
+            *state.sql_modal.confirming_analyze_high_input_mut().unwrap() = input;
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now()).unwrap();
@@ -774,13 +771,11 @@ mod tests {
             state.session.set_dsn_for_test("dsn://test");
             let mut input = crate::model::shared::text_input::TextInputState::default();
             input.insert_char('x');
-            state
-                .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
-                    query: "DELETE FROM users".to_string(),
-                    input,
-                    target_name: Some("users".to_string()),
-                });
+            state.sql_modal.begin_confirming_analyze_high(
+                "DELETE FROM users".to_string(),
+                Some("users".to_string()),
+            );
+            *state.sql_modal.confirming_analyze_high_input_mut().unwrap() = input;
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now()).unwrap();
@@ -795,13 +790,10 @@ mod tests {
         #[test]
         fn cancel_from_high_resets_to_normal() {
             let mut state = sql_modal_state();
-            state
-                .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
-                    query: "DROP TABLE users".to_string(),
-                    input: TextInputState::default(),
-                    target_name: Some("users".to_string()),
-                });
+            state.sql_modal.begin_confirming_analyze_high(
+                "DROP TABLE users".to_string(),
+                Some("users".to_string()),
+            );
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeCancel, Instant::now());
 
@@ -815,7 +807,7 @@ mod tests {
         #[test]
         fn sets_plan_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
 
             reduce_explain(
                 &mut state,
@@ -841,7 +833,7 @@ mod tests {
         #[test]
         fn sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
-            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.sql_modal.begin_adhoc_running();
 
             reduce_explain(
                 &mut state,

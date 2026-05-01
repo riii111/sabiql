@@ -602,7 +602,6 @@ mod tests {
     mod sql_modal_debounce {
         use super::*;
         use crate::model::shared::text_input::TextInputLike;
-        use crate::model::sql_editor::modal::SqlModalStatus;
         use std::time::Duration;
 
         #[test]
@@ -674,8 +673,8 @@ mod tests {
         fn text_input_preserves_visible_completion_popup() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-            state.sql_modal.completion_mut_for_test().visible = true;
+            state.sql_modal.enter_editing();
+            state.sql_modal.apply_completion_update(&[], 0, true);
             let now = Instant::now();
 
             reduce(
@@ -712,9 +711,12 @@ mod tests {
         #[test]
         fn completion_next_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion_mut_for_test().candidates =
-                vec![make_candidate("a"), make_candidate("b")];
-            state.sql_modal.completion_mut_for_test().selected_index = 1;
+            state.sql_modal.apply_completion_update(
+                &[make_candidate("a"), make_candidate("b")],
+                0,
+                true,
+            );
+            state.sql_modal.completion_next();
             let now = Instant::now();
 
             let effects = reduce(
@@ -731,9 +733,11 @@ mod tests {
         #[test]
         fn completion_prev_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion_mut_for_test().candidates =
-                vec![make_candidate("a"), make_candidate("b")];
-            state.sql_modal.completion_mut_for_test().selected_index = 0;
+            state.sql_modal.apply_completion_update(
+                &[make_candidate("a"), make_candidate("b")],
+                0,
+                true,
+            );
             let now = Instant::now();
 
             let effects = reduce(
