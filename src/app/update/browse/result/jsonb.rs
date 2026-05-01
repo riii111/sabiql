@@ -182,7 +182,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 _ => state.jsonb_detail.editor_mut().move_cursor(*direction),
             }
             update_editor_scroll(state);
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             Some(vec![])
         }
 

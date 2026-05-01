@@ -86,7 +86,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: ScrollToCursorTarget::Explorer,
             position: CursorPosition::Center,
         } => {
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
             if len > 0 && visible > 0 {
@@ -102,7 +102,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: ScrollToCursorTarget::Explorer,
             position: CursorPosition::Top,
         } => {
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
             if len > 0 && visible > 0 {
@@ -118,7 +118,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: ScrollToCursorTarget::Explorer,
             position: CursorPosition::Bottom,
         } => {
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
             if len > 0 && visible > 0 {
@@ -603,7 +603,9 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selected_raw(30);
             state.ui.set_explorer_scroll_offset(30);
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
             reduce_navigation(
                 &mut state,
@@ -616,7 +618,7 @@ mod tests {
             );
 
             assert_eq!(state.ui.explorer_scroll_offset(), 20);
-            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+            assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
         #[test]
@@ -624,7 +626,9 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selected_raw(15);
             state.ui.set_explorer_scroll_offset(0);
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
             reduce_navigation(
                 &mut state,
@@ -637,7 +641,7 @@ mod tests {
             );
 
             assert_eq!(state.ui.explorer_scroll_offset(), 15);
-            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+            assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
         #[test]
@@ -645,7 +649,9 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selected_raw(25);
             state.ui.set_explorer_scroll_offset(25);
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
             reduce_navigation(
                 &mut state,
@@ -658,7 +664,7 @@ mod tests {
             );
 
             assert_eq!(state.ui.explorer_scroll_offset(), 6);
-            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+            assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
         #[test]
@@ -666,7 +672,9 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selected_raw(45);
             state.ui.set_explorer_scroll_offset(30);
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
             reduce_navigation(
                 &mut state,
@@ -679,7 +687,7 @@ mod tests {
             );
 
             assert_eq!(state.ui.explorer_scroll_offset(), 30);
-            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+            assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
     }
 

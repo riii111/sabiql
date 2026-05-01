@@ -196,7 +196,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: ScrollToCursorTarget::Result,
             position: CursorPosition::Center,
         } => {
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
@@ -212,7 +212,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: ScrollToCursorTarget::Result,
             position: CursorPosition::Top,
         } => {
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
@@ -228,7 +228,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: ScrollToCursorTarget::Result,
             position: CursorPosition::Bottom,
         } => {
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
@@ -702,7 +702,9 @@ mod tests {
             // visible = 20
             state.result_interaction.activate_cell(50, 0);
             state.result_interaction.scroll_offset = 50;
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
             reduce(
                 &mut state,
@@ -714,7 +716,7 @@ mod tests {
 
             // row=50, visible=20, offset=50-10=40, max=80 → 40
             assert_eq!(state.result_interaction.scroll_offset, 40);
-            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+            assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
         #[test]
@@ -722,7 +724,9 @@ mod tests {
             let mut state = state_with_result_rows(100, 25);
             state.result_interaction.activate_cell(30, 0);
             state.result_interaction.scroll_offset = 20;
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
             reduce(
                 &mut state,
@@ -733,7 +737,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.scroll_offset, 30);
-            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+            assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
         #[test]
@@ -741,7 +745,9 @@ mod tests {
             let mut state = state_with_result_rows(100, 25);
             state.result_interaction.activate_cell(30, 0);
             state.result_interaction.scroll_offset = 30;
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
             reduce(
                 &mut state,
@@ -753,14 +759,16 @@ mod tests {
 
             // row=30, visible=20, offset=30-19=11, max=80 → 11
             assert_eq!(state.result_interaction.scroll_offset, 11);
-            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+            assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
         #[test]
         fn scroll_cursor_center_is_noop_in_scroll_mode() {
             let mut state = state_with_result_rows(100, 25);
             state.result_interaction.scroll_offset = 20;
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
             reduce(
                 &mut state,
@@ -772,7 +780,7 @@ mod tests {
 
             // No row selected, offset unchanged
             assert_eq!(state.result_interaction.scroll_offset, 20);
-            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+            assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
 
         #[test]
@@ -781,7 +789,9 @@ mod tests {
             // visible=20, max_scroll=80
             state.result_interaction.activate_cell(95, 0);
             state.result_interaction.scroll_offset = 80;
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
             reduce(
                 &mut state,
@@ -793,7 +803,7 @@ mod tests {
 
             // row=95, clamped to max_scroll=80
             assert_eq!(state.result_interaction.scroll_offset, 80);
-            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+            assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
         }
     }
 

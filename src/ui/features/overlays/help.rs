@@ -183,7 +183,7 @@ impl HelpOverlay {
         let total_lines = help_lines.len();
         let viewport_height = inner.height as usize;
         let scroll_offset =
-            clamp_scroll_offset(state.ui.help_scroll_offset, viewport_height, total_lines);
+            clamp_scroll_offset(state.ui.help_scroll_offset(), viewport_height, total_lines);
 
         let help = Paragraph::new(help_lines)
             .wrap(Wrap { trim: false })

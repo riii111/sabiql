@@ -12,8 +12,13 @@ use crate::update::action::{
 
 fn scroll_help_by(state: &mut AppState, direction: ScrollDirection, delta: usize) {
     let max_scroll = state.ui.help_max_scroll();
-    state.ui.help_scroll_offset =
-        direction.clamp_vertical_offset(state.ui.help_scroll_offset, max_scroll, delta);
+    state
+        .ui
+        .set_help_scroll_offset(direction.clamp_vertical_offset(
+            state.ui.help_scroll_offset(),
+            max_scroll,
+            delta,
+        ));
 }
 
 pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -38,7 +43,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ToggleModal(ModalKind::Help) => {
             if state.modal.active_mode() == InputMode::Help {
                 state.modal.set_mode(InputMode::Normal);
-                state.ui.help_scroll_offset = 0;
+                state.ui.set_help_scroll_offset(0);
             } else {
                 state.modal.set_mode(InputMode::Help);
             }
@@ -46,7 +51,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::CloseModal(ModalKind::Help) => {
             state.modal.set_mode(InputMode::Normal);
-            state.ui.help_scroll_offset = 0;
+            state.ui.set_help_scroll_offset(0);
             Some(vec![])
         }
         Action::Scroll {
@@ -56,8 +61,8 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         } => {
             match amount {
                 ScrollAmount::Line => scroll_help_by(state, *direction, 1),
-                ScrollAmount::ToStart => state.ui.help_scroll_offset = 0,
-                ScrollAmount::ToEnd => state.ui.help_scroll_offset = state.ui.help_max_scroll(),
+                ScrollAmount::ToStart => state.ui.set_help_scroll_offset(0),
+                ScrollAmount::ToEnd => state.ui.set_help_scroll_offset(state.ui.help_max_scroll()),
                 ScrollAmount::HalfPage | ScrollAmount::FullPage => {
                     if let Some(delta) = amount.page_delta(state.ui.help_visible_rows()) {
                         scroll_help_by(state, *direction, delta);

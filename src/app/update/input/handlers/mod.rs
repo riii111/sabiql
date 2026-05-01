@@ -54,7 +54,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
                 services
                     .db_capabilities
                     .normalize_sql_modal_tab(state.sql_modal.active_tab()),
-                state.ui.key_sequence.pending_prefix(),
+                state.ui.key_sequence().pending_prefix(),
             )
         }
         InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
@@ -68,7 +68,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
             jsonb::handle_jsonb_detail_keys(
                 combo,
                 is_searching,
-                state.ui.key_sequence.pending_prefix(),
+                state.ui.key_sequence().pending_prefix(),
             )
         }
         InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),

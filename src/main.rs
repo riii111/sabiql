@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
     tui.enter()?;
 
     let initial_size = tui.terminal().size()?;
-    state.ui.terminal_height = initial_size.height;
+    state.ui.set_terminal_height(initial_size.height);
 
     if state.session.dsn().is_some() && state.input_mode() == InputMode::Normal {
         process_action(

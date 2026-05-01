@@ -183,11 +183,11 @@ pub struct UiState {
     pub result_pane_height: u16,
     pub jsonb_detail_editor_visible_rows: usize,
 
-    pub help_scroll_offset: usize,
+    help_scroll_offset: usize,
 
-    pub terminal_height: u16,
+    terminal_height: u16,
 
-    pub key_sequence: KeySequenceState,
+    key_sequence: KeySequenceState,
 }
 
 impl UiState {

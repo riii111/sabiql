@@ -54,7 +54,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .editor_mut_for_input()
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion_after_dismiss(now + Duration::from_millis(100));
@@ -72,7 +72,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .editor_mut_for_input()
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -86,7 +86,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .editor_mut_for_input()
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -100,7 +100,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .editor_mut_for_input()
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -112,7 +112,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .editor_mut_for_input()
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -124,7 +124,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .editor_mut_for_input()
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -143,7 +143,7 @@ pub fn reduce_sql_modal(
                         .editor_mut_for_input()
                         .move_cursor_to_viewport_position(
                             *movement,
-                            sql_modal_visible_rows(state.ui.terminal_height),
+                            sql_modal_visible_rows(state.ui.terminal_height()),
                         );
                 }
                 _ => state
@@ -154,14 +154,14 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .editor_mut_for_input()
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state.ui.key_sequence = KeySequenceState::Idle;
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             Some(vec![])
         }
         Action::SqlModalClear => {
             state.sql_modal.editor_mut_for_input().clear();
             state.sql_modal.reset_completion();
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             Some(vec![])
         }
 
@@ -231,7 +231,7 @@ pub fn reduce_sql_modal(
                 SqlModalStatus::ConfirmingHigh { .. }
             ) {
                 state.sql_modal.cancel_confirmation();
-                state.ui.key_sequence = KeySequenceState::Idle;
+                state.ui.set_key_sequence(KeySequenceState::Idle);
                 Some(vec![])
             } else {
                 None
@@ -323,7 +323,7 @@ pub fn reduce_sql_modal(
                 state
                     .sql_modal
                     .editor_mut_for_input()
-                    .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                    .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
                 state.sql_modal.dismiss_completion();
             }
             Some(vec![])
@@ -350,7 +350,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .editor_mut_for_input()
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state.sql_modal.enter_editing();
             Some(vec![])
         }
@@ -617,7 +617,7 @@ mod tests {
         #[test]
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 20;
+            state.ui.set_terminal_height(20);
             state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
             state
                 .sql_modal
@@ -642,7 +642,7 @@ mod tests {
         #[test]
         fn scrolls_once_cursor_moves_past_visible_rows() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 20;
+            state.ui.set_terminal_height(20);
             state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
             state
                 .sql_modal
