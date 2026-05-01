@@ -8,6 +8,7 @@ pub mod pg_service;
 pub mod postgres;
 pub mod query_history;
 pub mod registry;
+pub mod sqlite;
 
 pub use clipboard::ArboardClipboard;
 pub use config_writer::FileConfigWriter;
@@ -18,3 +19,4 @@ pub use pg_service::PgServiceFileReader;
 pub use postgres::PostgresAdapter;
 pub use query_history::FileQueryHistoryStore;
 pub use registry::DbAdapterRegistry;
+pub use sqlite::SqliteAdapter;

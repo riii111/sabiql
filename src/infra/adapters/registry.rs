@@ -10,14 +10,19 @@ use domain::connection::{ConnectionProfile, DatabaseType};
 use domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
 
 use super::postgres::PostgresAdapter;
+use super::sqlite::SqliteAdapter;
 
 pub struct DbAdapterRegistry {
     postgres: Arc<PostgresAdapter>,
+    sqlite: Arc<SqliteAdapter>,
 }
 
 impl DbAdapterRegistry {
     pub fn new(postgres: Arc<PostgresAdapter>) -> Self {
-        Self { postgres }
+        Self {
+            postgres,
+            sqlite: Arc::new(SqliteAdapter::new()),
+        }
     }
 
     fn db_type_from_dsn(dsn: &str) -> Result<DatabaseType, DbOperationError> {
@@ -32,10 +37,9 @@ impl DbAdapterRegistry {
         )))
     }
 
-    fn sqlite_not_implemented() -> DbOperationError {
+    fn sqlite_query_not_implemented() -> DbOperationError {
         DbOperationError::ConnectionFailed(
-            "SQLite adapter is not implemented yet; SAB-204 only adds connection groundwork"
-                .to_string(),
+            "SQLite query execution is not implemented yet".to_string(),
         )
     }
 }
@@ -68,7 +72,7 @@ impl MetadataProvider for DbAdapterRegistry {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_metadata(dsn).await,
-            DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
+            DatabaseType::SQLite => self.sqlite.fetch_metadata(dsn).await,
         }
     }
 
@@ -80,7 +84,7 @@ impl MetadataProvider for DbAdapterRegistry {
     ) -> Result<Table, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_table_detail(dsn, schema, table).await,
-            DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
+            DatabaseType::SQLite => self.sqlite.fetch_table_detail(dsn, schema, table).await,
         }
     }
 
@@ -96,7 +100,11 @@ impl MetadataProvider for DbAdapterRegistry {
                     .fetch_table_columns_and_fks(dsn, schema, table)
                     .await
             }
-            DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
+            DatabaseType::SQLite => {
+                self.sqlite
+                    .fetch_table_columns_and_fks(dsn, schema, table)
+                    .await
+            }
         }
     }
 
@@ -106,7 +114,7 @@ impl MetadataProvider for DbAdapterRegistry {
     ) -> Result<Vec<TableSignature>, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_table_signatures(dsn).await,
-            DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
+            DatabaseType::SQLite => self.sqlite.fetch_table_signatures(dsn).await,
         }
     }
 }
@@ -128,7 +136,7 @@ impl QueryExecutor for DbAdapterRegistry {
                     .execute_preview(dsn, schema, table, limit, offset, read_only)
                     .await
             }
-            DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
+            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
         }
     }
 
@@ -140,7 +148,7 @@ impl QueryExecutor for DbAdapterRegistry {
     ) -> Result<QueryResult, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.execute_adhoc(dsn, query, read_only).await,
-            DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
+            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
         }
     }
 
@@ -152,7 +160,7 @@ impl QueryExecutor for DbAdapterRegistry {
     ) -> Result<WriteExecutionResult, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.execute_write(dsn, query, read_only).await,
-            DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
+            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
         }
     }
 
@@ -164,7 +172,7 @@ impl QueryExecutor for DbAdapterRegistry {
     ) -> Result<usize, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.count_query_rows(dsn, query, read_only).await,
-            DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
+            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
         }
     }
 
@@ -181,7 +189,7 @@ impl QueryExecutor for DbAdapterRegistry {
                     .export_to_csv(dsn, query, path, read_only)
                     .await
             }
-            DatabaseType::SQLite => Err(Self::sqlite_not_implemented()),
+            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
         }
     }
 }
@@ -230,6 +238,19 @@ impl SqlDialect for DbAdapterRegistry {
 mod tests {
     use super::*;
     use domain::connection::SslMode;
+    use std::process::Command;
+
+    fn make_sqlite_dsn(sql: &str) -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.db");
+        let status = Command::new("sqlite3")
+            .arg(&path)
+            .arg(sql)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        (dir, format!("sqlite://{}", path.display()))
+    }
 
     #[test]
     fn builds_postgres_dsn_from_postgres_profile() {
@@ -267,5 +288,25 @@ mod tests {
         let result = registry.fetch_metadata("mysql://localhost/db").await;
 
         assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
+    }
+
+    #[tokio::test]
+    async fn sqlite_metadata_is_dispatched_to_sqlite_adapter() {
+        let (_dir, dsn) = make_sqlite_dsn("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let metadata = registry.fetch_metadata(&dsn).await.unwrap();
+
+        assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
+    }
+
+    #[tokio::test]
+    async fn sqlite_table_signatures_are_dispatched_to_sqlite_adapter() {
+        let (_dir, dsn) = make_sqlite_dsn("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let signatures = registry.fetch_table_signatures(&dsn).await.unwrap();
+
+        assert_eq!(signatures[0].qualified_name(), "main.users");
     }
 }
