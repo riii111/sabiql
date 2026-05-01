@@ -1,7 +1,6 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::connection::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
@@ -155,9 +154,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         return Some(vec![]);
                     }
                 };
-                if config.database_type() != DatabaseType::SQLite {
-                    state.session.mark_connecting();
-                }
+                state.session.mark_connecting();
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id().cloned(),
                     name: setup
@@ -197,10 +194,6 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 .session
                 .set_active_connection(id, name, *database_type, dsn);
             state.session.disable_read_only();
-            if *database_type == DatabaseType::SQLite {
-                state.session.mark_disconnected();
-                return Some(vec![]);
-            }
             state.session.begin_connecting(dsn);
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
@@ -404,6 +397,7 @@ mod tests {
 
     mod connection_save {
         use super::*;
+        use crate::domain::DatabaseType;
         use crate::domain::MetadataState;
         use crate::model::connection::state::ConnectionState;
         use crate::update::action::ConnectionTarget;
@@ -456,7 +450,7 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_save_does_not_enter_connecting_state() {
+        fn sqlite_save_enters_connecting_state() {
             let mut state = AppState::new("test".to_string());
             state
                 .connection_setup
@@ -477,9 +471,9 @@ mod tests {
 
             assert_eq!(
                 state.session.connection_state(),
-                ConnectionState::NotConnected
+                ConnectionState::Connecting
             );
-            assert_eq!(state.session.metadata_state(), &MetadataState::NotLoaded);
+            assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::SaveAndConnect { .. }]
@@ -503,7 +497,7 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_save_completed_does_not_fetch_metadata() {
+        fn sqlite_save_completed_fetches_metadata() {
             let mut state = AppState::new("test".to_string());
 
             let action = Action::ConnectionSaveCompleted(ConnectionTarget {
@@ -514,13 +508,20 @@ mod tests {
             });
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
-            assert!(effects.is_empty());
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
             assert_eq!(state.session.dsn(), Some("sqlite:///tmp/app.db"));
             assert_eq!(
                 state.session.active_database_type(),
                 Some(DatabaseType::SQLite)
             );
-            assert!(state.session.connection_state().is_not_connected());
+            assert_eq!(
+                state.session.connection_state(),
+                ConnectionState::Connecting
+            );
         }
     }
 

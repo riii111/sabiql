@@ -36,9 +36,6 @@ pub fn reduce(
             if state.session.connection_state().is_not_connected()
                 && state.modal.active_mode() == InputMode::Normal
             {
-                if state.session.active_database_type() == Some(DatabaseType::SQLite) {
-                    return Some(vec![]);
-                }
                 if let Some(dsn) = state.session.dsn().map(str::to_string) {
                     state.session.begin_connecting(&dsn);
                     Some(vec![Effect::FetchMetadata { dsn }])
@@ -61,12 +58,7 @@ pub fn reduce(
                 state.connection_caches.save(&current_id, cache);
             }
 
-            if *database_type == DatabaseType::SQLite {
-                state.connection_caches.remove(id);
-                reset_for_new_connection(state, id, dsn, name, *database_type);
-                state.session.mark_disconnected();
-                Some(vec![Effect::ClearCompletionEngineCache])
-            } else if let Some(cached) = state.connection_caches.get(id).cloned() {
+            if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, id, name, *database_type, dsn, services);
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else {
@@ -150,12 +142,7 @@ mod tests {
     fn normalizes_cached_inspector_tab_when_capability_is_missing() {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();
-        let mut services = AppServices::stub();
-        services.db_capabilities = crate::model::shared::db_capabilities::DbCapabilities::new(
-            true,
-            vec![InspectorTab::Info],
-        );
-
+        let services = AppServices::stub();
         let cached = ConnectionCache {
             explorer_selected: 42,
             inspector_tab: InspectorTab::Ddl,
@@ -163,7 +150,12 @@ mod tests {
         };
         state.connection_caches.save(&target_id, cached);
 
-        let action = create_switch_action(&target_id, "cached_db");
+        let action = Action::SwitchConnection(ConnectionTarget {
+            id: target_id,
+            dsn: "sqlite:///tmp/app.db".to_string(),
+            name: "app.db".to_string(),
+            database_type: DatabaseType::SQLite,
+        });
         reduce(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
@@ -190,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_switch_without_cache_does_not_fetch_metadata() {
+    fn sqlite_switch_without_cache_fetches_metadata() {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
         let services = AppServices::stub();
@@ -204,11 +196,14 @@ mod tests {
         let effects = reduce(&mut state, &action, Instant::now(), &services).unwrap();
 
         assert!(
-            !effects
+            effects
                 .iter()
                 .any(|e| matches!(e, Effect::FetchMetadata { .. }))
         );
-        assert!(state.session.connection_state().is_not_connected());
+        assert_eq!(
+            state.session.connection_state(),
+            ConnectionState::Connecting
+        );
         assert_eq!(
             state.session.active_database_type(),
             Some(DatabaseType::SQLite)
@@ -216,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_switch_ignores_stale_cache() {
+    fn sqlite_switch_restores_cache() {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();
         let services = AppServices::stub();
@@ -243,17 +238,17 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, Effect::FetchMetadata { .. }))
         );
-        assert!(state.connection_caches.get(&target_id).is_none());
-        assert_eq!(state.ui.explorer_selected(), 0);
+        assert!(state.connection_caches.get(&target_id).is_some());
+        assert_eq!(state.ui.explorer_selected(), 42);
         assert_eq!(
             state.session.active_database_type(),
             Some(DatabaseType::SQLite)
         );
-        assert!(state.session.connection_state().is_not_connected());
+        assert_eq!(state.session.connection_state(), ConnectionState::Connected);
     }
 
     #[test]
-    fn sqlite_try_connect_does_not_fetch_metadata() {
+    fn sqlite_try_connect_fetches_metadata() {
         let mut state = AppState::new("test".to_string());
         let services = AppServices::stub();
         state.session.set_dsn_for_test("sqlite:///tmp/app.db");
@@ -266,8 +261,15 @@ mod tests {
 
         let effects = reduce(&mut state, &Action::TryConnect, Instant::now(), &services).unwrap();
 
-        assert!(effects.is_empty());
-        assert!(state.session.connection_state().is_not_connected());
+        assert!(
+            effects
+                .iter()
+                .any(|e| matches!(e, Effect::FetchMetadata { .. }))
+        );
+        assert_eq!(
+            state.session.connection_state(),
+            ConnectionState::Connecting
+        );
     }
 
     #[test]
