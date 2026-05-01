@@ -145,7 +145,7 @@ async fn handle_write_failure_log(
     state: &AppState,
     failed_tables: Vec<(String, String)>,
 ) -> Result<()> {
-    match config_writer.get_cache_dir(&state.runtime.project_name) {
+    match config_writer.get_cache_dir(state.runtime.project_name()) {
         Ok(cache_dir) => {
             let writer = Arc::clone(er_log_writer);
             let tx = action_tx.clone();

@@ -181,7 +181,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
 
             let conn_id = state.session.active_connection_id().unwrap();
             Some(vec![Effect::LoadQueryHistory {
-                project_name: state.runtime.project_name.clone(),
+                project_name: state.runtime.project_name().to_string(),
                 connection_id: conn_id.clone(),
             }])
         }
@@ -745,7 +745,9 @@ mod tests {
             state
                 .session
                 .set_active_connection_id_for_test(Some(ConnectionId::from_string("test-conn")));
-            state.runtime.project_name = "test-project".to_string();
+            state
+                .runtime
+                .set_project_name_for_test("test-project".to_string());
             state
         }
 

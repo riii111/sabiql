@@ -171,7 +171,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
 
             Some(vec![Effect::GenerateErDiagramFromCache {
                 total_tables,
-                project_name: state.runtime.project_name.clone(),
+                project_name: state.runtime.project_name().to_string(),
                 target_tables: state.er_preparation.target_tables().to_vec(),
             }])
         }

@@ -456,7 +456,7 @@ fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntry
     match reader.read_services() {
         Ok((services, path)) if !services.is_empty() => {
             state.set_service_entries(services);
-            state.runtime.service_file_path = Some(path);
+            state.runtime.set_service_file_path(Some(path));
         }
         Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
         Err(e) => {

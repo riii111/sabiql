@@ -45,8 +45,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.set_connections_and_services(sorted, services.clone());
             state
                 .runtime
-                .service_file_path
-                .clone_from(service_file_path);
+                .set_service_file_path(service_file_path.clone());
 
             if let Some(warning) = profile_load_warning {
                 state.messages.set_error_at(warning.clone(), now);
@@ -274,7 +273,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.runtime.service_file_path, Some(path));
+            assert_eq!(state.runtime.service_file_path(), Some(&path));
         }
 
         #[test]
