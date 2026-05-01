@@ -326,12 +326,6 @@ impl BrowseSession {
     pub fn set_active_database_type_for_test(&mut self, database_type: Option<DatabaseType>) {
         self.active_database_type = database_type;
     }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_reloading_for_test(&mut self, is_reloading: bool) {
-        self.is_reloading = is_reloading;
-    }
 }
 
 #[cfg(test)]

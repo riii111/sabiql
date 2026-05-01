@@ -136,10 +136,6 @@ impl ErPreparationState {
         self.total_tables = total_tables;
     }
 
-    pub fn clear_last_signatures(&mut self) {
-        self.last_signatures.clear();
-    }
-
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
     pub fn set_total_tables_for_test(&mut self, total: usize) {
