@@ -499,7 +499,7 @@ mod tests {
         fn retry_limit_exceeded_as_last_table_triggers_er_completion() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             // Only table remaining; retry limit exceeded
@@ -535,7 +535,7 @@ mod tests {
         fn retry_limit_exceeded_with_queue_remaining_redrives_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
             let failed = "public.users".to_string();
             let remaining = "public.posts".to_string();
@@ -924,12 +924,11 @@ mod tests {
 
     mod completion_check {
         use super::*;
-        use crate::model::er_state::ErStatus;
 
         #[test]
         fn complete_not_fk_expanded_dispatches_expand() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             state.er_preparation.begin_scoped_prefetch(Vec::new());
             // pending and fetching are empty → is_complete() = true
 
@@ -945,7 +944,7 @@ mod tests {
         #[test]
         fn complete_fk_expanded_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
 
             let effects = check_er_completion(&mut state);
@@ -965,7 +964,7 @@ mod tests {
         #[test]
         fn empty_neighbors_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
 
             let effects = reduce_metadata(
                 &mut state,
@@ -985,7 +984,7 @@ mod tests {
         #[test]
         fn non_empty_neighbors_adds_to_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
 
             let effects = reduce_metadata(
                 &mut state,
@@ -1022,7 +1021,7 @@ mod tests {
             // All Phase 2 tables fail → completion must still fire
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             state.er_preparation.mark_fk_expanded();
             let neighbor = "public.posts".to_string();
             state.er_preparation.insert_pending_table(neighbor.clone());

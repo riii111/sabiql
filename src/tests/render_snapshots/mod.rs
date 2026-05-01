@@ -8,7 +8,6 @@ use harness::{
 
 use app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use app::model::connection::setup::ConnectionField;
-use app::model::er_state::ErStatus;
 use app::model::shared::focused_pane::FocusedPane;
 use app::model::shared::input_mode::InputMode;
 use app::model::shared::text_input::TextInputState;

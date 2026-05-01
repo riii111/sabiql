@@ -1312,7 +1312,7 @@ mod tests {
         #[test]
         fn metadata_failed_resets_er_waiting_to_idle() {
             let mut state = create_test_state();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             let now = Instant::now();
 
             reduce(
@@ -2458,7 +2458,7 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             state.er_preparation.begin_full_prefetch(1);
             state
                 .er_preparation
@@ -2488,7 +2488,7 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             state.er_preparation.begin_full_prefetch(2);
             state
                 .er_preparation

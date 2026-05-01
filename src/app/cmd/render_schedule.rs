@@ -100,7 +100,7 @@ mod tests {
         #[test]
         fn er_waiting_returns_spinner_interval() {
             let mut state = create_test_state();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             let now = Instant::now();
 
             let deadline = next_animation_deadline(&state, now);
@@ -261,7 +261,7 @@ mod tests {
         #[test]
         fn er_waiting_returns_true() {
             let mut state = create_test_state();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
 
             assert!(has_active_spinner(&state));
         }

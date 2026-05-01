@@ -176,12 +176,6 @@ impl ErPreparationState {
         self.total_tables = total_tables;
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_total_tables_for_test(&mut self, total: usize) {
-        self.total_tables = total;
-    }
-
     pub fn clear_table_tracking(&mut self) {
         self.pending_tables.clear();
         self.fetching_tables.clear();
@@ -198,18 +192,6 @@ impl ErPreparationState {
 
     pub fn insert_fetching_table(&mut self, table: String) {
         self.fetching_tables.insert(table);
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_status_for_test(&mut self, status: ErStatus) {
-        self.status = status;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_run_id_for_test(&mut self, run_id: u64) {
-        self.run_id = run_id;
     }
 }
 

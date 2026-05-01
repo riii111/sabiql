@@ -567,7 +567,7 @@ mod tests {
         #[test]
         fn resets_er_preparation() {
             let mut state = prepare_state_for_reload();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
 
             reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
@@ -668,7 +668,13 @@ mod tests {
             fn accepts_status(#[case] status: ErStatus) {
                 let mut state = make_state();
 
-                state.er_preparation.set_status_for_test(status);
+                match status {
+                    ErStatus::Idle => state.er_preparation.mark_idle(),
+                    ErStatus::Waiting => {
+                        state.er_preparation.start_waiting_run();
+                    }
+                    ErStatus::Rendering => state.er_preparation.mark_rendering(),
+                }
 
                 assert_eq!(state.er_preparation.status(), status);
             }
