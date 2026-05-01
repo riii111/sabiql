@@ -21,7 +21,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
     if !tag.needs_refresh() {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn.clone() else {
+    let Some(dsn) = state.session.dsn().map(str::to_string) else {
         return vec![];
     };
 
@@ -34,17 +34,17 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
         effects.push(Effect::FetchMetadata { dsn });
-    } else if !state.query.pagination.table.is_empty() {
-        let page = state.query.pagination.current_page;
+    } else if state.query.pagination.has_table() {
+        let page = state.query.pagination.current_page();
         effects.push(Effect::ExecutePreview {
             dsn,
-            schema: state.query.pagination.schema.clone(),
-            table: state.query.pagination.table.clone(),
+            schema: state.query.pagination.schema().to_string(),
+            table: state.query.pagination.table().to_string(),
             generation: state.session.selection_generation(),
             limit: PREVIEW_PAGE_SIZE,
             offset: page * PREVIEW_PAGE_SIZE,
             target_page: page,
-            read_only: state.session.read_only,
+            read_only: state.session.is_read_only(),
         });
     }
 
@@ -96,10 +96,10 @@ pub fn reduce(
                 }
 
                 if let Some(page) = target_page {
-                    state.query.pagination.current_page = *page;
-                    if result.rows.len() < PREVIEW_PAGE_SIZE {
-                        state.query.pagination.reached_end = true;
-                    }
+                    state
+                        .query
+                        .pagination
+                        .set_page_result(*page, result.rows.len() < PREVIEW_PAGE_SIZE);
                 }
 
                 if !result.is_error() || result.source != QuerySource::Adhoc {
@@ -153,12 +153,13 @@ pub fn reduce(
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
-                    let preview_query = if state.query.pagination.schema.is_empty() {
-                        state.query.pagination.table.clone()
+                    let preview_query = if state.query.pagination.schema().is_empty() {
+                        state.query.pagination.table().to_string()
                     } else {
                         format!(
                             "{}.{}",
-                            state.query.pagination.schema, state.query.pagination.table
+                            state.query.pagination.schema(),
+                            state.query.pagination.table()
                         )
                     };
                     state.query.set_current_result(Arc::new(QueryResult::error(
@@ -214,12 +215,8 @@ pub fn reduce(
             table,
             generation,
         }) => {
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn() {
                 state.query.begin_running(now);
-
-                state.query.pagination.reset();
-                state.query.pagination.schema.clone_from(schema);
-                state.query.pagination.table.clone_from(table);
 
                 let row_estimate = state
                     .session
@@ -234,17 +231,20 @@ pub fn reduce(
                             }
                         })
                     });
-                state.query.pagination.total_rows_estimate = row_estimate;
+                state
+                    .query
+                    .pagination
+                    .reset_for_table_with_estimate(schema, table, row_estimate);
 
                 Some(vec![Effect::ExecutePreview {
-                    dsn: dsn.clone(),
+                    dsn: dsn.to_string(),
                     schema: schema.clone(),
                     table: table.clone(),
                     generation: *generation,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: 0,
                     target_page: 0,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 Some(vec![])
@@ -252,12 +252,12 @@ pub fn reduce(
         }
 
         Action::ExecuteAdhoc(query) => {
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn() {
                 state.query.begin_running(now);
                 Some(vec![Effect::ExecuteAdhoc {
-                    dsn: dsn.clone(),
+                    dsn: dsn.to_string(),
                     query: query.clone(),
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 Some(vec![])
@@ -271,7 +271,6 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::browse::query_execution::PaginationState;
     use crate::update::browse::query::reduce_query;
     use crate::update::browse::query::tests::*;
 
@@ -350,13 +349,16 @@ mod tests {
         #[test]
         fn resets_pagination() {
             let mut state = create_test_state();
-            state.query.pagination = PaginationState {
-                current_page: 5,
-                total_rows_estimate: Some(10000),
-                reached_end: true,
-                schema: "old_schema".to_string(),
-                table: "old_table".to_string(),
-            };
+            state.query.pagination.set_page_for_test(5);
+            state
+                .query
+                .pagination
+                .set_total_rows_estimate_for_test(Some(10000));
+            state.query.pagination.mark_reached_end_for_test();
+            state
+                .query
+                .pagination
+                .set_table_for_test("old_schema", "old_table");
             let now = Instant::now();
 
             reduce_query(
@@ -370,10 +372,10 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.query.pagination.current_page, 0);
-            assert!(!state.query.pagination.reached_end);
-            assert_eq!(state.query.pagination.schema, "public");
-            assert_eq!(state.query.pagination.table, "users");
+            assert_eq!(state.query.pagination.current_page(), 0);
+            assert!(!state.query.pagination.reached_end());
+            assert_eq!(state.query.pagination.schema(), "public");
+            assert_eq!(state.query.pagination.table(), "users");
         }
     }
 
@@ -398,8 +400,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.query.pagination.current_page, 2);
-            assert!(state.query.pagination.reached_end);
+            assert_eq!(state.query.pagination.current_page(), 2);
+            assert!(state.query.pagination.reached_end());
         }
 
         #[test]
@@ -420,14 +422,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.query.pagination.current_page, 0);
-            assert!(!state.query.pagination.reached_end);
+            assert_eq!(state.query.pagination.current_page(), 0);
+            assert!(!state.query.pagination.reached_end());
         }
 
         #[test]
         fn adhoc_does_not_update_pagination() {
             let mut state = create_test_state();
-            state.query.pagination.current_page = 3;
+            state.query.pagination.set_page_for_test(3);
             let result = adhoc_result();
             let now = Instant::now();
 
@@ -442,7 +444,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.query.pagination.current_page, 3);
+            assert_eq!(state.query.pagination.current_page(), 3);
         }
 
         #[test]
@@ -663,7 +665,7 @@ mod tests {
                     .as_deref()
                     .is_some_and(|message| message.contains("Permission denied"))
             );
-            assert!(state.messages.last_error.is_none());
+            assert!(state.messages.last_error().is_none());
         }
 
         #[test]
@@ -783,10 +785,7 @@ mod tests {
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
             state.sql_modal.begin_prefetch();
-            state
-                .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
+            state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
@@ -803,7 +802,7 @@ mod tests {
             );
 
             assert!(!state.sql_modal.is_prefetch_started());
-            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(state.sql_modal.prefetch_queue().is_empty());
             assert!(state.session.table_detail().is_none());
         }
 
@@ -984,7 +983,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.ui.explorer_selected, 1);
-            assert_eq!(state.query.pagination.table, "users");
+            assert_eq!(state.query.pagination.table(), "users");
             assert!(
                 meta_effects
                     .iter()
@@ -1022,7 +1021,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.query.pagination.table.is_empty());
+            assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert_eq!(state.ui.explorer_selected, 0);

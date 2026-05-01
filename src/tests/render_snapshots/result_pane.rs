@@ -44,8 +44,7 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
         error: None,
         command_tag: None,
     }));
-    state.query.pagination.schema = "public".to_string();
-    state.query.pagination.table = "users".to_string();
+    state.query.pagination.set_table_for_test("public", "users");
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 3);
     (state, now)
@@ -173,7 +172,7 @@ fn result_pane_cell_edit_cursor_at_tail() {
     state
         .result_interaction
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
-    let len = state.result_interaction.cell_edit().input.content().len();
+    let len = state.result_interaction.cell_edit().input().content().len();
     state
         .result_interaction
         .cell_edit_input_mut()

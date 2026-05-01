@@ -18,7 +18,7 @@ impl Header {
         let sep_style = Style::default().fg(theme.semantic.text.muted);
         let item_style = Style::default().fg(theme.semantic.text.secondary);
 
-        let (status_text, status_color) = if state.session.dsn.is_none() {
+        let (status_text, status_color) = if state.session.dsn().is_none() {
             ("no dsn", theme.semantic.status.error)
         } else {
             match &state.session.metadata_state() {
@@ -29,11 +29,7 @@ impl Header {
             }
         };
 
-        let connection_name = state
-            .session
-            .active_connection_name
-            .as_deref()
-            .unwrap_or("-");
+        let connection_name = state.session.active_connection_name().unwrap_or("-");
 
         let mut line = Line::from(vec![
             Span::styled(&state.runtime.project_name, item_style),
@@ -46,7 +42,7 @@ impl Header {
             Span::styled(" | ", sep_style),
             Span::styled(connection_name, item_style),
         ]);
-        if state.session.read_only {
+        if state.session.is_read_only() {
             line.push_span(Span::styled(" | ", sep_style));
             line.push_span(Span::styled(
                 "READ-ONLY",

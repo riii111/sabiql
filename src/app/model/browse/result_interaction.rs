@@ -68,7 +68,7 @@ impl ResultInteraction {
     }
 
     pub fn cell_edit_input_mut(&mut self) -> &mut TextInputState {
-        &mut self.cell_edit.input
+        self.cell_edit.input_mut()
     }
 
     pub fn clear_cell_edit(&mut self) {
@@ -350,8 +350,8 @@ mod tests {
         ri.begin_cell_edit(1, 2, "hello".to_string());
 
         assert!(ri.cell_edit().is_active());
-        assert_eq!(ri.cell_edit().row, Some(1));
-        assert_eq!(ri.cell_edit().col, Some(2));
+        assert_eq!(ri.cell_edit().row(), Some(1));
+        assert_eq!(ri.cell_edit().col(), Some(2));
     }
 
     #[test]

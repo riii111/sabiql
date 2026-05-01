@@ -77,7 +77,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 Some(ConnectionListItem::Profile(i)) => state
                     .connections()
                     .get(*i)
-                    .filter(|c| state.session.active_connection_id.as_ref() != Some(&c.id))
+                    .filter(|c| state.session.active_connection_id() != Some(&c.id))
                     .map(|_| Effect::SwitchConnection {
                         connection_index: *i,
                     }),
@@ -294,7 +294,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 
@@ -325,7 +325,9 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state.session.active_connection_id = Some(active_id);
+            state
+                .session
+                .set_active_connection_id_for_test(Some(active_id));
             state.ui.set_connection_list_selection(Some(1));
 
             let effects = reduce_navigation(
@@ -354,7 +356,9 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.session.active_connection_id = Some(active_id);
+            state
+                .session
+                .set_active_connection_id_for_test(Some(active_id));
             state.ui.set_connection_list_selection(Some(0));
 
             let effects = reduce_navigation(
@@ -393,7 +397,9 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state.session.active_connection_id = Some(active_id);
+            state
+                .session
+                .set_active_connection_id_for_test(Some(active_id));
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(1));
 
@@ -420,7 +426,9 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.session.active_connection_id = Some(active_id);
+            state
+                .session
+                .set_active_connection_id_for_test(Some(active_id));
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
 

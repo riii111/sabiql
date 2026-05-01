@@ -10,19 +10,94 @@ pub enum ErStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct ErPreparationState {
-    pub pending_tables: HashSet<String>,
-    pub fetching_tables: HashSet<String>,
-    pub failed_tables: HashMap<String, String>,
-    pub status: ErStatus,
-    pub total_tables: usize,
-    pub target_tables: Vec<String>,
-    pub seed_tables: Vec<String>,
-    pub fk_expanded: bool,
-    pub last_signatures: HashMap<String, String>,
-    pub run_id: u64,
+    pending_tables: HashSet<String>,
+    fetching_tables: HashSet<String>,
+    failed_tables: HashMap<String, String>,
+    status: ErStatus,
+    total_tables: usize,
+    target_tables: Vec<String>,
+    seed_tables: Vec<String>,
+    fk_expanded: bool,
+    last_signatures: HashMap<String, String>,
+    run_id: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ErPreparationProgress {
+    pub cached: usize,
+    pub total: usize,
+    pub failed: usize,
+    pub remaining: usize,
 }
 
 impl ErPreparationState {
+    pub fn status(&self) -> ErStatus {
+        self.status
+    }
+
+    pub fn run_id(&self) -> u64 {
+        self.run_id
+    }
+
+    pub fn progress(&self) -> ErPreparationProgress {
+        let failed = self.failed_tables.len();
+        let remaining = self.pending_tables.len() + self.fetching_tables.len();
+        let cached = self.total_tables.saturating_sub(remaining + failed);
+        ErPreparationProgress {
+            cached,
+            total: self.total_tables,
+            failed,
+            remaining,
+        }
+    }
+
+    pub fn failed_table_errors(&self) -> Vec<(String, String)> {
+        self.failed_tables
+            .iter()
+            .map(|(table, error)| (table.clone(), error.clone()))
+            .collect()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn pending_tables(&self) -> &HashSet<String> {
+        &self.pending_tables
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn fetching_tables(&self) -> &HashSet<String> {
+        &self.fetching_tables
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn failed_tables(&self) -> &HashMap<String, String> {
+        &self.failed_tables
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn total_tables(&self) -> usize {
+        self.total_tables
+    }
+
+    pub fn target_tables(&self) -> &[String] {
+        &self.target_tables
+    }
+
+    pub fn seed_tables(&self) -> &[String] {
+        &self.seed_tables
+    }
+
+    pub fn fk_expanded(&self) -> bool {
+        self.fk_expanded
+    }
+
+    pub fn last_signatures(&self) -> &HashMap<String, String> {
+        &self.last_signatures
+    }
+
     pub fn is_complete(&self) -> bool {
         self.pending_tables.is_empty() && self.fetching_tables.is_empty()
     }
@@ -49,6 +124,92 @@ impl ErPreparationState {
 
     pub fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    pub fn mark_idle(&mut self) {
+        self.status = ErStatus::Idle;
+    }
+
+    pub fn mark_rendering(&mut self) {
+        self.status = ErStatus::Rendering;
+    }
+
+    pub fn start_waiting_run(&mut self) -> u64 {
+        self.run_id += 1;
+        self.status = ErStatus::Waiting;
+        self.run_id
+    }
+
+    pub fn begin_full_prefetch(&mut self, total: usize) {
+        self.clear_table_tracking();
+        self.total_tables = total;
+        self.seed_tables.clear();
+        self.fk_expanded = true;
+    }
+
+    pub fn begin_scoped_prefetch(&mut self, tables: Vec<String>) {
+        self.clear_table_tracking();
+        self.total_tables = tables.len();
+        self.seed_tables = tables;
+        self.fk_expanded = false;
+    }
+
+    pub fn set_targets(&mut self, tables: Vec<String>) {
+        self.target_tables = tables;
+    }
+
+    pub fn mark_fk_expanded(&mut self) {
+        self.fk_expanded = true;
+    }
+
+    pub fn apply_refresh_metadata(
+        &mut self,
+        signatures: HashMap<String, String>,
+        total_tables: usize,
+    ) {
+        self.last_signatures = signatures;
+        self.total_tables = total_tables;
+    }
+
+    pub fn invalidate_refresh_signatures(&mut self, total_tables: usize) {
+        self.last_signatures.clear();
+        self.total_tables = total_tables;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_total_tables_for_test(&mut self, total: usize) {
+        self.total_tables = total;
+    }
+
+    pub fn clear_table_tracking(&mut self) {
+        self.pending_tables.clear();
+        self.fetching_tables.clear();
+        self.failed_tables.clear();
+    }
+
+    pub fn insert_pending_table(&mut self, table: String) {
+        self.pending_tables.insert(table);
+    }
+
+    pub fn remove_pending_table(&mut self, table: &str) {
+        self.pending_tables.remove(table);
+    }
+
+    pub fn insert_fetching_table(&mut self, table: String) {
+        self.fetching_tables.insert(table);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_status_for_test(&mut self, status: ErStatus) {
+        self.status = status;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_run_id_for_test(&mut self, run_id: u64) {
+        self.run_id = run_id;
     }
 }
 

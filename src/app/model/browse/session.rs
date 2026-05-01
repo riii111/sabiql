@@ -36,13 +36,13 @@ pub struct BrowseSession {
     // -- lifecycle-gated --
     metadata: Option<Arc<DatabaseMetadata>>,
 
-    // -- public / independent --
-    pub dsn: Option<String>,
-    pub active_connection_id: Option<ConnectionId>,
-    pub active_connection_name: Option<String>,
-    pub active_database_type: Option<DatabaseType>,
-    pub read_only: bool,
-    pub is_reloading: bool,
+    // -- co-dependent: connection identity / lifecycle --
+    dsn: Option<String>,
+    active_connection_id: Option<ConnectionId>,
+    active_connection_name: Option<String>,
+    active_database_type: Option<DatabaseType>,
+    read_only: bool,
+    is_reloading: bool,
 }
 
 impl BrowseSession {
@@ -58,9 +58,7 @@ impl BrowseSession {
         self.selected_table_key = Some(format!("{schema}.{table}"));
         self.table_detail = None;
         self.selection_generation += 1;
-        pagination.reset();
-        pagination.schema = schema.to_string();
-        pagination.table = table.to_string();
+        pagination.reset_for_table(schema, table);
         self.selection_generation
     }
 
@@ -140,6 +138,14 @@ impl BrowseSession {
         self.is_reloading = false;
     }
 
+    pub fn enable_read_only(&mut self) {
+        self.read_only = true;
+    }
+
+    pub fn disable_read_only(&mut self) {
+        self.read_only = false;
+    }
+
     // ── Cache operations ─────────────────────────────────────────────
 
     pub fn to_cache(
@@ -160,8 +166,7 @@ impl BrowseSession {
         }
     }
 
-    // Caller must also call `result_interaction.reset_view()` and restore UI state.
-    pub fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
+    fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
         self.metadata.clone_from(&cache.metadata);
         self.table_detail.clone_from(&cache.table_detail);
         self.selected_table_key
@@ -176,6 +181,20 @@ impl BrowseSession {
         }
         query.restore_history(cache.result_history.clone());
         query.exit_history();
+    }
+
+    pub fn restore_from_cache_for_connection(
+        &mut self,
+        cache: &ConnectionCache,
+        query: &mut QueryExecution,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+    ) {
+        self.restore_from_cache(cache, query);
+        self.set_active_connection(id, name, database_type, dsn);
+        self.disable_read_only();
     }
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
@@ -228,6 +247,30 @@ impl BrowseSession {
         self.selection_generation
     }
 
+    pub fn dsn(&self) -> Option<&str> {
+        self.dsn.as_deref()
+    }
+
+    pub fn active_connection_id(&self) -> Option<&ConnectionId> {
+        self.active_connection_id.as_ref()
+    }
+
+    pub fn active_connection_name(&self) -> Option<&str> {
+        self.active_connection_name.as_deref()
+    }
+
+    pub fn active_database_type(&self) -> Option<DatabaseType> {
+        self.active_database_type
+    }
+
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    pub fn is_reloading(&self) -> bool {
+        self.is_reloading
+    }
+
     pub fn tables(&self) -> Vec<&TableSummary> {
         self.metadata
             .as_ref()
@@ -263,6 +306,36 @@ impl BrowseSession {
     #[allow(dead_code, reason = "test helper")]
     pub(crate) fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_dsn_for_test(&mut self, dsn: impl Into<String>) {
+        self.dsn = Some(dsn.into());
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn clear_dsn_for_test(&mut self) {
+        self.dsn = None;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_active_connection_id_for_test(&mut self, id: Option<ConnectionId>) {
+        self.active_connection_id = id;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_active_connection_name_for_test(&mut self, name: Option<String>) {
+        self.active_connection_name = name;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_active_database_type_for_test(&mut self, database_type: Option<DatabaseType>) {
+        self.active_database_type = database_type;
     }
 }
 
@@ -351,21 +424,19 @@ mod tests {
         #[test]
         fn resets_pagination() {
             let mut session = BrowseSession::default();
-            let mut pagination = PaginationState {
-                current_page: 5,
-                total_rows_estimate: Some(10000),
-                reached_end: true,
-                schema: "old".to_string(),
-                table: "old".to_string(),
-            };
+            let mut pagination = PaginationState::default();
+            pagination.set_page_for_test(5);
+            pagination.set_total_rows_estimate_for_test(Some(10000));
+            pagination.mark_reached_end_for_test();
+            pagination.set_table_for_test("old", "old");
 
             let _ = session.select_table("public", "users", &mut pagination);
 
-            assert_eq!(pagination.current_page, 0);
-            assert_eq!(pagination.total_rows_estimate, None);
-            assert!(!pagination.reached_end);
-            assert_eq!(pagination.schema, "public");
-            assert_eq!(pagination.table, "users");
+            assert_eq!(pagination.current_page(), 0);
+            assert_eq!(pagination.total_rows_estimate(), None);
+            assert!(!pagination.reached_end());
+            assert_eq!(pagination.schema(), "public");
+            assert_eq!(pagination.table(), "users");
         }
     }
 
@@ -413,7 +484,7 @@ mod tests {
 
         assert!(session.selected_table_key().is_none());
         assert!(session.table_detail().is_none());
-        assert_eq!(pagination.current_page, 0);
+        assert_eq!(pagination.current_page(), 0);
     }
 
     #[test]
@@ -443,21 +514,19 @@ mod tests {
 
             assert!(session.connection_state().is_connecting());
             assert_eq!(session.metadata_state(), &MetadataState::Loading);
-            assert_eq!(session.dsn, Some("postgres://localhost/test".to_string()));
+            assert_eq!(session.dsn(), Some("postgres://localhost/test"));
         }
 
         #[test]
         fn mark_connecting_sets_pair_without_changing_dsn() {
-            let mut session = BrowseSession {
-                dsn: Some("postgres://localhost/test".to_string()),
-                ..Default::default()
-            };
+            let mut session = BrowseSession::default();
+            session.set_dsn_for_test("postgres://localhost/test");
 
             session.mark_connecting();
 
             assert!(session.connection_state().is_connecting());
             assert_eq!(session.metadata_state(), &MetadataState::Loading);
-            assert_eq!(session.dsn, Some("postgres://localhost/test".to_string()));
+            assert_eq!(session.dsn(), Some("postgres://localhost/test"));
         }
 
         #[test]
@@ -485,14 +554,14 @@ mod tests {
                 session.metadata_state(),
                 &MetadataState::Error("timeout".to_string())
             );
-            assert!(!session.is_reloading);
+            assert!(!session.is_reloading());
         }
 
         #[test]
         fn mark_connection_failed_when_connected_keeps_connected() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            session.is_reloading = true;
+            session.begin_reload();
 
             session.mark_connection_failed("reload timeout".to_string());
 
@@ -501,7 +570,7 @@ mod tests {
                 session.metadata_state(),
                 &MetadataState::Error("reload timeout".to_string())
             );
-            assert!(!session.is_reloading);
+            assert!(!session.is_reloading());
         }
 
         #[test]
@@ -525,7 +594,7 @@ mod tests {
 
             assert!(session.connection_state().is_not_connected());
             assert_eq!(session.metadata_state(), &MetadataState::NotLoaded);
-            assert!(!session.is_reloading);
+            assert!(!session.is_reloading());
         }
 
         #[test]
@@ -533,10 +602,10 @@ mod tests {
             let mut session = BrowseSession::default();
 
             session.begin_reload();
-            assert!(session.is_reloading);
+            assert!(session.is_reloading());
 
             session.finish_reload();
-            assert!(!session.is_reloading);
+            assert!(!session.is_reloading());
         }
     }
 
@@ -580,19 +649,19 @@ mod tests {
             session.mark_connected(make_metadata("db"));
             let mut pagination = PaginationState::default();
             let _ = session.select_table("public", "users", &mut pagination);
-            session.is_reloading = true;
+            session.begin_reload();
             assert!(session.selection_generation() > 0);
 
             let cache = session.to_cache(0, InspectorTab::Info, None, ResultHistory::default());
 
             let mut new_session = BrowseSession::default();
             new_session.set_selection_generation(42);
-            new_session.is_reloading = true;
+            new_session.begin_reload();
             let mut query = QueryExecution::default();
             new_session.restore_from_cache(&cache, &mut query);
 
             assert_eq!(new_session.selection_generation(), 0);
-            assert!(!new_session.is_reloading);
+            assert!(!new_session.is_reloading());
         }
 
         #[test]
@@ -617,7 +686,7 @@ mod tests {
 
             assert_eq!(restored.selected_table_key(), Some("public.users"));
             assert!(restored.table_detail().is_some());
-            assert!(restored.is_reloading);
+            assert!(restored.is_reloading());
             assert!(restored.connection_state().is_connected());
         }
     }
@@ -631,21 +700,20 @@ mod tests {
         fn clears_session_and_query_state() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            session.dsn = Some("postgres://host/db".to_string());
-            session.active_connection_id = Some(ConnectionId::new());
-            session.active_connection_name = Some("mydb".to_string());
-            session.active_database_type = Some(DatabaseType::PostgreSQL);
-            session.read_only = true;
-            session.is_reloading = true;
+            session.set_dsn_for_test("postgres://host/db");
+            session.set_active_connection_id_for_test(Some(ConnectionId::new()));
+            session.set_active_connection_name_for_test(Some("mydb".to_string()));
+            session.set_active_database_type_for_test(Some(DatabaseType::PostgreSQL));
+            session.enable_read_only();
+            session.begin_reload();
             let mut query = QueryExecution::default();
             query.set_current_result(make_query_result());
-            query.pagination = PaginationState {
-                current_page: 3,
-                total_rows_estimate: Some(1000),
-                reached_end: true,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            query.pagination.set_page_for_test(3);
+            query
+                .pagination
+                .set_total_rows_estimate_for_test(Some(1000));
+            query.pagination.mark_reached_end_for_test();
+            query.pagination.set_table_for_test("public", "users");
             query.enter_history(2);
 
             session.reset(&mut query);
@@ -657,13 +725,13 @@ mod tests {
             assert!(session.selected_table_key().is_none());
             assert!(session.table_detail().is_none());
             assert_eq!(session.selection_generation(), 0);
-            assert!(session.dsn.is_none());
-            assert!(session.active_connection_id.is_none());
-            assert!(session.active_connection_name.is_none());
-            assert!(session.active_database_type.is_none());
-            assert!(!session.read_only);
-            assert!(!session.is_reloading);
-            assert_eq!(query.pagination.current_page, 0);
+            assert!(session.dsn().is_none());
+            assert!(session.active_connection_id().is_none());
+            assert!(session.active_connection_name().is_none());
+            assert!(session.active_database_type().is_none());
+            assert!(!session.is_read_only());
+            assert!(!session.is_reloading());
+            assert_eq!(query.pagination.current_page(), 0);
             assert!(query.current_result().is_none());
             assert!(query.history_index().is_none());
         }

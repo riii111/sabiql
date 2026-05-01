@@ -290,7 +290,7 @@ impl EffectRunner {
                 state.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
                 state.confirm_dialog.preview_scroll = output.confirm_preview_scroll;
                 if let Some(height) = output.explain_compare_viewport_height {
-                    state.explain.compare_viewport_height = Some(height);
+                    state.explain.set_compare_viewport_height(height);
                 }
                 Ok(vec![])
             }

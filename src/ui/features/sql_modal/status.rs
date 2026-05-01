@@ -22,7 +22,7 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
 
     let (badge_text, badge_style, status_text, status_style) = match state.sql_modal.status() {
         SqlModalStatus::Normal => {
-            if let Some(ref msg) = state.messages.last_success {
+            if let Some(msg) = state.messages.last_success() {
                 (
                     "[NORMAL]",
                     Style::default().fg(theme.semantic.text.dim),

@@ -152,15 +152,16 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state.set_error("No tables selected".to_string());
                 return Some(vec![]);
             }
-            state.er_preparation.target_tables =
-                state.ui.er_selected_tables.iter().cloned().collect();
+            state
+                .er_preparation
+                .set_targets(state.ui.er_selected_tables.iter().cloned().collect());
             state.modal.set_mode(InputMode::Normal);
             state.ui.er_picker.clear_filter();
             state.ui.er_selected_tables.clear();
             Some(vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])])
         }
         Action::OpenModal(ModalKind::QueryHistoryPicker) => {
-            if state.session.active_connection_id.is_none() {
+            if state.session.active_connection_id().is_none() {
                 return Some(vec![]);
             }
             if state.query.is_running() {
@@ -178,7 +179,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.query_history_picker.reset();
             state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-            let conn_id = state.session.active_connection_id.as_ref().unwrap();
+            let conn_id = state.session.active_connection_id().unwrap();
             Some(vec![Effect::LoadQueryHistory {
                 project_name: state.runtime.project_name.clone(),
                 connection_id: conn_id.clone(),
@@ -193,7 +194,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return Some(vec![]);
             }
-            if state.session.active_connection_id.as_ref() != Some(conn_id) {
+            if state.session.active_connection_id() != Some(conn_id) {
                 return Some(vec![]);
             }
             state.query_history_picker.replace_entries(entries);
@@ -280,12 +281,12 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     sql,
                     blocked: false,
                 }) => {
-                    if let Some(dsn) = &state.session.dsn {
+                    if let Some(dsn) = state.session.dsn() {
                         state.query.begin_running(now);
                         Some(vec![Effect::ExecuteWrite {
-                            dsn: dsn.clone(),
+                            dsn: dsn.to_string(),
                             query: sql,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         state.result_interaction.clear_write_preview();
@@ -297,7 +298,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     }
                 }
                 Some(ConfirmIntent::DisableReadOnly) => {
-                    state.session.read_only = false;
+                    state.session.disable_read_only();
                     Some(vec![])
                 }
                 Some(ConfirmIntent::CsvExport {
@@ -305,13 +306,13 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     file_name,
                     row_count,
                 }) => {
-                    if let Some(dsn) = &state.session.dsn {
+                    if let Some(dsn) = state.session.dsn() {
                         Some(vec![Effect::ExportCsv {
-                            dsn: dsn.clone(),
+                            dsn: dsn.to_string(),
                             query: export_query,
                             file_name,
                             row_count,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         Some(vec![])
@@ -327,8 +328,8 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
 
             if matches!(intent, Some(ConfirmIntent::QuitNoConnection)) {
                 state.connection_setup.reset();
-                if !state.connections().is_empty() || state.session.dsn.is_some() {
-                    state.connection_setup.is_first_run = false;
+                if !state.connections().is_empty() || state.session.dsn().is_some() {
+                    state.connection_setup.set_first_run(false);
                 }
                 state.modal.pop_mode_override(InputMode::ConnectionSetup);
                 Some(vec![])
@@ -405,7 +406,7 @@ mod tests {
             fn execute_write_sets_running_state_and_returns_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::CellEdit);
-                state.session.dsn = Some("postgres://localhost/test".to_string());
+                state.session.set_dsn_for_test("postgres://localhost/test");
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -429,7 +430,7 @@ mod tests {
             fn execute_write_no_dsn_sets_error() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = None;
+                state.session.clear_dsn_for_test();
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -444,10 +445,7 @@ mod tests {
                         .unwrap();
 
                 assert!(effects.is_empty());
-                assert_eq!(
-                    state.messages.last_error.as_deref(),
-                    Some("No active connection")
-                );
+                assert_eq!(state.messages.last_error(), Some("No active connection"));
             }
 
             #[test]
@@ -513,7 +511,7 @@ mod tests {
             fn csv_export_returns_export_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = Some("postgres://localhost/test".to_string());
+                state.session.set_dsn_for_test("postgres://localhost/test");
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -535,7 +533,7 @@ mod tests {
             #[test]
             fn disable_read_only_confirm_sets_read_only_false() {
                 let mut state = create_test_state();
-                state.session.read_only = true;
+                state.session.enable_read_only();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
                 state
                     .confirm_dialog
@@ -545,7 +543,7 @@ mod tests {
                     reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now())
                         .unwrap();
 
-                assert!(!state.session.read_only);
+                assert!(!state.session.is_read_only());
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert!(effects.is_empty());
             }
@@ -744,7 +742,9 @@ mod tests {
 
         fn connected_state() -> AppState {
             let mut state = create_test_state();
-            state.session.active_connection_id = Some(ConnectionId::from_string("test-conn"));
+            state
+                .session
+                .set_active_connection_id_for_test(Some(ConnectionId::from_string("test-conn")));
             state.runtime.project_name = "test-project".to_string();
             state
         }
@@ -760,7 +760,7 @@ mod tests {
             #[test]
             fn open_when_not_connected_is_noop() {
                 let mut state = create_test_state();
-                state.session.active_connection_id = None;
+                state.session.set_active_connection_id_for_test(None);
 
                 let effects = reduce_modal(
                     &mut state,
@@ -897,11 +897,8 @@ mod tests {
                 )
                 .unwrap();
 
-                assert_eq!(
-                    state.messages.last_error.as_deref(),
-                    Some("IO error: disk error")
-                );
-                assert!(state.messages.expires_at.is_some());
+                assert_eq!(state.messages.last_error(), Some("IO error: disk error"));
+                assert!(state.messages.expires_at().is_some());
             }
 
             #[test]
@@ -918,7 +915,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(state.messages.last_error.is_none());
+                assert!(state.messages.last_error().is_none());
             }
 
             #[test]
@@ -935,7 +932,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(state.messages.last_error.is_none());
+                assert!(state.messages.last_error().is_none());
                 assert!(effects.is_empty());
             }
         }

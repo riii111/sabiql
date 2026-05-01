@@ -29,8 +29,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
             let table_detail = match state.session.table_detail() {
                 Some(td)
-                    if td.schema == state.query.pagination.schema
-                        && td.name == state.query.pagination.table =>
+                    if td.schema == state.query.pagination.schema()
+                        && td.name == state.query.pagination.table() =>
                 {
                     td
                 }
@@ -97,7 +97,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::JsonbEnterEdit => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -109,7 +109,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::JsonbAppendInsert => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -210,26 +210,14 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::JsonbSearchNext => {
-            let search = state.jsonb_detail.search();
-            if !search.matches.is_empty() {
-                let next = (search.current_match + 1) % search.matches.len();
-                state.jsonb_detail.search_mut().current_match = next;
-                jump_to_current_match(state);
-            }
+            state.jsonb_detail.search_mut().advance_to_next_match();
+            jump_to_current_match(state);
             Some(vec![])
         }
 
         Action::JsonbSearchPrev => {
-            let search = state.jsonb_detail.search();
-            if !search.matches.is_empty() {
-                let prev = if search.current_match == 0 {
-                    search.matches.len() - 1
-                } else {
-                    search.current_match - 1
-                };
-                state.jsonb_detail.search_mut().current_match = prev;
-                jump_to_current_match(state);
-            }
+            state.jsonb_detail.search_mut().advance_to_prev_match();
+            jump_to_current_match(state);
             Some(vec![])
         }
 
@@ -237,7 +225,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             target: InputTarget::JsonbSearch,
             ch,
         } => {
-            state.jsonb_detail.search_mut().input.insert_char(*ch);
+            state.jsonb_detail.search_mut().input_mut().insert_char(*ch);
             update_search_matches(state);
             Some(vec![])
         }
@@ -245,7 +233,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::TextBackspace {
             target: InputTarget::JsonbSearch,
         } => {
-            state.jsonb_detail.search_mut().input.backspace();
+            state.jsonb_detail.search_mut().input_mut().backspace();
             update_search_matches(state);
             Some(vec![])
         }
@@ -253,17 +241,21 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::TextDelete {
             target: InputTarget::JsonbSearch,
         } => {
-            state.jsonb_detail.search_mut().input.delete();
+            state.jsonb_detail.search_mut().input_mut().delete();
             update_search_matches(state);
             Some(vec![])
         }
 
         Action::Paste(text)
             if state.input_mode() == InputMode::JsonbDetail
-                && state.jsonb_detail.search().active =>
+                && state.jsonb_detail.search().is_active() =>
         {
             let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-            state.jsonb_detail.search_mut().input.insert_str(&clean);
+            state
+                .jsonb_detail
+                .search_mut()
+                .input_mut()
+                .insert_str(&clean);
             update_search_matches(state);
             Some(vec![])
         }
@@ -275,7 +267,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state
                 .jsonb_detail
                 .search_mut()
-                .input
+                .input_mut()
                 .move_cursor(*direction);
             Some(vec![])
         }
@@ -285,15 +277,14 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 }
 
 fn update_search_matches(state: &mut AppState) {
-    let query = state.jsonb_detail.search().input.content().to_string();
+    let query = state.jsonb_detail.search().input().content().to_string();
     let matches = find_text_matches(state.jsonb_detail.editor().content(), &query);
-    state.jsonb_detail.search_mut().matches = matches;
-    state.jsonb_detail.search_mut().current_match = 0;
+    state.jsonb_detail.search_mut().set_matches(matches);
 }
 
 fn jump_to_current_match(state: &mut AppState) {
     let search = state.jsonb_detail.search();
-    if let Some(&match_pos) = search.matches.get(search.current_match) {
+    if let Some(&match_pos) = search.matches().get(search.current_match()) {
         state.jsonb_detail.editor_mut().set_cursor(match_pos);
         update_editor_scroll(state);
     }
@@ -453,8 +444,7 @@ mod tests {
             error: None,
             command_tag: None,
         }));
-        state.query.pagination.schema = "public".to_string();
-        state.query.pagination.table = "users".to_string();
+        state.query.pagination.set_table_for_test("public", "users");
         state.session.set_table_detail_raw(Some(jsonb_table()));
         state.result_interaction.activate_cell(0, 1);
         state
@@ -706,7 +696,7 @@ mod tests {
             state.ui.jsonb_detail_editor_visible_rows = 3;
             open_detail(&mut state);
             state.modal.replace_mode(InputMode::JsonbEdit);
-            state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
+            state.jsonb_detail.enter_edit();
             state
                 .jsonb_detail
                 .editor_mut()
@@ -732,7 +722,7 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
             state.modal.replace_mode(InputMode::JsonbEdit);
-            state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
+            state.jsonb_detail.enter_edit();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::G);
 
             reduce(
@@ -751,26 +741,26 @@ mod tests {
         fn enter_edit_blocked_in_read_only_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
 
         #[test]
         fn append_insert_blocked_in_read_only_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            state.session.read_only = true;
+            state.session.enable_read_only();
             let cursor_before = state.jsonb_detail.editor().cursor();
 
             reduce(&mut state, &Action::JsonbAppendInsert, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
             assert_eq!(state.jsonb_detail.editor().cursor(), cursor_before);
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
 
         #[test]
@@ -876,7 +866,7 @@ mod tests {
 
             reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
-            assert!(state.jsonb_detail.search().active);
+            assert!(state.jsonb_detail.search().is_active());
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Searching);
         }
 
@@ -888,7 +878,7 @@ mod tests {
 
             reduce(&mut state, &Action::JsonbExitSearch, Instant::now());
 
-            assert!(!state.jsonb_detail.search().active);
+            assert!(!state.jsonb_detail.search().is_active());
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
         }
 
@@ -908,13 +898,13 @@ mod tests {
                     Instant::now(),
                 );
             }
-            let match_count = state.jsonb_detail.search().matches.len();
+            let match_count = state.jsonb_detail.search().matches().len();
             assert!(match_count > 0, "should find at least one match");
 
             reduce(&mut state, &Action::JsonbSearchSubmit, Instant::now());
 
-            assert!(!state.jsonb_detail.search().active);
-            let expected_cursor = state.jsonb_detail.search().matches[0];
+            assert!(!state.jsonb_detail.search().is_active());
+            let expected_cursor = state.jsonb_detail.search().matches()[0];
             assert_eq!(state.jsonb_detail.editor().cursor(), expected_cursor);
             assert_eq!(
                 state.jsonb_detail.editor().cursor_to_position(),
@@ -928,7 +918,7 @@ mod tests {
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
-            assert!(state.jsonb_detail.search().matches.is_empty());
+            assert!(state.jsonb_detail.search().matches().is_empty());
 
             for ch in "THEME".chars() {
                 reduce(
@@ -942,7 +932,7 @@ mod tests {
             }
 
             assert!(
-                !state.jsonb_detail.search().matches.is_empty(),
+                !state.jsonb_detail.search().matches().is_empty(),
                 "should find matches for 'THEME'"
             );
         }
@@ -963,17 +953,17 @@ mod tests {
                     Instant::now(),
                 );
             }
-            let match_count = state.jsonb_detail.search().matches.len();
+            let match_count = state.jsonb_detail.search().matches().len();
             assert!(
                 match_count > 1,
                 "test precondition: need 2+ matches for cycling test, got {match_count}"
             );
-            assert_eq!(state.jsonb_detail.search().current_match, 0);
+            assert_eq!(state.jsonb_detail.search().current_match(), 0);
 
             reduce(&mut state, &Action::JsonbSearchNext, Instant::now());
 
-            assert_eq!(state.jsonb_detail.search().current_match, 1);
-            let expected_cursor = state.jsonb_detail.search().matches[1];
+            assert_eq!(state.jsonb_detail.search().current_match(), 1);
+            let expected_cursor = state.jsonb_detail.search().matches()[1];
             assert_eq!(state.jsonb_detail.editor().cursor(), expected_cursor);
             assert_eq!(
                 state.jsonb_detail.editor().cursor_to_position(),
@@ -997,15 +987,15 @@ mod tests {
                     Instant::now(),
                 );
             }
-            let match_count = state.jsonb_detail.search().matches.len();
+            let match_count = state.jsonb_detail.search().matches().len();
             assert!(
                 match_count > 1,
                 "test precondition: need 2+ matches for wrap test, got {match_count}"
             );
             reduce(&mut state, &Action::JsonbSearchPrev, Instant::now());
 
-            assert_eq!(state.jsonb_detail.search().current_match, match_count - 1);
-            let expected_cursor = state.jsonb_detail.search().matches[match_count - 1];
+            assert_eq!(state.jsonb_detail.search().current_match(), match_count - 1);
+            let expected_cursor = state.jsonb_detail.search().matches()[match_count - 1];
             assert_eq!(state.jsonb_detail.editor().cursor(), expected_cursor);
             assert_eq!(
                 state.jsonb_detail.editor().cursor_to_position(),
@@ -1107,11 +1097,11 @@ mod tests {
                 now,
                 &services,
             );
-            assert!(!state.jsonb_detail.search().matches.is_empty());
+            assert!(!state.jsonb_detail.search().matches().is_empty());
 
             reduce_app(&mut state, Action::JsonbSearchNext, now, &services);
             reduce_app(&mut state, Action::JsonbSearchSubmit, now, &services);
-            assert!(!state.jsonb_detail.search().active);
+            assert!(!state.jsonb_detail.search().is_active());
 
             let effects = reduce_app(&mut state, Action::JsonbYankAll, now, &services);
             assert!(matches!(

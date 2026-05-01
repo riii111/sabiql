@@ -13,8 +13,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::CloseConnectionError => {
-            state.connection_error.details_expanded = false;
-            state.connection_error.scroll_offset = 0;
+            state.connection_error.reset_view();
             state.connection_error.clear_copied_feedback();
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
@@ -68,10 +67,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::RetryServiceConnection => {
-            if let Some(dsn) = state.session.dsn.clone() {
+            if let Some(dsn) = state.session.dsn().map(str::to_string) {
                 state.connection_error.clear();
                 state.session.begin_connecting(&dsn);
-                state.session.read_only = false;
+                state.session.disable_read_only();
                 state.modal.set_mode(InputMode::Normal);
                 Some(vec![Effect::FetchMetadata { dsn }])
             } else {
@@ -114,10 +113,10 @@ mod tests {
 
             reduce(&mut state, &action, now);
             reduce(&mut state, &action, now);
-            assert_eq!(state.connection_error.scroll_offset, 2);
+            assert_eq!(state.connection_error.scroll_offset(), 2);
 
             reduce(&mut state, &action, now);
-            assert_eq!(state.connection_error.scroll_offset, 2);
+            assert_eq!(state.connection_error.scroll_offset(), 2);
         }
     }
 
@@ -127,7 +126,7 @@ mod tests {
         #[test]
         fn blocked_for_service_connection() {
             let mut state = AppState::new("test".to_string());
-            state.session.dsn = Some("service=mydb".to_string());
+            state.session.set_dsn_for_test("service=mydb");
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce(&mut state, &Action::ReenterConnectionSetup, Instant::now());
@@ -138,7 +137,7 @@ mod tests {
         #[test]
         fn allowed_for_profile_connection() {
             let mut state = AppState::new("test".to_string());
-            state.session.dsn = Some("postgres://localhost/db".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/db");
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce(&mut state, &Action::ReenterConnectionSetup, Instant::now());

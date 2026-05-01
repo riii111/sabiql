@@ -24,7 +24,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if let Some(connection) = state.connections().get(profile_idx) {
                 let id = connection.id.clone();
                 let name = connection.name.as_str().to_string();
-                let is_active = state.session.active_connection_id.as_ref() == Some(&id);
+                let is_active = state.session.active_connection_id() == Some(&id);
 
                 let message = if is_active {
                     format!(
@@ -44,7 +44,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::DeleteConnection(id) => Some(vec![Effect::DeleteConnection { id: id.clone() }]),
         Action::ConnectionDeleted(id) => {
-            if state.session.active_connection_id.as_ref() == Some(id) {
+            if state.session.active_connection_id() == Some(id) {
                 state.session.reset(&mut state.query);
                 state.result_interaction.reset_view();
                 state.ui.set_explorer_selection(None);
@@ -61,7 +61,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
             if state.connections().is_empty() && state.service_entries().is_empty() {
                 state.connection_setup.reset();
-                state.connection_setup.is_first_run = false;
+                state.connection_setup.set_first_run(false);
                 state.modal.set_mode(InputMode::ConnectionSetup);
             }
 
@@ -181,7 +181,9 @@ mod tests {
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
             state.ui.connection_list_selected = 0;
-            state.session.active_connection_id = Some(profile_id);
+            state
+                .session
+                .set_active_connection_id_for_test(Some(profile_id));
 
             reduce(
                 &mut state,
@@ -289,8 +291,10 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.session.active_connection_id = Some(profile_id.clone());
-            state.session.dsn = Some("postgres://localhost/db".to_string());
+            state
+                .session
+                .set_active_connection_id_for_test(Some(profile_id.clone()));
+            state.session.set_dsn_for_test("postgres://localhost/db");
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -301,8 +305,8 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.session.active_connection_id.is_none());
-            assert!(state.session.dsn.is_none());
+            assert!(state.session.active_connection_id().is_none());
+            assert!(state.session.dsn().is_none());
             assert!(state.session.connection_state().is_not_connected());
         }
 
@@ -312,15 +316,17 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.session.active_connection_id = Some(profile_id.clone());
-            state.session.dsn = Some("postgres://localhost/db".to_string());
+            state
+                .session
+                .set_active_connection_id_for_test(Some(profile_id.clone()));
+            state.session.set_dsn_for_test("postgres://localhost/db");
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
 
             // Set state that was previously not reset by ConnectionDeleted
             state.query.enter_history(2);
-            state.query.pagination.current_page = 3;
+            state.query.pagination.set_page_for_test(3);
             state.result_interaction.activate_cell(5, 0);
             state.result_interaction.scroll_offset = 10;
             state.result_interaction.horizontal_offset = 20;
@@ -333,7 +339,7 @@ mod tests {
             );
 
             assert!(state.query.history_index().is_none());
-            assert_eq!(state.query.pagination.current_page, 0);
+            assert_eq!(state.query.pagination.current_page(), 0);
             assert_eq!(
                 state.result_interaction.selection().mode(),
                 crate::model::shared::ui_state::ResultNavMode::Scroll

@@ -59,7 +59,7 @@ impl JsonbDetail {
             theme,
         );
 
-        let (editor_area, status_area, search_area) = if state.jsonb_detail.search().active {
+        let (editor_area, status_area, search_area) = if state.jsonb_detail.search().is_active() {
             let [editor_area, status_area, search_area] = Layout::vertical([
                 Constraint::Min(1),
                 Constraint::Length(1),
@@ -154,12 +154,12 @@ impl JsonbDetail {
 
     fn render_search(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let search = state.jsonb_detail.search();
-        let input = search.input.content();
-        let cursor = search.input.cursor();
-        let match_info = if search.matches.is_empty() {
+        let input = search.input().content();
+        let cursor = search.input().cursor();
+        let match_info = if search.matches().is_empty() {
             "0/0".to_string()
         } else {
-            format!("{}/{}", search.current_match + 1, search.matches.len())
+            format!("{}/{}", search.current_match() + 1, search.matches().len())
         };
         let suffix = format!("  {match_info}");
         let visible_width = area

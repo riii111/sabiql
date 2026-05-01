@@ -49,8 +49,9 @@ fn error_message_in_footer() {
     let (mut state, now) = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    state.messages.last_error = Some("Connection failed: timeout".to_string());
-    state.messages.expires_at = Some(now + Duration::from_secs(10));
+    state
+        .messages
+        .set_error_at("Connection failed: timeout".to_string(), now);
 
     let output = render_to_string(&mut terminal, &mut state);
 

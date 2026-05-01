@@ -4,9 +4,9 @@ use super::error::ConnectionErrorInfo;
 
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionErrorState {
-    pub error_info: Option<ConnectionErrorInfo>,
-    pub details_expanded: bool,
-    pub scroll_offset: usize,
+    error_info: Option<ConnectionErrorInfo>,
+    details_expanded: bool,
+    scroll_offset: usize,
     copied_feedback_expires: Option<Instant>,
 }
 
@@ -18,6 +18,37 @@ impl ConnectionErrorState {
         self.details_expanded = false;
         self.scroll_offset = 0;
         self.copied_feedback_expires = None;
+    }
+
+    pub fn error_info(&self) -> Option<&ConnectionErrorInfo> {
+        self.error_info.as_ref()
+    }
+
+    pub fn has_error(&self) -> bool {
+        self.error_info.is_some()
+    }
+
+    pub fn details_expanded(&self) -> bool {
+        self.details_expanded
+    }
+
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    pub fn reset_view(&mut self) {
+        self.details_expanded = false;
+        self.scroll_offset = 0;
+    }
+
+    pub fn expand_details(&mut self) {
+        self.details_expanded = true;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_scroll_offset_for_test(&mut self, scroll_offset: usize) {
+        self.scroll_offset = scroll_offset;
     }
 
     pub fn clear(&mut self) {
@@ -94,17 +125,34 @@ mod tests {
 
         #[test]
         fn stores_info_and_resets_ui() {
-            let mut state = ConnectionErrorState {
-                details_expanded: true,
-                scroll_offset: 5,
-                ..Default::default()
-            };
+            let mut state = ConnectionErrorState::default();
+            state.expand_details();
+            state.set_scroll_offset_for_test(5);
 
             state.set_error(sample_error());
 
-            assert!(state.error_info.is_some());
-            assert!(!state.details_expanded);
-            assert_eq!(state.scroll_offset, 0);
+            assert!(state.error_info().is_some());
+            assert!(!state.details_expanded());
+            assert_eq!(state.scroll_offset(), 0);
+            assert!(!state.is_copied_visible_at(now()));
+        }
+    }
+
+    mod reset_view {
+        use super::*;
+
+        #[test]
+        fn collapses_details_and_resets_scroll_without_clearing_error() {
+            let mut state = ConnectionErrorState::default();
+            state.set_error(sample_error());
+            state.expand_details();
+            state.set_scroll_offset_for_test(4);
+
+            state.reset_view();
+
+            assert!(state.error_info().is_some());
+            assert!(!state.details_expanded());
+            assert_eq!(state.scroll_offset(), 0);
         }
     }
 
@@ -115,14 +163,14 @@ mod tests {
         fn resets_all_fields() {
             let mut state = ConnectionErrorState::default();
             state.set_error(sample_error());
-            state.details_expanded = true;
-            state.scroll_offset = 3;
+            state.expand_details();
+            state.set_scroll_offset_for_test(3);
 
             state.clear();
 
-            assert!(state.error_info.is_none());
-            assert!(!state.details_expanded);
-            assert_eq!(state.scroll_offset, 0);
+            assert!(state.error_info().is_none());
+            assert!(!state.details_expanded());
+            assert_eq!(state.scroll_offset(), 0);
         }
     }
 
@@ -134,23 +182,21 @@ mod tests {
             let mut state = ConnectionErrorState::default();
 
             state.toggle_details();
-            assert!(state.details_expanded);
+            assert!(state.details_expanded());
 
             state.toggle_details();
-            assert!(!state.details_expanded);
+            assert!(!state.details_expanded());
         }
 
         #[test]
         fn resets_scroll_on_collapse() {
-            let mut state = ConnectionErrorState {
-                details_expanded: true,
-                scroll_offset: 5,
-                ..Default::default()
-            };
+            let mut state = ConnectionErrorState::default();
+            state.expand_details();
+            state.set_scroll_offset_for_test(5);
 
             state.toggle_details();
 
-            assert_eq!(state.scroll_offset, 0);
+            assert_eq!(state.scroll_offset(), 0);
         }
     }
 
@@ -159,14 +205,12 @@ mod tests {
 
         #[test]
         fn up_decrements_offset() {
-            let mut state = ConnectionErrorState {
-                scroll_offset: 5,
-                ..Default::default()
-            };
+            let mut state = ConnectionErrorState::default();
+            state.set_scroll_offset_for_test(5);
 
             state.scroll_up();
 
-            assert_eq!(state.scroll_offset, 4);
+            assert_eq!(state.scroll_offset(), 4);
         }
 
         #[test]
@@ -175,7 +219,7 @@ mod tests {
 
             state.scroll_up();
 
-            assert_eq!(state.scroll_offset, 0);
+            assert_eq!(state.scroll_offset(), 0);
         }
 
         #[test]
@@ -184,19 +228,17 @@ mod tests {
 
             state.scroll_down(10);
 
-            assert_eq!(state.scroll_offset, 1);
+            assert_eq!(state.scroll_offset(), 1);
         }
 
         #[test]
         fn down_stops_at_max() {
-            let mut state = ConnectionErrorState {
-                scroll_offset: 10,
-                ..Default::default()
-            };
+            let mut state = ConnectionErrorState::default();
+            state.set_scroll_offset_for_test(10);
 
             state.scroll_down(10);
 
-            assert_eq!(state.scroll_offset, 10);
+            assert_eq!(state.scroll_offset(), 10);
         }
     }
 

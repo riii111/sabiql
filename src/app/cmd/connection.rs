@@ -74,7 +74,7 @@ pub(crate) async fn run(
                             Ok(()) => {
                                 tx.send(Action::ConnectionSaveCompleted(ConnectionTarget {
                                     id,
-                                    dsn,
+                                    dsn: dsn.clone(),
                                     name,
                                     database_type,
                                 }))

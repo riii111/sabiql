@@ -11,10 +11,68 @@ pub enum JsonbDetailMode {
 
 #[derive(Debug, Clone, Default)]
 pub struct JsonbSearchState {
-    pub input: TextInputState,
-    pub matches: Vec<usize>,
-    pub current_match: usize,
-    pub active: bool,
+    input: TextInputState,
+    matches: Vec<usize>,
+    current_match: usize,
+    active: bool,
+}
+
+impl JsonbSearchState {
+    pub fn input(&self) -> &TextInputState {
+        &self.input
+    }
+
+    pub fn input_mut(&mut self) -> &mut TextInputState {
+        &mut self.input
+    }
+
+    pub fn matches(&self) -> &[usize] {
+        &self.matches
+    }
+
+    pub fn current_match(&self) -> usize {
+        self.current_match
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
+    pub fn set_matches(&mut self, matches: Vec<usize>) {
+        self.matches = matches;
+        self.current_match = 0;
+    }
+
+    pub fn advance_to_next_match(&mut self) {
+        if !self.matches.is_empty() {
+            self.current_match = (self.current_match + 1) % self.matches.len();
+        }
+    }
+
+    pub fn advance_to_prev_match(&mut self) {
+        if self.matches.is_empty() {
+            return;
+        }
+        self.current_match = if self.current_match == 0 {
+            self.matches.len() - 1
+        } else {
+            self.current_match - 1
+        };
+    }
+
+    pub fn activate(&mut self) {
+        self.active = true;
+    }
+
+    pub fn deactivate(&mut self) {
+        self.active = false;
+    }
+
+    pub fn reset(&mut self) {
+        self.input.set_content(String::new());
+        self.matches.clear();
+        self.current_match = 0;
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -117,25 +175,19 @@ impl JsonbDetailState {
         &mut self.search
     }
 
-    pub fn set_mode(&mut self, mode: JsonbDetailMode) {
-        self.mode = mode;
-    }
-
     pub fn enter_search(&mut self) {
         self.mode = JsonbDetailMode::Searching;
-        self.search.active = true;
-        self.search.input.set_content(String::new());
-        self.search.matches.clear();
-        self.search.current_match = 0;
+        self.search.reset();
+        self.search.activate();
     }
 
     pub fn exit_search(&mut self) {
-        self.search.active = false;
+        self.search.deactivate();
         self.mode = JsonbDetailMode::Viewing;
     }
 
     pub fn enter_edit(&mut self) {
-        self.search.active = false;
+        self.search.deactivate();
         self.validation_error = None;
         self.mode = JsonbDetailMode::Editing;
     }
@@ -236,6 +288,6 @@ mod tests {
 
         state.enter_edit();
 
-        assert!(!state.search().active);
+        assert!(!state.search().is_active());
     }
 }

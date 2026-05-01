@@ -23,14 +23,38 @@ pub enum QueryStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct PaginationState {
-    pub current_page: usize,
-    pub total_rows_estimate: Option<i64>,
-    pub reached_end: bool,
-    pub schema: String,
-    pub table: String,
+    current_page: usize,
+    total_rows_estimate: Option<i64>,
+    reached_end: bool,
+    schema: String,
+    table: String,
 }
 
 impl PaginationState {
+    pub fn current_page(&self) -> usize {
+        self.current_page
+    }
+
+    pub fn total_rows_estimate(&self) -> Option<i64> {
+        self.total_rows_estimate
+    }
+
+    pub fn reached_end(&self) -> bool {
+        self.reached_end
+    }
+
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    pub fn table(&self) -> &str {
+        &self.table
+    }
+
+    pub fn has_table(&self) -> bool {
+        !self.table.is_empty()
+    }
+
     pub fn offset(&self) -> usize {
         self.current_page * PREVIEW_PAGE_SIZE
     }
@@ -56,6 +80,56 @@ impl PaginationState {
         self.reached_end = false;
         self.schema.clear();
         self.table.clear();
+    }
+
+    pub fn reset_for_table(&mut self, schema: &str, table: &str) {
+        self.reset();
+        self.schema = schema.to_string();
+        self.table = table.to_string();
+    }
+
+    pub fn reset_for_table_with_estimate(
+        &mut self,
+        schema: &str,
+        table: &str,
+        estimate: Option<i64>,
+    ) {
+        self.reset_for_table(schema, table);
+        self.total_rows_estimate = estimate;
+    }
+
+    pub fn allow_next_page_after_refresh(&mut self) {
+        self.reached_end = false;
+    }
+
+    pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
+        self.current_page = page;
+        self.reached_end = reached_end;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_table_for_test(&mut self, schema: &str, table: &str) {
+        self.schema = schema.to_string();
+        self.table = table.to_string();
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_page_for_test(&mut self, page: usize) {
+        self.current_page = page;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_total_rows_estimate_for_test(&mut self, estimate: Option<i64>) {
+        self.total_rows_estimate = estimate;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn mark_reached_end_for_test(&mut self) {
+        self.reached_end = true;
     }
 }
 
@@ -682,6 +756,49 @@ mod tests {
             assert!(!p.reached_end);
             assert!(p.schema.is_empty());
             assert!(p.table.is_empty());
+        }
+
+        #[test]
+        fn reset_for_table_with_estimate_sets_target_and_resets_page_state() {
+            let mut p = PaginationState {
+                current_page: 5,
+                total_rows_estimate: Some(1),
+                reached_end: true,
+                schema: "old".to_string(),
+                table: "old".to_string(),
+            };
+
+            p.reset_for_table_with_estimate("public", "users", Some(1200));
+
+            assert_eq!(p.current_page(), 0);
+            assert_eq!(p.total_rows_estimate(), Some(1200));
+            assert!(!p.reached_end());
+            assert_eq!(p.schema(), "public");
+            assert_eq!(p.table(), "users");
+        }
+
+        #[test]
+        fn set_page_result_updates_page_and_reached_end_together() {
+            let mut p = PaginationState::default();
+
+            p.set_page_result(2, true);
+
+            assert_eq!(p.current_page(), 2);
+            assert!(p.reached_end());
+        }
+
+        #[test]
+        fn allow_next_page_after_refresh_clears_reached_end_only() {
+            let mut p = PaginationState {
+                current_page: 3,
+                reached_end: true,
+                ..Default::default()
+            };
+
+            p.allow_next_page_after_refresh();
+
+            assert_eq!(p.current_page(), 3);
+            assert!(!p.reached_end());
         }
     }
 }

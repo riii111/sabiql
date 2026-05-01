@@ -32,12 +32,12 @@ fn build_update_preview(
     let row_idx = state
         .result_interaction
         .cell_edit()
-        .row
+        .row()
         .ok_or(EditGuardrailError::NoRowSelectedForEdit)?;
     let col_idx = state
         .result_interaction
         .cell_edit()
-        .col
+        .col()
         .ok_or(EditGuardrailError::NoColumnSelectedForEdit)?;
 
     let row = result
@@ -56,8 +56,8 @@ fn build_update_preview(
 
     let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
     let target = crate::policy::write::write_guardrails::TargetSummary {
-        schema: state.query.pagination.schema.clone(),
-        table: state.query.pagination.table.clone(),
+        schema: state.query.pagination.schema().to_string(),
+        table: state.query.pagination.table().to_string(),
         key_values: pk_pairs.clone().unwrap_or_default(),
     };
     let has_where = pk_pairs.as_ref().is_some_and(|pairs| !pairs.is_empty());
@@ -82,7 +82,7 @@ fn build_update_preview(
         sql,
         target_summary: target,
         diff: {
-            let before = normalize_for_diff(&state.result_interaction.cell_edit().original_value);
+            let before = normalize_for_diff(state.result_interaction.cell_edit().original_value());
             let after = normalize_for_diff(state.result_interaction.cell_edit().draft_value());
             let is_jsonb = state
                 .session
@@ -181,7 +181,7 @@ pub fn reduce(
         }
 
         Action::OpenWritePreviewConfirm(preview) => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
@@ -228,19 +228,19 @@ pub fn reduce(
         }
 
         Action::ExecuteWrite(query) => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
                 );
                 return Some(vec![]);
             }
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn() {
                 state.query.begin_running(now);
                 Some(vec![Effect::ExecuteWrite {
-                    dsn: dsn.clone(),
+                    dsn: dsn.to_string(),
                     query: query.clone(),
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 state
@@ -274,18 +274,18 @@ pub fn reduce(
                     state.result_interaction.clear_cell_edit();
                     state.modal.set_mode(InputMode::Normal);
 
-                    if let Some(dsn) = &state.session.dsn {
-                        let page = state.query.pagination.current_page;
+                    if let Some(dsn) = state.session.dsn() {
+                        let page = state.query.pagination.current_page();
                         state.query.begin_running(now);
                         Some(vec![Effect::ExecutePreview {
-                            dsn: dsn.clone(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
+                            dsn: dsn.to_string(),
+                            schema: state.query.pagination.schema().to_string(),
+                            table: state.query.pagination.table().to_string(),
                             generation: state.session.selection_generation(),
                             limit: PREVIEW_PAGE_SIZE,
                             offset: page * PREVIEW_PAGE_SIZE,
                             target_page: page,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         Some(vec![])
@@ -300,7 +300,7 @@ pub fn reduce(
                         .query
                         .take_delete_refresh_target()
                         .unwrap_or(DeleteRefreshTarget {
-                            target_page: state.query.pagination.current_page,
+                            target_page: state.query.pagination.current_page(),
                             target_row: None,
                             expected_delete_count: 1,
                         });
@@ -332,18 +332,18 @@ pub fn reduce(
                         PostDeleteRowSelection::Select,
                     ));
 
-                    if let Some(dsn) = &state.session.dsn {
+                    if let Some(dsn) = state.session.dsn() {
                         state.query.begin_running(now);
-                        state.query.pagination.reached_end = false;
+                        state.query.pagination.allow_next_page_after_refresh();
                         Some(vec![Effect::ExecutePreview {
-                            dsn: dsn.clone(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
+                            dsn: dsn.to_string(),
+                            schema: state.query.pagination.schema().to_string(),
+                            table: state.query.pagination.table().to_string(),
                             generation: state.session.selection_generation(),
                             limit: PREVIEW_PAGE_SIZE,
                             offset: target_page * PREVIEW_PAGE_SIZE,
                             target_page,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         Some(vec![])
@@ -389,13 +389,12 @@ mod tests {
 
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.query.set_current_result(editable_preview_result());
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table_for_test("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             state
                 .result_interaction
@@ -420,7 +419,7 @@ mod tests {
             );
             assert!(effects.unwrap().is_empty());
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("No active cell edit session")
             );
         }
@@ -438,7 +437,7 @@ mod tests {
             );
             assert!(effects.unwrap().is_empty());
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Write is unavailable while query is running")
             );
         }
@@ -459,7 +458,7 @@ mod tests {
             );
             assert!(effects.unwrap().is_empty());
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Table metadata does not match current preview target")
             );
         }
@@ -491,15 +490,14 @@ mod tests {
 
         fn editable_state_with_jsonb() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .query
                 .set_current_result(editable_preview_result_with_jsonb());
             state
                 .session
                 .set_table_detail_raw(Some(jsonb_table_detail()));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table_for_test("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             // col 2 = metadata (jsonb)
             state
@@ -619,7 +617,7 @@ mod tests {
         #[test]
         fn execute_write_success_refreshes_preview_page() {
             let mut state = editable_state();
-            state.query.pagination.current_page = 2;
+            state.query.pagination.set_page_for_test(2);
 
             let effects = reduce_query(
                 &mut state,
@@ -661,7 +659,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
             );
         }
@@ -746,8 +744,7 @@ mod tests {
         #[test]
         fn execute_write_success_for_delete_refreshes_target_page() {
             let mut state = create_test_state();
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table_for_test("public", "users");
             state.query.set_delete_refresh_target(1, Some(499), 1);
             state.result_interaction.set_write_preview(delete_preview());
 
@@ -764,10 +761,7 @@ mod tests {
                 state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Select(499)
             );
-            assert_eq!(
-                state.messages.last_success.as_deref(),
-                Some("Deleted 1 row")
-            );
+            assert_eq!(state.messages.last_success(), Some("Deleted 1 row"));
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::ExecutePreview {
@@ -785,8 +779,7 @@ mod tests {
         #[test]
         fn execute_write_non_one_rows_for_delete_sets_error() {
             let mut state = create_test_state();
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table_for_test("public", "users");
             state.result_interaction.set_write_preview(delete_preview());
 
             let effects = reduce_query(
@@ -799,7 +792,7 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("DELETE expected 1 row, but affected 0 rows")
             );
             assert_eq!(effects.len(), 1);
@@ -821,7 +814,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Query failed: boom. Review the database error details and SQL.")
             );
         }

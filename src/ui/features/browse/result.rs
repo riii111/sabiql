@@ -66,12 +66,20 @@ impl ResultPane {
                     state.result_interaction.selection(),
                     if state.result_interaction.cell_edit().is_active() {
                         Some((
-                            state.result_interaction.cell_edit().row.unwrap_or_default(),
-                            state.result_interaction.cell_edit().col.unwrap_or_default(),
+                            state
+                                .result_interaction
+                                .cell_edit()
+                                .row()
+                                .unwrap_or_default(),
+                            state
+                                .result_interaction
+                                .cell_edit()
+                                .col()
+                                .unwrap_or_default(),
                             state.result_interaction.cell_edit().draft_value(),
                             state.input_mode()
                                 == crate::app::model::shared::input_mode::InputMode::CellEdit,
-                            state.result_interaction.cell_edit().input.cursor(),
+                            state.result_interaction.cell_edit().input().cursor(),
                         ))
                     } else {
                         None

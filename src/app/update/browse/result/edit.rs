@@ -18,7 +18,7 @@ fn is_jsonb_cell(state: &AppState) -> bool {
         return false;
     };
     // Ensure table_detail matches current preview target
-    if td.schema != state.query.pagination.schema || td.name != state.query.pagination.table {
+    if td.schema != state.query.pagination.schema() || td.name != state.query.pagination.table() {
         return false;
     }
     td.columns
@@ -67,7 +67,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::ResultEnterCellEdit => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -83,8 +83,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
             match editable_cell_context(state) {
                 Ok((row_idx, col_idx, value)) => {
-                    if state.result_interaction.cell_edit().row != Some(row_idx)
-                        || state.result_interaction.cell_edit().col != Some(col_idx)
+                    if state.result_interaction.cell_edit().row() != Some(row_idx)
+                        || state.result_interaction.cell_edit().col() != Some(col_idx)
                     {
                         state
                             .result_interaction
@@ -189,8 +189,7 @@ mod tests {
                 error: None,
                 command_tag: None,
             }));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.set_table_for_test("public", "users");
             state.result_interaction.activate_cell(0, 1);
             state
         }
@@ -236,7 +235,7 @@ mod tests {
             reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert_eq!(state.result_interaction.cell_edit().col, Some(1));
+            assert_eq!(state.result_interaction.cell_edit().col(), Some(1));
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "alice");
         }
 
@@ -262,7 +261,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Table metadata does not match current preview target")
             );
         }
@@ -358,13 +357,13 @@ mod tests {
             state
                 .session
                 .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 
@@ -397,7 +396,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "acd");
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
 
         #[test]
@@ -428,7 +427,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
 
         #[test]
@@ -444,7 +443,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 2);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 2);
         }
 
         #[test]
@@ -460,7 +459,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 0);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 0);
         }
 
         #[test]
@@ -476,7 +475,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 3);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 3);
         }
 
         #[test]
@@ -493,7 +492,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "abc");
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 2);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 2);
         }
 
         #[test]
@@ -509,7 +508,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "ac");
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
     }
 }

@@ -33,7 +33,7 @@ pub(super) mod tests {
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
-        state.session.dsn = Some("postgres://localhost/test".to_string());
+        state.session.set_dsn_for_test("postgres://localhost/test");
         state
     }
 
@@ -181,8 +181,7 @@ pub(super) mod tests {
 
     pub fn state_with_table(schema: &str, table: &str) -> AppState {
         let mut state = create_test_state();
-        state.query.pagination.schema = schema.to_string();
-        state.query.pagination.table = table.to_string();
+        state.query.pagination.set_table_for_test(schema, table);
         state
     }
 }

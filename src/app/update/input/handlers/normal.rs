@@ -108,10 +108,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     if kb::is_focus_toggle(&combo) {
         return Action::ToggleFocus;
     }
-    if combo.key == Key::Enter
-        && combo.modifiers.is_empty()
-        && state.connection_error.error_info.is_some()
-    {
+    if combo.key == Key::Enter && combo.modifiers.is_empty() && state.connection_error.has_error() {
         return Action::ConfirmSelection;
     }
 
@@ -388,7 +385,9 @@ mod tests {
             #[test]
             fn alt_enter_noop_when_connection_error_is_open() {
                 let mut state = browse_state();
-                state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
+                state
+                    .connection_error
+                    .set_error(ConnectionErrorInfo::new("boom"));
 
                 let result = handle_normal_mode(KeyCombo::alt(Key::Enter), &state);
 
@@ -398,7 +397,9 @@ mod tests {
             #[test]
             fn plain_enter_confirms_connection_error() {
                 let mut state = browse_state();
-                state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
+                state
+                    .connection_error
+                    .set_error(ConnectionErrorInfo::new("boom"));
 
                 let result = handle_normal_mode(KeyCombo::plain(Key::Enter), &state);
 

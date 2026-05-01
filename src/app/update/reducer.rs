@@ -93,7 +93,7 @@ fn reduce_inner(
                     return select_table(state, &table);
                 }
             } else if state.modal.active_mode() == InputMode::Normal {
-                if state.connection_error.error_info.is_some() {
+                if state.connection_error.has_error() {
                     state.modal.replace_mode(InputMode::ConnectionError);
                     return vec![];
                 }
@@ -148,9 +148,9 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     let table_name = table.name.clone();
 
     let mut effects = Vec::new();
-    if let Some(dsn) = &state.session.dsn {
+    if let Some(dsn) = state.session.dsn() {
         effects.push(Effect::FetchTableDetail {
-            dsn: dsn.clone(),
+            dsn: dsn.to_string(),
             schema: schema.clone(),
             table: table_name.clone(),
             generation,
@@ -844,7 +844,7 @@ mod tests {
                 MetadataState::Error(_)
             ));
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.has_error());
             assert!(effects.is_empty());
         }
 
@@ -887,8 +887,8 @@ mod tests {
         #[test]
         fn close_keeps_error_info_for_reopen() {
             let mut state = state_with_error();
-            state.connection_error.details_expanded = true;
-            state.connection_error.scroll_offset = 5;
+            state.connection_error.expand_details();
+            state.connection_error.set_scroll_offset_for_test(5);
             let now = Instant::now();
 
             reduce(
@@ -899,11 +899,11 @@ mod tests {
             );
 
             // error_info is kept so Enter can re-open modal
-            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.has_error());
             assert_eq!(state.input_mode(), InputMode::Normal);
             // UI state is reset
-            assert!(!state.connection_error.details_expanded);
-            assert_eq!(state.connection_error.scroll_offset, 0);
+            assert!(!state.connection_error.details_expanded());
+            assert_eq!(state.connection_error.scroll_offset(), 0);
         }
 
         #[test]
@@ -950,14 +950,14 @@ mod tests {
                 &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.has_error());
         }
 
         #[test]
         fn toggle_details_flips_expanded_state() {
             let mut state = state_with_error();
             let now = Instant::now();
-            assert!(!state.connection_error.details_expanded);
+            assert!(!state.connection_error.details_expanded());
 
             reduce(
                 &mut state,
@@ -965,7 +965,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(state.connection_error.details_expanded);
+            assert!(state.connection_error.details_expanded());
 
             reduce(
                 &mut state,
@@ -973,7 +973,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(!state.connection_error.details_expanded);
+            assert!(!state.connection_error.details_expanded());
         }
 
         #[test]
@@ -1093,7 +1093,7 @@ mod tests {
         #[test]
         fn load_metadata_with_dsn_returns_fetch_effect() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
@@ -1109,7 +1109,7 @@ mod tests {
         #[test]
         fn load_metadata_without_dsn_returns_no_effects() {
             let mut state = create_test_state();
-            state.session.dsn = None;
+            state.session.clear_dsn_for_test();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
@@ -1120,7 +1120,7 @@ mod tests {
         #[test]
         fn reload_metadata_returns_sequence_effect() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -1144,7 +1144,7 @@ mod tests {
         #[test]
         fn reload_metadata_sets_is_reloading_flag() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             reduce(
@@ -1154,13 +1154,13 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.session.is_reloading);
+            assert!(state.session.is_reloading());
         }
 
         #[test]
         fn reload_then_metadata_loaded_shows_reloaded_message() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             // Trigger reload
@@ -1170,7 +1170,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(state.session.is_reloading);
+            assert!(state.session.is_reloading());
 
             // Metadata loaded
             let metadata = DatabaseMetadata {
@@ -1187,14 +1187,14 @@ mod tests {
             );
 
             // Check reloading flag is cleared and message is shown
-            assert!(!state.session.is_reloading);
-            assert_eq!(state.messages.last_success, Some("Reloaded!".to_string()));
+            assert!(!state.session.is_reloading());
+            assert_eq!(state.messages.last_success(), Some("Reloaded!"));
         }
 
         #[test]
         fn execute_adhoc_with_dsn_returns_effect() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -1217,7 +1217,7 @@ mod tests {
         #[test]
         fn er_open_while_rendering_returns_no_effects() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Rendering;
+            state.er_preparation.mark_rendering();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1228,7 +1228,7 @@ mod tests {
         #[test]
         fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1238,13 +1238,12 @@ mod tests {
             state.sql_modal.begin_prefetch();
             state
                 .er_preparation
-                .pending_tables
-                .insert("public.users".to_string());
+                .insert_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert!(!state.sql_modal.is_prefetch_started());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
@@ -1253,7 +1252,7 @@ mod tests {
         #[test]
         fn prefetch_started_true_emits_smart_refresh() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1273,7 +1272,7 @@ mod tests {
         #[test]
         fn no_prefetch_emits_smart_refresh() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1284,7 +1283,7 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -1297,14 +1296,14 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
             assert!(effects.is_empty());
         }
 
         #[test]
         fn metadata_failed_resets_er_waiting_to_idle() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
             let now = Instant::now();
 
             reduce(
@@ -1316,7 +1315,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
     }
 
@@ -1343,10 +1342,7 @@ mod tests {
         #[test]
         fn emits_cache_effect() {
             let mut state = create_test_state();
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert("public.users".to_string());
+            state.sql_modal.mark_prefetching("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -1365,7 +1361,12 @@ mod tests {
                 effects[0],
                 Effect::CacheTableInCompletionEngine { .. }
             ));
-            assert!(!state.sql_modal.prefetching_tables.contains("public.users"));
+            assert!(
+                !state
+                    .sql_modal
+                    .prefetching_tables()
+                    .contains("public.users")
+            );
         }
 
         #[test]
@@ -1373,8 +1374,7 @@ mod tests {
             let mut state = create_test_state();
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.orders".to_string());
+                .enqueue_prefetch("public.orders".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -1421,15 +1421,27 @@ mod tests {
         ) {
             let mut state = setup_state();
             match field {
-                ConnectionField::Host => state.host.set_content(value.to_string()),
-                ConnectionField::Database => state.database.set_content(value.to_string()),
-                ConnectionField::User => state.user.set_content(value.to_string()),
+                ConnectionField::Host => state
+                    .input_mut(ConnectionField::Host)
+                    .unwrap()
+                    .set_content(value.to_string()),
+                ConnectionField::Database => state
+                    .input_mut(ConnectionField::Database)
+                    .unwrap()
+                    .set_content(value.to_string()),
+                ConnectionField::User => state
+                    .input_mut(ConnectionField::User)
+                    .unwrap()
+                    .set_content(value.to_string()),
                 _ => {}
             }
 
             validate_field(&mut state, field);
 
-            assert_eq!(state.validation_errors.contains_key(&field), has_error);
+            assert_eq!(
+                state.validation_errors_for_test().contains_key(&field),
+                has_error
+            );
         }
 
         #[rstest]
@@ -1437,11 +1449,18 @@ mod tests {
         #[case("abc")]
         fn port_validation_invalid_format(#[case] value: &str) {
             let mut state = setup_state();
-            state.port.set_content(value.to_string());
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
+            assert!(
+                state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Port)
+            );
         }
 
         #[rstest]
@@ -1450,11 +1469,18 @@ mod tests {
         #[case("99999")]
         fn port_validation_out_of_range(#[case] value: &str) {
             let mut state = setup_state();
-            state.port.set_content(value.to_string());
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
+            assert!(
+                state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Port)
+            );
         }
 
         #[rstest]
@@ -1463,11 +1489,18 @@ mod tests {
         #[case("65535")]
         fn port_validation_valid_range(#[case] value: &str) {
             let mut state = setup_state();
-            state.port.set_content(value.to_string());
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(!state.validation_errors.contains_key(&ConnectionField::Port));
+            assert!(
+                !state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Port)
+            );
         }
 
         #[rstest]
@@ -1475,39 +1508,54 @@ mod tests {
         #[case(ConnectionField::SslMode)]
         fn optional_fields_never_error(#[case] field: ConnectionField) {
             let mut state = setup_state();
-            state.password = TextInputState::default();
+            state.set_input_for_test(ConnectionField::Password, TextInputState::default());
 
             validate_field(&mut state, field);
 
-            assert!(!state.validation_errors.contains_key(&field));
+            assert!(!state.validation_errors_for_test().contains_key(&field));
         }
 
         #[test]
         fn validate_all_checks_all_required_fields() {
             let mut state = setup_state();
-            state.host = TextInputState::default();
-            state.port.set_content("invalid".to_string());
-            state.database = TextInputState::default();
-            state.user = TextInputState::default();
+            state.set_input_for_test(ConnectionField::Host, TextInputState::default());
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("invalid".to_string());
+            state.set_input_for_test(ConnectionField::Database, TextInputState::default());
+            state.set_input_for_test(ConnectionField::User, TextInputState::default());
 
             validate_all(&mut state);
 
-            assert!(state.validation_errors.contains_key(&ConnectionField::Host));
-            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
             assert!(
                 state
-                    .validation_errors
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Host)
+            );
+            assert!(
+                state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::Port)
+            );
+            assert!(
+                state
+                    .validation_errors_for_test()
                     .contains_key(&ConnectionField::Database)
             );
-            assert!(state.validation_errors.contains_key(&ConnectionField::User));
+            assert!(
+                state
+                    .validation_errors_for_test()
+                    .contains_key(&ConnectionField::User)
+            );
             assert!(
                 !state
-                    .validation_errors
+                    .validation_errors_for_test()
                     .contains_key(&ConnectionField::Password)
             );
             assert!(
                 !state
-                    .validation_errors
+                    .validation_errors_for_test()
                     .contains_key(&ConnectionField::SslMode)
             );
         }
@@ -1516,20 +1564,27 @@ mod tests {
     mod connection_setup_transitions {
         use super::*;
         use crate::domain::{ConnectionId, DatabaseType};
+        use crate::model::connection::setup::ConnectionField;
 
         #[test]
         fn save_completed_sets_dsn_and_returns_fetch_effect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.is_first_run = true;
+            state.connection_setup.set_first_run(true);
             state
                 .connection_setup
-                .host
+                .input_mut(ConnectionField::Host)
+                .unwrap()
                 .set_content("db.example.com".to_string());
-            state.connection_setup.port.set_content("5432".to_string());
             state
                 .connection_setup
-                .database
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("5432".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Database)
+                .unwrap()
                 .set_content("mydb".to_string());
             let now = Instant::now();
 
@@ -1545,17 +1600,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(!state.connection_setup.is_first_run);
+            assert!(!state.connection_setup.is_first_run());
+            assert_eq!(state.session.dsn(), Some("postgres://db.example.com/mydb"));
             assert_eq!(
-                state.session.dsn,
-                Some("postgres://db.example.com/mydb".to_string())
+                state.session.active_connection_name(),
+                Some("Test Connection")
             );
             assert_eq!(
-                state.session.active_connection_name,
-                Some("Test Connection".to_string())
-            );
-            assert_eq!(
-                state.session.active_database_type,
+                state.session.active_database_type(),
                 Some(DatabaseType::PostgreSQL)
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -1578,7 +1630,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
             assert!(effects.is_empty());
         }
 
@@ -1586,7 +1638,7 @@ mod tests {
         fn cancel_on_first_run_opens_confirm_dialog() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.is_first_run = true;
+            state.connection_setup.set_first_run(true);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1608,7 +1660,7 @@ mod tests {
         fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.is_first_run = false;
+            state.connection_setup.set_first_run(false);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1676,7 +1728,7 @@ mod tests {
             };
 
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
 
             let delete_sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';".to_string();
@@ -1730,14 +1782,7 @@ mod tests {
 
             // After success, preview is cleaned up and delete message is shown
             assert!(state.result_interaction.pending_write_preview().is_none());
-            assert!(
-                state
-                    .messages
-                    .last_success
-                    .as_deref()
-                    .unwrap()
-                    .contains("Deleted")
-            );
+            assert!(state.messages.last_success().unwrap().contains("Deleted"));
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
         }
@@ -1749,7 +1794,7 @@ mod tests {
             };
 
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
 
             state.result_interaction.set_write_preview(WritePreview {
@@ -1803,12 +1848,13 @@ mod tests {
     mod connection_state_tests {
         use super::*;
         use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, MetadataState};
+        use crate::model::connection::setup::ConnectionField;
         use crate::model::connection::state::ConnectionState;
 
         #[test]
         fn try_connect_with_dsn_starts_connecting() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -1829,7 +1875,7 @@ mod tests {
         #[test]
         fn try_connect_without_dsn_does_nothing() {
             let mut state = create_test_state();
-            state.session.dsn = None;
+            state.session.clear_dsn_for_test();
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -1845,7 +1891,7 @@ mod tests {
         #[test]
         fn try_connect_when_already_connecting_is_noop() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
@@ -1861,7 +1907,7 @@ mod tests {
         #[test]
         fn try_connect_when_already_connected_is_noop() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -1877,7 +1923,7 @@ mod tests {
         #[test]
         fn try_connect_when_not_in_normal_mode_is_noop() {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -2001,17 +2047,28 @@ mod tests {
             let mut state = create_test_state();
             state
                 .connection_setup
-                .host
+                .input_mut(ConnectionField::Host)
+                .unwrap()
                 .set_content("custom-host".to_string());
-            state.connection_setup.port.set_content("5433".to_string());
             state
                 .connection_setup
-                .database
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("5433".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Database)
+                .unwrap()
                 .set_content("mydb".to_string());
-            state.connection_setup.user.set_content("admin".to_string());
             state
                 .connection_setup
-                .password
+                .input_mut(ConnectionField::User)
+                .unwrap()
+                .set_content("admin".to_string());
+            state
+                .connection_setup
+                .input_mut(ConnectionField::Password)
+                .unwrap()
                 .set_content("secret".to_string());
             state.session.set_connection_state(ConnectionState::Failed);
             let now = Instant::now();
@@ -2023,11 +2080,46 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.connection_setup.host.content(), "custom-host");
-            assert_eq!(state.connection_setup.port.content(), "5433");
-            assert_eq!(state.connection_setup.database.content(), "mydb");
-            assert_eq!(state.connection_setup.user.content(), "admin");
-            assert_eq!(state.connection_setup.password.content(), "secret");
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Host)
+                    .unwrap()
+                    .content(),
+                "custom-host"
+            );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Port)
+                    .unwrap()
+                    .content(),
+                "5433"
+            );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Database)
+                    .unwrap()
+                    .content(),
+                "mydb"
+            );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::User)
+                    .unwrap()
+                    .content(),
+                "admin"
+            );
+            assert_eq!(
+                state
+                    .connection_setup
+                    .input(ConnectionField::Password)
+                    .unwrap()
+                    .content(),
+                "secret"
+            );
         }
 
         #[test]
@@ -2066,7 +2158,9 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.active_connection_id = Some(conn_a.clone());
+            state
+                .session
+                .set_active_connection_id_for_test(Some(conn_a.clone()));
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -2085,7 +2179,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.session.active_connection_id, Some(conn_b));
+            assert_eq!(state.session.active_connection_id().cloned(), Some(conn_b));
             assert!(state.session.connection_state().is_connecting());
             assert!(state.connection_caches.get(&conn_a).is_some());
             assert_eq!(
@@ -2107,7 +2201,9 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.active_connection_id = Some(conn_a);
+            state
+                .session
+                .set_active_connection_id_for_test(Some(conn_a));
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -2139,7 +2235,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.session.active_connection_id, Some(conn_b));
+            assert_eq!(state.session.active_connection_id().cloned(), Some(conn_b));
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.ui.explorer_selected, 10);
             assert_eq!(state.ui.inspector_tab, InspectorTab::Indexes);
@@ -2205,7 +2301,7 @@ mod tests {
             );
 
             assert!(state.ui.pending_er_picker);
-            assert!(state.messages.last_success.is_some());
+            assert!(state.messages.last_success().is_some());
             assert_ne!(state.input_mode(), InputMode::ErTablePicker);
             assert!(effects.is_empty());
         }
@@ -2322,7 +2418,7 @@ mod tests {
             );
 
             assert_eq!(
-                state.er_preparation.target_tables,
+                state.er_preparation.target_tables(),
                 vec!["public.users".to_string()]
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -2345,16 +2441,18 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
             assert!(effects.is_empty());
         }
 
         #[test]
         fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
-            state.er_preparation.target_tables = vec!["public.users".to_string()];
+            state
+                .er_preparation
+                .set_targets(vec!["public.users".to_string()]);
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -2362,7 +2460,7 @@ mod tests {
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
             assert_eq!(
-                state.er_preparation.target_tables,
+                state.er_preparation.target_tables(),
                 vec!["public.users".to_string()]
             );
         }
@@ -2373,13 +2471,11 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.total_tables = 1;
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.begin_full_prefetch(1);
             state
                 .er_preparation
-                .pending_tables
-                .insert("public.users".to_string());
+                .insert_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2392,7 +2488,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
@@ -2405,17 +2501,14 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.total_tables = 2;
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.begin_full_prefetch(2);
             state
                 .er_preparation
-                .failed_tables
-                .insert("public.posts".to_string(), "timeout".to_string());
+                .on_table_failed("public.posts", "timeout".to_string());
             state
                 .er_preparation
-                .pending_tables
-                .insert("public.users".to_string());
+                .insert_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2428,12 +2521,12 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(!effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
             }));
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 
@@ -2445,7 +2538,7 @@ mod tests {
 
         fn state_after_confirm_and_complete() -> (AppState, Instant) {
             let mut state = create_test_state();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             // Load metadata with a table
@@ -2522,11 +2615,11 @@ mod tests {
         fn confirm_selection_initializes_pagination_via_dispatch() {
             let (state, _now) = state_after_confirm_and_complete();
 
-            assert_eq!(state.query.pagination.schema, "public");
-            assert_eq!(state.query.pagination.table, "users");
-            assert_eq!(state.query.pagination.total_rows_estimate, Some(1200));
-            assert_eq!(state.query.pagination.current_page, 0);
-            assert!(!state.query.pagination.reached_end);
+            assert_eq!(state.query.pagination.schema(), "public");
+            assert_eq!(state.query.pagination.table(), "users");
+            assert_eq!(state.query.pagination.total_rows_estimate(), Some(1200));
+            assert_eq!(state.query.pagination.current_page(), 0);
+            assert!(!state.query.pagination.reached_end());
         }
 
         #[test]
@@ -2618,7 +2711,7 @@ mod tests {
             let entry_index = palette_index_of(|a| matches!(a, Action::ReloadMetadata));
 
             let mut state = state_in_palette_mode();
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 

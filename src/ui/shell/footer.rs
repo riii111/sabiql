@@ -34,20 +34,17 @@ impl Footer {
         theme: &ThemePalette,
     ) {
         let base_style = Style::default().fg(theme.semantic.text.primary);
-        if state.er_preparation.status == ErStatus::Waiting {
+        if state.er_preparation.status() == ErStatus::Waiting {
             let line = Self::build_er_waiting_line(state, time_ms, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
-        } else if let Some(error) = &state.messages.last_error {
+        } else if let Some(error) = state.messages.last_error() {
             let line = StatusMessage::render_line(error, MessageType::Error, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
             let hints = Self::get_context_hints(state, services);
-            let line = Self::build_hint_line_with_success(
-                &hints,
-                state.messages.last_success.as_deref(),
-                theme,
-            );
+            let line =
+                Self::build_hint_line_with_success(&hints, state.messages.last_success(), theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         }
     }
@@ -65,13 +62,12 @@ impl Footer {
         });
         let spinner = spinner_char(now_ms);
 
-        let total = state.er_preparation.total_tables;
-        let failed_count = state.er_preparation.failed_tables.len();
-        let remaining =
-            state.er_preparation.pending_tables.len() + state.er_preparation.fetching_tables.len();
-        let cached = total.saturating_sub(remaining + failed_count);
+        let progress = state.er_preparation.progress();
 
-        let text = format!("{spinner} Preparing ER... ({cached}/{total})");
+        let text = format!(
+            "{spinner} Preparing ER... ({}/{})",
+            progress.cached, progress.total
+        );
         Line::from(Span::styled(
             text,
             Style::default().fg(theme.semantic.text.accent),
@@ -161,10 +157,10 @@ impl Footer {
                     }
                     list.push(GLOBAL_KEYS[idx::global::TABLE_PICKER].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::QUERY_HISTORY].as_hint());
-                    if state.connection_error.error_info.is_some() {
+                    if state.connection_error.has_error() {
                         list.push(OVERLAY_KEYS[idx::overlay::ERROR_OPEN].as_hint());
                     }
-                    if state.session.read_only {
+                    if state.session.is_read_only() {
                         list.push(GLOBAL_KEYS[idx::global::EXIT_READ_ONLY].as_hint());
                     } else {
                         list.push(GLOBAL_KEYS[idx::global::READ_ONLY].as_hint());
@@ -293,7 +289,7 @@ impl Footer {
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::JsonbDetail => {
-                if state.jsonb_detail.search().active {
+                if state.jsonb_detail.search().is_active() {
                     vec![
                         JSONB_SEARCH_KEYS[idx::jsonb_search::TYPE_SEARCH].as_hint(),
                         JSONB_SEARCH_KEYS[idx::jsonb_search::CONFIRM].as_hint(),

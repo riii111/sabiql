@@ -92,8 +92,7 @@ impl SqlModal {
                     }
                 }
                 _ => {
-                    let compare_can_yank =
-                        state.explain.left.is_some() && state.explain.right.is_some();
+                    let compare_can_yank = state.explain.can_yank_compare();
                     Self::border_hint(active_tab, compare_can_yank, services)
                 }
             };

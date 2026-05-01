@@ -456,24 +456,20 @@ mod tests {
         fn prefetch_queue_starts_empty() {
             let state = make_state();
 
-            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(state.sql_modal.prefetch_queue().is_empty());
             assert!(!state.sql_modal.is_prefetch_started());
         }
 
         #[test]
         fn prefetch_queue_is_fifo() {
             let mut state = make_state();
+            state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
-            state
-                .sql_modal
-                .prefetch_queue
-                .push_back("public.orders".to_string());
+                .enqueue_prefetch("public.orders".to_string());
 
-            let first = state.sql_modal.prefetch_queue.pop_front();
-            let second = state.sql_modal.prefetch_queue.pop_front();
+            let first = state.sql_modal.start_prefetch();
+            let second = state.sql_modal.start_prefetch();
 
             assert_eq!(first, Some("public.users".to_string()));
             assert_eq!(second, Some("public.orders".to_string()));
@@ -483,13 +479,20 @@ mod tests {
         fn prefetching_tables_track_in_flight() {
             let mut state = make_state();
 
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert("public.users".to_string());
+            state.sql_modal.mark_prefetching("public.users".to_string());
 
-            assert!(state.sql_modal.prefetching_tables.contains("public.users"));
-            assert!(!state.sql_modal.prefetching_tables.contains("public.orders"));
+            assert!(
+                state
+                    .sql_modal
+                    .prefetching_tables()
+                    .contains("public.users")
+            );
+            assert!(
+                !state
+                    .sql_modal
+                    .prefetching_tables()
+                    .contains("public.orders")
+            );
         }
 
         #[test]
@@ -497,7 +500,7 @@ mod tests {
             let mut state = make_state();
             let now = Instant::now();
 
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.record_prefetch_failure(
                 "public.users".to_string(),
                 crate::model::sql_editor::modal::FailedPrefetchEntry {
                     failed_at: now,
@@ -509,12 +512,12 @@ mod tests {
             assert!(
                 state
                     .sql_modal
-                    .failed_prefetch_tables
+                    .failed_prefetch_tables()
                     .contains_key("public.users")
             );
             let entry = state
                 .sql_modal
-                .failed_prefetch_tables
+                .failed_prefetch_tables()
                 .get("public.users")
                 .unwrap();
             assert_eq!(entry.failed_at, now);
@@ -529,15 +532,11 @@ mod tests {
             let mut state = make_state();
             state.session.begin_connecting("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
+            state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert("public.orders".to_string());
-            state.sql_modal.failed_prefetch_tables.insert(
+                .mark_prefetching("public.orders".to_string());
+            state.sql_modal.record_prefetch_failure(
                 "public.failed".to_string(),
                 crate::model::sql_editor::modal::FailedPrefetchEntry {
                     failed_at: Instant::now(),
@@ -555,37 +554,39 @@ mod tests {
             reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(!state.sql_modal.is_prefetch_started());
-            assert!(state.sql_modal.prefetch_queue.is_empty());
-            assert!(state.sql_modal.prefetching_tables.is_empty());
-            assert!(state.sql_modal.failed_prefetch_tables.is_empty());
+            assert!(state.sql_modal.prefetch_queue().is_empty());
+            assert!(state.sql_modal.prefetching_tables().is_empty());
+            assert!(state.sql_modal.failed_prefetch_tables().is_empty());
         }
 
         #[test]
         fn resets_er_preparation() {
             let mut state = prepare_state_for_reload();
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.set_status_for_test(ErStatus::Waiting);
 
             reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
 
         #[test]
         fn clears_stale_messages() {
             let mut state = prepare_state_for_reload();
-            state.messages.last_error = Some("Old error".to_string());
-            state.messages.last_success = Some("Old success".to_string());
-            state.messages.expires_at = Some(Instant::now());
+            state.messages.set_messages_for_test(
+                Some("Old error".to_string()),
+                Some("Old success".to_string()),
+            );
+            state.messages.set_expires_at_for_test(Some(Instant::now()));
 
-            assert!(state.messages.last_error.is_some());
-            assert!(state.messages.last_success.is_some());
-            assert!(state.messages.expires_at.is_some());
+            assert!(state.messages.last_error().is_some());
+            assert!(state.messages.last_success().is_some());
+            assert!(state.messages.expires_at().is_some());
 
             reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
-            assert!(state.messages.last_error.is_none());
-            assert!(state.messages.last_success.is_none());
-            assert!(state.messages.expires_at.is_none());
+            assert!(state.messages.last_error().is_none());
+            assert!(state.messages.last_success().is_none());
+            assert!(state.messages.expires_at().is_none());
         }
     }
 
@@ -653,7 +654,7 @@ mod tests {
             fn defaults_to_idle() {
                 let state = make_state();
 
-                assert_eq!(state.er_preparation.status, ErStatus::Idle);
+                assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             }
 
             #[rstest]
@@ -662,9 +663,9 @@ mod tests {
             fn accepts_status(#[case] status: ErStatus) {
                 let mut state = make_state();
 
-                state.er_preparation.status = status;
+                state.er_preparation.set_status_for_test(status);
 
-                assert_eq!(state.er_preparation.status, status);
+                assert_eq!(state.er_preparation.status(), status);
             }
         }
 

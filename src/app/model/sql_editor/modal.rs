@@ -76,9 +76,9 @@ pub struct SqlModalContext {
     last_adhoc_error: Option<String>,
     completion: CompletionState,
     completion_debounce: Option<Instant>,
-    pub prefetch_queue: VecDeque<String>,
-    pub prefetching_tables: HashSet<String>,
-    pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
+    prefetch_queue: VecDeque<String>,
+    prefetching_tables: HashSet<String>,
+    failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     prefetch_started: bool,
     active_tab: SqlModalTab,
 }
@@ -106,6 +106,79 @@ impl SqlModalContext {
 
     pub fn is_prefetch_started(&self) -> bool {
         self.prefetch_started
+    }
+
+    pub fn has_pending_prefetch(&self) -> bool {
+        !self.prefetch_queue.is_empty()
+    }
+
+    pub fn prefetch_in_flight_count(&self) -> usize {
+        self.prefetching_tables.len()
+    }
+
+    pub fn failed_prefetch_entry(&self, table: &str) -> Option<&FailedPrefetchEntry> {
+        self.failed_prefetch_tables.get(table)
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn prefetch_queue(&self) -> &VecDeque<String> {
+        &self.prefetch_queue
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn prefetching_tables(&self) -> &HashSet<String> {
+        &self.prefetching_tables
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn failed_prefetch_tables(&self) -> &HashMap<String, FailedPrefetchEntry> {
+        &self.failed_prefetch_tables
+    }
+
+    pub fn enqueue_prefetch(&mut self, table: String) {
+        if self.prefetching_tables.contains(&table) || self.prefetch_queue.contains(&table) {
+            return;
+        }
+        self.prefetch_queue.push_back(table);
+    }
+
+    pub fn start_prefetch(&mut self) -> Option<String> {
+        while let Some(table) = self.prefetch_queue.pop_front() {
+            if self.prefetching_tables.insert(table.clone()) {
+                return Some(table);
+            }
+        }
+        None
+    }
+
+    pub fn mark_prefetching(&mut self, table: String) {
+        self.prefetch_queue.retain(|queued| queued != &table);
+        self.prefetching_tables.insert(table);
+    }
+
+    pub fn finish_prefetch(&mut self, table: &str) {
+        self.prefetch_queue.retain(|queued| queued != table);
+        self.prefetching_tables.remove(table);
+        self.failed_prefetch_tables.remove(table);
+    }
+
+    pub fn record_prefetch_failure(&mut self, table: String, entry: FailedPrefetchEntry) {
+        self.prefetch_queue.retain(|queued| queued != &table);
+        self.prefetching_tables.remove(&table);
+        self.failed_prefetch_tables.insert(table, entry);
+    }
+
+    pub fn defer_prefetch_retry(&mut self, table: String) {
+        self.prefetching_tables.remove(&table);
+        self.enqueue_prefetch(table);
+    }
+
+    pub fn abandon_prefetch(&mut self, table: &str) {
+        self.prefetch_queue.retain(|queued| queued != table);
+        self.prefetching_tables.remove(table);
     }
 
     // ── Adhoc status ────────────────────────────────────────────────

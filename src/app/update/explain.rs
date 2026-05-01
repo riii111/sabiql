@@ -32,7 +32,7 @@ fn show_explain_error_on_plan(state: &mut AppState, message: impl Into<String>) 
 fn begin_explain_running(state: &mut AppState, now: Instant) {
     state.sql_modal.begin_adhoc_running();
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
-    state.explain.reset();
+    state.explain.reset_for_new_run();
     state.query.begin_running(now);
 }
 
@@ -82,7 +82,7 @@ pub fn reduce_explain_with_services(
             if content.is_empty() {
                 return Some(vec![]);
             }
-            let Some(dsn) = state.session.dsn.clone() else {
+            let Some(dsn) = state.session.dsn().map(str::to_string) else {
                 return Some(vec![]);
             };
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
@@ -115,10 +115,9 @@ pub fn reduce_explain_with_services(
             if content.is_empty() {
                 return Some(vec![]);
             }
-            let Some(dsn) = &state.session.dsn else {
+            let Some(dsn) = state.session.dsn().map(str::to_string) else {
                 return Some(vec![]);
             };
-            let dsn = dsn.clone();
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return Some(vec![]);
             }
@@ -134,7 +133,7 @@ pub fn reduce_explain_with_services(
 
             let is_dml = !matches!(kind, StatementKind::Select | StatementKind::Transaction);
 
-            if state.session.read_only && is_dml {
+            if state.session.is_read_only() && is_dml {
                 show_explain_error_on_plan(
                     state,
                     "Read-only mode: EXPLAIN ANALYZE is blocked for DML statements.",
@@ -142,7 +141,7 @@ pub fn reduce_explain_with_services(
                 return Some(vec![]);
             }
 
-            state.explain.confirm_scroll_offset = 0;
+            state.explain.reset_confirm_scroll();
 
             match risk.confirmation {
                 ConfirmationType::TableNameInput { target } => {
@@ -162,7 +161,7 @@ pub fn reduce_explain_with_services(
                         dsn,
                         query: explain_query,
                         is_analyze: true,
-                        read_only: state.session.read_only,
+                        read_only: state.session.is_read_only(),
                     }]);
                 }
             }
@@ -186,7 +185,7 @@ pub fn reduce_explain_with_services(
                 _ => None,
             };
             if let Some(query) = query
-                && let Some(dsn) = state.session.dsn.clone()
+                && let Some(dsn) = state.session.dsn().map(str::to_string)
             {
                 let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
                 else {
@@ -198,7 +197,7 @@ pub fn reduce_explain_with_services(
                     dsn,
                     query: explain_query,
                     is_analyze: true,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }]);
             }
             Some(vec![])
@@ -251,28 +250,34 @@ pub fn reduce_explain_with_services(
                         CONFIRM_HEADER_LINES + state.sql_modal.editor.content().lines().count();
                     let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
                     (
-                        &mut state.explain.confirm_scroll_offset,
+                        state.explain.confirm_scroll_offset(),
                         content_lines.saturating_sub(modal_inner),
                     )
                 }
                 ScrollTarget::ExplainPlan => {
                     let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
                     let max = state.explain.line_count().saturating_sub(modal_inner);
-                    (&mut state.explain.scroll_offset, max)
+                    (state.explain.scroll_offset(), max)
                 }
                 ScrollTarget::ExplainCompare => {
                     let max = state.explain.compare_max_scroll(state.ui.terminal_height);
-                    (&mut state.explain.compare_scroll_offset, max)
+                    (state.explain.compare_scroll_offset(), max)
                 }
                 _ => unreachable!(),
             };
-            *offset = direction.clamp_vertical_offset(*offset, max, 1);
+            let next_offset = direction.clamp_vertical_offset(offset, max, 1);
+            match target {
+                ScrollTarget::ExplainConfirm => state.explain.scroll_confirm_to(next_offset),
+                ScrollTarget::ExplainPlan => state.explain.scroll_plan_to(next_offset),
+                ScrollTarget::ExplainCompare => state.explain.scroll_compare_to(next_offset),
+                _ => unreachable!(),
+            }
             Some(vec![])
         }
 
         Action::CompareEditQuery => {
-            if let Some(ref right) = state.explain.right {
-                let query = right.full_query.clone();
+            if let Some(query) = state.explain.right_full_query() {
+                let query = query.to_string();
                 state.sql_modal.load_query_for_editing(query);
             }
             Some(vec![])
@@ -332,7 +337,7 @@ mod tests {
         fn empty_query_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("  ".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
@@ -355,7 +360,7 @@ mod tests {
         fn running_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
             let effects =
@@ -368,7 +373,7 @@ mod tests {
         fn unsupported_database_sets_error_without_effects() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects = reduce_explain_with_services(
                 &mut state,
@@ -380,7 +385,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN is unavailable for this database")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
@@ -393,14 +398,14 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT 1; DELETE FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN does not support multiple statements")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
@@ -410,7 +415,7 @@ mod tests {
         fn starts_query_timer() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainRequest, Instant::now());
 
@@ -422,7 +427,7 @@ mod tests {
         fn emits_execute_explain_effect() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
@@ -448,7 +453,7 @@ mod tests {
         #[test]
         fn empty_query_is_noop() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -463,14 +468,14 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT 1; DELETE FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN ANALYZE does not support multiple statements")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
@@ -481,7 +486,7 @@ mod tests {
         fn unsupported_database_sets_error_without_effects() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects = reduce_explain_with_services(
                 &mut state,
@@ -493,7 +498,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("EXPLAIN is unavailable for this database")
             );
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
@@ -503,7 +508,7 @@ mod tests {
         fn select_executes_immediately_without_confirm() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -526,7 +531,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("INSERT INTO users VALUES (1)".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -549,7 +554,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("UPDATE users SET name='x' WHERE id=1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -572,7 +577,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -592,7 +597,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id=1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -615,7 +620,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DROP TABLE users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -635,7 +640,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("TRUNCATE users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -659,20 +664,13 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id=1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
-            state.session.read_only = true;
+            state.session.set_dsn_for_test("dsn://test");
+            state.session.enable_read_only();
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
-            assert!(state.explain.error.is_some());
-            assert!(
-                state
-                    .explain
-                    .error
-                    .as_deref()
-                    .unwrap()
-                    .contains("Read-only")
-            );
+            assert!(state.explain.error().is_some());
+            assert!(state.explain.error().unwrap().contains("Read-only"));
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(state.confirm_dialog.intent().is_none());
         }
@@ -684,13 +682,13 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT * FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
-            state.session.read_only = true;
+            state.session.set_dsn_for_test("dsn://test");
+            state.session.enable_read_only();
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
 
-            assert!(state.explain.error.is_none());
+            assert!(state.explain.error().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
@@ -708,19 +706,12 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("INSERT INTO users VALUES (1)".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
-            state.session.read_only = true;
+            state.session.set_dsn_for_test("dsn://test");
+            state.session.enable_read_only();
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
-            assert!(
-                state
-                    .explain
-                    .error
-                    .as_deref()
-                    .unwrap()
-                    .contains("Read-only")
-            );
+            assert!(state.explain.error().unwrap().contains("Read-only"));
         }
     }
 
@@ -731,7 +722,7 @@ mod tests {
         #[test]
         fn confirm_from_high_with_matching_table_emits_effect() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
             let mut input = crate::model::shared::text_input::TextInputState::default();
             for c in "users".chars() {
                 input.insert_char(c);
@@ -754,7 +745,7 @@ mod tests {
         #[test]
         fn confirm_from_high_with_mismatch_is_noop() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
             let mut input = crate::model::shared::text_input::TextInputState::default();
             input.insert_char('x');
             state
@@ -810,7 +801,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.plan_text.as_deref(), Some("Seq Scan"));
+            assert_eq!(state.explain.plan_text(), Some("Seq Scan"));
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(!state.query.is_running());
@@ -833,7 +824,7 @@ mod tests {
             );
 
             assert_eq!(
-                state.explain.error.as_deref(),
+                state.explain.error(),
                 Some("Query failed: syntax error. Review the database error details and SQL.")
             );
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
@@ -849,7 +840,7 @@ mod tests {
         fn two_explains_auto_advance_returns_comparable_slots() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
             let now = Instant::now();
 
             // Step 1: First EXPLAIN
@@ -863,8 +854,8 @@ mod tests {
                 },
                 now,
             );
-            assert!(state.explain.right.is_some());
-            assert!(state.explain.left.is_none());
+            assert!(state.explain.right().is_some());
+            assert!(state.explain.left().is_none());
 
             // Step 2: Second EXPLAIN — auto-advance moves right→left
             state.sql_modal.editor.set_content("SELECT 2".to_string());
@@ -879,16 +870,10 @@ mod tests {
                 now,
             );
 
-            assert!(state.explain.left.is_some());
-            assert!(state.explain.right.is_some());
-            assert_eq!(
-                state.explain.left.as_ref().unwrap().plan.total_cost,
-                Some(100.0)
-            );
-            assert_eq!(
-                state.explain.right.as_ref().unwrap().plan.total_cost,
-                Some(5.0)
-            );
+            assert!(state.explain.left().is_some());
+            assert!(state.explain.right().is_some());
+            assert_eq!(state.explain.left().unwrap().plan.total_cost, Some(100.0));
+            assert_eq!(state.explain.right().unwrap().plan.total_cost, Some(5.0));
         }
     }
 
@@ -898,7 +883,7 @@ mod tests {
         #[test]
         fn plan_scroll_up_saturates_at_zero() {
             let mut state = sql_modal_state();
-            state.explain.scroll_offset = 0;
+            state.explain.scroll_plan_to(0);
 
             reduce_explain(
                 &mut state,
@@ -910,7 +895,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, 0);
+            assert_eq!(state.explain.scroll_offset(), 0);
         }
 
         #[test]
@@ -933,7 +918,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, 1);
+            assert_eq!(state.explain.scroll_offset(), 1);
         }
 
         #[test]
@@ -949,7 +934,7 @@ mod tests {
                 state.ui.terminal_height,
             );
             let max = state.explain.line_count().saturating_sub(modal_inner);
-            state.explain.scroll_offset = max;
+            state.explain.scroll_plan_to(max);
 
             reduce_explain(
                 &mut state,
@@ -961,13 +946,13 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, max);
+            assert_eq!(state.explain.scroll_offset(), max);
         }
 
         #[test]
         fn compare_plan_scroll_up_saturates_at_zero() {
             let mut state = sql_modal_state();
-            state.explain.compare_scroll_offset = 0;
+            state.explain.scroll_compare_to(0);
 
             reduce_explain(
                 &mut state,
@@ -979,7 +964,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 0);
+            assert_eq!(state.explain.compare_scroll_offset(), 0);
         }
 
         #[test]
@@ -1002,7 +987,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 1);
+            assert_eq!(state.explain.compare_scroll_offset(), 1);
         }
 
         #[test]
@@ -1031,7 +1016,7 @@ mod tests {
                 );
             }
 
-            assert_eq!(state.explain.compare_scroll_offset, max);
+            assert_eq!(state.explain.compare_scroll_offset(), max);
 
             // k should immediately scroll back
             reduce_explain(
@@ -1043,7 +1028,7 @@ mod tests {
                 },
                 Instant::now(),
             );
-            assert_eq!(state.explain.compare_scroll_offset, max.saturating_sub(1));
+            assert_eq!(state.explain.compare_scroll_offset(), max.saturating_sub(1));
         }
 
         #[test]
@@ -1066,7 +1051,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 1);
+            assert_eq!(state.explain.compare_scroll_offset(), 1);
         }
 
         #[test]
@@ -1083,7 +1068,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 0);
+            assert_eq!(state.explain.compare_scroll_offset(), 0);
         }
     }
 

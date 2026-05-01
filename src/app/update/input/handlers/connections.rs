@@ -6,8 +6,7 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
     use crate::model::connection::setup::ConnectionField;
     use crate::update::action::CursorMove;
 
-    let dropdown_open = state.connection_setup.database_type_dropdown.is_open
-        || state.connection_setup.ssl_dropdown.is_open;
+    let dropdown_open = state.connection_setup.has_open_dropdown();
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
     let alt = combo.modifiers.contains(Modifiers::ALT);
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
@@ -37,7 +36,7 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
 
         Key::Enter
             if matches!(
-                state.connection_setup.focused_field,
+                state.connection_setup.focused_field(),
                 ConnectionField::DatabaseType | ConnectionField::SslMode
             ) =>
         {
@@ -230,7 +229,9 @@ mod tests {
         #[test]
         fn enter_on_ssl_field_toggles_dropdown() {
             let mut state = setup_state();
-            state.connection_setup.focused_field = ConnectionField::SslMode;
+            state
+                .connection_setup
+                .set_focused_field_for_test(ConnectionField::SslMode);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
@@ -240,7 +241,9 @@ mod tests {
         #[test]
         fn enter_on_database_type_field_toggles_dropdown() {
             let mut state = setup_state();
-            state.connection_setup.focused_field = ConnectionField::DatabaseType;
+            state
+                .connection_setup
+                .set_focused_field_for_test(ConnectionField::DatabaseType);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
@@ -252,13 +255,15 @@ mod tests {
 
             fn dropdown_state() -> AppState {
                 let mut state = setup_state();
-                state.connection_setup.ssl_dropdown.is_open = true;
+                state.connection_setup.open_ssl_dropdown_for_test();
                 state
             }
 
             fn database_type_dropdown_state() -> AppState {
                 let mut state = setup_state();
-                state.connection_setup.database_type_dropdown.is_open = true;
+                state
+                    .connection_setup
+                    .open_database_type_dropdown_for_test();
                 state
             }
 

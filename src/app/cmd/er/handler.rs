@@ -176,7 +176,7 @@ fn handle_smart_refresh(
 ) {
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
-    let old_signatures = state.er_preparation.last_signatures.clone();
+    let old_signatures = state.er_preparation.last_signatures().clone();
     let cached_tables = collect_cached_table_names(completion_engine);
 
     tokio::spawn(async move {

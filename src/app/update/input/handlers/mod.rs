@@ -64,7 +64,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo),
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
         InputMode::JsonbDetail => {
-            let is_searching = state.jsonb_detail.search().active;
+            let is_searching = state.jsonb_detail.search().is_active();
             jsonb::handle_jsonb_detail_keys(
                 combo,
                 is_searching,
