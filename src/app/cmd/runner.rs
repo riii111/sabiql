@@ -264,22 +264,22 @@ impl EffectRunner {
                     state.ui.connection_list_pane_height = height;
                 }
                 if let Some(height) = output.table_picker_pane_height {
-                    state.ui.table_picker.pane_height = height;
+                    state.ui.table_picker.set_pane_height(height);
                 }
                 if let Some(width) = output.table_picker_filter_visible_width {
-                    state.ui.table_picker.filter_visible_width = width;
+                    state.ui.table_picker.set_filter_visible_width(width);
                 }
                 if let Some(height) = output.er_picker_pane_height {
-                    state.ui.er_picker.pane_height = height;
+                    state.ui.er_picker.set_pane_height(height);
                 }
                 if let Some(width) = output.er_picker_filter_visible_width {
-                    state.ui.er_picker.filter_visible_width = width;
+                    state.ui.er_picker.set_filter_visible_width(width);
                 }
                 if let Some(height) = output.query_history_picker_pane_height {
-                    state.query_history_picker.pane_height = height;
+                    state.query_history_picker.set_pane_height(height);
                 }
                 if let Some(width) = output.query_history_picker_filter_visible_width {
-                    state.query_history_picker.filter_visible_width = width;
+                    state.query_history_picker.set_filter_visible_width(width);
                 }
                 if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
                     state.ui.jsonb_detail_editor_visible_rows = visible_rows;
