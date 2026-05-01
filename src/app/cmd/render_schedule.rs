@@ -74,6 +74,8 @@ mod tests {
     mod next_animation_deadline_tests {
         use super::*;
 
+        const MESSAGE_TIMEOUT: Duration = Duration::from_secs(3);
+
         #[test]
         fn idle_state_returns_none() {
             let state = create_test_state();
@@ -100,7 +102,7 @@ mod tests {
         #[test]
         fn er_waiting_returns_spinner_interval() {
             let mut state = create_test_state();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             let now = Instant::now();
 
             let deadline = next_animation_deadline(&state, now);
@@ -115,7 +117,9 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let expires_at = now + Duration::from_secs(2);
-            state.messages.set_expires_at_for_test(Some(expires_at));
+            state
+                .messages
+                .set_error_at("message".to_string(), expires_at - MESSAGE_TIMEOUT);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -194,7 +198,9 @@ mod tests {
             state.query.begin_running(now);
             // Message expires before spinner would update
             let expires_at = now + Duration::from_millis(50);
-            state.messages.set_expires_at_for_test(Some(expires_at));
+            state
+                .messages
+                .set_error_at("message".to_string(), expires_at - MESSAGE_TIMEOUT);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -207,9 +213,10 @@ mod tests {
             let now = Instant::now();
 
             state.query.begin_running(now);
-            state
-                .messages
-                .set_expires_at_for_test(Some(now + Duration::from_secs(2)));
+            state.messages.set_error_at(
+                "message".to_string(),
+                now.checked_sub(Duration::from_secs(1)).unwrap(),
+            );
             state
                 .query
                 .set_result_highlight(now + Duration::from_millis(100));
@@ -225,9 +232,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let debounce_until = now + Duration::from_millis(100);
-            state
-                .sql_modal
-                .set_completion_debounce_for_test(Some(debounce_until));
+            state.sql_modal.schedule_completion(debounce_until);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -263,7 +268,7 @@ mod tests {
         #[test]
         fn er_waiting_returns_true() {
             let mut state = create_test_state();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
 
             assert!(has_active_spinner(&state));
         }

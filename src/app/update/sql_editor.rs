@@ -486,12 +486,16 @@ mod tests {
         state
     }
 
+    fn show_completion_popup(state: &mut AppState) {
+        state.sql_modal.apply_completion_update(&[], 0, true);
+    }
+
     mod paste {
         use super::*;
 
         fn editing_state() -> AppState {
             let mut state = sql_modal_state();
-            state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+            state.sql_modal.enter_editing();
             state
         }
 
@@ -554,7 +558,7 @@ mod tests {
         #[test]
         fn dismisses_completion() {
             let mut state = editing_state();
-            state.sql_modal.completion_mut_for_test().visible = true;
+            show_completion_popup(&mut state);
 
             reduce_sql_modal(&mut state, &Action::Paste("x".to_string()), Instant::now());
 
@@ -586,16 +590,13 @@ mod tests {
                 .sql_modal
                 .editor_mut_for_input()
                 .set_content("DROP TABLE users".to_string());
-            state
-                .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-                    decision: crate::policy::write::write_guardrails::AdhocRiskDecision {
-                        risk_level: RiskLevel::High,
-                        label: "DROP",
-                    },
-                    input: TextInputState::default(),
-                    target_name: Some("users".to_string()),
-                });
+            state.sql_modal.begin_confirming_high(
+                crate::policy::write::write_guardrails::AdhocRiskDecision {
+                    risk_level: RiskLevel::High,
+                    label: "DROP",
+                },
+                Some("users".to_string()),
+            );
 
             reduce_sql_modal(
                 &mut state,
@@ -619,7 +620,7 @@ mod tests {
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
             let mut state = sql_modal_state();
             state.ui.set_terminal_height(20);
-            state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+            state.sql_modal.enter_normal();
             state
                 .sql_modal
                 .editor_mut_for_input()
@@ -644,7 +645,7 @@ mod tests {
         fn scrolls_once_cursor_moves_past_visible_rows() {
             let mut state = sql_modal_state();
             state.ui.set_terminal_height(20);
-            state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+            state.sql_modal.enter_normal();
             state
                 .sql_modal
                 .editor_mut_for_input()
@@ -677,16 +678,13 @@ mod tests {
                 .sql_modal
                 .editor_mut_for_input()
                 .set_content(content.to_string());
-            state
-                .sql_modal
-                .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-                    decision: AdhocRiskDecision {
-                        risk_level: RiskLevel::High,
-                        label: "DROP",
-                    },
-                    input: TextInputState::default(),
-                    target_name: target.map(ToString::to_string),
-                });
+            state.sql_modal.begin_confirming_high(
+                AdhocRiskDecision {
+                    risk_level: RiskLevel::High,
+                    label: "DROP",
+                },
+                target.map(ToString::to_string),
+            );
             state
         }
 
@@ -1158,7 +1156,7 @@ mod tests {
         #[test]
         fn append_insert_moves_to_line_end_and_transitions_to_editing() {
             let mut state = sql_modal_state();
-            state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+            state.sql_modal.enter_normal();
             state
                 .sql_modal
                 .editor_mut_for_input()
@@ -1182,8 +1180,8 @@ mod tests {
         #[test]
         fn enter_normal_transitions_to_normal() {
             let mut state = sql_modal_state();
-            state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-            state.sql_modal.completion_mut_for_test().visible = true;
+            state.sql_modal.enter_editing();
+            show_completion_popup(&mut state);
 
             reduce_sql_modal(&mut state, &Action::SqlModalEnterNormal, Instant::now());
 
@@ -1194,7 +1192,7 @@ mod tests {
         #[test]
         fn vertical_move_after_edit_uses_current_column() {
             let mut state = sql_modal_state();
-            state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+            state.sql_modal.enter_normal();
             state
                 .sql_modal
                 .editor_mut_for_input()

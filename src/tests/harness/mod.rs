@@ -10,6 +10,8 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Position;
 
 use app::model::app_state::AppState;
+use app::model::connection::setup::ConnectionField;
+use app::model::shared::text_input::TextInputState;
 use app::services::AppServices;
 use ui::shell::layout::MainLayout;
 use ui::theme::{ThemePalette, palette_for};
@@ -27,6 +29,37 @@ pub fn create_test_state() -> AppState {
         .session
         .set_active_connection_name_for_test(Some("localhost:5432/test".to_string()));
     state
+}
+
+pub fn focus_connection_field(state: &mut AppState, field: ConnectionField) {
+    let fields = state.connection_setup.visible_fields();
+    let target_idx = fields
+        .iter()
+        .position(|candidate| *candidate == field)
+        .unwrap_or_else(|| panic!("field {field:?} is not visible: {fields:?}"));
+
+    loop {
+        let current = state.connection_setup.focused_field();
+        if current == field {
+            return;
+        }
+        let current_idx = fields
+            .iter()
+            .position(|candidate| *candidate == current)
+            .expect("focused field must be visible");
+        if target_idx > current_idx {
+            state.connection_setup.focus_next_field();
+        } else {
+            state.connection_setup.focus_prev_field();
+        }
+    }
+}
+
+pub fn set_connection_input(state: &mut AppState, field: ConnectionField, input: TextInputState) {
+    *state
+        .connection_setup
+        .input_mut(field)
+        .expect("expected text input field") = input;
 }
 
 pub fn create_test_terminal() -> Terminal<TestBackend> {

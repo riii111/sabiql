@@ -567,7 +567,7 @@ mod tests {
         #[test]
         fn resets_er_preparation() {
             let mut state = prepare_state_for_reload();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
 
             reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
@@ -577,20 +577,16 @@ mod tests {
         #[test]
         fn clears_stale_messages() {
             let mut state = prepare_state_for_reload();
-            state.messages.set_messages_for_test(
-                Some("Old error".to_string()),
-                Some("Old success".to_string()),
-            );
-            state.messages.set_expires_at_for_test(Some(Instant::now()));
+            state
+                .messages
+                .set_error_at("Old error".to_string(), Instant::now());
 
             assert!(state.messages.last_error().is_some());
-            assert!(state.messages.last_success().is_some());
             assert!(state.messages.expires_at().is_some());
 
             reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(state.messages.last_error().is_none());
-            assert!(state.messages.last_success().is_none());
             assert!(state.messages.expires_at().is_none());
         }
     }
@@ -668,7 +664,13 @@ mod tests {
             fn accepts_status(#[case] status: ErStatus) {
                 let mut state = make_state();
 
-                state.er_preparation.set_status_for_test(status);
+                match status {
+                    ErStatus::Idle => state.er_preparation.mark_idle(),
+                    ErStatus::Waiting => {
+                        state.er_preparation.start_waiting_run();
+                    }
+                    ErStatus::Rendering => state.er_preparation.mark_rendering(),
+                }
 
                 assert_eq!(state.er_preparation.status(), status);
             }

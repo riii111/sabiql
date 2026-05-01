@@ -118,6 +118,30 @@ mod tests {
             state
         }
 
+        fn focus_field(state: &mut AppState, field: ConnectionField) {
+            let fields = state.connection_setup.visible_fields();
+            let target_idx = fields
+                .iter()
+                .position(|candidate| *candidate == field)
+                .unwrap_or_else(|| panic!("field {field:?} is not visible: {fields:?}"));
+
+            loop {
+                let current = state.connection_setup.focused_field();
+                if current == field {
+                    return;
+                }
+                let current_idx = fields
+                    .iter()
+                    .position(|candidate| *candidate == current)
+                    .expect("focused field must be visible");
+                if target_idx > current_idx {
+                    state.connection_setup.focus_next_field();
+                } else {
+                    state.connection_setup.focus_prev_field();
+                }
+            }
+        }
+
         #[test]
         fn tab_moves_to_next_field() {
             let state = setup_state();
@@ -229,9 +253,7 @@ mod tests {
         #[test]
         fn enter_on_ssl_field_toggles_dropdown() {
             let mut state = setup_state();
-            state
-                .connection_setup
-                .set_focused_field_for_test(ConnectionField::SslMode);
+            focus_field(&mut state, ConnectionField::SslMode);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
@@ -241,9 +263,7 @@ mod tests {
         #[test]
         fn enter_on_database_type_field_toggles_dropdown() {
             let mut state = setup_state();
-            state
-                .connection_setup
-                .set_focused_field_for_test(ConnectionField::DatabaseType);
+            focus_field(&mut state, ConnectionField::DatabaseType);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
@@ -255,15 +275,15 @@ mod tests {
 
             fn dropdown_state() -> AppState {
                 let mut state = setup_state();
-                state.connection_setup.open_ssl_dropdown_for_test();
+                focus_field(&mut state, ConnectionField::SslMode);
+                state.connection_setup.toggle_focused_dropdown();
                 state
             }
 
             fn database_type_dropdown_state() -> AppState {
                 let mut state = setup_state();
-                state
-                    .connection_setup
-                    .open_database_type_dropdown_for_test();
+                focus_field(&mut state, ConnectionField::DatabaseType);
+                state.connection_setup.toggle_focused_dropdown();
                 state
             }
 

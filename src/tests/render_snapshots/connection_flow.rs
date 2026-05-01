@@ -1,4 +1,5 @@
 use super::*;
+use crate::tests::harness::{focus_connection_field, set_connection_input};
 
 #[test]
 fn connection_setup_form() {
@@ -48,10 +49,9 @@ fn connection_setup_cursor_at_head() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
-    state
-        .connection_setup
-        .set_focused_field_for_test(ConnectionField::Host);
-    state.connection_setup.set_input_for_test(
+    focus_connection_field(&mut state, ConnectionField::Host);
+    set_connection_input(
+        &mut state,
         ConnectionField::Host,
         TextInputState::new("db.example.com", 0),
     );
@@ -67,10 +67,9 @@ fn connection_setup_cursor_at_middle() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
-    state
-        .connection_setup
-        .set_focused_field_for_test(ConnectionField::Host);
-    state.connection_setup.set_input_for_test(
+    focus_connection_field(&mut state, ConnectionField::Host);
+    set_connection_input(
+        &mut state,
         ConnectionField::Host,
         TextInputState::new("db.example.com", 7),
     );
@@ -86,9 +85,7 @@ fn connection_setup_cursor_at_tail() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
-    state
-        .connection_setup
-        .set_focused_field_for_test(ConnectionField::Host);
+    focus_connection_field(&mut state, ConnectionField::Host);
     state
         .connection_setup
         .input_mut(ConnectionField::Host)
@@ -106,15 +103,13 @@ fn connection_setup_with_validation_errors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
-    state
-        .connection_setup
-        .set_input_for_test(ConnectionField::Host, TextInputState::default());
-    state
-        .connection_setup
-        .set_input_for_test(ConnectionField::Database, TextInputState::default());
-    state
-        .connection_setup
-        .set_input_for_test(ConnectionField::User, TextInputState::default());
+    set_connection_input(&mut state, ConnectionField::Host, TextInputState::default());
+    set_connection_input(
+        &mut state,
+        ConnectionField::Database,
+        TextInputState::default(),
+    );
+    set_connection_input(&mut state, ConnectionField::User, TextInputState::default());
     state
         .connection_setup
         .set_validation_error(ConnectionField::Host, "Required");

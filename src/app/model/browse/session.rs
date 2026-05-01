@@ -283,13 +283,11 @@ impl BrowseSession {
     }
 
     #[cfg(test)]
-    #[allow(dead_code, reason = "test-only transition override")]
     pub(crate) fn set_metadata_state(&mut self, state: MetadataState) {
         self.metadata_state = state;
     }
 
     #[cfg(test)]
-    #[allow(dead_code, reason = "test-only transition override")]
     pub(crate) fn set_connection_state(&mut self, state: ConnectionState) {
         self.connection_state = state;
     }
@@ -303,7 +301,6 @@ impl BrowseSession {
     }
 
     #[cfg(test)]
-    #[allow(dead_code, reason = "test helper")]
     pub(crate) fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
     }

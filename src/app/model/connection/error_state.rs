@@ -45,12 +45,6 @@ impl ConnectionErrorState {
         self.details_expanded = true;
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_scroll_offset_for_test(&mut self, scroll_offset: usize) {
-        self.scroll_offset = scroll_offset;
-    }
-
     pub fn clear(&mut self) {
         self.error_info = None;
         self.details_expanded = false;
@@ -120,6 +114,12 @@ mod tests {
         Instant::now()
     }
 
+    fn scroll_to(state: &mut ConnectionErrorState, offset: usize) {
+        for _ in 0..offset {
+            state.scroll_down(usize::MAX);
+        }
+    }
+
     mod set_error {
         use super::*;
 
@@ -127,7 +127,7 @@ mod tests {
         fn stores_info_and_resets_ui() {
             let mut state = ConnectionErrorState::default();
             state.expand_details();
-            state.set_scroll_offset_for_test(5);
+            scroll_to(&mut state, 5);
 
             state.set_error(sample_error());
 
@@ -146,7 +146,7 @@ mod tests {
             let mut state = ConnectionErrorState::default();
             state.set_error(sample_error());
             state.expand_details();
-            state.set_scroll_offset_for_test(4);
+            scroll_to(&mut state, 4);
 
             state.reset_view();
 
@@ -164,7 +164,7 @@ mod tests {
             let mut state = ConnectionErrorState::default();
             state.set_error(sample_error());
             state.expand_details();
-            state.set_scroll_offset_for_test(3);
+            scroll_to(&mut state, 3);
 
             state.clear();
 
@@ -192,7 +192,7 @@ mod tests {
         fn resets_scroll_on_collapse() {
             let mut state = ConnectionErrorState::default();
             state.expand_details();
-            state.set_scroll_offset_for_test(5);
+            scroll_to(&mut state, 5);
 
             state.toggle_details();
 
@@ -206,7 +206,7 @@ mod tests {
         #[test]
         fn up_decrements_offset() {
             let mut state = ConnectionErrorState::default();
-            state.set_scroll_offset_for_test(5);
+            scroll_to(&mut state, 5);
 
             state.scroll_up();
 
@@ -234,7 +234,7 @@ mod tests {
         #[test]
         fn down_stops_at_max() {
             let mut state = ConnectionErrorState::default();
-            state.set_scroll_offset_for_test(10);
+            scroll_to(&mut state, 10);
 
             state.scroll_down(10);
 

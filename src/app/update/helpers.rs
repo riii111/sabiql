@@ -319,10 +319,8 @@ mod tests {
             validate_field(&mut state, ConnectionField::Name);
 
             assert_eq!(
-                state
-                    .validation_errors_for_test()
-                    .get(&ConnectionField::Name),
-                Some(&"Name is required".to_string())
+                state.validation_error(ConnectionField::Name),
+                Some("Name is required")
             );
         }
 
@@ -333,15 +331,13 @@ mod tests {
         )]
         fn whitespace_only_name_sets_error() {
             let mut state = ConnectionSetupState::default();
-            state.set_input_for_test(ConnectionField::Name, TextInputState::new("   ", 3));
+            *state.input_mut(ConnectionField::Name).unwrap() = TextInputState::new("   ", 3);
 
             validate_field(&mut state, ConnectionField::Name);
 
             assert_eq!(
-                state
-                    .validation_errors_for_test()
-                    .get(&ConnectionField::Name),
-                Some(&"Name is required".to_string())
+                state.validation_error(ConnectionField::Name),
+                Some("Name is required")
             );
         }
 
@@ -351,23 +347,17 @@ mod tests {
         fn name_length_validation(#[case] name: String, #[case] expect_error: bool) {
             let mut state = ConnectionSetupState::default();
             let len = name.chars().count();
-            state.set_input_for_test(ConnectionField::Name, TextInputState::new(name, len));
+            *state.input_mut(ConnectionField::Name).unwrap() = TextInputState::new(name, len);
 
             validate_field(&mut state, ConnectionField::Name);
 
             if expect_error {
                 assert_eq!(
-                    state
-                        .validation_errors_for_test()
-                        .get(&ConnectionField::Name),
-                    Some(&"Name must be 50 characters or less".to_string())
+                    state.validation_error(ConnectionField::Name),
+                    Some("Name must be 50 characters or less")
                 );
             } else {
-                assert!(
-                    !state
-                        .validation_errors_for_test()
-                        .contains_key(&ConnectionField::Name)
-                );
+                assert!(!state.has_validation_error(ConnectionField::Name));
             }
         }
 
@@ -375,11 +365,7 @@ mod tests {
         fn valid_name_clears_previous_error() {
             let mut state = ConnectionSetupState::default();
             validate_field(&mut state, ConnectionField::Name);
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Name)
-            );
+            assert!(state.has_validation_error(ConnectionField::Name));
 
             state
                 .input_mut(ConnectionField::Name)
@@ -387,11 +373,7 @@ mod tests {
                 .set_content("Valid Name".to_string());
             validate_field(&mut state, ConnectionField::Name);
 
-            assert!(
-                !state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Name)
-            );
+            assert!(!state.has_validation_error(ConnectionField::Name));
         }
     }
 
@@ -411,10 +393,8 @@ mod tests {
             validate_field(&mut state, ConnectionField::SqlitePath);
 
             assert_eq!(
-                state
-                    .validation_errors_for_test()
-                    .get(&ConnectionField::SqlitePath),
-                Some(&"Required".to_string())
+                state.validation_error(ConnectionField::SqlitePath),
+                Some("Required")
             );
         }
 
@@ -430,10 +410,8 @@ mod tests {
             validate_field(&mut state, ConnectionField::SqlitePath);
 
             assert_eq!(
-                state
-                    .validation_errors_for_test()
-                    .get(&ConnectionField::SqlitePath),
-                Some(&"Unsupported characters".to_string())
+                state.validation_error(ConnectionField::SqlitePath),
+                Some("Unsupported characters")
             );
         }
 
@@ -449,11 +427,7 @@ mod tests {
 
             validate_all(&mut state);
 
-            assert!(
-                !state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Host)
-            );
+            assert!(!state.has_validation_error(ConnectionField::Host));
         }
     }
 

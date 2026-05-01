@@ -1103,17 +1103,15 @@ mod tests {
                     .sql_modal
                     .editor_mut_for_input()
                     .set_content("old query".to_string());
+                state.sql_modal.enter_editing();
+                let candidates = vec![crate::model::sql_editor::completion::CompletionCandidate {
+                    text: "stale".to_string(),
+                    kind: crate::model::sql_editor::completion::CompletionKind::Keyword,
+                    score: 1,
+                }];
                 state
                     .sql_modal
-                    .set_status_for_test(crate::model::sql_editor::modal::SqlModalStatus::Editing);
-                state.sql_modal.completion_mut_for_test().visible = true;
-                state.sql_modal.completion_mut_for_test().candidates =
-                    vec![crate::model::sql_editor::completion::CompletionCandidate {
-                        text: "stale".to_string(),
-                        kind: crate::model::sql_editor::completion::CompletionKind::Keyword,
-                        score: 1,
-                    }];
-                state.sql_modal.completion_mut_for_test().selected_index = 3;
+                    .apply_completion_update(&candidates, 0, true);
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
                     .query_history_picker

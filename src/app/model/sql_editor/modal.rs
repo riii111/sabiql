@@ -240,12 +240,6 @@ impl SqlModalContext {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_status_for_test(&mut self, status: SqlModalStatus) {
-        self.status = status;
-    }
-
     pub fn status(&self) -> &SqlModalStatus {
         &self.status
     }
@@ -400,24 +394,6 @@ impl SqlModalContext {
     pub fn clear_content(&mut self) {
         self.editor.clear();
         self.reset_completion();
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_completion_for_test(&mut self, completion: CompletionState) {
-        self.completion = completion;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn completion_mut_for_test(&mut self) -> &mut CompletionState {
-        &mut self.completion
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_completion_debounce_for_test(&mut self, debounce: Option<Instant>) {
-        self.completion_debounce = debounce;
     }
 }
 

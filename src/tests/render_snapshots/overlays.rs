@@ -15,7 +15,7 @@ fn sql_modal_with_completion() {
         .sql_modal
         .editor_mut_for_input()
         .set_content("SELECT * FROM us".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -32,11 +32,9 @@ fn sql_modal_completion_popup_with_scroll() {
         .sql_modal
         .editor_mut_for_input()
         .set_content("SELECT ".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
-    state.sql_modal.completion_mut_for_test().visible = true;
-    state.sql_modal.completion_mut_for_test().selected_index = 5;
-    state.sql_modal.completion_mut_for_test().candidates = vec![
+    let candidates = vec![
         CompletionCandidate {
             text: "users".into(),
             kind: CompletionKind::Table,
@@ -88,6 +86,12 @@ fn sql_modal_completion_popup_with_scroll() {
             score: 10,
         },
     ];
+    state
+        .sql_modal
+        .apply_completion_update(&candidates, 7, true);
+    for _ in 0..5 {
+        state.sql_modal.completion_next();
+    }
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -104,7 +108,7 @@ fn sql_modal_cursor_at_head() {
         .sql_modal
         .editor_mut_for_input()
         .set_content_with_cursor("SELECT 1".to_string(), 0);
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -121,7 +125,7 @@ fn sql_modal_cursor_at_middle() {
         .sql_modal
         .editor_mut_for_input()
         .set_content_with_cursor("SELECT 1".to_string(), 4);
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -138,7 +142,7 @@ fn sql_modal_cursor_at_tail() {
         .sql_modal
         .editor_mut_for_input()
         .set_content("SELECT 1".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -155,7 +159,7 @@ fn sql_modal_normal_cursor_at_tail() {
         .sql_modal
         .editor_mut_for_input()
         .set_content("SELECT 1".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+    state.sql_modal.enter_normal();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -296,16 +300,14 @@ fn sql_modal_confirming_high_matched() {
         .set_content("DROP TABLE users".to_string());
     let mut input = TextInputState::default();
     input.set_content("users".to_string());
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-            decision: AdhocRiskDecision {
-                risk_level: RiskLevel::High,
-                label: "DROP",
-            },
-            input,
-            target_name: Some("users".to_string()),
-        });
+    state.sql_modal.begin_confirming_high(
+        AdhocRiskDecision {
+            risk_level: RiskLevel::High,
+            label: "DROP",
+        },
+        Some("users".to_string()),
+    );
+    *state.sql_modal.confirming_high_input_mut().unwrap() = input;
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -324,16 +326,14 @@ fn sql_modal_confirming_high_unmatched() {
         .set_content("DROP TABLE users".to_string());
     let mut input = TextInputState::default();
     input.set_content("use".to_string());
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-            decision: AdhocRiskDecision {
-                risk_level: RiskLevel::High,
-                label: "DROP",
-            },
-            input,
-            target_name: Some("users".to_string()),
-        });
+    state.sql_modal.begin_confirming_high(
+        AdhocRiskDecision {
+            risk_level: RiskLevel::High,
+            label: "DROP",
+        },
+        Some("users".to_string()),
+    );
+    *state.sql_modal.confirming_high_input_mut().unwrap() = input;
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -350,16 +350,13 @@ fn sql_modal_confirming_high_no_target() {
         .sql_modal
         .editor_mut_for_input()
         .set_content("DROP TABLE users".to_string());
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-            decision: AdhocRiskDecision {
-                risk_level: RiskLevel::High,
-                label: "DROP",
-            },
-            input: TextInputState::default(),
-            target_name: None,
-        });
+    state.sql_modal.begin_confirming_high(
+        AdhocRiskDecision {
+            risk_level: RiskLevel::High,
+            label: "DROP",
+        },
+        None,
+    );
 
     let output = render_to_string(&mut terminal, &mut state);
 

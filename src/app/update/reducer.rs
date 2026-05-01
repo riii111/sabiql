@@ -602,8 +602,11 @@ mod tests {
     mod sql_modal_debounce {
         use super::*;
         use crate::model::shared::text_input::TextInputLike;
-        use crate::model::sql_editor::modal::SqlModalStatus;
         use std::time::Duration;
+
+        fn show_completion_popup(state: &mut AppState) {
+            state.sql_modal.apply_completion_update(&[], 0, true);
+        }
 
         #[test]
         fn sql_modal_input_sets_debounce_state() {
@@ -674,8 +677,8 @@ mod tests {
         fn text_input_preserves_visible_completion_popup() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-            state.sql_modal.completion_mut_for_test().visible = true;
+            state.sql_modal.enter_editing();
+            show_completion_popup(&mut state);
             let now = Instant::now();
 
             reduce(
@@ -712,9 +715,12 @@ mod tests {
         #[test]
         fn completion_next_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion_mut_for_test().candidates =
-                vec![make_candidate("a"), make_candidate("b")];
-            state.sql_modal.completion_mut_for_test().selected_index = 1;
+            state.sql_modal.apply_completion_update(
+                &[make_candidate("a"), make_candidate("b")],
+                0,
+                true,
+            );
+            state.sql_modal.completion_next();
             let now = Instant::now();
 
             let effects = reduce(
@@ -731,9 +737,11 @@ mod tests {
         #[test]
         fn completion_prev_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.completion_mut_for_test().candidates =
-                vec![make_candidate("a"), make_candidate("b")];
-            state.sql_modal.completion_mut_for_test().selected_index = 0;
+            state.sql_modal.apply_completion_update(
+                &[make_candidate("a"), make_candidate("b")],
+                0,
+                true,
+            );
             let now = Instant::now();
 
             let effects = reduce(
@@ -893,7 +901,13 @@ mod tests {
         fn close_keeps_error_info_for_reopen() {
             let mut state = state_with_error();
             state.connection_error.expand_details();
-            state.connection_error.set_scroll_offset_for_test(5);
+            for _ in 0..5 {
+                state.connection_error.scroll_down(10);
+            }
+            assert!(
+                state.connection_error.scroll_offset() > 0,
+                "test setup must create a non-zero scroll offset"
+            );
             let now = Instant::now();
 
             reduce(
@@ -1308,7 +1322,7 @@ mod tests {
         #[test]
         fn metadata_failed_resets_er_waiting_to_idle() {
             let mut state = create_test_state();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             let now = Instant::now();
 
             reduce(
@@ -1403,7 +1417,6 @@ mod tests {
 
     mod connection_setup_validation {
         use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
-        use crate::model::shared::text_input::TextInputState;
         use crate::update::helpers::{validate_all, validate_field};
         use rstest::rstest;
 
@@ -1443,10 +1456,7 @@ mod tests {
 
             validate_field(&mut state, field);
 
-            assert_eq!(
-                state.validation_errors_for_test().contains_key(&field),
-                has_error
-            );
+            assert_eq!(state.has_validation_error(field), has_error);
         }
 
         #[rstest]
@@ -1461,11 +1471,7 @@ mod tests {
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Port)
-            );
+            assert!(state.has_validation_error(ConnectionField::Port));
         }
 
         #[rstest]
@@ -1481,11 +1487,7 @@ mod tests {
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Port)
-            );
+            assert!(state.has_validation_error(ConnectionField::Port));
         }
 
         #[rstest]
@@ -1501,11 +1503,7 @@ mod tests {
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(
-                !state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Port)
-            );
+            assert!(!state.has_validation_error(ConnectionField::Port));
         }
 
         #[rstest]
@@ -1513,56 +1511,32 @@ mod tests {
         #[case(ConnectionField::SslMode)]
         fn optional_fields_never_error(#[case] field: ConnectionField) {
             let mut state = setup_state();
-            state.set_input_for_test(ConnectionField::Password, TextInputState::default());
+            state.input_mut(ConnectionField::Password).unwrap().clear();
 
             validate_field(&mut state, field);
 
-            assert!(!state.validation_errors_for_test().contains_key(&field));
+            assert!(!state.has_validation_error(field));
         }
 
         #[test]
         fn validate_all_checks_all_required_fields() {
             let mut state = setup_state();
-            state.set_input_for_test(ConnectionField::Host, TextInputState::default());
+            state.input_mut(ConnectionField::Host).unwrap().clear();
             state
                 .input_mut(ConnectionField::Port)
                 .unwrap()
                 .set_content("invalid".to_string());
-            state.set_input_for_test(ConnectionField::Database, TextInputState::default());
-            state.set_input_for_test(ConnectionField::User, TextInputState::default());
+            state.input_mut(ConnectionField::Database).unwrap().clear();
+            state.input_mut(ConnectionField::User).unwrap().clear();
 
             validate_all(&mut state);
 
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Host)
-            );
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Port)
-            );
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Database)
-            );
-            assert!(
-                state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::User)
-            );
-            assert!(
-                !state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::Password)
-            );
-            assert!(
-                !state
-                    .validation_errors_for_test()
-                    .contains_key(&ConnectionField::SslMode)
-            );
+            assert!(state.has_validation_error(ConnectionField::Host));
+            assert!(state.has_validation_error(ConnectionField::Port));
+            assert!(state.has_validation_error(ConnectionField::Database));
+            assert!(state.has_validation_error(ConnectionField::User));
+            assert!(!state.has_validation_error(ConnectionField::Password));
+            assert!(!state.has_validation_error(ConnectionField::SslMode));
         }
     }
 
@@ -2494,7 +2468,7 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             state.er_preparation.begin_full_prefetch(1);
             state
                 .er_preparation
@@ -2524,7 +2498,7 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
-            state.er_preparation.set_status_for_test(ErStatus::Waiting);
+            state.er_preparation.start_waiting_run();
             state.er_preparation.begin_full_prefetch(2);
             state
                 .er_preparation

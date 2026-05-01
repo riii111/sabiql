@@ -8,12 +8,11 @@ use harness::{
 
 use app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use app::model::connection::setup::ConnectionField;
-use app::model::er_state::ErStatus;
 use app::model::shared::focused_pane::FocusedPane;
 use app::model::shared::input_mode::InputMode;
 use app::model::shared::text_input::TextInputState;
 use app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
-use app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus, SqlModalTab};
+use app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalTab};
 use app::policy::json::json_diff::compute_json_diff;
 use app::policy::write::write_guardrails::{
     AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
