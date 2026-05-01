@@ -22,11 +22,9 @@ use app::cmd::effect::Effect;
 use app::cmd::render_schedule::next_animation_deadline;
 use app::cmd::runner::EffectRunner;
 use app::model::app_state::AppState;
-use app::model::shared::db_capabilities::DbCapabilities;
 use app::model::shared::input_mode::InputMode;
 use app::ports::outbound::{
-    ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
-    ServiceFileError,
+    ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError,
 };
 use app::services::AppServices;
 use app::update::action::Action;
@@ -94,7 +92,6 @@ async fn main() -> Result<()> {
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
-    let db_capabilities: DbCapabilities = adapter_registry.capabilities().into();
     let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
         Arc::new(PgServiceFileReader::new());
 
@@ -117,7 +114,6 @@ async fn main() -> Result<()> {
     let services = AppServices {
         ddl_generator: Arc::clone(&adapter_registry) as _,
         sql_dialect: Arc::clone(&adapter_registry) as _,
-        db_capabilities,
     };
 
     let mut state = AppState::new(project_name);

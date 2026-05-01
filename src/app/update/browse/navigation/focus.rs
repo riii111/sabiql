@@ -11,7 +11,7 @@ use crate::update::action::Action;
 pub fn reduce(
     state: &mut AppState,
     action: &Action,
-    services: &AppServices,
+    _services: &AppServices,
     _now: Instant,
 ) -> Option<Vec<Effect>> {
     match action {
@@ -48,16 +48,18 @@ pub fn reduce(
         }
         Action::InspectorNextTab => {
             state.ui.set_inspector_tab(
-                services
-                    .db_capabilities
+                state
+                    .session
+                    .active_db_capabilities()
                     .next_inspector_tab(state.ui.inspector_tab()),
             );
             Some(vec![])
         }
         Action::InspectorPrevTab => {
             state.ui.set_inspector_tab(
-                services
-                    .db_capabilities
+                state
+                    .session
+                    .active_db_capabilities()
                     .prev_inspector_tab(state.ui.inspector_tab()),
             );
             Some(vec![])
@@ -119,15 +121,22 @@ mod tests {
         use super::*;
 
         fn services_with_two_tabs() -> AppServices {
-            let mut services = AppServices::stub();
-            services.db_capabilities =
-                DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
-            services
+            AppServices::stub()
+        }
+
+        fn use_two_tabs(state: &mut AppState) {
+            state
+                .session
+                .set_active_db_capabilities_for_test(DbCapabilities::new(
+                    true,
+                    vec![InspectorTab::Info, InspectorTab::Columns],
+                ));
         }
 
         #[test]
         fn next_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
+            use_two_tabs(&mut state);
             state.ui.set_inspector_tab(InspectorTab::Info);
 
             reduce_navigation(
@@ -143,6 +152,7 @@ mod tests {
         #[test]
         fn prev_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
+            use_two_tabs(&mut state);
             state.ui.set_inspector_tab(InspectorTab::Info);
 
             reduce_navigation(

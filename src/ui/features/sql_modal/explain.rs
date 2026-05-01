@@ -17,11 +17,11 @@ pub fn render(
     frame: &mut Frame,
     area: Rect,
     state: &AppState,
-    services: &AppServices,
+    _services: &AppServices,
     now: Instant,
     theme: &ThemePalette,
 ) -> u16 {
-    if !services.db_capabilities.supports_explain() {
+    if !state.session.active_db_capabilities().supports_explain() {
         let placeholder = Line::from(Span::styled(
             " EXPLAIN is unavailable for this database",
             Style::default().fg(theme.semantic.text.placeholder),

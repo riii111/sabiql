@@ -7,6 +7,7 @@ use crate::model::browse::query_execution::{PaginationState, QueryExecution};
 use crate::model::browse::result_history::ResultHistory;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::connection::state::ConnectionState;
+use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::inspector_tab::InspectorTab;
 
 // # Invariants
@@ -22,7 +23,7 @@ use crate::model::shared::inspector_tab::InspectorTab;
 // `set_metadata`, `set_table_detail_raw`, `set_connection_state`,
 // `set_metadata_state` are `pub(crate)` for reducers where the aggregate API
 // does not cover the exact semantics needed (e.g. ER refresh, reload).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
     connection_state: ConnectionState,
@@ -41,8 +42,29 @@ pub struct BrowseSession {
     active_connection_id: Option<ConnectionId>,
     active_connection_name: Option<String>,
     active_database_type: Option<DatabaseType>,
+    active_db_capabilities: DbCapabilities,
     read_only: bool,
     is_reloading: bool,
+}
+
+impl Default for BrowseSession {
+    fn default() -> Self {
+        Self {
+            connection_state: ConnectionState::default(),
+            metadata_state: MetadataState::default(),
+            selected_table_key: None,
+            table_detail: None,
+            selection_generation: 0,
+            metadata: None,
+            dsn: None,
+            active_connection_id: None,
+            active_connection_name: None,
+            active_database_type: None,
+            active_db_capabilities: DbCapabilities::postgres_like(),
+            read_only: false,
+            is_reloading: false,
+        }
+    }
 }
 
 impl BrowseSession {
@@ -101,6 +123,7 @@ impl BrowseSession {
         self.active_connection_id = Some(id.clone());
         self.active_connection_name = Some(name.to_string());
         self.active_database_type = Some(database_type);
+        self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
     }
 
@@ -209,6 +232,7 @@ impl BrowseSession {
         self.active_connection_id = None;
         self.active_connection_name = None;
         self.active_database_type = None;
+        self.active_db_capabilities = DbCapabilities::postgres_like();
         self.read_only = false;
         self.is_reloading = false;
         query.pagination.reset();
@@ -261,6 +285,10 @@ impl BrowseSession {
 
     pub fn active_database_type(&self) -> Option<DatabaseType> {
         self.active_database_type
+    }
+
+    pub fn active_db_capabilities(&self) -> &DbCapabilities {
+        &self.active_db_capabilities
     }
 
     pub fn is_read_only(&self) -> bool {
@@ -333,6 +361,15 @@ impl BrowseSession {
     #[doc(hidden)]
     pub fn set_active_database_type_for_test(&mut self, database_type: Option<DatabaseType>) {
         self.active_database_type = database_type;
+        self.active_db_capabilities = database_type
+            .map(DbCapabilities::for_database_type)
+            .unwrap_or_else(DbCapabilities::postgres_like);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_active_db_capabilities_for_test(&mut self, capabilities: DbCapabilities) {
+        self.active_db_capabilities = capabilities;
     }
 }
 

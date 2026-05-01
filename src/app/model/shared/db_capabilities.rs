@@ -1,3 +1,4 @@
+use crate::domain::connection::DatabaseType;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::ports::outbound::{DatabaseCapabilities, InspectorFeature};
@@ -23,6 +24,26 @@ impl DbCapabilities {
             ],
         )
         .into()
+    }
+
+    pub fn sqlite_like() -> Self {
+        DatabaseCapabilities::new(
+            false,
+            vec![
+                InspectorFeature::Info,
+                InspectorFeature::Columns,
+                InspectorFeature::Indexes,
+                InspectorFeature::ForeignKeys,
+            ],
+        )
+        .into()
+    }
+
+    pub fn for_database_type(database_type: DatabaseType) -> Self {
+        match database_type {
+            DatabaseType::PostgreSQL => Self::postgres_like(),
+            DatabaseType::SQLite => Self::sqlite_like(),
+        }
     }
 
     pub fn supports_explain(&self) -> bool {

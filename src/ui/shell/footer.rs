@@ -77,7 +77,7 @@ impl Footer {
     // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
     fn get_context_hints(
         state: &AppState,
-        services: &AppServices,
+        _services: &AppServices,
     ) -> Vec<(&'static str, &'static str)> {
         use crate::app::model::shared::focused_pane::FocusedPane;
 
@@ -144,8 +144,9 @@ impl Footer {
                     list
                 } else {
                     // Actions → Navigation → Help → Close/Cancel → Quit
-                    let active_inspector_tab = services
-                        .db_capabilities
+                    let active_inspector_tab = state
+                        .session
+                        .active_db_capabilities()
                         .normalize_inspector_tab(state.ui.inspector_tab());
                     let mut list = vec![
                         GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
@@ -189,7 +190,12 @@ impl Footer {
                         }
                     }
                     if state.ui.focused_pane() == FocusedPane::Inspector
-                        && services.db_capabilities.supported_inspector_tabs().len() > 1
+                        && state
+                            .session
+                            .active_db_capabilities()
+                            .supported_inspector_tabs()
+                            .len()
+                            > 1
                     {
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
                     }
@@ -245,7 +251,7 @@ impl Footer {
                         SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
                         SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
                     ];
-                    if services.db_capabilities.supports_explain()
+                    if state.session.active_db_capabilities().supports_explain()
                         && state.sql_modal.status() == &SqlModalStatus::Editing
                     {
                         hints.insert(
@@ -384,9 +390,11 @@ mod tests {
         #[case] db_capabilities: DbCapabilities,
         #[case] expected_visible: bool,
     ) {
-        let state = inspector_state();
-        let mut services = AppServices::stub();
-        services.db_capabilities = db_capabilities;
+        let mut state = inspector_state();
+        let services = AppServices::stub();
+        state
+            .session
+            .set_active_db_capabilities_for_test(db_capabilities);
 
         let hints = Footer::get_context_hints(&state, &services);
 

@@ -24,7 +24,7 @@ pub fn reduce_sql_modal(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    services: &crate::services::AppServices,
+    _services: &crate::services::AppServices,
 ) -> Option<Vec<Effect>> {
     match action {
         // Completion navigation
@@ -363,8 +363,9 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
         Action::SqlModalYank => {
-            let active_tab = services
-                .db_capabilities
+            let active_tab = state
+                .session
+                .active_db_capabilities()
                 .normalize_sql_modal_tab(state.sql_modal.active_tab());
             let content = match active_tab {
                 SqlModalTab::Plan => state.explain.plan_text().map(str::to_string),

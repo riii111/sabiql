@@ -36,7 +36,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
     }
 }
 
-fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -> Action {
+fn handle_key_event(combo: KeyCombo, state: &AppState, _services: &AppServices) -> Action {
     match state.input_mode() {
         InputMode::Normal => normal::handle_normal_mode(combo, state),
         InputMode::CommandLine => editors::handle_command_line_mode(combo),
@@ -51,8 +51,9 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
                 combo,
                 completion_visible,
                 state.sql_modal.status(),
-                services
-                    .db_capabilities
+                state
+                    .session
+                    .active_db_capabilities()
                     .normalize_sql_modal_tab(state.sql_modal.active_tab()),
                 state.ui.key_sequence().pending_prefix(),
             )
@@ -123,11 +124,10 @@ mod tests {
                 .sql_modal
                 .set_active_tab(crate::model::sql_editor::modal::SqlModalTab::Plan);
 
-            let mut services = AppServices::stub();
-            services.db_capabilities = crate::model::shared::db_capabilities::DbCapabilities::new(
-                false,
-                vec![crate::model::shared::inspector_tab::InspectorTab::Info],
-            );
+            let services = AppServices::stub();
+            state
+                .session
+                .set_active_database_type_for_test(Some(crate::domain::DatabaseType::SQLite));
 
             let result = handle_key_event(combo(Key::Char('i')), &state, &services);
 

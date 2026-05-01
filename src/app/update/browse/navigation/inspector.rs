@@ -9,11 +9,12 @@ use super::inspector_max_scroll;
 
 fn inspector_page_scroll_delta(
     state: &AppState,
-    services: &AppServices,
+    _services: &AppServices,
     amount: ScrollAmount,
 ) -> Option<usize> {
-    let visible = match services
-        .db_capabilities
+    let visible = match state
+        .session
+        .active_db_capabilities()
         .normalize_inspector_tab(state.ui.inspector_tab())
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
@@ -275,15 +276,22 @@ mod tests {
         }
 
         fn services_without_ddl() -> AppServices {
-            let mut services = AppServices::stub();
-            services.db_capabilities =
-                DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
-            services
+            AppServices::stub()
+        }
+
+        fn use_services_without_ddl(state: &mut AppState) {
+            state
+                .session
+                .set_active_db_capabilities_for_test(DbCapabilities::new(
+                    true,
+                    vec![InspectorTab::Info, InspectorTab::Columns],
+                ));
         }
 
         #[test]
         fn inspector_half_page_scroll_normalizes_unsupported_ddl_tab() {
             let mut state = state_with_table_detail(20);
+            use_services_without_ddl(&mut state);
             let services = services_without_ddl();
             state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Ddl);
@@ -310,6 +318,7 @@ mod tests {
         #[test]
         fn inspector_full_page_scroll_normalizes_unsupported_ddl_tab() {
             let mut state = state_with_table_detail(20);
+            use_services_without_ddl(&mut state);
             let services = services_without_ddl();
             state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Ddl);
