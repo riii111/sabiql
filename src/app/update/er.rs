@@ -236,6 +236,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(5)));
             advance_er_run_id(&mut state, 3);
+            state.er_preparation.mark_idle();
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
