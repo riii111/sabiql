@@ -153,16 +153,16 @@ pub struct UiState {
     theme_id: ThemeId,
     focused_pane: FocusedPane,
     focus_mode: FocusMode,
-    pub explorer_selected: usize,
-    pub explorer_scroll_offset: usize,
-    pub explorer_horizontal_offset: usize,
+    explorer_selected: usize,
+    explorer_scroll_offset: usize,
+    explorer_horizontal_offset: usize,
     // Default::default() leaves this at 0 until the first render updates it, so
     // scroll_max_offset may temporarily return the full content width.
-    pub explorer_content_width: usize,
+    explorer_content_width: usize,
 
-    pub connection_list_selected: usize,
-    pub connection_list_scroll_offset: usize,
-    pub connection_list_pane_height: u16,
+    connection_list_selected: usize,
+    connection_list_scroll_offset: usize,
+    connection_list_pane_height: u16,
 
     pub table_picker: PickerState,
 
@@ -235,6 +235,10 @@ impl UiState {
         self.explorer_scroll_offset = offset;
     }
 
+    pub fn set_explorer_selected_raw(&mut self, selected: usize) {
+        self.explorer_selected = selected;
+    }
+
     pub fn set_explorer_horizontal_offset(&mut self, offset: usize) {
         self.explorer_horizontal_offset = offset;
     }
@@ -261,6 +265,14 @@ impl UiState {
 
     pub fn set_connection_list_pane_height(&mut self, height: u16) {
         self.connection_list_pane_height = height;
+    }
+
+    pub fn set_connection_list_selected_raw(&mut self, selected: usize) {
+        self.connection_list_selected = selected;
+    }
+
+    pub fn set_connection_list_scroll_offset(&mut self, offset: usize) {
+        self.connection_list_scroll_offset = offset;
     }
 
     pub fn table_picker(&self) -> &PickerState {

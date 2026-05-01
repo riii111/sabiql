@@ -724,7 +724,7 @@ mod tests {
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert!(state.session.selected_table_key().is_none());
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]
@@ -742,7 +742,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.query.pagination.table(), "users");
-            assert_eq!(state.ui.explorer_selected, 1);
+            assert_eq!(state.ui.explorer_selected(), 1);
             assert!(
                 effects
                     .iter()
@@ -766,7 +766,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]

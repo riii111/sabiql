@@ -111,7 +111,7 @@ mod tests {
         state
             .session
             .set_active_connection_id_for_test(Some(current_id.clone()));
-        state.ui.explorer_selected = 5;
+        state.ui.set_explorer_selected_raw(5);
         state.ui.inspector_tab = InspectorTab::Indexes;
 
         let action = create_switch_action(&new_id, "new_db");
@@ -138,7 +138,7 @@ mod tests {
         let action = create_switch_action(&target_id, "cached_db");
         reduce(&mut state, &action, Instant::now(), &services);
 
-        assert_eq!(state.ui.explorer_selected, 42);
+        assert_eq!(state.ui.explorer_selected(), 42);
         assert_eq!(state.ui.inspector_tab, InspectorTab::ForeignKeys);
         assert_eq!(
             state.session.active_database_type(),
@@ -220,7 +220,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();
         let services = AppServices::stub();
-        state.ui.explorer_selected = 7;
+        state.ui.set_explorer_selected_raw(7);
         state.connection_caches.save(
             &target_id,
             ConnectionCache {
@@ -244,7 +244,7 @@ mod tests {
                 .any(|e| matches!(e, Effect::FetchMetadata { .. }))
         );
         assert!(state.connection_caches.get(&target_id).is_none());
-        assert_eq!(state.ui.explorer_selected, 0);
+        assert_eq!(state.ui.explorer_selected(), 0);
         assert_eq!(
             state.session.active_database_type(),
             Some(DatabaseType::SQLite)

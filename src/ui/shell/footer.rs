@@ -316,7 +316,7 @@ impl Footer {
                 use idx::connection_selector as cs;
                 let is_service_selected = crate::app::model::connection::list::is_service_selected(
                     state.connection_list_items(),
-                    state.ui.connection_list_selected,
+                    state.ui.connection_list_selected(),
                 );
                 let mut list = vec![r[cs::CONFIRM].as_hint(), r[cs::NEW].as_hint()];
                 if !is_service_selected {

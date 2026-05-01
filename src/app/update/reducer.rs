@@ -102,7 +102,7 @@ fn reduce_inner(
                 }
                 let table = state
                     .tables()
-                    .get(state.ui.explorer_selected)
+                    .get(state.ui.explorer_selected())
                     .copied()
                     .cloned();
                 if let Some(table) = table {
@@ -242,12 +242,12 @@ mod tests {
         fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
             let mut state = create_test_state();
             state.ui.set_focused_pane(FocusedPane::Explorer);
-            state.ui.explorer_selected = 0;
+            state.ui.set_explorer_selected_raw(0);
             let now = Instant::now();
 
             reduce(&mut state, action, now, &AppServices::stub());
 
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
     }
 
@@ -779,7 +779,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_empty_tables_selects_none() {
             let mut state = create_test_state();
-            state.ui.explorer_selected = 5;
+            state.ui.set_explorer_selected_raw(5);
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -796,13 +796,13 @@ mod tests {
             );
 
             assert!(state.session.metadata().is_some());
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]
         fn metadata_loaded_with_tables_selects_first() {
             let mut state = create_test_state();
-            state.ui.explorer_selected = 3;
+            state.ui.set_explorer_selected_raw(3);
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -824,7 +824,7 @@ mod tests {
             );
 
             assert!(state.session.metadata().is_some());
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]
@@ -2166,7 +2166,7 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
-            state.ui.explorer_selected = 5;
+            state.ui.set_explorer_selected_raw(5);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2209,7 +2209,7 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
-            state.ui.explorer_selected = 3;
+            state.ui.set_explorer_selected_raw(3);
 
             let cached = crate::model::connection::cache::ConnectionCache {
                 explorer_selected: 10,
@@ -2239,7 +2239,7 @@ mod tests {
 
             assert_eq!(state.session.active_connection_id().cloned(), Some(conn_b));
             assert!(state.session.connection_state().is_connected());
-            assert_eq!(state.ui.explorer_selected, 10);
+            assert_eq!(state.ui.explorer_selected(), 10);
             assert_eq!(state.ui.inspector_tab, InspectorTab::Indexes);
             assert_eq!(
                 state.session.metadata().as_ref().unwrap().database_name,
@@ -2565,7 +2565,7 @@ mod tests {
             // ConfirmSelection from Normal mode (explorer focused)
             state.modal.set_mode(InputMode::Normal);
             state.ui.set_focused_pane(FocusedPane::Explorer);
-            state.ui.explorer_selected = 0;
+            state.ui.set_explorer_selected_raw(0);
             let effects = reduce(
                 &mut state,
                 Action::ConfirmSelection,

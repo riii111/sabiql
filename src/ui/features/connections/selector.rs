@@ -24,7 +24,7 @@ impl ConnectionSelector {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> u16 {
         let is_service_selected = crate::app::model::connection::list::is_service_selected(
             state.connection_list_items(),
-            state.ui.connection_list_selected,
+            state.ui.connection_list_selected(),
         );
         let hint = Self::build_hint_string(is_service_selected);
         let (_outer, inner) = render_modal(
@@ -171,8 +171,8 @@ pub fn render_connection_list(
         .highlight_symbol("> ");
 
     let mut list_state = ListState::default()
-        .with_selected(Some(state.ui.connection_list_selected))
-        .with_offset(state.ui.connection_list_scroll_offset);
+        .with_selected(Some(state.ui.connection_list_selected()))
+        .with_offset(state.ui.connection_list_scroll_offset());
     frame.render_stateful_widget(list, area, &mut list_state);
 
     if !state.connection_list_items().is_empty() {
@@ -180,7 +180,7 @@ pub fn render_connection_list(
         let viewport_size = area.height as usize;
 
         if total_items > viewport_size {
-            let scroll_offset = state.ui.connection_list_scroll_offset;
+            let scroll_offset = state.ui.connection_list_scroll_offset();
 
             render_vertical_scroll_indicator_bar(
                 frame,

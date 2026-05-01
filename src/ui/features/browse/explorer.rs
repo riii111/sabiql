@@ -49,7 +49,7 @@ impl Explorer {
             .max()
             .unwrap_or(0);
         let max_offset = scroll_max_offset(max_name_width, content_width);
-        let h_offset = state.ui.explorer_horizontal_offset.min(max_offset);
+        let h_offset = state.ui.explorer_horizontal_offset().min(max_offset);
 
         let items: Vec<ListItem> = if has_cached_data {
             table_names
@@ -89,13 +89,13 @@ impl Explorer {
             .highlight_symbol("> ");
 
         let selected = if has_cached_data {
-            Some(state.ui.explorer_selected)
+            Some(state.ui.explorer_selected())
         } else {
             None
         };
         let mut list_state = ListState::default()
             .with_selected(selected)
-            .with_offset(state.ui.explorer_scroll_offset);
+            .with_offset(state.ui.explorer_scroll_offset());
         frame.render_stateful_widget(list, area, &mut list_state);
 
         // Render scrollbars
@@ -104,7 +104,7 @@ impl Explorer {
             let viewport_size = area.height.saturating_sub(1) as usize; // Reserve for horizontal scrollbar
 
             if total_items > viewport_size {
-                let scroll_offset = state.ui.explorer_scroll_offset;
+                let scroll_offset = state.ui.explorer_scroll_offset();
 
                 use crate::primitives::atoms::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,
