@@ -61,7 +61,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::StageRowForDelete => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: delete operations are disabled".to_string(),
                     now,
@@ -104,7 +104,7 @@ mod tests {
             current_page: usize,
         ) -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.session.set_selection_generation(7);
             state.query.pagination.current_page = current_page;
             state.query.pagination.schema = "public".to_string();
@@ -227,7 +227,7 @@ mod tests {
         fn read_only_blocks_stage_row_for_delete() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.result_interaction.activate_cell(0, 0);
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             let effects = reduce(&mut state, &Action::StageRowForDelete, Instant::now()).unwrap();
 

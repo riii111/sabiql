@@ -181,7 +181,7 @@ pub fn reduce(
         }
 
         Action::OpenWritePreviewConfirm(preview) => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
@@ -228,19 +228,19 @@ pub fn reduce(
         }
 
         Action::ExecuteWrite(query) => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
                 );
                 return Some(vec![]);
             }
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn() {
                 state.query.begin_running(now);
                 Some(vec![Effect::ExecuteWrite {
-                    dsn: dsn.clone(),
+                    dsn: dsn.to_string(),
                     query: query.clone(),
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 state
@@ -274,18 +274,18 @@ pub fn reduce(
                     state.result_interaction.clear_cell_edit();
                     state.modal.set_mode(InputMode::Normal);
 
-                    if let Some(dsn) = &state.session.dsn {
+                    if let Some(dsn) = state.session.dsn() {
                         let page = state.query.pagination.current_page;
                         state.query.begin_running(now);
                         Some(vec![Effect::ExecutePreview {
-                            dsn: dsn.clone(),
+                            dsn: dsn.to_string(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
                             generation: state.session.selection_generation(),
                             limit: PREVIEW_PAGE_SIZE,
                             offset: page * PREVIEW_PAGE_SIZE,
                             target_page: page,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         Some(vec![])
@@ -332,18 +332,18 @@ pub fn reduce(
                         PostDeleteRowSelection::Select,
                     ));
 
-                    if let Some(dsn) = &state.session.dsn {
+                    if let Some(dsn) = state.session.dsn() {
                         state.query.begin_running(now);
                         state.query.pagination.reached_end = false;
                         Some(vec![Effect::ExecutePreview {
-                            dsn: dsn.clone(),
+                            dsn: dsn.to_string(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
                             generation: state.session.selection_generation(),
                             limit: PREVIEW_PAGE_SIZE,
                             offset: target_page * PREVIEW_PAGE_SIZE,
                             target_page,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         Some(vec![])
@@ -389,7 +389,7 @@ mod tests {
 
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.query.set_current_result(editable_preview_result());
             state
                 .session
@@ -491,7 +491,7 @@ mod tests {
 
         fn editable_state_with_jsonb() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .query
                 .set_current_result(editable_preview_result_with_jsonb());

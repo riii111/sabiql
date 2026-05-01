@@ -97,7 +97,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::JsonbEnterEdit => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -109,7 +109,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::JsonbAppendInsert => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -751,7 +751,7 @@ mod tests {
         fn enter_edit_blocked_in_read_only_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
@@ -763,7 +763,7 @@ mod tests {
         fn append_insert_blocked_in_read_only_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            state.session.read_only = true;
+            state.session.enable_read_only();
             let cursor_before = state.jsonb_detail.editor().cursor();
 
             reduce(&mut state, &Action::JsonbAppendInsert, Instant::now());

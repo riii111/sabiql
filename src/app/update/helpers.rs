@@ -113,7 +113,7 @@ pub fn build_bulk_delete_preview(
     if state.result_interaction.staged_delete_rows().is_empty() {
         return Err(EditGuardrailError::NoRowsStagedForDeletion);
     }
-    if state.session.dsn.is_none() {
+    if state.session.dsn().is_none() {
         return Err(EditGuardrailError::NoActiveConnection);
     }
     if state.query.status() != crate::model::browse::query_execution::QueryStatus::Idle {

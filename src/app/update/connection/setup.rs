@@ -14,7 +14,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
     match action {
         Action::OpenModal(ModalKind::ConnectionSetup) => {
             state.connection_setup.reset();
-            if !state.connections().is_empty() || state.session.dsn.is_some() {
+            if !state.connections().is_empty() || state.session.dsn().is_some() {
                 state.connection_setup.set_first_run(false);
             }
             state.modal.set_mode(InputMode::ConnectionSetup);
@@ -190,13 +190,15 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state
                 .session
                 .set_active_connection(id, name, *database_type, dsn);
-            state.session.read_only = false;
+            state.session.disable_read_only();
             if *database_type == DatabaseType::SQLite {
                 state.session.mark_disconnected();
                 return Some(vec![]);
             }
             state.session.begin_connecting(dsn);
-            Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
+            Some(vec![Effect::FetchMetadata {
+                dsn: dsn.to_string(),
+            }])
         }
         Action::ConnectionSaveFailed(e) => {
             if !state.session.connection_state().is_connected() {
@@ -402,7 +404,7 @@ mod tests {
         #[test]
         fn save_completed_resets_read_only() {
             let mut state = AppState::new("test".to_string());
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             let action = Action::ConnectionSaveCompleted(ConnectionTarget {
                 id: crate::domain::ConnectionId::new(),
@@ -412,7 +414,7 @@ mod tests {
             });
             reduce(&mut state, &action, Instant::now());
 
-            assert!(!state.session.read_only);
+            assert!(!state.session.is_read_only());
         }
 
         #[test]
@@ -428,9 +430,9 @@ mod tests {
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.session.dsn, Some("sqlite:///tmp/app.db".to_string()));
+            assert_eq!(state.session.dsn(), Some("sqlite:///tmp/app.db"));
             assert_eq!(
-                state.session.active_database_type,
+                state.session.active_database_type(),
                 Some(DatabaseType::SQLite)
             );
             assert!(state.session.connection_state().is_not_connected());
@@ -471,7 +473,7 @@ mod tests {
         #[test]
         fn is_first_run_false_when_already_connected() {
             let mut state = AppState::new("test".to_string());
-            state.session.dsn = Some("postgres://localhost/db".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/db");
 
             reduce(
                 &mut state,

@@ -21,7 +21,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
     if !tag.needs_refresh() {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn.clone() else {
+    let Some(dsn) = state.session.dsn().map(str::to_string) else {
         return vec![];
     };
 
@@ -31,20 +31,22 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
         state.sql_modal.reset_prefetch();
         state.session.set_table_detail_raw(None);
 
-        effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
+        effects.push(Effect::CacheInvalidate {
+            dsn: dsn.to_string(),
+        });
         effects.push(Effect::ClearCompletionEngineCache);
         effects.push(Effect::FetchMetadata { dsn });
     } else if !state.query.pagination.table.is_empty() {
         let page = state.query.pagination.current_page;
         effects.push(Effect::ExecutePreview {
-            dsn,
+            dsn: dsn.to_string(),
             schema: state.query.pagination.schema.clone(),
             table: state.query.pagination.table.clone(),
             generation: state.session.selection_generation(),
             limit: PREVIEW_PAGE_SIZE,
             offset: page * PREVIEW_PAGE_SIZE,
             target_page: page,
-            read_only: state.session.read_only,
+            read_only: state.session.is_read_only(),
         });
     }
 
@@ -214,7 +216,7 @@ pub fn reduce(
             table,
             generation,
         }) => {
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn() {
                 state.query.begin_running(now);
 
                 state.query.pagination.reset();
@@ -237,14 +239,14 @@ pub fn reduce(
                 state.query.pagination.total_rows_estimate = row_estimate;
 
                 Some(vec![Effect::ExecutePreview {
-                    dsn: dsn.clone(),
+                    dsn: dsn.to_string(),
                     schema: schema.clone(),
                     table: table.clone(),
                     generation: *generation,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: 0,
                     target_page: 0,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 Some(vec![])
@@ -252,12 +254,12 @@ pub fn reduce(
         }
 
         Action::ExecuteAdhoc(query) => {
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn() {
                 state.query.begin_running(now);
                 Some(vec![Effect::ExecuteAdhoc {
-                    dsn: dsn.clone(),
+                    dsn: dsn.to_string(),
                     query: query.clone(),
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 Some(vec![])

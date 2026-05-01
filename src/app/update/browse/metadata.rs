@@ -69,21 +69,21 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                     state.ui.set_explorer_selection(Some(idx));
                     // Refresh preview and detail: DDL or reload may have changed
                     // data/schema even though the table still exists.
-                    if let Some(dsn) = &state.session.dsn {
+                    if let Some(dsn) = state.session.dsn() {
                         let page = state.query.pagination.current_page;
                         let generation = state.session.selection_generation();
                         effects.push(Effect::ExecutePreview {
-                            dsn: dsn.clone(),
+                            dsn: dsn.to_string(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
                             generation,
                             limit: PREVIEW_PAGE_SIZE,
                             offset: page * PREVIEW_PAGE_SIZE,
                             target_page: page,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         });
                         effects.push(Effect::FetchTableDetail {
-                            dsn: dsn.clone(),
+                            dsn: dsn.to_string(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
                             generation,
@@ -104,9 +104,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             state.connection_error.clear();
 
-            if state.session.is_reloading {
+            if state.session.is_reloading() {
                 state.messages.set_success_at("Reloaded!".to_string(), now);
-                state.session.is_reloading = false;
+                state.session.finish_reload();
             }
 
             if state.modal.active_mode() == InputMode::SqlModal
@@ -153,7 +153,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::LoadMetadata => {
-            if let Some(dsn) = state.session.dsn.clone() {
+            if let Some(dsn) = state.session.dsn().map(str::to_string) {
                 state.session.begin_metadata_refresh();
                 Some(vec![Effect::FetchMetadata { dsn }])
             } else {
@@ -165,9 +165,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             table,
             generation,
         }) => {
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn() {
                 Some(vec![Effect::FetchTableDetail {
-                    dsn: dsn.clone(),
+                    dsn: dsn.to_string(),
                     schema: schema.clone(),
                     table: table.clone(),
                     generation: *generation,
@@ -178,7 +178,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::ReloadMetadata => {
-            if let Some(dsn) = state.session.dsn.clone() {
+            if let Some(dsn) = state.session.dsn().map(str::to_string) {
                 state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();
@@ -189,7 +189,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.messages.expires_at = None;
 
                 Some(vec![Effect::Sequence(vec![
-                    Effect::CacheInvalidate { dsn: dsn.clone() },
+                    Effect::CacheInvalidate {
+                        dsn: dsn.to_string(),
+                    },
                     Effect::ClearCompletionEngineCache,
                     Effect::FetchMetadata { dsn },
                 ])])
@@ -353,9 +355,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 .fetching_tables
                 .insert(qualified_name.clone());
 
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn() {
                 Some(vec![Effect::PrefetchTableDetail {
-                    dsn: dsn.clone(),
+                    dsn: dsn.to_string(),
                     schema: schema.clone(),
                     table: table.clone(),
                 }])
@@ -460,7 +462,7 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.dsn = Some(dsn.to_string());
+        state.session.set_dsn_for_test(dsn);
         state
     }
 

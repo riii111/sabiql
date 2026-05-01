@@ -48,7 +48,9 @@ fn connection_selector_with_multiple_connections() {
 
     let (active_id, connections) = three_connections();
     state.set_connections(connections);
-    state.session.active_connection_id = Some(active_id);
+    state
+        .session
+        .set_active_connection_id_for_test(Some(active_id));
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 
@@ -82,7 +84,9 @@ fn connection_selector_with_service_entries() {
             },
         ],
     );
-    state.session.active_connection_id = Some(active_id);
+    state
+        .session
+        .set_active_connection_id_for_test(Some(active_id));
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 
@@ -142,8 +146,11 @@ fn connection_selector_with_active_service() {
         },
     ]);
     // Set active connection to the first service entry
-    state.session.active_connection_id =
-        Some(ConnectionId::from_string("service:dev-local".to_string()));
+    state
+        .session
+        .set_active_connection_id_for_test(Some(ConnectionId::from_string(
+            "service:dev-local".to_string(),
+        )));
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 

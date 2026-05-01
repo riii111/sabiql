@@ -38,7 +38,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            let Some(dsn) = state.session.dsn.clone() else {
+            let Some(dsn) = state.session.dsn().map(str::to_string) else {
                 state.set_error("No active connection".to_string());
                 return Some(vec![]);
             };
@@ -53,7 +53,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             state.set_success("Checking for schema changes...".to_string());
 
             Some(vec![Effect::SmartErRefresh {
-                dsn,
+                dsn: dsn.to_string(),
                 run_id: state.er_preparation.run_id,
             }])
         }
@@ -194,7 +194,7 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.dsn = Some(dsn.to_string());
+        state.session.set_dsn_for_test(dsn);
         state
     }
 

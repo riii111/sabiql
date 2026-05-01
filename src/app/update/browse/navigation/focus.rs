@@ -34,7 +34,7 @@ pub fn reduce(
             Some(vec![])
         }
         Action::ToggleReadOnly => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state.confirm_dialog.open(
                     "Disable Read-Only",
                     "Switch to read-write mode? Write operations will be allowed.",
@@ -42,7 +42,7 @@ pub fn reduce(
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
             } else {
-                state.session.read_only = true;
+                state.session.enable_read_only();
             }
             Some(vec![])
         }
@@ -77,7 +77,7 @@ mod tests {
         #[test]
         fn rw_to_ro_switches_immediately() {
             let mut state = AppState::new("test".to_string());
-            assert!(!state.session.read_only);
+            assert!(!state.session.is_read_only());
 
             reduce_navigation(
                 &mut state,
@@ -86,14 +86,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.session.read_only);
+            assert!(state.session.is_read_only());
             assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]
         fn ro_to_rw_opens_confirm_dialog() {
             let mut state = AppState::new("test".to_string());
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             reduce_navigation(
                 &mut state,
@@ -102,7 +102,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.session.read_only);
+            assert!(state.session.is_read_only());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
                 state.confirm_dialog.intent(),

@@ -130,7 +130,7 @@ pub fn render_connection_list(
     state: &AppState,
     theme: &ThemePalette,
 ) -> u16 {
-    let active_id = state.session.active_connection_id.as_ref();
+    let active_id = state.session.active_connection_id();
 
     // highlight_symbol "> " takes 2 columns
     let content_width = area.width.saturating_sub(2) as usize;

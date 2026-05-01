@@ -50,7 +50,7 @@ pub(crate) async fn run(
                     Ok(()) => {
                         tx.blocking_send(Action::ConnectionSaveCompleted(ConnectionTarget {
                             id,
-                            dsn,
+                            dsn: dsn.clone(),
                             name,
                             database_type,
                         }))
@@ -74,7 +74,7 @@ pub(crate) async fn run(
                             Ok(()) => {
                                 tx.send(Action::ConnectionSaveCompleted(ConnectionTarget {
                                     id,
-                                    dsn,
+                                    dsn: dsn.clone(),
                                     name,
                                     database_type,
                                 }))
@@ -170,7 +170,7 @@ pub(crate) async fn run(
                 action_tx
                     .send(Action::SwitchConnection(ConnectionTarget {
                         id,
-                        dsn,
+                        dsn: dsn.clone(),
                         name,
                         database_type,
                     }))
@@ -188,7 +188,7 @@ pub(crate) async fn run(
                 action_tx
                     .send(Action::SwitchConnection(ConnectionTarget {
                         id,
-                        dsn,
+                        dsn: dsn.clone(),
                         name,
                         database_type: DatabaseType::PostgreSQL,
                     }))

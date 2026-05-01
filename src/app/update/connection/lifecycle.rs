@@ -22,7 +22,7 @@ fn reset_for_new_connection(
     state
         .session
         .set_active_connection(id, name, database_type, dsn);
-    state.session.read_only = false;
+    state.session.disable_read_only();
 }
 
 pub fn reduce(
@@ -36,10 +36,10 @@ pub fn reduce(
             if state.session.connection_state().is_not_connected()
                 && state.modal.active_mode() == InputMode::Normal
             {
-                if state.session.active_database_type == Some(DatabaseType::SQLite) {
+                if state.session.active_database_type() == Some(DatabaseType::SQLite) {
                     return Some(vec![]);
                 }
-                if let Some(dsn) = state.session.dsn.clone() {
+                if let Some(dsn) = state.session.dsn().map(str::to_string) {
                     state.session.begin_connecting(&dsn);
                     Some(vec![Effect::FetchMetadata { dsn }])
                 } else {
@@ -56,7 +56,7 @@ pub fn reduce(
             name,
             database_type,
         }) => {
-            if let Some(current_id) = state.session.active_connection_id.clone() {
+            if let Some(current_id) = state.session.active_connection_id().cloned() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
@@ -71,7 +71,7 @@ pub fn reduce(
                 state
                     .session
                     .set_active_connection(id, name, *database_type, dsn);
-                state.session.read_only = false;
+                state.session.disable_read_only();
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata
@@ -79,7 +79,9 @@ pub fn reduce(
                 state.session.begin_connecting(dsn);
                 Some(vec![
                     Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { dsn: dsn.clone() },
+                    Effect::FetchMetadata {
+                        dsn: dsn.to_string(),
+                    },
                 ])
             }
         }
@@ -112,7 +114,9 @@ mod tests {
         let new_id = ConnectionId::new();
         let services = AppServices::stub();
 
-        state.session.active_connection_id = Some(current_id.clone());
+        state
+            .session
+            .set_active_connection_id_for_test(Some(current_id.clone()));
         state.ui.explorer_selected = 5;
         state.ui.inspector_tab = InspectorTab::Indexes;
 
@@ -143,7 +147,7 @@ mod tests {
         assert_eq!(state.ui.explorer_selected, 42);
         assert_eq!(state.ui.inspector_tab, InspectorTab::ForeignKeys);
         assert_eq!(
-            state.session.active_database_type,
+            state.session.active_database_type(),
             Some(DatabaseType::PostgreSQL)
         );
     }
@@ -212,7 +216,7 @@ mod tests {
         );
         assert!(state.session.connection_state().is_not_connected());
         assert_eq!(
-            state.session.active_database_type,
+            state.session.active_database_type(),
             Some(DatabaseType::SQLite)
         );
     }
@@ -248,7 +252,7 @@ mod tests {
         assert!(state.connection_caches.get(&target_id).is_none());
         assert_eq!(state.ui.explorer_selected, 0);
         assert_eq!(
-            state.session.active_database_type,
+            state.session.active_database_type(),
             Some(DatabaseType::SQLite)
         );
         assert!(state.session.connection_state().is_not_connected());
@@ -258,8 +262,10 @@ mod tests {
     fn sqlite_try_connect_does_not_fetch_metadata() {
         let mut state = AppState::new("test".to_string());
         let services = AppServices::stub();
-        state.session.dsn = Some("sqlite:///tmp/app.db".to_string());
-        state.session.active_database_type = Some(DatabaseType::SQLite);
+        state.session.set_dsn_for_test("sqlite:///tmp/app.db");
+        state
+            .session
+            .set_active_database_type_for_test(Some(DatabaseType::SQLite));
         state
             .session
             .set_connection_state(ConnectionState::NotConnected);
@@ -279,17 +285,11 @@ mod tests {
         let action = create_switch_action(&new_id, "target_db");
         reduce(&mut state, &action, Instant::now(), &services);
 
-        assert_eq!(state.session.active_connection_id, Some(new_id));
+        assert_eq!(state.session.active_connection_id(), Some(&new_id));
+        assert_eq!(state.session.dsn(), Some("postgres://localhost/target_db"));
+        assert_eq!(state.session.active_connection_name(), Some("target_db"));
         assert_eq!(
-            state.session.dsn,
-            Some("postgres://localhost/target_db".to_string())
-        );
-        assert_eq!(
-            state.session.active_connection_name,
-            Some("target_db".to_string())
-        );
-        assert_eq!(
-            state.session.active_database_type,
+            state.session.active_database_type(),
             Some(DatabaseType::PostgreSQL)
         );
     }
@@ -352,12 +352,12 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
         let services = AppServices::stub();
-        state.session.read_only = true;
+        state.session.enable_read_only();
 
         let action = create_switch_action(&new_id, "fresh_db");
         reduce(&mut state, &action, Instant::now(), &services);
 
-        assert!(!state.session.read_only);
+        assert!(!state.session.is_read_only());
     }
 
     #[test]

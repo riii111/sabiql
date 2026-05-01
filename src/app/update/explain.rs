@@ -82,7 +82,7 @@ pub fn reduce_explain_with_services(
             if content.is_empty() {
                 return Some(vec![]);
             }
-            let Some(dsn) = state.session.dsn.clone() else {
+            let Some(dsn) = state.session.dsn().map(str::to_string) else {
                 return Some(vec![]);
             };
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
@@ -100,7 +100,7 @@ pub fn reduce_explain_with_services(
             begin_explain_running(state, now);
 
             Some(vec![Effect::ExecuteExplain {
-                dsn,
+                dsn: dsn.to_string(),
                 query,
                 is_analyze: false,
                 read_only: true,
@@ -115,10 +115,9 @@ pub fn reduce_explain_with_services(
             if content.is_empty() {
                 return Some(vec![]);
             }
-            let Some(dsn) = &state.session.dsn else {
+            let Some(dsn) = state.session.dsn().map(str::to_string) else {
                 return Some(vec![]);
             };
-            let dsn = dsn.clone();
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return Some(vec![]);
             }
@@ -134,7 +133,7 @@ pub fn reduce_explain_with_services(
 
             let is_dml = !matches!(kind, StatementKind::Select | StatementKind::Transaction);
 
-            if state.session.read_only && is_dml {
+            if state.session.is_read_only() && is_dml {
                 show_explain_error_on_plan(
                     state,
                     "Read-only mode: EXPLAIN ANALYZE is blocked for DML statements.",
@@ -162,7 +161,7 @@ pub fn reduce_explain_with_services(
                         dsn,
                         query: explain_query,
                         is_analyze: true,
-                        read_only: state.session.read_only,
+                        read_only: state.session.is_read_only(),
                     }]);
                 }
             }
@@ -186,7 +185,7 @@ pub fn reduce_explain_with_services(
                 _ => None,
             };
             if let Some(query) = query
-                && let Some(dsn) = state.session.dsn.clone()
+                && let Some(dsn) = state.session.dsn().map(str::to_string)
             {
                 let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
                 else {
@@ -195,10 +194,10 @@ pub fn reduce_explain_with_services(
                 };
                 begin_explain_running(state, now);
                 return Some(vec![Effect::ExecuteExplain {
-                    dsn,
+                    dsn: dsn.to_string(),
                     query: explain_query,
                     is_analyze: true,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }]);
             }
             Some(vec![])
@@ -332,7 +331,7 @@ mod tests {
         fn empty_query_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("  ".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
@@ -355,7 +354,7 @@ mod tests {
         fn running_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
             let effects =
@@ -368,7 +367,7 @@ mod tests {
         fn unsupported_database_sets_error_without_effects() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects = reduce_explain_with_services(
                 &mut state,
@@ -393,7 +392,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT 1; DELETE FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
@@ -410,7 +409,7 @@ mod tests {
         fn starts_query_timer() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainRequest, Instant::now());
 
@@ -422,7 +421,7 @@ mod tests {
         fn emits_execute_explain_effect() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
@@ -448,7 +447,7 @@ mod tests {
         #[test]
         fn empty_query_is_noop() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -463,7 +462,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT 1; DELETE FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -481,7 +480,7 @@ mod tests {
         fn unsupported_database_sets_error_without_effects() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects = reduce_explain_with_services(
                 &mut state,
@@ -503,7 +502,7 @@ mod tests {
         fn select_executes_immediately_without_confirm() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -526,7 +525,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("INSERT INTO users VALUES (1)".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -549,7 +548,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("UPDATE users SET name='x' WHERE id=1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -572,7 +571,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -592,7 +591,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id=1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -615,7 +614,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DROP TABLE users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -635,7 +634,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("TRUNCATE users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -659,8 +658,8 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id=1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
-            state.session.read_only = true;
+            state.session.set_dsn_for_test("dsn://test");
+            state.session.enable_read_only();
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -684,8 +683,8 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT * FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
-            state.session.read_only = true;
+            state.session.set_dsn_for_test("dsn://test");
+            state.session.enable_read_only();
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
@@ -708,8 +707,8 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("INSERT INTO users VALUES (1)".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
-            state.session.read_only = true;
+            state.session.set_dsn_for_test("dsn://test");
+            state.session.enable_read_only();
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -731,7 +730,7 @@ mod tests {
         #[test]
         fn confirm_from_high_with_matching_table_emits_effect() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
             let mut input = crate::model::shared::text_input::TextInputState::default();
             for c in "users".chars() {
                 input.insert_char(c);
@@ -754,7 +753,7 @@ mod tests {
         #[test]
         fn confirm_from_high_with_mismatch_is_noop() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
             let mut input = crate::model::shared::text_input::TextInputState::default();
             input.insert_char('x');
             state
@@ -849,7 +848,7 @@ mod tests {
         fn two_explains_auto_advance_returns_comparable_slots() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            state.session.set_dsn_for_test("dsn://test");
             let now = Instant::now();
 
             // Step 1: First EXPLAIN

@@ -67,7 +67,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::ResultEnterCellEdit => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -358,7 +358,7 @@ mod tests {
             state
                 .session
                 .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 

@@ -33,7 +33,7 @@ pub(super) mod tests {
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
-        state.session.dsn = Some("postgres://localhost/test".to_string());
+        state.session.set_dsn_for_test("postgres://localhost/test");
         state
     }
 

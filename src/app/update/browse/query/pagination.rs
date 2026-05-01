@@ -23,8 +23,8 @@ pub fn reduce(
             let Some(result) = state.query.visible_result() else {
                 return Some(vec![]);
             };
-            let dsn = match &state.session.dsn {
-                Some(d) => d.clone(),
+            let dsn = match state.session.dsn() {
+                Some(d) => d.to_string(),
                 None => return Some(vec![]),
             };
 
@@ -50,11 +50,11 @@ pub fn reduce(
             let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
 
             Some(vec![Effect::CountRowsForExport {
-                dsn,
+                dsn: dsn.to_string(),
                 count_query,
                 export_query,
                 file_name,
-                read_only: state.session.read_only,
+                read_only: state.session.is_read_only(),
             }])
         }
 
@@ -87,16 +87,16 @@ pub fn reduce(
                 state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {
-                let dsn = match &state.session.dsn {
-                    Some(d) => d.clone(),
+                let dsn = match state.session.dsn() {
+                    Some(d) => d.to_string(),
                     None => return Some(vec![]),
                 };
                 Some(vec![Effect::ExportCsv {
-                    dsn,
+                    dsn: dsn.to_string(),
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             }
         }
@@ -106,16 +106,16 @@ pub fn reduce(
             file_name,
             row_count,
         } => {
-            let dsn = match &state.session.dsn {
-                Some(d) => d.clone(),
+            let dsn = match state.session.dsn() {
+                Some(d) => d.to_string(),
                 None => return Some(vec![]),
             };
             Some(vec![Effect::ExportCsv {
-                dsn,
+                dsn: dsn.to_string(),
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
-                read_only: state.session.read_only,
+                read_only: state.session.is_read_only(),
             }])
         }
 
@@ -151,19 +151,19 @@ pub fn reduce(
             if !state.query.pagination.can_next() {
                 return Some(vec![]);
             }
-            if let Some(dsn) = state.session.dsn.clone() {
+            if let Some(dsn) = state.session.dsn().map(str::to_string) {
                 let next_page = state.query.pagination.current_page + 1;
                 state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 Some(vec![Effect::ExecutePreview {
-                    dsn,
+                    dsn: dsn.to_string(),
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.session.selection_generation(),
                     limit: PREVIEW_PAGE_SIZE,
                     offset: next_page * PREVIEW_PAGE_SIZE,
                     target_page: next_page,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 Some(vec![])
@@ -177,20 +177,20 @@ pub fn reduce(
             if !state.query.pagination.can_prev() {
                 return Some(vec![]);
             }
-            if let Some(dsn) = state.session.dsn.clone() {
+            if let Some(dsn) = state.session.dsn().map(str::to_string) {
                 let prev_page = state.query.pagination.current_page - 1;
                 state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 state.query.pagination.reached_end = false;
                 Some(vec![Effect::ExecutePreview {
-                    dsn,
+                    dsn: dsn.to_string(),
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.session.selection_generation(),
                     limit: PREVIEW_PAGE_SIZE,
                     offset: prev_page * PREVIEW_PAGE_SIZE,
                     target_page: prev_page,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 Some(vec![])
@@ -464,7 +464,7 @@ mod tests {
 
         fn export_test_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
         }
 
