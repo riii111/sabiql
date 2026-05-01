@@ -701,20 +701,20 @@ mod tests {
 
     mod connection_catalog {
         use super::*;
-        use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+        use crate::domain::connection::{ConnectionProfile, SslMode};
         use crate::model::connection::list::ConnectionListItem;
 
         fn make_profile(name: &str) -> ConnectionProfile {
-            ConnectionProfile {
-                id: ConnectionId::new(),
-                name: ConnectionName::new(name).unwrap(),
-                host: "localhost".to_string(),
-                port: 5432,
-                database: "test".to_string(),
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                ssl_mode: SslMode::Prefer,
-            }
+            ConnectionProfile::new(
+                name,
+                "localhost",
+                5432,
+                "test",
+                "user",
+                "pass",
+                SslMode::Prefer,
+            )
+            .unwrap()
         }
 
         fn make_service(name: &str) -> crate::domain::connection::ServiceEntry {

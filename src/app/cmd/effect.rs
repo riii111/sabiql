@@ -1,5 +1,5 @@
 use crate::domain::Table;
-use crate::domain::connection::{ConnectionId, SslMode};
+use crate::domain::connection::{ConnectionConfig, ConnectionId};
 use crate::update::action::Action;
 
 #[derive(Debug, Clone)]
@@ -9,12 +9,7 @@ pub enum Effect {
     SaveAndConnect {
         id: Option<ConnectionId>,
         name: String,
-        host: String,
-        port: u16,
-        database: String,
-        user: String,
-        password: String,
-        ssl_mode: SslMode,
+        config: ConnectionConfig,
     },
     LoadConnectionForEdit {
         id: ConnectionId,

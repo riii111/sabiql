@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::domain::connection::{ConnectionNameError, ConnectionProfile, ServiceEntry};
+use crate::domain::connection::{
+    ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
+};
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::Prefix;
@@ -18,7 +20,7 @@ use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Ta
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
     #[error("{0}")]
-    Validation(#[from] ConnectionNameError),
+    Validation(#[from] ConnectionProfileError),
     #[error("{0}")]
     Store(#[from] ConnectionStoreError),
 }
@@ -246,6 +248,7 @@ pub struct ConnectionTarget {
     pub id: ConnectionId,
     pub dsn: String,
     pub name: String,
+    pub database_type: DatabaseType,
 }
 
 // Do not derive PartialEq here: payload variants carry domain snapshots and

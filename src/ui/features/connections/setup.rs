@@ -6,7 +6,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
-use crate::domain::connection::SslMode;
+use crate::domain::connection::{DatabaseType, SslMode};
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::render_modal;
 use crate::theme::ThemePalette;
@@ -15,7 +15,9 @@ const LABEL_WIDTH: u16 = 12;
 const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;
 const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
-const DROPDOWN_ITEM_COUNT: usize = 6;
+const MODAL_VERTICAL_CHROME: u16 = 6;
+const SSL_DROPDOWN_ITEM_COUNT: usize = 6;
+const DB_TYPE_DROPDOWN_ITEM_COUNT: usize = DatabaseType::all().len();
 
 fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> Line<'static> {
     Line::from(vec![
@@ -33,9 +35,10 @@ pub struct ConnectionSetup;
 impl ConnectionSetup {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let form_state = &state.connection_setup;
+        let visible_fields = form_state.visible_fields();
 
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
-        let modal_height = 13;
+        let modal_height = visible_fields.len() as u16 + MODAL_VERTICAL_CHROME;
 
         let (title, hint) = if form_state.is_edit_mode() {
             (
@@ -58,84 +61,59 @@ impl ConnectionSetup {
         );
 
         let inner = modal_inner.inner(Margin::new(2, 1));
-        let chunks = Layout::vertical([
-            Constraint::Length(FIELD_HEIGHT), // Name
-            Constraint::Length(FIELD_HEIGHT), // Host
-            Constraint::Length(FIELD_HEIGHT), // Port
-            Constraint::Length(FIELD_HEIGHT), // Database
-            Constraint::Length(FIELD_HEIGHT), // User
-            Constraint::Length(FIELD_HEIGHT), // Password
-            Constraint::Length(FIELD_HEIGHT), // SslMode
-            Constraint::Length(1),            // spacer
-            Constraint::Length(1),            // notice
-        ])
-        .split(inner);
+        let field_count = visible_fields.len();
+        let mut constraints = vec![Constraint::Length(FIELD_HEIGHT); field_count];
+        constraints.push(Constraint::Length(1));
+        constraints.push(Constraint::Length(1));
+        let chunks = Layout::vertical(constraints).split(inner);
 
-        Self::render_text_field(
-            frame,
-            chunks[0],
-            form_state,
-            ConnectionField::Name,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[1],
-            form_state,
-            ConnectionField::Host,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[2],
-            form_state,
-            ConnectionField::Port,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[3],
-            form_state,
-            ConnectionField::Database,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[4],
-            form_state,
-            ConnectionField::User,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[5],
-            form_state,
-            ConnectionField::Password,
-            true,
-            theme,
-        );
-        Self::render_ssl_field(
-            frame,
-            chunks[6],
-            form_state.ssl_mode,
-            form_state.focused_field == ConnectionField::SslMode,
-            theme,
-        );
+        for (idx, field) in visible_fields.iter().enumerate() {
+            match field {
+                ConnectionField::DatabaseType => Self::render_database_type_field(
+                    frame,
+                    chunks[idx],
+                    form_state.database_type,
+                    form_state.focused_field == ConnectionField::DatabaseType,
+                    theme,
+                ),
+                ConnectionField::SslMode => Self::render_ssl_field(
+                    frame,
+                    chunks[idx],
+                    form_state.ssl_mode,
+                    form_state.focused_field == ConnectionField::SslMode,
+                    theme,
+                ),
+                field => Self::render_text_field(
+                    frame,
+                    chunks[idx],
+                    form_state,
+                    *field,
+                    *field == ConnectionField::Password,
+                    theme,
+                ),
+            }
+        }
 
         let notice = "Note: Connection info is stored locally in plain text";
         let notice_para =
             Paragraph::new(notice).style(Style::default().fg(theme.component.feedback.note_text));
-        frame.render_widget(notice_para, chunks[8]);
+        frame.render_widget(notice_para, chunks[field_count + 1]);
 
-        if form_state.ssl_dropdown.is_open {
+        if form_state.database_type_dropdown.is_open {
+            Self::render_database_type_dropdown(
+                frame,
+                chunks[0],
+                form_state.database_type_dropdown.selected_index,
+                theme,
+            );
+        } else if form_state.ssl_dropdown.is_open {
+            let ssl_idx = visible_fields
+                .iter()
+                .position(|field| *field == ConnectionField::SslMode)
+                .unwrap_or(0);
             Self::render_dropdown(
                 frame,
-                chunks[6],
+                chunks[ssl_idx],
                 form_state.ssl_dropdown.selected_index,
                 theme,
             );
@@ -267,6 +245,82 @@ impl ConnectionSetup {
         frame.render_widget(input_para, chunks[1]);
     }
 
+    fn render_database_type_field(
+        frame: &mut Frame,
+        area: Rect,
+        database_type: DatabaseType,
+        is_focused: bool,
+        theme: &ThemePalette,
+    ) {
+        let chunks = Layout::horizontal([
+            Constraint::Length(LABEL_WIDTH),
+            Constraint::Length(INPUT_WIDTH),
+            Constraint::Length(ERROR_WIDTH),
+        ])
+        .split(area);
+
+        let label_style = if is_focused {
+            Style::default().fg(theme.semantic.text.secondary).bold()
+        } else {
+            Style::default().fg(theme.semantic.text.secondary)
+        };
+        frame.render_widget(Paragraph::new("Type:").style(label_style), chunks[0]);
+
+        let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
+        let value = database_type.to_string();
+        let display_content = format!("{:<1$} ▼", value, content_width - 2);
+        let border_style = theme.modal_input_border_style(is_focused, false);
+
+        frame.render_widget(
+            Paragraph::new(bracketed_input(&display_content, border_style, theme)),
+            chunks[1],
+        );
+    }
+
+    fn render_database_type_dropdown(
+        frame: &mut Frame,
+        field_area: Rect,
+        selected_index: usize,
+        theme: &ThemePalette,
+    ) {
+        let chunks = Layout::horizontal([
+            Constraint::Length(LABEL_WIDTH),
+            Constraint::Length(INPUT_WIDTH),
+            Constraint::Length(ERROR_WIDTH),
+        ])
+        .split(field_area);
+
+        let dropdown_area = Rect {
+            x: chunks[1].x,
+            y: chunks[1].y + 1,
+            width: INPUT_WIDTH,
+            height: DB_TYPE_DROPDOWN_ITEM_COUNT as u16 + 2,
+        };
+
+        frame.render_widget(Clear, dropdown_area);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(theme.modal_border_style())
+            .style(Style::default());
+        frame.render_widget(block, dropdown_area);
+
+        let inner = dropdown_area.inner(Margin::new(1, 1));
+        for (i, variant) in DatabaseType::all().iter().enumerate() {
+            let item_area = Rect {
+                x: inner.x,
+                y: inner.y + i as u16,
+                width: inner.width,
+                height: 1,
+            };
+            let style = if i == selected_index {
+                theme.picker_selected_style()
+            } else {
+                Style::default().fg(theme.semantic.text.secondary)
+            };
+            frame.render_widget(Paragraph::new(variant.to_string()).style(style), item_area);
+        }
+    }
+
     fn render_dropdown(
         frame: &mut Frame,
         ssl_field_area: Rect,
@@ -284,7 +338,7 @@ impl ConnectionSetup {
             x: chunks[1].x,
             y: chunks[1].y + 1,
             width: INPUT_WIDTH,
-            height: DROPDOWN_ITEM_COUNT as u16 + 2,
+            height: SSL_DROPDOWN_ITEM_COUNT as u16 + 2,
         };
 
         frame.render_widget(Clear, dropdown_area);
@@ -299,7 +353,7 @@ impl ConnectionSetup {
         let variants = SslMode::all_variants();
 
         for (i, variant) in variants.iter().enumerate() {
-            if i >= DROPDOWN_ITEM_COUNT {
+            if i >= SSL_DROPDOWN_ITEM_COUNT {
                 break;
             }
             let item_area = Rect {

@@ -1,5 +1,6 @@
 ---
-source: tests/render_snapshots/connection_flow.rs
+source: src/tests/render_snapshots/connection_flow.rs
+assertion_line: 34
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -7,9 +8,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
 │                  ││                                                          │
-│                  ││                                                          │
 │        ╭ New Connection ────────────────────────────────────────────╮        │
 │        │                                                            │        │
+│        │  Type:       [ PostgreSQL               ▼ ]                │        │
 │        │  Name:       [                            ]                │        │
 │        │  Host:       [ db.example.com             ]                │        │
 │        │  Port:       [ 5432                       ]                │        │

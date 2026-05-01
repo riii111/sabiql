@@ -21,6 +21,25 @@ fn connection_setup_form() {
 }
 
 #[test]
+fn connection_setup_sqlite_form() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state
+        .connection_setup
+        .set_database_type(DatabaseType::SQLite);
+    state
+        .connection_setup
+        .sqlite_path
+        .set_content("/tmp/app.db".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn connection_setup_cursor_at_head() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

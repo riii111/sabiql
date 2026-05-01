@@ -85,7 +85,7 @@ impl ConnectionStore for TomlConnectionStore {
         // Check version first to detect v1 format before full parse fails
         let version_check: ConfigVersionCheck = toml::from_str(&content)?;
 
-        if version_check.version != CURRENT_VERSION {
+        if version_check.version != 2 && version_check.version != CURRENT_VERSION {
             return Err(ConnectionStoreError::VersionMismatch {
                 found: version_check.version,
                 expected: CURRENT_VERSION,
@@ -225,7 +225,7 @@ ssl_mode = "prefer"
                 result,
                 Err(ConnectionStoreError::VersionMismatch {
                     found: 1,
-                    expected: 2
+                    expected: 3
                 })
             ));
         }
@@ -244,6 +244,42 @@ ssl_mode = "prefer"
                 result,
                 Err(ConnectionStoreError::TomlDeserialize(_))
             ));
+        }
+
+        #[test]
+        fn loads_v2_entries_as_postgresql() {
+            let temp_dir = TempDir::new().unwrap();
+            let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
+
+            let content = r#"
+version = 2
+
+[[connections]]
+id = "test-id"
+name = "Production"
+host = "localhost"
+port = 5432
+database = "testdb"
+username = "testuser"
+password = "testpass"
+ssl_mode = "prefer"
+"#;
+            fs::write(&config_path, content).unwrap();
+
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let profiles = store.load_all().unwrap();
+
+            assert_eq!(profiles.len(), 1);
+            assert_eq!(
+                profiles[0].database_type(),
+                crate::domain::DatabaseType::PostgreSQL
+            );
+            assert_eq!(profiles[0].postgres_config().unwrap().database, "testdb");
+            assert!(
+                fs::read_to_string(&config_path)
+                    .unwrap()
+                    .contains("version = 2")
+            );
         }
     }
 
@@ -288,7 +324,16 @@ ssl_mode = "prefer"
             let mut profile = make_test_profile("Production");
             store.save(&profile).unwrap();
 
-            profile.host = "newhost".to_string();
+            profile.config = crate::domain::ConnectionConfig::PostgreSQL(
+                crate::domain::PostgresConnectionConfig::new(
+                    "newhost",
+                    5432,
+                    "testdb",
+                    "testuser",
+                    "testpass",
+                    SslMode::Prefer,
+                ),
+            );
             let result = store.save(&profile);
 
             assert!(result.is_ok());
@@ -382,12 +427,45 @@ ssl_mode = "prefer"
             assert!(loaded.is_some());
             let loaded = loaded.unwrap();
             assert_eq!(loaded.name.as_str(), profile.name.as_str());
-            assert_eq!(loaded.host, profile.host);
-            assert_eq!(loaded.port, profile.port);
-            assert_eq!(loaded.database, profile.database);
-            assert_eq!(loaded.username, profile.username);
-            assert_eq!(loaded.password, profile.password);
-            assert_eq!(loaded.ssl_mode, profile.ssl_mode);
+            assert_eq!(loaded.config, profile.config);
+        }
+
+        #[test]
+        fn save_and_load_preserves_sqlite_data() {
+            let temp_dir = TempDir::new().unwrap();
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let profile = ConnectionProfile::new_sqlite("Local", "/tmp/app.db").unwrap();
+
+            store.save(&profile).unwrap();
+            let loaded = store.load().unwrap().unwrap();
+
+            assert_eq!(loaded.database_type(), crate::domain::DatabaseType::SQLite);
+            assert_eq!(loaded.sqlite_config().unwrap().path(), "/tmp/app.db");
+        }
+
+        #[test]
+        fn empty_sqlite_path_returns_invalid_profile() {
+            let temp_dir = TempDir::new().unwrap();
+            let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
+
+            let content = r#"
+version = 3
+
+[[connections]]
+id = "sqlite-id"
+name = "Local"
+db_type = "sqlite"
+path = ""
+"#;
+            fs::write(&config_path, content).unwrap();
+
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let result = store.load_all();
+
+            assert!(matches!(
+                result,
+                Err(ConnectionStoreError::InvalidProfile(_))
+            ));
         }
     }
 
@@ -435,7 +513,7 @@ ssl_mode = "prefer"
                 result,
                 Err(ConnectionStoreError::VersionMismatch {
                     found: 1,
-                    expected: 2
+                    expected: 3
                 })
             ));
 
@@ -479,16 +557,26 @@ ssl_mode = "prefer"
             store.save(&profile1).unwrap();
             store.save(&profile2).unwrap();
 
-            profile2.host = "updated-host".to_string();
+            profile2.config = crate::domain::ConnectionConfig::PostgreSQL(
+                crate::domain::PostgresConnectionConfig::new(
+                    "updated-host",
+                    5432,
+                    "testdb",
+                    "testuser",
+                    "testpass",
+                    SslMode::Prefer,
+                ),
+            );
             store.save(&profile2).unwrap();
 
             let all = store.load_all().unwrap();
             assert_eq!(all.len(), 2);
             assert!(all.iter().any(|p| p.name.as_str() == "First"));
-            assert!(
-                all.iter()
-                    .any(|p| p.name.as_str() == "Second" && p.host == "updated-host")
-            );
+            assert!(all.iter().any(|p| {
+                p.name.as_str() == "Second"
+                    && p.postgres_config()
+                        .is_some_and(|config| config.host == "updated-host")
+            }));
         }
     }
 }

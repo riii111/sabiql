@@ -1515,7 +1515,7 @@ mod tests {
 
     mod connection_setup_transitions {
         use super::*;
-        use crate::domain::ConnectionId;
+        use crate::domain::{ConnectionId, DatabaseType};
 
         #[test]
         fn save_completed_sets_dsn_and_returns_fetch_effect() {
@@ -1539,6 +1539,7 @@ mod tests {
                     id: ConnectionId::new(),
                     dsn: "postgres://db.example.com/mydb".to_string(),
                     name: "Test Connection".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
                 }),
                 now,
                 &AppServices::stub(),
@@ -1552,6 +1553,10 @@ mod tests {
             assert_eq!(
                 state.session.active_connection_name,
                 Some("Test Connection".to_string())
+            );
+            assert_eq!(
+                state.session.active_database_type,
+                Some(DatabaseType::PostgreSQL)
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(effects.len(), 1);
@@ -1797,7 +1802,7 @@ mod tests {
 
     mod connection_state_tests {
         use super::*;
-        use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
+        use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, MetadataState};
         use crate::model::connection::state::ConnectionState;
 
         #[test]
@@ -2040,6 +2045,7 @@ mod tests {
                     id: ConnectionId::new(),
                     dsn: "postgres://localhost/test".to_string(),
                     name: "Test".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
                 }),
                 now,
                 &AppServices::stub(),
@@ -2073,6 +2079,7 @@ mod tests {
                     id: conn_b.clone(),
                     dsn: "postgres://localhost/other".to_string(),
                     name: "Other".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
                 }),
                 now,
                 &AppServices::stub(),
@@ -2126,6 +2133,7 @@ mod tests {
                     id: conn_b.clone(),
                     dsn: "postgres://localhost/cached".to_string(),
                     name: "Cached".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
                 }),
                 now,
                 &AppServices::stub(),

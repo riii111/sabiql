@@ -102,21 +102,21 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+    use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
     use crate::services::AppServices;
     use crate::update::browse::navigation::reduce_navigation;
 
     fn create_test_profile(name: &str) -> ConnectionProfile {
-        ConnectionProfile {
-            id: ConnectionId::new(),
-            name: ConnectionName::new(name).unwrap(),
-            host: "localhost".to_string(),
-            port: 5432,
-            database: "test".to_string(),
-            username: "user".to_string(),
-            password: "pass".to_string(),
-            ssl_mode: SslMode::Prefer,
-        }
+        ConnectionProfile::new(
+            name,
+            "localhost",
+            5432,
+            "test",
+            "user",
+            "pass",
+            SslMode::Prefer,
+        )
+        .unwrap()
     }
 
     mod connection_list_navigation {
@@ -302,16 +302,17 @@ mod tests {
         use super::*;
 
         fn create_test_profile_with_id(name: &str, id: ConnectionId) -> ConnectionProfile {
-            ConnectionProfile {
+            ConnectionProfile::with_id(
                 id,
-                name: ConnectionName::new(name).unwrap(),
-                host: "localhost".to_string(),
-                port: 5432,
-                database: "test".to_string(),
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                ssl_mode: SslMode::Prefer,
-            }
+                name,
+                "localhost",
+                5432,
+                "test",
+                "user",
+                "pass",
+                SslMode::Prefer,
+            )
+            .unwrap()
         }
 
         #[test]

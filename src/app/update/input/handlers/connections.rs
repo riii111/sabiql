@@ -6,7 +6,8 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
     use crate::model::connection::setup::ConnectionField;
     use crate::update::action::CursorMove;
 
-    let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
+    let dropdown_open = state.connection_setup.database_type_dropdown.is_open
+        || state.connection_setup.ssl_dropdown.is_open;
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
     let alt = combo.modifiers.contains(Modifiers::ALT);
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
@@ -34,8 +35,12 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
         Key::BackTab => Action::ConnectionSetupPrevField,
         Key::Esc => Action::ConnectionSetupCancel,
 
-        // SSL Mode toggle (Enter on SslMode field)
-        Key::Enter if state.connection_setup.focused_field == ConnectionField::SslMode => {
+        Key::Enter
+            if matches!(
+                state.connection_setup.focused_field,
+                ConnectionField::DatabaseType | ConnectionField::SslMode
+            ) =>
+        {
             Action::ConnectionSetupToggleDropdown
         }
 
@@ -232,12 +237,28 @@ mod tests {
             assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
         }
 
+        #[test]
+        fn enter_on_database_type_field_toggles_dropdown() {
+            let mut state = setup_state();
+            state.connection_setup.focused_field = ConnectionField::DatabaseType;
+
+            let result = handle_connection_setup_keys(combo(Key::Enter), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
+        }
+
         mod dropdown_open {
             use super::*;
 
             fn dropdown_state() -> AppState {
                 let mut state = setup_state();
                 state.connection_setup.ssl_dropdown.is_open = true;
+                state
+            }
+
+            fn database_type_dropdown_state() -> AppState {
+                let mut state = setup_state();
+                state.connection_setup.database_type_dropdown.is_open = true;
                 state
             }
 
@@ -255,6 +276,15 @@ mod tests {
                     std::mem::discriminant(&result),
                     std::mem::discriminant(&expected)
                 );
+            }
+
+            #[test]
+            fn database_type_dropdown_routes_navigation() {
+                let state = database_type_dropdown_state();
+
+                let result = handle_connection_setup_keys(combo(Key::Up), &state);
+
+                assert!(matches!(result, Action::ConnectionSetupDropdownPrev));
             }
 
             #[rstest]

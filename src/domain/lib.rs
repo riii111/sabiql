@@ -31,4 +31,7 @@ pub use table::{Table, TableSignature, TableSummary};
 pub use trigger::{Trigger, TriggerEvent, TriggerTiming};
 pub use write_result::WriteExecutionResult;
 
-pub use connection::{ConnectionId, ConnectionProfile, SslMode};
+pub use connection::{
+    ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
+    PostgresConnectionConfig, SqliteConnectionConfig, SslMode,
+};
