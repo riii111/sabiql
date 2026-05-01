@@ -235,7 +235,8 @@ impl UiState {
         self.explorer_scroll_offset = offset;
     }
 
-    // Restores cached selection before the normal selection API recalculates scroll state.
+    // Sets selection index without adjusting scroll offset.
+    // Used when the caller manages scroll state independently (page scroll, cache restore).
     pub fn set_explorer_selected_raw(&mut self, selected: usize) {
         self.explorer_selected = selected;
     }
