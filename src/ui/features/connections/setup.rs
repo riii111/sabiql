@@ -99,14 +99,14 @@ impl ConnectionSetup {
             Paragraph::new(notice).style(Style::default().fg(theme.component.feedback.note_text));
         frame.render_widget(notice_para, chunks[field_count + 1]);
 
-        if form_state.database_type_dropdown.is_open {
+        if form_state.database_type_dropdown.is_open() {
             Self::render_database_type_dropdown(
                 frame,
                 chunks[0],
-                form_state.database_type_dropdown.selected_index,
+                form_state.database_type_dropdown.selected_index(),
                 theme,
             );
-        } else if form_state.ssl_dropdown.is_open {
+        } else if form_state.ssl_dropdown.is_open() {
             let ssl_idx = visible_fields
                 .iter()
                 .position(|field| *field == ConnectionField::SslMode)
@@ -114,7 +114,7 @@ impl ConnectionSetup {
             Self::render_dropdown(
                 frame,
                 chunks[ssl_idx],
-                form_state.ssl_dropdown.selected_index,
+                form_state.ssl_dropdown.selected_index(),
                 theme,
             );
         }

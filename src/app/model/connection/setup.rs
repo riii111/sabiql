@@ -78,14 +78,34 @@ impl ConnectionField {
 
 #[derive(Debug, Clone, Default)]
 pub struct SslModeDropdown {
-    pub is_open: bool,
-    pub selected_index: usize,
+    is_open: bool,
+    selected_index: usize,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct DatabaseTypeDropdown {
-    pub is_open: bool,
-    pub selected_index: usize,
+    is_open: bool,
+    selected_index: usize,
+}
+
+impl SslModeDropdown {
+    pub fn is_open(&self) -> bool {
+        self.is_open
+    }
+
+    pub fn selected_index(&self) -> usize {
+        self.selected_index
+    }
+}
+
+impl DatabaseTypeDropdown {
+    pub fn is_open(&self) -> bool {
+        self.is_open
+    }
+
+    pub fn selected_index(&self) -> usize {
+        self.selected_index
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -316,6 +336,18 @@ impl ConnectionSetupState {
     pub fn cancel_dropdown(&mut self) {
         self.database_type_dropdown.is_open = false;
         self.ssl_dropdown.is_open = false;
+    }
+
+    pub fn has_open_dropdown(&self) -> bool {
+        self.database_type_dropdown.is_open || self.ssl_dropdown.is_open
+    }
+
+    pub fn open_ssl_dropdown_for_test(&mut self) {
+        self.ssl_dropdown.is_open = true;
+    }
+
+    pub fn open_database_type_dropdown_for_test(&mut self) {
+        self.database_type_dropdown.is_open = true;
     }
 
     pub fn record_sqlite_config_error(&mut self, error: SqliteConnectionConfigError) {

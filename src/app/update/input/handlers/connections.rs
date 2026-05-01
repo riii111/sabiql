@@ -6,8 +6,7 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
     use crate::model::connection::setup::ConnectionField;
     use crate::update::action::CursorMove;
 
-    let dropdown_open = state.connection_setup.database_type_dropdown.is_open
-        || state.connection_setup.ssl_dropdown.is_open;
+    let dropdown_open = state.connection_setup.has_open_dropdown();
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
     let alt = combo.modifiers.contains(Modifiers::ALT);
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
@@ -252,13 +251,15 @@ mod tests {
 
             fn dropdown_state() -> AppState {
                 let mut state = setup_state();
-                state.connection_setup.ssl_dropdown.is_open = true;
+                state.connection_setup.open_ssl_dropdown_for_test();
                 state
             }
 
             fn database_type_dropdown_state() -> AppState {
                 let mut state = setup_state();
-                state.connection_setup.database_type_dropdown.is_open = true;
+                state
+                    .connection_setup
+                    .open_database_type_dropdown_for_test();
                 state
             }
 
