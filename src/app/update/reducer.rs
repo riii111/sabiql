@@ -632,7 +632,8 @@ mod tests {
             let mut state = create_test_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("ab".to_string());
+                .editor_mut_for_input()
+                .set_content("ab".to_string());
             let now = Instant::now();
 
             let effects = reduce(

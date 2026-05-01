@@ -340,7 +340,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("  ".to_string());
+                .editor_mut_for_input()
+                .set_content("  ".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -354,7 +355,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
@@ -367,7 +369,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
@@ -382,7 +385,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects = reduce_explain_with_services(
@@ -406,7 +410,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1; DELETE FROM users".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1; DELETE FROM users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -425,7 +430,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainRequest, Instant::now());
@@ -439,7 +445,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -479,7 +486,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1; DELETE FROM users".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1; DELETE FROM users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -499,7 +507,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects = reduce_explain_with_services(
@@ -523,7 +532,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -545,7 +555,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("INSERT INTO users VALUES (1)".to_string());
+                .editor_mut_for_input()
+                .set_content("INSERT INTO users VALUES (1)".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -567,7 +578,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("UPDATE users SET name='x' WHERE id=1".to_string());
+                .editor_mut_for_input()
+                .set_content("UPDATE users SET name='x' WHERE id=1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -589,7 +601,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("DELETE FROM users".to_string());
+                .editor_mut_for_input()
+                .set_content("DELETE FROM users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
@@ -608,7 +621,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("DELETE FROM users WHERE id=1".to_string());
+                .editor_mut_for_input()
+                .set_content("DELETE FROM users WHERE id=1".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             let effects =
@@ -630,7 +644,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("DROP TABLE users".to_string());
+                .editor_mut_for_input()
+                .set_content("DROP TABLE users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
@@ -649,7 +664,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("TRUNCATE users".to_string());
+                .editor_mut_for_input()
+                .set_content("TRUNCATE users".to_string());
             state.session.set_dsn_for_test("dsn://test");
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
@@ -672,7 +688,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("DELETE FROM users WHERE id=1".to_string());
+                .editor_mut_for_input()
+                .set_content("DELETE FROM users WHERE id=1".to_string());
             state.session.set_dsn_for_test("dsn://test");
             state.session.enable_read_only();
 
@@ -689,7 +706,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT * FROM users".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT * FROM users".to_string());
             state.session.set_dsn_for_test("dsn://test");
             state.session.enable_read_only();
 
@@ -712,7 +730,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("INSERT INTO users VALUES (1)".to_string());
+                .editor_mut_for_input()
+                .set_content("INSERT INTO users VALUES (1)".to_string());
             state.session.set_dsn_for_test("dsn://test");
             state.session.enable_read_only();
 
@@ -848,7 +867,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("dsn://test");
             let now = Instant::now();
 
@@ -869,7 +889,8 @@ mod tests {
             // Step 2: Second EXPLAIN — auto-advance moves right→left
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 2".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 2".to_string());
             reduce_explain(&mut state, &Action::ExplainRequest, now);
             reduce_explain(
                 &mut state,

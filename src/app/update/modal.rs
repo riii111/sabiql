@@ -1101,7 +1101,8 @@ mod tests {
                 enter_query_history(&mut state, InputMode::SqlModal);
                 state
                     .sql_modal
-                    .set_editor_content_for_test("old query".to_string());
+                    .editor_mut_for_input()
+                    .set_content("old query".to_string());
                 state
                     .sql_modal
                     .set_status_for_test(crate::model::sql_editor::modal::SqlModalStatus::Editing);

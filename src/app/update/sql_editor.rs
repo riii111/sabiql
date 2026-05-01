@@ -584,7 +584,8 @@ mod tests {
             let mut state = editing_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("DROP TABLE users".to_string());
+                .editor_mut_for_input()
+                .set_content("DROP TABLE users".to_string());
             state
                 .sql_modal
                 .set_status_for_test(SqlModalStatus::ConfirmingHigh {
@@ -674,7 +675,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test(content.to_string());
+                .editor_mut_for_input()
+                .set_content(content.to_string());
             state
                 .sql_modal
                 .set_status_for_test(SqlModalStatus::ConfirmingHigh {
@@ -693,7 +695,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("DROP TABLE users".to_string());
+                .editor_mut_for_input()
+                .set_content("DROP TABLE users".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -711,7 +714,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT * INTO backup FROM users".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT * INTO backup FROM users".to_string());
             state.session.set_dsn_for_test("postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
@@ -724,7 +728,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("COPY users FROM '/tmp/data.csv'".to_string());
+                .editor_mut_for_input()
+                .set_content("COPY users FROM '/tmp/data.csv'".to_string());
             state.session.set_dsn_for_test("postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
@@ -737,7 +742,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("UPDATE users SET x=1 WHERE id=1".to_string());
+                .editor_mut_for_input()
+                .set_content("UPDATE users SET x=1 WHERE id=1".to_string());
             state.session.set_dsn_for_test("postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
@@ -912,7 +918,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("DELETE FROM users".to_string());
+                .editor_mut_for_input()
+                .set_content("DELETE FROM users".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -930,7 +937,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("UPDATE users SET x=1".to_string());
+                .editor_mut_for_input()
+                .set_content("UPDATE users SET x=1".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -948,7 +956,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("TRUNCATE users".to_string());
+                .editor_mut_for_input()
+                .set_content("TRUNCATE users".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -964,9 +973,10 @@ mod tests {
         #[test]
         fn submit_drop_schema_qualified_preserves_full_name() {
             let mut state = sql_modal_state();
-            state.sql_modal.set_editor_content_for_test(
-                "DROP TABLE my_schema.very_long_table_name".to_string(),
-            );
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content("DROP TABLE my_schema.very_long_table_name".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -1019,7 +1029,8 @@ mod tests {
             state.modal.set_mode(InputMode::SqlModal);
             state
                 .sql_modal
-                .set_editor_content_for_test("DELETE FROM users WHERE id = 1".to_string());
+                .editor_mut_for_input()
+                .set_content("DELETE FROM users WHERE id = 1".to_string());
             state.session.set_dsn_for_test("postgres://localhost/test");
             state.session.enable_read_only();
 
@@ -1054,7 +1065,8 @@ mod tests {
             // Now submit a write query in read-only mode
             state
                 .sql_modal
-                .set_editor_content_for_test("DELETE FROM users WHERE id = 1".to_string());
+                .editor_mut_for_input()
+                .set_content("DELETE FROM users WHERE id = 1".to_string());
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
@@ -1068,7 +1080,8 @@ mod tests {
             state.modal.set_mode(InputMode::SqlModal);
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.session.set_dsn_for_test("postgres://localhost/test");
             state.session.enable_read_only();
 
@@ -1089,7 +1102,8 @@ mod tests {
             state.modal.set_mode(InputMode::SqlModal);
             state
                 .sql_modal
-                .set_editor_content_for_test(query.to_string());
+                .editor_mut_for_input()
+                .set_content(query.to_string());
             state.session.set_dsn_for_test("postgres://localhost/test");
             state
         }
@@ -1233,7 +1247,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1286,7 +1301,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("original".to_string());
+                .editor_mut_for_input()
+                .set_content("original".to_string());
 
             reduce_sql_modal(
                 &mut state,
@@ -1324,7 +1340,8 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .sql_modal
-                .set_editor_content_for_test("SELECT 1".to_string());
+                .editor_mut_for_input()
+                .set_content("SELECT 1".to_string());
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
             let effects =
@@ -1339,7 +1356,10 @@ mod tests {
         #[test]
         fn sql_tab_yank_empty_is_noop() {
             let mut state = sql_modal_state();
-            state.sql_modal.set_editor_content_for_test(String::new());
+            state
+                .sql_modal
+                .editor_mut_for_input()
+                .set_content(String::new());
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
             let effects =
