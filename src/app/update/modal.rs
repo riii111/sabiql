@@ -1051,7 +1051,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert_eq!(state.sql_modal.editor.cursor(), expected_chars);
+                assert_eq!(state.sql_modal.editor().cursor(), expected_chars);
             }
 
             #[test]
@@ -1071,7 +1071,7 @@ mod tests {
                 .unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
-                assert_eq!(state.sql_modal.editor.content(), "SELECT * FROM users");
+                assert_eq!(state.sql_modal.editor().content(), "SELECT * FROM users");
                 assert!(matches!(
                     state.sql_modal.status(),
                     crate::model::sql_editor::modal::SqlModalStatus::Normal
@@ -1083,7 +1083,9 @@ mod tests {
             fn confirm_from_sql_modal_overwrites_editor_content() {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::SqlModal);
-                state.sql_modal.editor.set_content("old query".to_string());
+                state
+                    .sql_modal
+                    .set_editor_content_for_test("old query".to_string());
                 state
                     .sql_modal
                     .set_status_for_test(crate::model::sql_editor::modal::SqlModalStatus::Editing);
@@ -1108,7 +1110,7 @@ mod tests {
                 .unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
-                assert_eq!(state.sql_modal.editor.content(), "new query");
+                assert_eq!(state.sql_modal.editor().content(), "new query");
                 assert!(matches!(
                     state.sql_modal.status(),
                     crate::model::sql_editor::modal::SqlModalStatus::Normal

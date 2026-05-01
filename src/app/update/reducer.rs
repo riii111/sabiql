@@ -619,8 +619,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.editor.content(), "a");
-            assert_eq!(state.sql_modal.editor.cursor(), 1);
+            assert_eq!(state.sql_modal.editor().content(), "a");
+            assert_eq!(state.sql_modal.editor().cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce().is_some());
         }
@@ -628,7 +628,9 @@ mod tests {
         #[test]
         fn sql_modal_backspace_sets_debounce_state() {
             let mut state = create_test_state();
-            state.sql_modal.editor.set_content("ab".to_string());
+            state
+                .sql_modal
+                .set_editor_content_for_test("ab".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -640,8 +642,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.editor.content(), "a");
-            assert_eq!(state.sql_modal.editor.cursor(), 1);
+            assert_eq!(state.sql_modal.editor().content(), "a");
+            assert_eq!(state.sql_modal.editor().cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce().is_some());
         }
@@ -748,7 +750,7 @@ mod tests {
             state.modal.set_mode(InputMode::SqlModal);
             state
                 .sql_modal
-                .editor
+                .editor_mut_for_input()
                 .set_content_with_cursor("SELECT ".to_string(), 0);
             state
                 .sql_modal
@@ -762,8 +764,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.editor.content(), "SELECT ");
-            assert_eq!(state.sql_modal.editor.cursor(), 0);
+            assert_eq!(state.sql_modal.editor().content(), "SELECT ");
+            assert_eq!(state.sql_modal.editor().cursor(), 0);
             assert!(!state.sql_modal.completion().visible);
             assert!(effects.is_empty());
         }
