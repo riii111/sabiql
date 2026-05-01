@@ -72,7 +72,7 @@ impl ConfirmDialogState {
     ) {
         self.preview_viewport_height = viewport_height;
         self.preview_content_height = content_height;
-        self.preview_scroll = scroll;
+        self.preview_scroll = scroll.min(self.max_scroll());
     }
 
     pub fn scroll_preview(&mut self, direction: crate::update::action::ScrollDirection) {

@@ -2451,9 +2451,10 @@ mod tests {
         fn select_all_replaces_stale_selection_entries() {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
-            state
-                .ui
-                .replace_er_selected_tables(["missing.table".to_string()]);
+            state.ui.replace_er_selected_tables([
+                "public.users".to_string(),
+                "missing.table".to_string(),
+            ]);
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErSelectAll, now, &AppServices::stub());

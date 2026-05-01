@@ -137,7 +137,10 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ErSelectAll => {
             let all_tables: Vec<String> =
                 state.tables().iter().map(|t| t.qualified_name()).collect();
-            if state.ui.er_selected_tables().len() == all_tables.len() {
+            let selected = state.ui.er_selected_tables();
+            let all_selected = selected.len() == all_tables.len()
+                && all_tables.iter().all(|t| selected.contains(t));
+            if all_selected {
                 state.ui.clear_er_selected_tables();
             } else {
                 state.ui.replace_er_selected_tables(all_tables);
@@ -651,6 +654,17 @@ mod tests {
                     },
                     Instant::now(),
                 );
+
+                assert_eq!(state.confirm_dialog.preview_scroll(), 15);
+            }
+
+            #[test]
+            fn metrics_clamp_scroll_to_max() {
+                let mut state = state_with_scrollable_preview();
+
+                state
+                    .confirm_dialog
+                    .apply_preview_metrics(Some(10), Some(25), 99);
 
                 assert_eq!(state.confirm_dialog.preview_scroll(), 15);
             }

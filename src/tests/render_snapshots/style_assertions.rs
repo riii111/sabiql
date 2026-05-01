@@ -638,8 +638,7 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor(content.clone(), 0);
+        .set_editor_content_with_cursor_for_test(content.clone(), 0);
     state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
 
     let head_buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -648,16 +647,14 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
 
     state
         .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor(content.clone(), middle_col);
+        .set_editor_content_with_cursor_for_test(content.clone(), middle_col);
     let middle_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let middle = sql_modal_block_cursor_position(&middle_buffer)
         .expect("Expected block cursor in SQL normal mode at middle");
 
     state
         .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor(content, tail_col);
+        .set_editor_content_with_cursor_for_test(content, tail_col);
     let tail_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let tail = sql_modal_block_cursor_position(&tail_buffer)
         .expect("Expected block cursor in SQL normal mode at tail");
@@ -685,22 +682,19 @@ fn sql_modal_insert_cursor_position_tracks_head_middle_and_tail() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor(content.clone(), 0);
+        .set_editor_content_with_cursor_for_test(content.clone(), 0);
     state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
     state
         .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor(content.clone(), middle_col);
+        .set_editor_content_with_cursor_for_test(content.clone(), middle_col);
     let middle = render_and_get_cursor_position(&mut terminal, &mut state);
 
     state
         .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor(content, tail_col);
+        .set_editor_content_with_cursor_for_test(content, tail_col);
     let tail = render_and_get_cursor_position(&mut terminal, &mut state);
 
     assert_eq!(head.y, middle.y);
@@ -718,8 +712,7 @@ fn sql_modal_insert_cursor_uses_display_width_for_wide_chars() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor(content.clone(), 0);
+        .set_editor_content_with_cursor_for_test(content.clone(), 0);
     state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
@@ -742,8 +735,7 @@ fn sql_modal_insert_cursor_advances_visual_row_when_line_wraps() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor_mut_for_input()
-        .set_content_with_cursor(content.clone(), 0);
+        .set_editor_content_with_cursor_for_test(content.clone(), 0);
     state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
