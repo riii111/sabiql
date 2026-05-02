@@ -242,16 +242,17 @@ impl SqliteAdapter {
         table: &str,
         include_indexes: bool,
     ) -> Result<Table, DbOperationError> {
+        let all_indexes = self.indexes(path, table).await?;
+        let unique_single_columns = all_indexes
+            .iter()
+            .filter(|index| index.is_unique() && index.columns.len() == 1)
+            .map(|index| index.columns[0].clone())
+            .collect::<std::collections::HashSet<_>>();
         let indexes = if include_indexes {
-            self.indexes(path, table).await?
+            all_indexes
         } else {
             Vec::new()
         };
-        let unique_single_columns = indexes
-            .iter()
-            .filter(|index| index.is_unique() && index.columns.len() == 1)
-            .map(|index| index.columns[0].as_str())
-            .collect::<std::collections::HashSet<_>>();
 
         let mut raw_columns = self.columns(path, table).await?;
         if raw_columns.is_empty() {
@@ -520,6 +521,25 @@ mod tests {
 
         assert_eq!(detail.primary_key, None);
         assert_eq!(detail.columns.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn columns_and_fks_preserves_unique_column_attributes_without_returning_indexes() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(email TEXT UNIQUE NOT NULL);");
+        let adapter = SqliteAdapter::new();
+
+        let detail = adapter
+            .fetch_table_columns_and_fks(&dsn, "main", "users")
+            .await
+            .unwrap();
+
+        assert!(detail.indexes.is_empty());
+        assert!(
+            detail
+                .columns
+                .iter()
+                .any(|column| column.name == "email" && column.is_unique())
+        );
     }
 
     #[tokio::test]
