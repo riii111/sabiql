@@ -13,6 +13,7 @@ use app::model::app_state::AppState;
 use app::model::connection::setup::ConnectionField;
 use app::model::shared::text_input::TextInputState;
 use app::services::AppServices;
+use domain::DatabaseType;
 use ui::shell::layout::MainLayout;
 use ui::theme::{ThemePalette, palette_for};
 
@@ -28,6 +29,9 @@ pub fn create_test_state() -> AppState {
     state
         .session
         .set_active_connection_name_for_test(Some("localhost:5432/test".to_string()));
+    state
+        .session
+        .set_active_database_type_for_test(Some(DatabaseType::PostgreSQL));
     state
 }
 

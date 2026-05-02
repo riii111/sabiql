@@ -1,3 +1,4 @@
+use crate::domain::connection::DatabaseType;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::ports::outbound::{DatabaseCapabilities, InspectorFeature};
@@ -9,6 +10,10 @@ pub struct DbCapabilities {
 }
 
 impl DbCapabilities {
+    pub fn disconnected() -> Self {
+        Self::new(false, vec![InspectorTab::Info])
+    }
+
     pub fn postgres_like() -> Self {
         DatabaseCapabilities::new(
             true,
@@ -23,6 +28,26 @@ impl DbCapabilities {
             ],
         )
         .into()
+    }
+
+    pub fn sqlite_like() -> Self {
+        DatabaseCapabilities::new(
+            false,
+            vec![
+                InspectorFeature::Info,
+                InspectorFeature::Columns,
+                InspectorFeature::Indexes,
+                InspectorFeature::ForeignKeys,
+            ],
+        )
+        .into()
+    }
+
+    pub fn for_database_type(database_type: DatabaseType) -> Self {
+        match database_type {
+            DatabaseType::PostgreSQL => Self::postgres_like(),
+            DatabaseType::SQLite => Self::sqlite_like(),
+        }
     }
 
     pub fn supports_explain(&self) -> bool {
@@ -136,22 +161,40 @@ mod tests {
 
     #[test]
     fn postgres_supports_all_inspector_tabs() {
-        let caps = DbCapabilities::new(
-            true,
-            vec![
-                InspectorTab::Info,
-                InspectorTab::Columns,
-                InspectorTab::Indexes,
-                InspectorTab::ForeignKeys,
-                InspectorTab::Rls,
-                InspectorTab::Triggers,
-                InspectorTab::Ddl,
-            ],
-        );
+        let caps = DbCapabilities::postgres_like();
 
         assert!(caps.supports_explain());
         assert!(caps.supports_inspector_tab(InspectorTab::Ddl));
         assert_eq!(caps.supported_inspector_tabs().len(), 7);
+    }
+
+    #[test]
+    fn sqlite_supports_metadata_only_inspector_tabs() {
+        let caps = DbCapabilities::sqlite_like();
+
+        assert!(!caps.supports_explain());
+        assert_eq!(
+            caps.supported_inspector_tabs(),
+            &[
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys
+            ]
+        );
+        assert_eq!(caps.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
+    }
+
+    #[test]
+    fn for_database_type_uses_database_specific_capabilities() {
+        assert_eq!(
+            DbCapabilities::for_database_type(DatabaseType::PostgreSQL),
+            DbCapabilities::postgres_like()
+        );
+        assert_eq!(
+            DbCapabilities::for_database_type(DatabaseType::SQLite),
+            DbCapabilities::sqlite_like()
+        );
     }
 
     #[test]
@@ -187,5 +230,14 @@ mod tests {
     #[should_panic(expected = "DbCapabilities requires at least one supported inspector tab")]
     fn rejects_empty_supported_inspector_tabs() {
         let _ = DbCapabilities::new(false, vec![]);
+    }
+
+    #[test]
+    fn disconnected_disables_database_specific_tabs() {
+        let caps = DbCapabilities::disconnected();
+
+        assert!(!caps.supports_explain());
+        assert_eq!(caps.supported_inspector_tabs(), &[InspectorTab::Info]);
+        assert_eq!(caps.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
     }
 }

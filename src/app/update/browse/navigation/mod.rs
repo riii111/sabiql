@@ -13,8 +13,9 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
-    let active_tab = services
-        .db_capabilities
+    let active_tab = state
+        .session
+        .active_db_capabilities()
         .normalize_inspector_tab(state.ui.inspector_tab());
     state
         .session
@@ -43,8 +44,9 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
 }
 
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
-    let visible = match services
-        .db_capabilities
+    let visible = match state
+        .session
+        .active_db_capabilities()
         .normalize_inspector_tab(state.ui.inspector_tab())
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
@@ -63,7 +65,7 @@ pub fn reduce_navigation(
     services: &AppServices,
     now: Instant,
 ) -> Option<Vec<Effect>> {
-    focus::reduce(state, action, services, now)
+    focus::reduce(state, action)
         .or_else(|| input::reduce(state, action))
         .or_else(|| explorer::reduce(state, action))
         .or_else(|| inspector::reduce(state, action, services))

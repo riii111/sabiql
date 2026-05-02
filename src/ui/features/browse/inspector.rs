@@ -34,11 +34,12 @@ impl Inspector {
         let is_focused = state.ui.focused_pane() == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
-        let active_tab = services
-            .db_capabilities
+        let active_tab = state
+            .session
+            .active_db_capabilities()
             .normalize_inspector_tab(state.ui.inspector_tab());
 
-        Self::render_tab_bar(frame, tab_area, active_tab, services, theme);
+        Self::render_tab_bar(frame, tab_area, active_tab, state, theme);
         Self::render_content(
             frame,
             content_area,
@@ -55,11 +56,12 @@ impl Inspector {
         frame: &mut Frame,
         area: Rect,
         active_tab: InspectorTab,
-        services: &AppServices,
+        state: &AppState,
         theme: &ThemePalette,
     ) {
-        let tabs: Vec<Span> = services
-            .db_capabilities
+        let tabs: Vec<Span> = state
+            .session
+            .active_db_capabilities()
             .supported_inspector_tabs()
             .iter()
             .enumerate()

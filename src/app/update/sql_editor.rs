@@ -24,7 +24,6 @@ pub fn reduce_sql_modal(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    services: &crate::services::AppServices,
 ) -> Option<Vec<Effect>> {
     match action {
         // Completion navigation
@@ -363,8 +362,9 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
         Action::SqlModalYank => {
-            let active_tab = services
-                .db_capabilities
+            let active_tab = state
+                .session
+                .active_db_capabilities()
                 .normalize_sql_modal_tab(state.sql_modal.active_tab());
             let content = match active_tab {
                 SqlModalTab::Plan => state.explain.plan_text().map(str::to_string),
@@ -470,6 +470,7 @@ fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{ConnectionId, DatabaseType};
     use std::time::Instant;
 
     fn reduce_sql_modal(
@@ -477,12 +478,18 @@ mod tests {
         action: &Action,
         now: Instant,
     ) -> Option<Vec<Effect>> {
-        super::reduce_sql_modal(state, action, now, &crate::services::AppServices::stub())
+        super::reduce_sql_modal(state, action, now)
     }
 
     fn sql_modal_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::SqlModal);
+        state.session.set_active_connection(
+            &ConnectionId::new(),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            "postgres://test",
+        );
         state
     }
 

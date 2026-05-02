@@ -6,15 +6,11 @@ use crate::domain::QuerySource;
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
 use crate::model::shared::input_mode::InputMode;
+#[cfg(test)]
 use crate::services::AppServices;
 use crate::update::action::Action;
 
-pub fn reduce(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    _services: &AppServices,
-) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::RequestCsvExport => {
             if !state.can_request_csv_export() {

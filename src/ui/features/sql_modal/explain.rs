@@ -9,7 +9,6 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
-use crate::app::services::AppServices;
 use crate::primitives::atoms::text_cursor_spans;
 use crate::theme::ThemePalette;
 
@@ -17,11 +16,10 @@ pub fn render(
     frame: &mut Frame,
     area: Rect,
     state: &AppState,
-    services: &AppServices,
     now: Instant,
     theme: &ThemePalette,
 ) -> u16 {
-    if !services.db_capabilities.supports_explain() {
+    if !state.session.active_db_capabilities().supports_explain() {
         let placeholder = Line::from(Span::styled(
             " EXPLAIN is unavailable for this database",
             Style::default().fg(theme.semantic.text.placeholder),

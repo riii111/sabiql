@@ -9,14 +9,13 @@ mod sql_modal;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::inbound::{InputEvent, KeyCombo};
-use crate::services::AppServices;
 use crate::update::action::Action;
 
-pub fn handle_event(event: InputEvent, state: &AppState, services: &AppServices) -> Action {
+pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
     match event {
         InputEvent::Init => Action::Render,
         InputEvent::Resize(w, h) => Action::Resize(w, h),
-        InputEvent::Key(combo) => handle_key_event(combo, state, services),
+        InputEvent::Key(combo) => handle_key_event(combo, state),
         InputEvent::Paste(text) => handle_paste_event(text, state),
     }
 }
@@ -36,7 +35,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
     }
 }
 
-fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -> Action {
+fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
     match state.input_mode() {
         InputMode::Normal => normal::handle_normal_mode(combo, state),
         InputMode::CommandLine => editors::handle_command_line_mode(combo),
@@ -51,8 +50,9 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
                 combo,
                 completion_visible,
                 state.sql_modal.status(),
-                services
-                    .db_capabilities
+                state
+                    .session
+                    .active_db_capabilities()
                     .normalize_sql_modal_tab(state.sql_modal.active_tab()),
                 state.ui.key_sequence().pending_prefix(),
             )
@@ -97,10 +97,9 @@ mod tests {
         #[test]
         fn normal_mode_routes_to_normal_handler() {
             let state = make_state(InputMode::Normal);
-            let services = AppServices::stub();
 
             // 'q' in Normal mode should quit
-            let result = handle_key_event(combo(Key::Char('q')), &state, &services);
+            let result = handle_key_event(combo(Key::Char('q')), &state);
 
             assert!(matches!(result, Action::Quit));
         }
@@ -108,10 +107,9 @@ mod tests {
         #[test]
         fn sql_modal_mode_routes_to_sql_modal_handler() {
             let state = make_state(InputMode::SqlModal);
-            let services = AppServices::stub();
 
             // Esc in SqlModal (Normal mode, the default) should close modal
-            let result = handle_key_event(combo(Key::Esc), &state, &services);
+            let result = handle_key_event(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::CloseModal(ModalKind::SqlModal)));
         }
@@ -123,13 +121,11 @@ mod tests {
                 .sql_modal
                 .set_active_tab(crate::model::sql_editor::modal::SqlModalTab::Plan);
 
-            let mut services = AppServices::stub();
-            services.db_capabilities = crate::model::shared::db_capabilities::DbCapabilities::new(
-                false,
-                vec![crate::model::shared::inspector_tab::InspectorTab::Info],
-            );
+            state
+                .session
+                .set_active_database_type_for_test(Some(crate::domain::DatabaseType::SQLite));
 
-            let result = handle_key_event(combo(Key::Char('i')), &state, &services);
+            let result = handle_key_event(combo(Key::Char('i')), &state);
 
             assert!(matches!(result, Action::SqlModalEnterInsert));
         }
@@ -205,9 +201,8 @@ mod tests {
         #[test]
         fn init_maps_to_render() {
             let state = AppState::new("test".to_string());
-            let services = AppServices::stub();
 
-            let result = handle_event(InputEvent::Init, &state, &services);
+            let result = handle_event(InputEvent::Init, &state);
 
             assert!(matches!(result, Action::Render));
         }
@@ -215,9 +210,8 @@ mod tests {
         #[test]
         fn resize_maps_to_resize() {
             let state = AppState::new("test".to_string());
-            let services = AppServices::stub();
 
-            let result = handle_event(InputEvent::Resize(80, 24), &state, &services);
+            let result = handle_event(InputEvent::Resize(80, 24), &state);
 
             assert!(matches!(result, Action::Resize(80, 24)));
         }
