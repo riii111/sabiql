@@ -338,7 +338,7 @@ fn help_overlay_uses_section_header_and_scrollbar_colors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.help_scroll_offset = 1;
+    state.ui.help_scroll_offset = 14;
 
     let buffer = render_and_get_buffer_at(&mut terminal, &mut state, now);
 
@@ -387,7 +387,7 @@ fn test_contrast_theme_applies_help_overlay_navigation_colors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.help_scroll_offset = 1;
+    state.ui.help_scroll_offset = 14;
 
     let buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);

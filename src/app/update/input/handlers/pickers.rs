@@ -205,7 +205,7 @@ mod tests {
         #[case(Key::Esc, Action::SettingsCancel)]
         #[case(Key::Down, Action::SettingsSelectNextTheme)]
         #[case(Key::Up, Action::SettingsSelectPreviousTheme)]
-        fn settings_keys_map_to_actions(#[case] key: Key, #[case] expected: Action) {
+        fn keys_map_to_actions(#[case] key: Key, #[case] expected: Action) {
             let result = handle_settings_keys(combo(key));
 
             assert_eq!(format!("{result:?}"), format!("{expected:?}"));
