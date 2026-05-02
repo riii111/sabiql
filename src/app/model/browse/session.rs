@@ -365,12 +365,6 @@ impl BrowseSession {
             .map(DbCapabilities::for_database_type)
             .unwrap_or_else(DbCapabilities::disconnected);
     }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_active_db_capabilities_for_test(&mut self, capabilities: DbCapabilities) {
-        self.active_db_capabilities = capabilities;
-    }
 }
 
 #[cfg(test)]

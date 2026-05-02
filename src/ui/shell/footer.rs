@@ -9,7 +9,6 @@ use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
-use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
@@ -29,7 +28,6 @@ impl Footer {
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
-        services: &AppServices,
         time_ms: Option<u128>,
         theme: &ThemePalette,
     ) {
@@ -42,7 +40,7 @@ impl Footer {
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
-            let hints = Self::get_context_hints(state, services);
+            let hints = Self::get_context_hints(state);
             let line =
                 Self::build_hint_line_with_success(&hints, state.messages.last_success(), theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
@@ -75,10 +73,7 @@ impl Footer {
     }
 
     // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
-    fn get_context_hints(
-        state: &AppState,
-        _services: &AppServices,
-    ) -> Vec<(&'static str, &'static str)> {
+    fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
         use crate::app::model::shared::focused_pane::FocusedPane;
 
         match state.input_mode() {
@@ -364,12 +359,10 @@ impl Footer {
 #[cfg(test)]
 mod tests {
     use super::Footer;
+    use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
-    use crate::app::model::shared::db_capabilities::DbCapabilities;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
-    use crate::app::model::shared::inspector_tab::InspectorTab;
-    use crate::app::services::AppServices;
     use crate::app::update::input::keybindings::{GLOBAL_KEYS, idx};
     use rstest::rstest;
 
@@ -381,22 +374,23 @@ mod tests {
     }
 
     #[rstest]
-    #[case(DbCapabilities::new(true, vec![InspectorTab::Info]), false)]
-    #[case(
-        DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]),
-        true
-    )]
+    #[case(None, false)]
+    #[case(Some(DatabaseType::SQLite), true)]
     fn inspector_tabs_hint_visibility_tracks_supported_tab_count(
-        #[case] db_capabilities: DbCapabilities,
+        #[case] database_type: Option<DatabaseType>,
         #[case] expected_visible: bool,
     ) {
         let mut state = inspector_state();
-        let services = AppServices::stub();
-        state
-            .session
-            .set_active_db_capabilities_for_test(db_capabilities);
+        if let Some(database_type) = database_type {
+            state.session.set_active_connection(
+                &ConnectionId::new(),
+                "database",
+                database_type,
+                "sqlite://test.db",
+            );
+        }
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert_eq!(
             hints.contains(&GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint()),

@@ -18,7 +18,6 @@ pub(super) fn restore_cache(
     name: &str,
     database_type: DatabaseType,
     dsn: &str,
-    _services: &crate::services::AppServices,
 ) {
     state.session.restore_from_cache_for_connection(
         cache,

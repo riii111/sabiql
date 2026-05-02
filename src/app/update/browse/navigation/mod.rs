@@ -65,7 +65,7 @@ pub fn reduce_navigation(
     services: &AppServices,
     now: Instant,
 ) -> Option<Vec<Effect>> {
-    focus::reduce(state, action, services, now)
+    focus::reduce(state, action)
         .or_else(|| input::reduce(state, action))
         .or_else(|| explorer::reduce(state, action))
         .or_else(|| inspector::reduce(state, action, services))

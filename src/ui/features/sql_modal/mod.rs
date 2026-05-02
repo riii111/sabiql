@@ -15,7 +15,6 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
-use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
     SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
 };
@@ -33,7 +32,6 @@ impl SqlModal {
     pub fn render(
         frame: &mut Frame,
         state: &AppState,
-        services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
     ) -> Option<u16> {
@@ -140,8 +138,7 @@ impl SqlModal {
                 completion::render_completion_popup(frame, area, main_area, state, theme);
             }
         } else if active_tab == SqlModalTab::Plan {
-            let plan_viewport_height =
-                explain::render(frame, main_area, state, services, now, theme);
+            let plan_viewport_height = explain::render(frame, main_area, state, now, theme);
             status::render_status(frame, status_area, state, theme);
             return Some(plan_viewport_height);
         } else {

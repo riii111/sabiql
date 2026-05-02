@@ -15,9 +15,9 @@ pub fn reduce_query(
     now: Instant,
     services: &AppServices,
 ) -> Option<Vec<Effect>> {
-    execution::reduce(state, action, now, services)
+    execution::reduce(state, action, now)
         .or_else(|| write::reduce(state, action, now, services))
-        .or_else(|| pagination::reduce(state, action, now, services))
+        .or_else(|| pagination::reduce(state, action, now))
 }
 
 #[cfg(test)]

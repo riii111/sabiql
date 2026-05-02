@@ -24,7 +24,6 @@ pub fn reduce_sql_modal(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    _services: &crate::services::AppServices,
 ) -> Option<Vec<Effect>> {
     match action {
         // Completion navigation
@@ -471,7 +470,7 @@ fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::domain::{ConnectionId, DatabaseType};
     use std::time::Instant;
 
     fn reduce_sql_modal(
@@ -479,15 +478,18 @@ mod tests {
         action: &Action,
         now: Instant,
     ) -> Option<Vec<Effect>> {
-        super::reduce_sql_modal(state, action, now, &crate::services::AppServices::stub())
+        super::reduce_sql_modal(state, action, now)
     }
 
     fn sql_modal_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::SqlModal);
-        state
-            .session
-            .set_active_db_capabilities_for_test(DbCapabilities::postgres_like());
+        state.session.set_active_connection(
+            &ConnectionId::new(),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            "postgres://test",
+        );
         state
     }
 

@@ -7,6 +7,7 @@ use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
+#[cfg(test)]
 use crate::services::AppServices;
 use crate::update::action::{Action, ModalKind, TableTarget};
 use crate::update::input::command::{command_to_action, parse_command};
@@ -51,12 +52,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
     effects
 }
 
-pub fn reduce(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    _services: &AppServices,
-) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::QueryCompleted {
             result,

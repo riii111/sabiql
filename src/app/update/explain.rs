@@ -316,9 +316,8 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::inspector_tab::InspectorTab;
     use crate::services::AppServices;
     use crate::update::action::ScrollDirection;
     use std::time::Instant;
@@ -326,19 +325,22 @@ mod tests {
     fn sql_modal_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::SqlModal);
-        state
-            .session
-            .set_active_db_capabilities_for_test(DbCapabilities::postgres_like());
+        state.session.set_active_connection(
+            &ConnectionId::new(),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            "postgres://test",
+        );
         state
     }
 
     fn disable_explain_for_test(state: &mut AppState) {
-        state
-            .session
-            .set_active_db_capabilities_for_test(DbCapabilities::new(
-                false,
-                vec![InspectorTab::Info],
-            ));
+        state.session.set_active_connection(
+            &ConnectionId::new(),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite://test.db",
+        );
     }
 
     mod explain_request {
@@ -366,6 +368,7 @@ mod tests {
                 .sql_modal
                 .editor_mut_for_input()
                 .set_content("SELECT 1".to_string());
+            state.session.clear_dsn_for_test();
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
