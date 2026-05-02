@@ -37,7 +37,9 @@ impl DbAdapterRegistry {
     }
 
     fn sqlite_query_not_implemented() -> DbOperationError {
-        DbOperationError::QueryFailed("SQLite query execution is not implemented yet".to_string())
+        DbOperationError::UnsupportedOperation(
+            "SQLite query execution is not implemented yet".to_string(),
+        )
     }
 }
 
@@ -296,5 +298,44 @@ mod tests {
         let signatures = registry.fetch_table_signatures(&dsn).await.unwrap();
 
         assert_eq!(signatures[0].qualified_name(), "main.users");
+    }
+
+    #[tokio::test]
+    async fn sqlite_table_detail_is_dispatched_to_sqlite_adapter() {
+        let (_dir, dsn) = make_sqlite_dsn("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let detail = registry
+            .fetch_table_detail(&dsn, "main", "users")
+            .await
+            .unwrap();
+
+        assert_eq!(detail.schema, "main");
+        assert_eq!(detail.name, "users");
+        assert_eq!(detail.primary_key, Some(vec!["id".to_string()]));
+    }
+
+    #[tokio::test]
+    async fn sqlite_columns_and_fks_are_dispatched_to_sqlite_adapter() {
+        let (_dir, dsn) = make_sqlite_dsn(
+            r#"
+            CREATE TABLE orgs(id INTEGER PRIMARY KEY);
+            CREATE TABLE users(
+                id INTEGER PRIMARY KEY,
+                org_id INTEGER REFERENCES orgs(id)
+            );
+            "#,
+        );
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let detail = registry
+            .fetch_table_columns_and_fks(&dsn, "main", "users")
+            .await
+            .unwrap();
+
+        assert_eq!(detail.schema, "main");
+        assert!(detail.indexes.is_empty());
+        assert!(detail.columns.iter().any(|column| column.name == "org_id"));
+        assert_eq!(detail.foreign_keys[0].to_table, "orgs");
     }
 }

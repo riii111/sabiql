@@ -324,12 +324,13 @@ impl SqliteAdapter {
         }));
         parts.extend(detail.foreign_keys.iter().map(|fk| {
             format!(
-                "fk={}:{}:{}:{}:{}",
+                "fk={}:{}:{}:{}:{}:{}",
                 fk.name,
                 fk.from_columns.join(","),
                 fk.to_table,
                 fk.to_columns.join(","),
-                fk.on_delete
+                fk.on_delete,
+                fk.on_update
             )
         }));
 
@@ -658,5 +659,32 @@ mod tests {
         assert_eq!(signatures[0].qualified_name(), "main.users");
         assert!(signatures[0].signature.contains("CREATE TABLE users"));
         assert!(signatures[0].signature.contains("col=id:INTEGER"));
+    }
+
+    #[tokio::test]
+    async fn table_signatures_include_foreign_key_update_action() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE orgs(id INTEGER PRIMARY KEY);
+            CREATE TABLE users(
+                org_id INTEGER REFERENCES orgs(id)
+                    ON DELETE CASCADE
+                    ON UPDATE SET NULL
+            );
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
+        let signature = signatures
+            .iter()
+            .find(|signature| signature.name == "users")
+            .unwrap();
+
+        assert!(
+            signature
+                .signature
+                .contains("fk=fk_users_0:org_id:orgs:id:CASCADE:SET NULL")
+        );
     }
 }

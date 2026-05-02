@@ -5,7 +5,7 @@ fn quote_ident(value: &str) -> String {
 pub(super) fn user_tables_query() -> &'static str {
     r"
     SELECT name, sql
-    FROM sqlite_schema
+    FROM sqlite_master
     WHERE type = 'table'
       AND name NOT LIKE 'sqlite_%'
     ORDER BY name
@@ -43,6 +43,12 @@ mod tests {
     #[test]
     fn quote_ident_escapes_embedded_quotes() {
         assert_eq!(quote_ident(r#"my"table"#), r#""my""table""#);
+    }
+
+    #[test]
+    fn user_tables_query_uses_compatible_schema_table() {
+        assert!(user_tables_query().contains("FROM sqlite_master"));
+        assert!(user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
     }
 
     #[test]
