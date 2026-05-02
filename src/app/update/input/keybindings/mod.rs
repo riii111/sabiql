@@ -322,7 +322,7 @@ pub mod idx {
 // =============================================================================
 
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
-pub const HELP_KEY_MIN_COLUMN_WIDTH: usize = 20;
+pub const HELP_KEY_COLUMN_WIDTH: usize = 20;
 pub const HELP_KEY_DESC_GAP: usize = 2;
 
 // Must match the section order in `HelpOverlay::render()`.
@@ -365,26 +365,16 @@ pub const fn help_content_line_count() -> usize {
 }
 
 pub fn help_content_width() -> usize {
-    let key_column_width = help_key_column_width();
-
     help_section_titles()
         .map(|title| UnicodeWidthStr::width("▸ ") + UnicodeWidthStr::width(title))
         .chain(help_row_entries().map(|(key, desc)| {
             HELP_KEY_INDENT_WIDTH
-                + key_column_width.max(UnicodeWidthStr::width(key))
+                + UnicodeWidthStr::width(key).max(HELP_KEY_COLUMN_WIDTH)
                 + HELP_KEY_DESC_GAP
                 + UnicodeWidthStr::width(desc)
         }))
         .max()
         .unwrap_or(0)
-}
-
-pub fn help_key_column_width() -> usize {
-    help_row_entries()
-        .map(|(key, _)| UnicodeWidthStr::width(key))
-        .max()
-        .unwrap_or(0)
-        .max(HELP_KEY_MIN_COLUMN_WIDTH)
 }
 
 fn help_section_titles() -> impl Iterator<Item = &'static str> {

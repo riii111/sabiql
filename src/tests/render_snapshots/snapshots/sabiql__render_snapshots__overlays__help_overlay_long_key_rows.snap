@@ -5,23 +5,23 @@ expression: output
 test_project | test_db | - | no dsn | localhost:5432/test                       
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
 │> public.us╭ Help ────────────────────────────────────────────────╮───────────┐
-│  public.po│  :                                    Open command l▲│           │
-│  public.co│  Esc                                  Exit to Cell A││           │
+│  public.po│  :                     Open command line            ▲│           │
+│  public.co│  Esc                   Exit to Cell Active (draft pr││           │
 │           │                                                     ││           │
 │           │▸ SQL Editor (Normal)                                ││           │
-│           │  Alt+Enter / F5                       Execute query ││           │
-│           │  y                                    Copy query to ┃│           │
-│           │  i                                    Enter Insert m││           │
-│           │  A                                    Append at line││           │
-│           │  h / j / k / l / ↑↓←→                 Move cursor   ││───────────┘
-│           │  0 / $ / w / b / Home / End           Move by word o││───────────┐
-│           │  gg / G / H / M / L                   Jump by buffer││           │
-│           │  Esc                                  Close editor  ││           │
-│           │  Ctrl+L                               Clear editor  ││           │
-│           │  Ctrl+O                               Open Query His││           │
+│           │  Alt+Enter / F5        Execute query                ││           │
+│           │  y                     Copy query to clipboard      ┃│           │
+│           │  i                     Enter Insert mode            ││           │
+│           │  A                     Append at line end           ││           │
+│           │  h / j / k / l / ↑↓←→  Move cursor                  ││───────────┘
+│           │  0 / $ / w / b / Home / End  Move by word or line bo││───────────┐
+│           │  gg / G / H / M / L    Jump by buffer or viewport   ││           │
+│           │  Esc                   Close editor                 ││           │
+│           │  Ctrl+L                Clear editor                 ││           │
+│           │  Ctrl+O                Open Query History           ││           │
 │           │                                                     ││           │
 │           │▸ SQL Editor (Insert)                                ││           │
-│           │  Alt+Enter / F5                       Execute query ▼│           │
-│           │ col   0% ◀︎═════════════════────────────────────────▶︎ │           │
+│           │  Alt+Enter / F5        Execute query                ▼│           │
+│           │ col   0% ◀︎════════════════════─────────────────────▶︎ │           │
 └───────────╰ ?/Esc Close ─────────────────────────────────────────╯───────────┘
 h/l / ←→:H-Scroll  ?/Esc:Close

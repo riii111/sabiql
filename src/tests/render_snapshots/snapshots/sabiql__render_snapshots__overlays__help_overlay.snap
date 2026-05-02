@@ -6,22 +6,22 @@ test_project | test_db | - | no dsn | localhost:5432/test
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
 │> public.us╭ Help ────────────────────────────────────────────────╮───────────┐
 │  public.po│▸ Global Keys                                        ▲│           │
-│  public.co│  q                                    Quit applicati┃│           │
-│           │  ?                                    Toggle help   ││           │
-│           │  Ctrl+P                               Open Table Pic││           │
-│           │  Ctrl+K                               Open Command P││           │
-│           │  :                                    Enter command ││           │
-│           │  f                                    Toggle Focus  ││           │
-│           │  1/2/3                                Switch pane fo││           │
-│           │  Tab/⇧Tab                             Inspector prev││───────────┘
-│           │  r                                    Reload metadat││───────────┐
-│           │  s                                    Open SQL Edito││           │
-│           │  e                                    Open ER Diagra││           │
-│           │  c                                    Open Connectio││           │
-│           │  Ctrl+E                               Export result ││           │
-│           │  Ctrl+R                               Toggle Read-On││           │
-│           │  Ctrl+O                               Open Query His││           │
+│  public.co│  q                     Quit application             ┃│           │
+│           │  ?                     Toggle help                  ││           │
+│           │  Ctrl+P                Open Table Picker            ││           │
+│           │  Ctrl+K                Open Command Palette         ││           │
+│           │  :                     Enter command line           ││           │
+│           │  f                     Toggle Focus                 ││           │
+│           │  1/2/3                 Switch pane focus            ││           │
+│           │  Tab/⇧Tab              Inspector prev/next tab      ││───────────┘
+│           │  r                     Reload metadata              ││───────────┐
+│           │  s                     Open SQL Editor              ││           │
+│           │  e                     Open ER Diagram              ││           │
+│           │  c                     Open Connection Selector     ││           │
+│           │  Ctrl+E                Export result to CSV         ││           │
+│           │  Ctrl+R                Toggle Read-Only             ││           │
+│           │  Ctrl+O                Open Query History           ││           │
 │           │                                                     ▼│           │
-│           │ col   0% ◀︎═════════════════────────────────────────▶︎ │           │
+│           │ col   0% ◀︎════════════════════─────────────────────▶︎ │           │
 └───────────╰ ?/Esc Close ─────────────────────────────────────────╯───────────┘
 h/l / ←→:H-Scroll  ?/Esc:Close
