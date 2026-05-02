@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use serde::Deserialize;
 
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::domain::{
@@ -20,13 +21,13 @@ pub struct SqliteAdapter {
     cli: SqliteCli,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawTable {
     name: String,
     sql: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawColumn {
     cid: i32,
     name: String,
@@ -37,20 +38,20 @@ struct RawColumn {
     pk: i64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawIndex {
     name: String,
     unique: i64,
     origin: String,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawIndexColumn {
     seqno: i64,
     name: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawForeignKey {
     id: i64,
     seq: i64,
@@ -61,7 +62,7 @@ struct RawForeignKey {
     on_delete: String,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawRowCount {
     count: i64,
 }
