@@ -1,5 +1,5 @@
 ---
-source: tests/render_snapshots/overlays.rs
+source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [INSERT]                                             Ready  │       │
-│       ╰ ⌥Enter: Run │ ^E: Explain │ ^L: Clear │ ^O: History │ Esc: No╯       │
+│       ╰ ⌥Enter/F5: Run │ ^E: Explain │ ^L: Clear │ ^O: History │ Esc:╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal
+⌥Enter/F5:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal

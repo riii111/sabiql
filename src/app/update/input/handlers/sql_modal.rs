@@ -39,7 +39,8 @@ pub fn handle_sql_modal_keys_with_prefix(
     ) {
         let ctrl = combo.modifiers.contains(Modifiers::CTRL);
         let alt = combo.modifiers.contains(Modifiers::ALT);
-        let plain = !ctrl && !alt;
+        let shift = combo.modifiers.contains(Modifiers::SHIFT);
+        let plain = !ctrl && !alt && !shift;
 
         if let Some(prefix) = pending_prefix {
             if ctrl || alt {
@@ -137,6 +138,7 @@ pub fn handle_sql_modal_keys_with_prefix(
 
         return match combo.key {
             Key::Enter if alt => Action::SqlModalSubmit,
+            Key::F(5) if plain => Action::SqlModalSubmit,
             Key::Up => Action::TextMoveCursor {
                 target: InputTarget::SqlModal,
                 direction: CursorMove::Up,
@@ -236,7 +238,9 @@ pub fn handle_sql_modal_keys_with_prefix(
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
     let ctrl_only = ctrl && !alt && !shift;
 
-    if alt && combo.key == Key::Enter {
+    let plain = !ctrl && !alt && !shift;
+
+    if (alt && combo.key == Key::Enter) || (plain && combo.key == Key::F(5)) {
         return Action::SqlModalSubmit;
     }
 
@@ -599,6 +603,18 @@ mod tests {
         }
 
         #[test]
+        fn f5_submits_query() {
+            let result = handle_sql_modal_keys(
+                combo(Key::F(5)),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+            );
+
+            assert_action(result, Expected::SqlModalSubmit);
+        }
+
+        #[test]
         fn ctrl_o_opens_query_history_picker() {
             let result = handle_sql_modal_keys(
                 combo_ctrl(Key::Char('o')),
@@ -924,6 +940,18 @@ mod tests {
         fn alt_enter_submits() {
             let result = handle_sql_modal_keys(
                 combo_alt(Key::Enter),
+                false,
+                &SqlModalStatus::Normal,
+                SqlModalTab::Sql,
+            );
+
+            assert_action(result, Expected::SqlModalSubmit);
+        }
+
+        #[test]
+        fn f5_submits() {
+            let result = handle_sql_modal_keys(
+                combo(Key::F(5)),
                 false,
                 &SqlModalStatus::Normal,
                 SqlModalTab::Sql,

@@ -1,5 +1,5 @@
 ---
-source: tests/render_snapshots/overlays.rs
+source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                           ✓ table created (0.04s)  │       │
-│       ╰ ⌥Enter: Run │ i: Insert │ Tab/⇧Tab: Switch │ Esc: Close ─────╯       │
+│       ╰ ⌥Enter/F5: Run │ i: Insert │ Tab/⇧Tab: Switch │ Esc: Close ──╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
