@@ -10,6 +10,10 @@ pub struct DbCapabilities {
 }
 
 impl DbCapabilities {
+    pub fn disconnected() -> Self {
+        Self::new(false, vec![InspectorTab::Info])
+    }
+
     pub fn postgres_like() -> Self {
         DatabaseCapabilities::new(
             true,
@@ -208,5 +212,14 @@ mod tests {
     #[should_panic(expected = "DbCapabilities requires at least one supported inspector tab")]
     fn rejects_empty_supported_inspector_tabs() {
         let _ = DbCapabilities::new(false, vec![]);
+    }
+
+    #[test]
+    fn disconnected_disables_database_specific_tabs() {
+        let caps = DbCapabilities::disconnected();
+
+        assert!(!caps.supports_explain());
+        assert_eq!(caps.supported_inspector_tabs(), &[InspectorTab::Info]);
+        assert_eq!(caps.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
     }
 }

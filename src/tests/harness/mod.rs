@@ -11,6 +11,7 @@ use ratatui::layout::Position;
 
 use app::model::app_state::AppState;
 use app::model::connection::setup::ConnectionField;
+use app::model::shared::db_capabilities::DbCapabilities;
 use app::model::shared::text_input::TextInputState;
 use app::services::AppServices;
 use ui::shell::layout::MainLayout;
@@ -28,6 +29,9 @@ pub fn create_test_state() -> AppState {
     state
         .session
         .set_active_connection_name_for_test(Some("localhost:5432/test".to_string()));
+    state
+        .session
+        .set_active_db_capabilities_for_test(DbCapabilities::postgres_like());
     state
 }
 

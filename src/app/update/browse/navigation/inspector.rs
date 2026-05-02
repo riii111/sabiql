@@ -128,6 +128,9 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_inspector_pane_height(10);
             state.ui.set_inspector_tab(InspectorTab::Columns);
+            state
+                .session
+                .set_active_db_capabilities_for_test(DbCapabilities::postgres_like());
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
                     name: format!("col_{i}"),

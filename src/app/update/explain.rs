@@ -327,6 +327,9 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::SqlModal);
         state
+            .session
+            .set_active_db_capabilities_for_test(DbCapabilities::postgres_like());
+        state
     }
 
     fn services_without_explain() -> AppServices {

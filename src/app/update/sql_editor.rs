@@ -471,6 +471,7 @@ fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::db_capabilities::DbCapabilities;
     use std::time::Instant;
 
     fn reduce_sql_modal(
@@ -484,6 +485,9 @@ mod tests {
     fn sql_modal_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::SqlModal);
+        state
+            .session
+            .set_active_db_capabilities_for_test(DbCapabilities::postgres_like());
         state
     }
 

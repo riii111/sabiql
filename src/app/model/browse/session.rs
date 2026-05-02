@@ -60,7 +60,7 @@ impl Default for BrowseSession {
             active_connection_id: None,
             active_connection_name: None,
             active_database_type: None,
-            active_db_capabilities: DbCapabilities::postgres_like(),
+            active_db_capabilities: DbCapabilities::disconnected(),
             read_only: false,
             is_reloading: false,
         }
@@ -232,7 +232,7 @@ impl BrowseSession {
         self.active_connection_id = None;
         self.active_connection_name = None;
         self.active_database_type = None;
-        self.active_db_capabilities = DbCapabilities::postgres_like();
+        self.active_db_capabilities = DbCapabilities::disconnected();
         self.read_only = false;
         self.is_reloading = false;
         query.pagination.reset();
@@ -363,7 +363,7 @@ impl BrowseSession {
         self.active_database_type = database_type;
         self.active_db_capabilities = database_type
             .map(DbCapabilities::for_database_type)
-            .unwrap_or_else(DbCapabilities::postgres_like);
+            .unwrap_or_else(DbCapabilities::disconnected);
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -763,6 +763,10 @@ mod tests {
             assert!(session.active_connection_id().is_none());
             assert!(session.active_connection_name().is_none());
             assert!(session.active_database_type().is_none());
+            assert_eq!(
+                session.active_db_capabilities(),
+                &DbCapabilities::disconnected()
+            );
             assert!(!session.is_read_only());
             assert!(!session.is_reloading());
             assert_eq!(query.pagination.current_page(), 0);
