@@ -8,8 +8,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │  public.posts                         ││(select a table)                                                                                                          │
 │  public.comments                      ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │  Home/End            Jump to start/end                                                                         ▲│                        │
-│                        │  :                   Open command line                                                                         ││                        │
+│                        │  :                   Open command line                                                                         ▲│                        │
 │                        │  Esc                 Exit to Cell Active (draft preserved)                                                     ││                        │
 │                        │                                                                                                                ││                        │
 │                        │▸ SQL Editor (Normal)                                                                                           ││                        │
@@ -19,16 +18,16 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  A                   Append at line end                                                                        ││                        │
 │                        │  h / j / k / l / ↑↓←→Move cursor                                                                               ││                        │
 │                        │  0 / $ / w / b / Home / End  Move by word or line boundary                                                     ││                        │
-│                        │  gg / G / H / M / L  Jump by buffer or viewport                                                                ┃│                        │
+│                        │  gg / G / H / M / L  Jump by buffer or viewport                                                                ││                        │
 │                        │  Esc                 Close editor                                                                              ┃│                        │
 │                        │  Ctrl+L              Clear editor                                                                              ┃│                        │
 │                        │  Ctrl+O              Open Query History                                                                        ┃│                        │
 │                        │                                                                                                                ┃│                        │
 │                        │▸ SQL Editor (Insert)                                                                                           ┃│                        │
 │                        │  Alt+Enter / F5      Execute query                                                                             ┃│                        │
-│                        │  Esc                 Return to Normal mode                                                                     ││────────────────────────┘
-│                        │  ↑↓←→                Move cursor                                                                               ││────────────────────────┐
-│                        │  Home/End            Line start/end                                                                            ││                        │
+│                        │  Esc                 Return to Normal mode                                                                     ┃│                        │
+│                        │  ↑↓←→                Move cursor                                                                               ││────────────────────────┘
+│                        │  Home/End            Line start/end                                                                            ││────────────────────────┐
 │                        │  Tab                 Insert tab / Accept completion                                                            ││                        │
 │                        │  Ctrl+Space          Trigger completion                                                                        ││                        │
 │                        │  Ctrl+L              Clear editor                                                                              ││                        │
@@ -46,7 +45,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │▸ SQL Editor (Compare)                                                                                          ││                        │
 │                        │  Ctrl+E              Run EXPLAIN on current query                                                              ││                        │
 │                        │  Alt+E               Run EXPLAIN ANALYZE on current query                                                      ││                        │
-│                        │  e                   Edit query in SQL tab                                                                     ▼│                        │
+│                        │  e                   Edit query in SQL tab                                                                     ││                        │
+│                        │  y                   Copy to clipboard                                                                         ▼│                        │
 │                        ╰ ?/Esc Close ────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

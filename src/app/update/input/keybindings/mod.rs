@@ -107,21 +107,20 @@ pub mod idx {
         pub const QUIT: usize = 0;
         pub const HELP: usize = 1;
         pub const TABLE_PICKER: usize = 2;
-        pub const PALETTE: usize = 3;
-        pub const SETTINGS: usize = 4;
-        pub const COMMAND_LINE: usize = 5;
-        pub const FOCUS: usize = 6;
-        pub const EXIT_FOCUS: usize = 7;
-        pub const PANE_SWITCH: usize = 8;
-        pub const INSPECTOR_TABS: usize = 9;
-        pub const RELOAD: usize = 10;
-        pub const SQL: usize = 11;
-        pub const ER_DIAGRAM: usize = 12;
-        pub const CONNECTIONS: usize = 13;
-        pub const CSV_EXPORT: usize = 14;
-        pub const READ_ONLY: usize = 15;
-        pub const EXIT_READ_ONLY: usize = 16;
-        pub const QUERY_HISTORY: usize = 17;
+        pub const SETTINGS: usize = 3;
+        pub const COMMAND_LINE: usize = 4;
+        pub const FOCUS: usize = 5;
+        pub const EXIT_FOCUS: usize = 6;
+        pub const PANE_SWITCH: usize = 7;
+        pub const INSPECTOR_TABS: usize = 8;
+        pub const RELOAD: usize = 9;
+        pub const SQL: usize = 10;
+        pub const ER_DIAGRAM: usize = 11;
+        pub const CONNECTIONS: usize = 12;
+        pub const CSV_EXPORT: usize = 13;
+        pub const READ_ONLY: usize = 14;
+        pub const EXIT_READ_ONLY: usize = 15;
+        pub const QUERY_HISTORY: usize = 16;
     }
 
     pub mod footer_nav {
@@ -573,7 +572,6 @@ mod tests {
             assert!(idx::global::QUIT < GLOBAL_KEYS.len());
             assert!(idx::global::HELP < GLOBAL_KEYS.len());
             assert!(idx::global::TABLE_PICKER < GLOBAL_KEYS.len());
-            assert!(idx::global::PALETTE < GLOBAL_KEYS.len());
             assert!(idx::global::SETTINGS < GLOBAL_KEYS.len());
             assert!(idx::global::COMMAND_LINE < GLOBAL_KEYS.len());
             assert!(idx::global::FOCUS < GLOBAL_KEYS.len());
@@ -819,7 +817,6 @@ mod tests {
             #[case(idx::global::QUIT, Action::Quit)]
             #[case(idx::global::HELP, Action::ToggleModal(ModalKind::Help))]
             #[case(idx::global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
-            #[case(idx::global::PALETTE, Action::OpenModal(ModalKind::CommandPalette))]
             #[case(idx::global::SETTINGS, Action::OpenModal(ModalKind::Settings))]
             #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
             #[case(idx::global::RELOAD, Action::ReloadMetadata)]

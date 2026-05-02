@@ -44,7 +44,8 @@ Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featur
 
 - **Fuzzy Search** (`/`) — Incremental table filtering
 - **Focus Mode** (`f`) — Expand any pane to full screen
-- **Command Palette** (`Ctrl+K`) — Searchable command list
+- **Settings** (`Ctrl+K`) — Theme and appearance preferences
+- **Command Palette** (`:palette`) — Searchable command list
 
 ## Installation
 
@@ -77,7 +78,7 @@ sabiql
 
 On first run, enter your connection details — saved to `~/.config/sabiql/connections.toml`. Press `?` for help.
 
-Open Settings with `Ctrl+,` to switch between Sabiql Dark and Light themes.
+Open Settings with `Ctrl+K` to switch between Sabiql Dark and Light themes.
 
 ## Requirements
 

@@ -8,6 +8,7 @@ pub enum Command {
     Erd,
     Settings,
     Theme,
+    Palette,
     Write,
     Unknown(String),
 }
@@ -20,6 +21,7 @@ pub fn parse_command(input: &str) -> Command {
         "erd" => Command::Erd,
         "settings" => Command::Settings,
         "theme" => Command::Theme,
+        "palette" => Command::Palette,
         "w" | "write" => Command::Write,
         other => Command::Unknown(other.to_string()),
     }
@@ -32,6 +34,7 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Sql => Action::OpenModal(ModalKind::SqlModal),
         Command::Erd => Action::OpenModal(ModalKind::ErTablePicker),
         Command::Settings | Command::Theme => Action::OpenModal(ModalKind::Settings),
+        Command::Palette => Action::OpenModal(ModalKind::CommandPalette),
         Command::Write => Action::SubmitCellEditWrite,
         Command::Unknown(_) => Action::None,
     }
@@ -90,6 +93,13 @@ mod tests {
             let result = parse_command("theme");
 
             assert_eq!(result, Command::Theme);
+        }
+
+        #[test]
+        fn palette_returns_palette() {
+            let result = parse_command("palette");
+
+            assert_eq!(result, Command::Palette);
         }
 
         #[rstest]
@@ -168,6 +178,16 @@ mod tests {
             let result = command_to_action(Command::Theme);
 
             assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
+        }
+
+        #[test]
+        fn palette_returns_open_command_palette_action() {
+            let result = command_to_action(Command::Palette);
+
+            assert!(matches!(
+                result,
+                Action::OpenModal(ModalKind::CommandPalette)
+            ));
         }
 
         #[test]

@@ -51,4 +51,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ?:Help  ^,:Settings  q:Quit
+r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ?:Help  ^K:Settings  q:Quit
