@@ -1,9 +1,6 @@
 use async_trait::async_trait;
 
-use crate::app::ports::outbound::{
-    DatabaseCapabilities, DatabaseCapabilityProvider, DbOperationError, InspectorFeature,
-    MetadataProvider, QueryExecutor,
-};
+use crate::app::ports::outbound::{DbOperationError, MetadataProvider, QueryExecutor};
 use crate::domain::{
     Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSignature, WriteExecutionResult,
 };
@@ -35,23 +32,6 @@ impl PostgresAdapter {
         } else {
             Some(pk_cols)
         }
-    }
-}
-
-impl DatabaseCapabilityProvider for PostgresAdapter {
-    fn capabilities(&self) -> DatabaseCapabilities {
-        DatabaseCapabilities::new(
-            true,
-            vec![
-                InspectorFeature::Info,
-                InspectorFeature::Columns,
-                InspectorFeature::Indexes,
-                InspectorFeature::ForeignKeys,
-                InspectorFeature::Rls,
-                InspectorFeature::Triggers,
-                InspectorFeature::Ddl,
-            ],
-        )
     }
 }
 

@@ -278,11 +278,7 @@ mod tests {
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
-        fn services_without_ddl() -> AppServices {
-            AppServices::stub()
-        }
-
-        fn use_services_without_ddl(state: &mut AppState) {
+        fn disable_ddl_for_test(state: &mut AppState) {
             state
                 .session
                 .set_active_db_capabilities_for_test(DbCapabilities::new(
@@ -294,8 +290,7 @@ mod tests {
         #[test]
         fn inspector_half_page_scroll_normalizes_unsupported_ddl_tab() {
             let mut state = state_with_table_detail(20);
-            use_services_without_ddl(&mut state);
-            let services = services_without_ddl();
+            disable_ddl_for_test(&mut state);
             state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
@@ -310,7 +305,7 @@ mod tests {
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::HalfPage,
                 },
-                &services,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -321,8 +316,7 @@ mod tests {
         #[test]
         fn inspector_full_page_scroll_normalizes_unsupported_ddl_tab() {
             let mut state = state_with_table_detail(20);
-            use_services_without_ddl(&mut state);
-            let services = services_without_ddl();
+            disable_ddl_for_test(&mut state);
             state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
@@ -334,7 +328,7 @@ mod tests {
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::FullPage,
                 },
-                &services,
+                &AppServices::stub(),
                 Instant::now(),
             );
 

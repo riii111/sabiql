@@ -2,10 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 
-use crate::app::ports::outbound::{
-    DatabaseCapabilities, DatabaseCapabilityProvider, DbOperationError, InspectorFeature,
-    MetadataProvider,
-};
+use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
     IndexType, Schema, Table, TableSignature, TableSummary,
@@ -341,20 +338,6 @@ fn parse_fk_action(action: &str) -> Result<FkAction, DbOperationError> {
 impl Default for SqliteAdapter {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl DatabaseCapabilityProvider for SqliteAdapter {
-    fn capabilities(&self) -> DatabaseCapabilities {
-        DatabaseCapabilities::new(
-            false,
-            vec![
-                InspectorFeature::Info,
-                InspectorFeature::Columns,
-                InspectorFeature::Indexes,
-                InspectorFeature::ForeignKeys,
-            ],
-        )
     }
 }
 

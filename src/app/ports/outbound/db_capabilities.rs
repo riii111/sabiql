@@ -38,7 +38,3 @@ impl DatabaseCapabilities {
         &self.supported_inspector_features
     }
 }
-
-pub trait DatabaseCapabilityProvider {
-    fn capabilities(&self) -> DatabaseCapabilities;
-}

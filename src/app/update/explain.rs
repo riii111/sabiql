@@ -332,10 +332,6 @@ mod tests {
         state
     }
 
-    fn services_without_explain() -> AppServices {
-        AppServices::stub()
-    }
-
     fn disable_explain_for_test(state: &mut AppState) {
         state
             .session
@@ -408,7 +404,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainRequest,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -531,7 +527,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainAnalyzeRequest,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1155,7 +1151,7 @@ mod tests {
                 &mut state,
                 &Action::SqlModalNextTab,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
@@ -1171,7 +1167,7 @@ mod tests {
                 &mut state,
                 &Action::SqlModalNextTab,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
@@ -1217,7 +1213,7 @@ mod tests {
                 &mut state,
                 &Action::SqlModalPrevTab,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
@@ -1233,7 +1229,7 @@ mod tests {
                 &mut state,
                 &Action::SqlModalPrevTab,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
