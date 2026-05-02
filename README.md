@@ -77,6 +77,8 @@ sabiql
 
 On first run, enter your connection details — saved to `~/.config/sabiql/connections.toml`. Press `?` for help.
 
+Open Settings with `Ctrl+,` to switch between Sabiql Dark and Light themes.
+
 ## Requirements
 
 - `psql` CLI (PostgreSQL client)
@@ -114,11 +116,11 @@ nix develop
 - [x] CSV export & clipboard yank
 - [x] EXPLAIN workflow (plan tree view & comparison)
 - [x] JSON/JSONB support (tree view, editing, validation)
+- [x] Theme switching (Sabiql Dark / Light)
 - [ ] Neovim integration (`sabiql.nvim`)
 - [ ] SQLite support
 - [ ] Zero-config connection (env vars, `.pgpass`, URI auto-detect)
 - [ ] Google Cloud SQL / AlloyDB support
-- [ ] Theme switching (foreground palette only)
 - [ ] MySQL support
 
 Have a feature request? [Open an issue](https://github.com/riii111/sabiql/issues/new) feedback is welcome!
