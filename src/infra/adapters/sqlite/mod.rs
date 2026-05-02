@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 
 use crate::app::ports::outbound::{
@@ -118,6 +120,22 @@ impl SqliteAdapter {
         }
     }
 
+    async fn primary_key_columns(
+        &self,
+        path: &str,
+        table: &str,
+    ) -> Result<Vec<String>, DbOperationError> {
+        let mut primary_key: Vec<(i64, String)> = self
+            .columns(path, table)
+            .await?
+            .into_iter()
+            .filter(|column| column.pk > 0)
+            .map(|column| (column.pk, column.name))
+            .collect();
+        primary_key.sort_by_key(|(pk, _)| *pk);
+        Ok(primary_key.into_iter().map(|(_, name)| name).collect())
+    }
+
     async fn indexes(&self, path: &str, table: &str) -> Result<Vec<Index>, DbOperationError> {
         let raw_indexes: Vec<RawIndex> = self
             .cli
@@ -160,8 +178,24 @@ impl SqliteAdapter {
         let mut grouped = Vec::new();
         let mut current: Option<ForeignKey> = None;
         let mut current_id = None;
+        let mut referenced_primary_keys = HashMap::new();
 
         for fk in raw {
+            let to_column = match fk.to {
+                Some(to) => to,
+                None => {
+                    if !referenced_primary_keys.contains_key(&fk.table) {
+                        let primary_key = self.primary_key_columns(path, &fk.table).await?;
+                        referenced_primary_keys.insert(fk.table.clone(), primary_key);
+                    }
+                    referenced_primary_keys
+                        .get(&fk.table)
+                        .and_then(|primary_key| primary_key.get(fk.seq as usize))
+                        .cloned()
+                        .unwrap_or_default()
+                }
+            };
+
             if current_id != Some(fk.id) {
                 if let Some(fk) = current.take() {
                     grouped.push(fk);
@@ -182,7 +216,7 @@ impl SqliteAdapter {
 
             if let Some(current) = &mut current {
                 current.from_columns.push(fk.from);
-                current.to_columns.push(fk.to.unwrap_or_default());
+                current.to_columns.push(to_column);
             }
         }
 
@@ -467,6 +501,101 @@ mod tests {
         assert_eq!(fk.on_delete, FkAction::Cascade);
         assert!(detail.rls.is_none());
         assert!(detail.triggers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn composite_foreign_key_groups_columns_in_sequence_order() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
+            CREATE TABLE child(
+                x INTEGER,
+                y INTEGER,
+                FOREIGN KEY(x, y) REFERENCES parent(a, b)
+            );
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let detail = adapter
+            .fetch_table_detail(&dsn, "main", "child")
+            .await
+            .unwrap();
+
+        assert_eq!(detail.foreign_keys.len(), 1);
+        assert_eq!(
+            detail.foreign_keys[0].from_columns,
+            vec!["x".to_string(), "y".to_string()]
+        );
+        assert_eq!(
+            detail.foreign_keys[0].to_columns,
+            vec!["a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn foreign_key_without_target_columns_resolves_parent_primary_key() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
+            CREATE TABLE child(
+                x INTEGER,
+                y INTEGER,
+                FOREIGN KEY(x, y) REFERENCES parent
+            );
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let detail = adapter
+            .fetch_table_detail(&dsn, "main", "child")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            detail.foreign_keys[0].to_columns,
+            vec!["a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_dsn_returns_connection_error() {
+        let adapter = SqliteAdapter::new();
+
+        let postgres_result = adapter.fetch_metadata("postgres://localhost").await;
+        let empty_result = adapter.fetch_metadata("sqlite://").await;
+
+        assert!(matches!(
+            postgres_result,
+            Err(DbOperationError::ConnectionFailed(_))
+        ));
+        assert!(matches!(
+            empty_result,
+            Err(DbOperationError::ConnectionFailed(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn missing_database_file_returns_error_without_creating_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.db");
+        let dsn = format!("sqlite://{}", path.display());
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter.fetch_metadata(&dsn).await;
+
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn non_main_schema_returns_object_missing() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter.fetch_table_detail(&dsn, "other", "users").await;
+
+        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
     }
 
     #[tokio::test]

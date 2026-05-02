@@ -42,7 +42,7 @@ impl SqliteCli {
 
     async fn run(&self, path: &str, sql: &str) -> Result<SqliteOutput, DbOperationError> {
         let mut cmd = Command::new("sqlite3");
-        cmd.arg("-json").arg(path).arg(sql);
+        cmd.arg("-readonly").arg("-json").arg(path).arg(sql);
         Self::collect_output(&mut cmd, self.timeout_secs).await
     }
 
