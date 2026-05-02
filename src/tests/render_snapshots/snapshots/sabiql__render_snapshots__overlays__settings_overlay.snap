@@ -15,7 +15,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                      │                                                                                                                     │                      │
 │                      │  > Appearance    Theme                                                                                              │                      │
 │                      │                                                                                                                     │                      │
-│                      │                    > Sabiql Dark    current                                                                         │                      │
+│                      │                    > Sabiql Dark    saved                                                                           │                      │
 │                      │                      Light                                                                                          │                      │
 │                      │                                                                                                                     │                      │
 │                      │                                                                                                                     │                      │

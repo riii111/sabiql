@@ -55,16 +55,16 @@ impl SettingsOverlay {
 
         for theme_id in ThemeId::ALL {
             let selected = state.settings.selected_theme() == theme_id;
-            let current = state.ui.theme_id() == theme_id;
+            let saved = state.settings.previous_theme() == theme_id;
             let marker = if selected { ">" } else { " " };
-            let current_label = if current { " current" } else { "" };
+            let saved_label = if saved { " saved" } else { "" };
             let style = if selected {
                 theme.picker_selected_style()
             } else {
                 Style::default().fg(theme.semantic.text.secondary)
             };
             content_lines.push(Line::from(Span::styled(
-                format!("  {marker} {:<14}{current_label}", theme_id.label()),
+                format!("  {marker} {:<14}{saved_label}", theme_id.label()),
                 style,
             )));
         }
