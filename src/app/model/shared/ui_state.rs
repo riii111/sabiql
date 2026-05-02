@@ -27,7 +27,8 @@ pub const HELP_MODAL_HEIGHT_PERCENT: u16 = 80;
 // Top and bottom modal border rows subtracted from the inner visible area.
 pub const MODAL_VERTICAL_BORDER_OVERHEAD: usize = 2;
 pub const MODAL_HORIZONTAL_BORDER_OVERHEAD: usize = 2;
-pub const HELP_HORIZONTAL_SCROLLBAR_OVERHEAD: usize = 1;
+pub const HELP_HORIZONTAL_SCROLLBAR_HEIGHT: usize = 1;
+pub const HELP_VERTICAL_SCROLLBAR_WIDTH: usize = 1;
 pub const DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,7 +241,7 @@ impl UiState {
     pub fn help_visible_rows(&self) -> usize {
         (self.terminal_height as usize * HELP_MODAL_HEIGHT_PERCENT as usize / 100)
             .saturating_sub(MODAL_VERTICAL_BORDER_OVERHEAD)
-            .saturating_sub(HELP_HORIZONTAL_SCROLLBAR_OVERHEAD)
+            .saturating_sub(HELP_HORIZONTAL_SCROLLBAR_HEIGHT)
     }
 
     pub fn help_max_scroll(&self) -> usize {
@@ -250,7 +251,7 @@ impl UiState {
     pub fn help_visible_columns(&self) -> usize {
         (self.terminal_width as usize * HELP_MODAL_WIDTH_PERCENT as usize / 100)
             .saturating_sub(MODAL_HORIZONTAL_BORDER_OVERHEAD)
-            .saturating_sub(1)
+            .saturating_sub(HELP_VERTICAL_SCROLLBAR_WIDTH)
     }
 
     pub fn help_max_horizontal_scroll(&self) -> usize {

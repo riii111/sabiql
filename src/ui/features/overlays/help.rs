@@ -8,15 +8,18 @@ use unicode_width::UnicodeWidthStr;
 use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::ui_state::{HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT};
+use crate::app::model::shared::ui_state::{
+    HELP_HORIZONTAL_SCROLLBAR_HEIGHT, HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT,
+    HELP_VERTICAL_SCROLLBAR_WIDTH,
+};
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_ROWS, CONFIRM_DIALOG_KEYS,
     CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, ER_PICKER_ROWS,
-    GLOBAL_KEYS, HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH, HELP_KEY_MIN_COLUMN_WIDTH, HELP_ROWS,
-    HISTORY_KEYS, INSPECTOR_DDL_KEYS, JSONB_DETAIL_ROWS, JSONB_EDIT_ROWS, JSONB_SEARCH_KEYS,
-    KeyBinding, NAVIGATION_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS,
+    GLOBAL_KEYS, HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH, HELP_ROWS, HISTORY_KEYS,
+    INSPECTOR_DDL_KEYS, JSONB_DETAIL_ROWS, JSONB_EDIT_ROWS, JSONB_SEARCH_KEYS, KeyBinding,
+    NAVIGATION_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS,
     SQL_MODAL_COMPARE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS,
-    SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, help_content_width,
+    SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, help_content_width, help_key_column_width,
 };
 
 use crate::primitives::atoms::scroll_indicator::{
@@ -38,7 +41,7 @@ impl HelpOverlay {
             theme,
         );
 
-        let key_column_width = HELP_KEY_MIN_COLUMN_WIDTH;
+        let key_column_width = help_key_column_width();
         let mut help_lines = vec![Self::section("Global Keys", theme)];
         Self::push_dedup(&mut help_lines, GLOBAL_KEYS, key_column_width, theme);
 
@@ -300,7 +303,7 @@ impl HelpOverlay {
         }
 
         let total_lines = help_lines.len();
-        let content_area = Self::content_area(inner);
+        let content_area = Self::content_area_excluding_scrollbars(inner);
         let viewport_height = content_area.height as usize;
         let scroll_offset =
             clamp_scroll_offset(state.ui.help_scroll_offset, viewport_height, total_lines);
@@ -342,10 +345,14 @@ impl HelpOverlay {
         );
     }
 
-    fn content_area(inner: Rect) -> Rect {
+    fn content_area_excluding_scrollbars(inner: Rect) -> Rect {
         Rect {
-            height: inner.height.saturating_sub(1),
-            width: inner.width.saturating_sub(1),
+            height: inner
+                .height
+                .saturating_sub(HELP_HORIZONTAL_SCROLLBAR_HEIGHT as u16),
+            width: inner
+                .width
+                .saturating_sub(HELP_VERTICAL_SCROLLBAR_WIDTH as u16),
             ..inner
         }
     }
