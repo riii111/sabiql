@@ -365,6 +365,49 @@ fn help_overlay() {
 }
 
 #[test]
+fn help_overlay_long_key_rows() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::Help);
+    state.ui.help_scroll_offset = 58;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn help_overlay_narrow_horizontal_scroll() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal_sized(50, 24);
+
+    state.modal.set_mode(InputMode::Help);
+    state.ui.terminal_width = 50;
+    state.ui.terminal_height = 24;
+    state.ui.help_scroll_offset = 58;
+    state.ui.help_horizontal_offset = 18;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn help_overlay_omits_scrollbars_when_content_fits() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal_sized(180, 300);
+
+    state.modal.set_mode(InputMode::Help);
+    state.ui.terminal_width = 180;
+    state.ui.terminal_height = 300;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn command_palette_overlay() {
     let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();

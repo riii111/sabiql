@@ -8,7 +8,7 @@ use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
 use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
-use crate::update::input::keybindings::help_content_line_count;
+use crate::update::input::keybindings::{help_content_line_count, help_content_width};
 use unicode_width::UnicodeWidthStr;
 
 pub use super::picker::clamp_scroll_offset;
@@ -22,10 +22,22 @@ pub const EXPLORER_PANEL_BORDER_WIDTH: u16 = 2;
 pub const EXPLORER_HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
 pub const EXPLORER_SCROLLBAR_RESERVED_WIDTH: u16 = 1;
 // Help modal height as a percent of the available terminal height.
+pub const HELP_MODAL_WIDTH_PERCENT: u16 = 70;
 pub const HELP_MODAL_HEIGHT_PERCENT: u16 = 80;
 // Top and bottom modal border rows subtracted from the inner visible area.
 pub const MODAL_VERTICAL_BORDER_OVERHEAD: usize = 2;
+pub const MODAL_HORIZONTAL_BORDER_OVERHEAD: usize = 2;
+pub const HELP_HORIZONTAL_SCROLLBAR_HEIGHT: usize = 1;
+pub const HELP_VERTICAL_SCROLLBAR_WIDTH: usize = 1;
 pub const DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS: usize = 8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HelpViewportLayout {
+    pub visible_rows: usize,
+    pub visible_columns: usize,
+    pub has_horizontal_scrollbar: bool,
+    pub has_vertical_scrollbar: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResultNavMode {
@@ -184,7 +196,9 @@ pub struct UiState {
     pub jsonb_detail_editor_visible_rows: usize,
 
     pub help_scroll_offset: usize,
+    pub help_horizontal_offset: usize,
 
+    pub terminal_width: u16,
     pub terminal_height: u16,
 
     pub key_sequence: KeySequenceState,
@@ -193,6 +207,7 @@ pub struct UiState {
 impl UiState {
     pub fn new() -> Self {
         Self {
+            terminal_width: 80,
             terminal_height: 24,
             jsonb_detail_editor_visible_rows: DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS,
             ..Default::default()
@@ -232,12 +247,40 @@ impl UiState {
     }
 
     pub fn help_visible_rows(&self) -> usize {
-        (self.terminal_height as usize * HELP_MODAL_HEIGHT_PERCENT as usize / 100)
-            .saturating_sub(MODAL_VERTICAL_BORDER_OVERHEAD)
+        self.help_viewport_layout().visible_rows
     }
 
     pub fn help_max_scroll(&self) -> usize {
         help_content_line_count().saturating_sub(self.help_visible_rows())
+    }
+
+    pub fn help_visible_columns(&self) -> usize {
+        self.help_viewport_layout().visible_columns
+    }
+
+    pub fn help_max_horizontal_scroll(&self) -> usize {
+        help_content_width().saturating_sub(self.help_visible_columns())
+    }
+
+    pub fn clamp_help_offsets(&mut self) {
+        self.help_scroll_offset = self.help_scroll_offset.min(self.help_max_scroll());
+        self.help_horizontal_offset = self
+            .help_horizontal_offset
+            .min(self.help_max_horizontal_scroll());
+    }
+
+    pub fn help_viewport_layout(&self) -> HelpViewportLayout {
+        let base_rows = (self.terminal_height as usize * HELP_MODAL_HEIGHT_PERCENT as usize / 100)
+            .saturating_sub(MODAL_VERTICAL_BORDER_OVERHEAD);
+        let base_columns = (self.terminal_width as usize * HELP_MODAL_WIDTH_PERCENT as usize / 100)
+            .saturating_sub(MODAL_HORIZONTAL_BORDER_OVERHEAD);
+
+        help_viewport_layout_for(
+            base_rows,
+            base_columns,
+            help_content_line_count(),
+            help_content_width(),
+        )
     }
 
     pub fn toggle_focus(&mut self) -> bool {
@@ -277,6 +320,53 @@ impl UiState {
             self.connection_list_selected = 0;
             self.connection_list_scroll_offset = 0;
         }
+    }
+}
+
+pub fn help_viewport_layout_for(
+    base_rows: usize,
+    base_columns: usize,
+    total_lines: usize,
+    content_width: usize,
+) -> HelpViewportLayout {
+    let mut has_horizontal_scrollbar = content_width > base_columns;
+    let mut has_vertical_scrollbar = total_lines > base_rows;
+
+    for _ in 0..2 {
+        let visible_rows = base_rows.saturating_sub(if has_horizontal_scrollbar {
+            HELP_HORIZONTAL_SCROLLBAR_HEIGHT
+        } else {
+            0
+        });
+        let visible_columns = base_columns.saturating_sub(if has_vertical_scrollbar {
+            HELP_VERTICAL_SCROLLBAR_WIDTH
+        } else {
+            0
+        });
+        let next_horizontal = content_width > visible_columns;
+        let next_vertical = total_lines > visible_rows;
+
+        if next_horizontal == has_horizontal_scrollbar && next_vertical == has_vertical_scrollbar {
+            break;
+        }
+
+        has_horizontal_scrollbar = next_horizontal;
+        has_vertical_scrollbar = next_vertical;
+    }
+
+    HelpViewportLayout {
+        visible_rows: base_rows.saturating_sub(if has_horizontal_scrollbar {
+            HELP_HORIZONTAL_SCROLLBAR_HEIGHT
+        } else {
+            0
+        }),
+        visible_columns: base_columns.saturating_sub(if has_vertical_scrollbar {
+            HELP_VERTICAL_SCROLLBAR_WIDTH
+        } else {
+            0
+        }),
+        has_horizontal_scrollbar,
+        has_vertical_scrollbar,
     }
 }
 
@@ -323,6 +413,7 @@ mod tests {
         fn new_sets_terminal_height() {
             let state = UiState::new();
 
+            assert_eq!(state.terminal_width, 80);
             assert_eq!(state.terminal_height, 24);
         }
     }
@@ -586,7 +677,65 @@ mod tests {
                 ..Default::default()
             };
 
-            assert_eq!(state.help_visible_rows(), 17);
+            assert_eq!(state.help_visible_rows(), 16);
+        }
+
+        #[test]
+        fn help_max_horizontal_scroll_uses_modal_width() {
+            let state = UiState {
+                terminal_width: 80,
+                ..Default::default()
+            };
+
+            assert_eq!(
+                state.help_max_horizontal_scroll(),
+                help_content_width().saturating_sub(53)
+            );
+        }
+
+        #[test]
+        fn help_viewport_layout_does_not_reserve_scrollbars_when_content_fits() {
+            let layout = help_viewport_layout_for(10, 20, 10, 20);
+
+            assert_eq!(
+                layout,
+                HelpViewportLayout {
+                    visible_rows: 10,
+                    visible_columns: 20,
+                    has_horizontal_scrollbar: false,
+                    has_vertical_scrollbar: false,
+                }
+            );
+        }
+
+        #[test]
+        fn help_viewport_layout_accounts_for_vertical_scrollbar_triggering_horizontal_overflow() {
+            let layout = help_viewport_layout_for(10, 20, 11, 20);
+
+            assert_eq!(
+                layout,
+                HelpViewportLayout {
+                    visible_rows: 9,
+                    visible_columns: 19,
+                    has_horizontal_scrollbar: true,
+                    has_vertical_scrollbar: true,
+                }
+            );
+        }
+
+        #[test]
+        fn help_viewport_layout_accounts_for_horizontal_scrollbar_triggering_vertical_overflow() {
+            let layout = help_viewport_layout_for(10, 20, 10, 21);
+
+            assert_eq!(
+                layout,
+                HelpViewportLayout {
+                    visible_rows: 9,
+                    visible_columns: 19,
+                    has_horizontal_scrollbar: true,
+                    has_vertical_scrollbar: true,
+                }
+            );
         }
     }
 
