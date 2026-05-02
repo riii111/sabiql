@@ -394,6 +394,20 @@ fn help_overlay_narrow_horizontal_scroll() {
 }
 
 #[test]
+fn help_overlay_omits_scrollbars_when_content_fits() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal_sized(180, 300);
+
+    state.modal.set_mode(InputMode::Help);
+    state.ui.terminal_width = 180;
+    state.ui.terminal_height = 300;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn command_palette_overlay() {
     let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();

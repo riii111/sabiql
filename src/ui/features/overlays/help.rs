@@ -9,8 +9,8 @@ use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::ui_state::{
-    HELP_HORIZONTAL_SCROLLBAR_HEIGHT, HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT,
-    HELP_VERTICAL_SCROLLBAR_WIDTH,
+    HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT, HelpViewportLayout,
+    help_viewport_layout_for,
 };
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_ROWS, CONFIRM_DIALOG_KEYS,
@@ -187,12 +187,18 @@ impl HelpOverlay {
         }
 
         let total_lines = help_lines.len();
-        let content_area = Self::content_area_excluding_scrollbars(inner);
+        let content_width = help_content_width();
+        let viewport = help_viewport_layout_for(
+            inner.height as usize,
+            inner.width as usize,
+            total_lines,
+            content_width,
+        );
+        let content_area = Self::content_area(inner, viewport);
         let viewport_height = content_area.height as usize;
         let scroll_offset =
             clamp_scroll_offset(state.ui.help_scroll_offset, viewport_height, total_lines);
         let viewport_width = content_area.width as usize;
-        let content_width = help_content_width();
         let horizontal_offset = clamp_scroll_offset(
             state.ui.help_horizontal_offset,
             viewport_width,
@@ -205,38 +211,38 @@ impl HelpOverlay {
 
         frame.render_widget(help, content_area);
 
-        render_horizontal_scroll_indicator(
-            frame,
-            inner,
-            HorizontalScrollParams {
-                position: horizontal_offset,
-                viewport_size: viewport_width,
-                total_items: content_width,
-            },
-            theme,
-        );
+        if viewport.has_horizontal_scrollbar {
+            render_horizontal_scroll_indicator(
+                frame,
+                inner,
+                HorizontalScrollParams {
+                    position: horizontal_offset,
+                    viewport_size: viewport_width,
+                    total_items: content_width,
+                },
+                theme,
+            );
+        }
 
-        render_vertical_scroll_indicator_bar(
-            frame,
-            inner,
-            VerticalScrollParams {
-                position: scroll_offset,
-                viewport_size: viewport_height,
-                total_items: total_lines,
-                has_horizontal_scrollbar: true,
-            },
-            theme,
-        );
+        if viewport.has_vertical_scrollbar {
+            render_vertical_scroll_indicator_bar(
+                frame,
+                inner,
+                VerticalScrollParams {
+                    position: scroll_offset,
+                    viewport_size: viewport_height,
+                    total_items: total_lines,
+                    has_horizontal_scrollbar: viewport.has_horizontal_scrollbar,
+                },
+                theme,
+            );
+        }
     }
 
-    fn content_area_excluding_scrollbars(inner: Rect) -> Rect {
+    fn content_area(inner: Rect, viewport: HelpViewportLayout) -> Rect {
         Rect {
-            height: inner
-                .height
-                .saturating_sub(HELP_HORIZONTAL_SCROLLBAR_HEIGHT as u16),
-            width: inner
-                .width
-                .saturating_sub(HELP_VERTICAL_SCROLLBAR_WIDTH as u16),
+            height: viewport.visible_rows as u16,
+            width: viewport.visible_columns as u16,
             ..inner
         }
     }

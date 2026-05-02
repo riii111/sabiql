@@ -1,0 +1,303 @@
+---
+source: src/tests/render_snapshots/overlays.rs
+expression: output
+---
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                                           
+┌ [1] Explorer ─────────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                            
+│> public.users                             │┌ [2] Inspector ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                             ││(select a table)                                                                                                                     │
+│  public.comments                          ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                          ╭ Help ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮                          │
+│                          │▸ Global Keys                                                                                                               │                          │
+│                          │  q                     Quit application                                                                                    │                          │
+│                          │  ?                     Toggle help                                                                                         │                          │
+│                          │  Ctrl+P                Open Table Picker                                                                                   │                          │
+│                          │  Ctrl+K                Open Command Palette                                                                                │                          │
+│                          │  :                     Enter command line                                                                                  │                          │
+│                          │  f                     Toggle Focus                                                                                        │                          │
+│                          │  1/2/3                 Switch pane focus                                                                                   │                          │
+│                          │  Tab/⇧Tab              Inspector prev/next tab                                                                             │                          │
+│                          │  r                     Reload metadata                                                                                     │                          │
+│                          │  s                     Open SQL Editor                                                                                     │                          │
+│                          │  e                     Open ER Diagram                                                                                     │                          │
+│                          │  c                     Open Connection Selector                                                                            │                          │
+│                          │  Ctrl+E                Export result to CSV                                                                                │                          │
+│                          │  Ctrl+R                Toggle Read-Only                                                                                    │                          │
+│                          │  Ctrl+O                Open Query History                                                                                  │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Navigation                                                                                                                │                          │
+│                          │  j / ↓                 Move down / scroll                                                                                  │                          │
+│                          │  k / ↑                 Move up / scroll                                                                                    │                          │
+│                          │  g / Home              First item / top                                                                                    │                          │
+│                          │  G / End               Last item / bottom                                                                                  │                          │
+│                          │  H                     First visible item                                                                                  │                          │
+│                          │  M                     Middle of visible items                                                                             │                          │
+│                          │  L                     Last visible item                                                                                   │                          │
+│                          │  zz / zt / zb          Scroll cursor to center/top/bottom                                                                  │                          │
+│                          │  Ctrl+D / Ctrl+U       Scroll half page down/up                                                                            │                          │
+│                          │  Ctrl+F/B / PgDn/Up    Scroll full page down/up                                                                            │                          │
+│                          │  h / l                 Scroll left/right                                                                                   │                          │
+│                          │  ]                     Next page (Preview)                                                                                 │                          │
+│                          │  [                     Previous page (Preview)                                                                             │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Result History                                                                                                            │                          │
+│                          │  Ctrl+H                Toggle Result History                                                                               │                          │
+│                          │  ] / [                 Navigate history newer/older                                                                        │                          │
+│                          │  Ctrl+H                Exit history (back to latest)                                                                       │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Result Pane                                                                                                               │                          │
+│                          │  Enter                 Enter cell selection at the current viewport anchor                                                 │                          │
+│                          │  Y                     Copy the active cell value to clipboard                                                             │                          │
+│                          │  d, d                  Stage the active row for deletion (red highlight; :w to commit)                                     │                          │
+│                          │  u                     Unstage the last staged row deletion                                                                │                          │
+│                          │  h / l                 Move cell left/right                                                                                │                          │
+│                          │  j / k                 Move the active row up/down                                                                         │                          │
+│                          │  g / G / H / M / L     Jump the active row to first/last or viewport top/mid/bot                                           │                          │
+│                          │  Esc                   Exit cell selection and return to scroll mode without clearing staged deletes                       │                          │
+│                          │  i                     Edit active cell                                                                                    │                          │
+│                          │  Esc                   Discard the pending draft and stay in cell selection                                                │                          │
+│                          │  y, y                  Copy the active row values to clipboard (TSV)                                                       │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Inspector Pane (DDL tab)                                                                                                  │                          │
+│                          │  y                     Copy DDL to clipboard                                                                               │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Cell Edit                                                                                                                 │                          │
+│                          │  :w                    Preview and confirm UPDATE                                                                          │                          │
+│                          │  type                  Edit cell value                                                                                     │                          │
+│                          │  ←→                    Move cursor                                                                                         │                          │
+│                          │  Home/End              Jump to start/end                                                                                   │                          │
+│                          │  :                     Open command line                                                                                   │                          │
+│                          │  Esc                   Exit to Cell Active (draft preserved)                                                               │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ SQL Editor (Normal)                                                                                                       │                          │
+│                          │  Alt+Enter / F5        Execute query                                                                                       │                          │
+│                          │  y                     Copy query to clipboard                                                                             │                          │
+│                          │  i                     Enter Insert mode                                                                                   │                          │
+│                          │  A                     Append at line end                                                                                  │                          │
+│                          │  h / j / k / l / ↑↓←→  Move cursor                                                                                         │                          │
+│                          │  0 / $ / w / b / Home / End  Move by word or line boundary                                                                 │                          │
+│                          │  gg / G / H / M / L    Jump by buffer or viewport                                                                          │                          │
+│                          │  Esc                   Close editor                                                                                        │                          │
+│                          │  Ctrl+L                Clear editor                                                                                        │                          │
+│                          │  Ctrl+O                Open Query History                                                                                  │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ SQL Editor (Insert)                                                                                                       │                          │
+│                          │  Alt+Enter / F5        Execute query                                                                                       │                          │
+│                          │  Esc                   Return to Normal mode                                                                               │                          │
+│                          │  ↑↓←→                  Move cursor                                                                                         │                          │
+│                          │  Home/End              Line start/end                                                                                      │                          │
+│                          │  Tab                   Insert tab / Accept completion                                                                      │                          │
+│                          │  Ctrl+Space            Trigger completion                                                                                  │                          │
+│                          │  Ctrl+L                Clear editor                                                                                        │                          │
+│                          │  Ctrl+O                Open Query History                                                                                  │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ SQL Editor (Plan)                                                                                                         │                          │
+│                          │  Ctrl+E                Run EXPLAIN on current query                                                                        │                          │
+│                          │  Alt+E                 Run EXPLAIN ANALYZE on current query                                                                │                          │
+│                          │  y                     Copy to clipboard                                                                                   │                          │
+│                          │  Ctrl+N / Ctrl+P / ↑↓ / j / k  Scroll plan text                                                                            │                          │
+│                          │  Tab                   Switch tab                                                                                          │                          │
+│                          │  Shift+Tab             Previous tab                                                                                        │                          │
+│                          │  Esc                   Close editor                                                                                        │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ SQL Editor (Compare)                                                                                                      │                          │
+│                          │  Ctrl+E                Run EXPLAIN on current query                                                                        │                          │
+│                          │  Alt+E                 Run EXPLAIN ANALYZE on current query                                                                │                          │
+│                          │  e                     Edit query in SQL tab                                                                               │                          │
+│                          │  y                     Copy to clipboard                                                                                   │                          │
+│                          │  Ctrl+N / Ctrl+P / ↑↓ / j / k  Scroll comparison text                                                                      │                          │
+│                          │  Tab                   Switch tab                                                                                          │                          │
+│                          │  Shift+Tab             Previous tab                                                                                        │                          │
+│                          │  Esc                   Close editor                                                                                        │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ SQL Editor (Confirm)                                                                                                      │                          │
+│                          │  Esc                   Cancel and return to editor                                                                         │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Overlays                                                                                                                  │                          │
+│                          │  Esc                   Close overlay / Cancel                                                                              │                          │
+│                          │  Esc                   Close overlay                                                                                       │                          │
+│                          │  Enter                 Execute command                                                                                     │                          │
+│                          │  Enter                 Confirm selection                                                                                   │                          │
+│                          │  j / k / Ctrl+N / Ctrl+P / ↑ / ↓  Navigate items                                                                           │                          │
+│                          │  type                  Type to filter                                                                                      │                          │
+│                          │  Enter                 View error details                                                                                  │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Command Line                                                                                                              │                          │
+│                          │  :quit                 Quit application                                                                                    │                          │
+│                          │  :help                 Show help                                                                                           │                          │
+│                          │  :sql                  Open SQL Editor                                                                                     │                          │
+│                          │  :erd                  Open ER Diagram                                                                                     │──────────────────────────┘
+│                          │  ←→                    Move cursor                                                                                         │──────────────────────────┐
+│                          │  Home/End              Jump to start/end                                                                                   │                          │
+│                          │  Enter                 Submit command                                                                                      │                          │
+│                          │  Esc                   Exit command line                                                                                   │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Connection Setup                                                                                                          │                          │
+│                          │  Tab/⇧Tab              Next/Previous field                                                                                 │                          │
+│                          │  Tab                   Next field                                                                                          │                          │
+│                          │  ⇧Tab                  Previous field                                                                                      │                          │
+│                          │  Ctrl+S                Save and connect                                                                                    │                          │
+│                          │  Esc                   Cancel                                                                                              │                          │
+│                          │  Enter                 Toggle dropdown (SSL field)                                                                         │                          │
+│                          │  Ctrl+N / Ctrl+P / ↑ / ↓  Dropdown navigation                                                                              │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Connection Error                                                                                                          │                          │
+│                          │  e                     Edit connection settings                                                                            │                          │
+│                          │  s                     Switch to another connection                                                                        │                          │
+│                          │  d                     Toggle error details                                                                                │                          │
+│                          │  y                     Copy error to clipboard                                                                             │                          │
+│                          │  j / k / Ctrl+N / Ctrl+P / ↑ / ↓  Scroll error                                                                             │                          │
+│                          │  Esc                   Close                                                                                               │                          │
+│                          │  r                     Retry service connection                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Connection Selector                                                                                                       │                          │
+│                          │  Enter                 Confirm selection                                                                                   │                          │
+│                          │  Ctrl+N / Ctrl+P / ↑ / ↓ / j / k  Select connection                                                                        │                          │
+│                          │  n                     New connection                                                                                      │                          │
+│                          │  e                     Edit connection                                                                                     │                          │
+│                          │  d                     Delete connection                                                                                   │                          │
+│                          │  Esc                   Close selector                                                                                      │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ ER Diagram Picker                                                                                                         │                          │
+│                          │  Enter                 Generate ER diagram                                                                                 │                          │
+│                          │  Space                 Toggle table selection                                                                              │                          │
+│                          │  Ctrl+A                Select/deselect all tables                                                                          │                          │
+│                          │  Ctrl+N / Ctrl+P / ↑ / ↓  Navigate                                                                                         │                          │
+│                          │  type                  Type to filter                                                                                      │                          │
+│                          │  Esc                   Close                                                                                               │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Query History Picker                                                                                                      │                          │
+│                          │  Enter                 Select query                                                                                        │                          │
+│                          │  Ctrl+N / Ctrl+P / ↑ / ↓  Navigate                                                                                         │                          │
+│                          │  type                  Type to filter                                                                                      │                          │
+│                          │  Esc                   Close                                                                                               │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Table Picker                                                                                                              │                          │
+│                          │  Enter                 Select table                                                                                        │                          │
+│                          │  Ctrl+N / Ctrl+P / ↑ / ↓  Navigate                                                                                         │                          │
+│                          │  type                  Type to filter                                                                                      │                          │
+│                          │  Esc                   Close                                                                                               │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Command Palette                                                                                                           │                          │
+│                          │  Enter                 Execute command                                                                                     │                          │
+│                          │  j / k / Ctrl+N / Ctrl+P / ↑ / ↓  Navigate                                                                                 │                          │
+│                          │  Esc                   Close                                                                                               │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Help Overlay                                                                                                              │                          │
+│                          │  j / k / Ctrl+N / Ctrl+P / ↑ / ↓  Scroll down / up                                                                         │                          │
+│                          │  g / Home / G / End    Jump to top / bottom                                                                                │                          │
+│                          │  Ctrl+D / Ctrl+U       Scroll half page down / up                                                                          │                          │
+│                          │  Ctrl+F / Ctrl+B / PageDown / PageUp  Scroll full page down / up                                                           │                          │
+│                          │  h / l / ← / →         Scroll left / right                                                                                 │                          │
+│                          │  ? / Esc               Close help                                                                                          │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ Confirm Dialog                                                                                                            │                          │
+│                          │  Enter                 Confirm                                                                                             │                          │
+│                          │  Ctrl+N / j / ↓        Scroll down                                                                                         │                          │
+│                          │  Ctrl+P / k / ↑        Scroll up                                                                                           │                          │
+│                          │  Esc                   Cancel                                                                                              │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ JSONB Detail                                                                                                              │                          │
+│                          │  y                     Copy full JSON                                                                                      │                          │
+│                          │  i / A                 Enter Insert mode / append at line end                                                              │                          │
+│                          │  /                     Search JSON text                                                                                    │                          │
+│                          │  n / N                 Jump to next / previous search result                                                               │                          │
+│                          │  h / j / k / l / ↑↓←→  Move cursor                                                                                         │                          │
+│                          │  0 / $ / w / b / Home / End  Move by word or line boundary                                                                 │                          │
+│                          │  gg / G / H / M / L    Jump by buffer or viewport                                                                          │                          │
+│                          │  Esc / q               Close JSONB detail                                                                                  │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ JSONB Edit                                                                                                                │                          │
+│                          │  Esc                   Return to Normal mode                                                                               │                          │
+│                          │  ↑↓←→                  Move cursor                                                                                         │                          │
+│                          │  Home / End            Line start/end                                                                                      │                          │
+│                          │                                                                                                                            │                          │
+│                          │▸ JSONB Search                                                                                                              │                          │
+│                          │  type                  Type to search                                                                                      │                          │
+│                          │  Enter                 Confirm search                                                                                      │                          │
+│                          │  Esc                   Cancel search                                                                                       │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          ╰ ?/Esc Close ───────────────────────────────────────────────────────────────────────────────────────────────────────────────╯                          │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+│                                           ││                                                                                                                                     │
+└───────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+h/l / ←→:H-Scroll  ?/Esc:Close
