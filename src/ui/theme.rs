@@ -265,6 +265,79 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
     },
 };
 
+pub const LIGHT_THEME: ThemePalette = ThemePalette {
+    semantic: SemanticTokens {
+        surface: SurfaceTokens {
+            focus_border: Color::Rgb(0x1d, 0x6f, 0x68),
+            unfocus_border: Color::Rgb(0xb8, 0xc0, 0xc8),
+            highlight_border: Color::Rgb(0x0f, 0x7d, 0x74),
+        },
+        text: TextTokens {
+            primary: Color::Rgb(0x1f, 0x25, 0x2e),
+            secondary: Color::Rgb(0x4b, 0x55, 0x63),
+            muted: Color::Rgb(0x75, 0x7f, 0x8c),
+            dim: Color::Rgb(0x8a, 0x93, 0xa0),
+            accent: Color::Rgb(0x9a, 0x4f, 0x1d),
+            placeholder: Color::Rgb(0x8a, 0x93, 0xa0),
+        },
+        status: StatusTokens {
+            success: Color::Rgb(0x0c, 0x7a, 0x4b),
+            error: Color::Rgb(0xb4, 0x23, 0x18),
+            warning: Color::Rgb(0x9a, 0x62, 0x00),
+            pending: Color::Rgb(0xa3, 0x5f, 0x00),
+            medium_risk: Color::Rgb(0xc2, 0x41, 0x0c),
+        },
+        cursor: CursorTokens {
+            fg: Color::Rgb(0x1d, 0x6f, 0x68),
+            bg: Color::Rgb(0x1d, 0x6f, 0x68),
+            text_fg: Color::Rgb(0xff, 0xff, 0xff),
+        },
+    },
+    component: ComponentTokens {
+        modal: ModalTokens {
+            title: Color::Rgb(0x1f, 0x25, 0x2e),
+            hint: Color::Rgb(0x4b, 0x55, 0x63),
+            border: Color::Rgb(0xa8, 0xb0, 0xbb),
+            border_highlight: Color::Rgb(0x1d, 0x6f, 0x68),
+        },
+        navigation: NavigationTokens {
+            key_chip_bg: Color::Rgb(0xe7, 0xeb, 0xf0),
+            key_chip_fg: Color::Rgb(0x8a, 0x45, 0x18),
+            section_header: Color::Rgb(0x0f, 0x6f, 0x63),
+            scrollbar_active: Color::Rgb(0x1d, 0x6f, 0x68),
+            scrollbar_inactive: Color::Rgb(0xc9, 0xcf, 0xd8),
+            tab_active: Color::Rgb(0x1d, 0x6f, 0x68),
+            tab_inactive: Color::Rgb(0x75, 0x7f, 0x8c),
+            active_indicator: Color::Rgb(0x1d, 0x6f, 0x68),
+        },
+        editor: EditorTokens {
+            current_line_bg: Color::Rgb(0xec, 0xf2, 0xf2),
+            completion_selected_bg: Color::Rgb(0xd8, 0xe9, 0xe7),
+        },
+        table: TableTokens {
+            result_row_active_bg: Color::Rgb(0xde, 0xe9, 0xf3),
+            result_cell_active_bg: Color::Rgb(0xc9, 0xdc, 0xea),
+            cell_edit_fg: Color::Rgb(0x0f, 0x6f, 0x63),
+            staged_delete_bg: Color::Rgb(0xf6, 0xde, 0xda),
+            staged_delete_fg: Color::Rgb(0xb4, 0x23, 0x18),
+            striped_row_bg: Color::Rgb(0xf2, 0xf4, 0xf7),
+        },
+        feedback: FeedbackTokens {
+            yank_flash_bg: Color::Rgb(0xff, 0xd2, 0x73),
+            yank_flash_fg: Color::Rgb(0x1f, 0x25, 0x2e),
+            note_text: Color::Rgb(0x6b, 0x72, 0x80),
+        },
+        syntax: SyntaxTokens {
+            sql_keyword: Color::Rgb(0x1b, 0x5e, 0xa8),
+            sql_string: Color::Rgb(0x0c, 0x7a, 0x4b),
+            sql_number: Color::Rgb(0x9a, 0x4f, 0x1d),
+            sql_comment: Color::Rgb(0x75, 0x7f, 0x8c),
+            sql_operator: Color::Rgb(0x5b, 0x5f, 0xa8),
+            sql_text: Color::Rgb(0x1f, 0x25, 0x2e),
+        },
+    },
+};
+
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
@@ -343,6 +416,7 @@ pub const TEST_CONTRAST_THEME: ThemePalette = ThemePalette {
 pub fn palette_for(theme_id: ThemeId) -> &'static ThemePalette {
     match theme_id {
         ThemeId::Default => &DEFAULT_THEME,
+        ThemeId::Light => &LIGHT_THEME,
     }
 }
 
@@ -353,6 +427,11 @@ mod tests {
     #[test]
     fn palette_for_default_returns_default_theme() {
         assert_eq!(palette_for(ThemeId::Default), &DEFAULT_THEME);
+    }
+
+    #[test]
+    fn palette_for_light_returns_light_theme() {
+        assert_eq!(palette_for(ThemeId::Light), &LIGHT_THEME);
     }
 
     #[test]
