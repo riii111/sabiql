@@ -139,6 +139,10 @@ pub fn build_bulk_delete_preview(
     }
 
     let sql = services.sql_dialect.build_bulk_delete_sql(
+        state
+            .session
+            .active_database_type()
+            .unwrap_or(crate::domain::DatabaseType::PostgreSQL),
         state.query.pagination.schema(),
         state.query.pagination.table(),
         &pk_pairs_per_row,

@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+#[cfg(any(test, feature = "test-support"))]
+use crate::domain::DatabaseType;
+
 use super::ports::outbound::{DdlGenerator, SqlDialect};
 
 pub struct AppServices {
@@ -13,10 +16,18 @@ impl AppServices {
     pub fn stub() -> Self {
         struct StubDdlGenerator;
         impl DdlGenerator for StubDdlGenerator {
-            fn generate_ddl(&self, _table: &crate::domain::Table) -> String {
+            fn generate_ddl(
+                &self,
+                _database_type: DatabaseType,
+                _table: &crate::domain::Table,
+            ) -> String {
                 unimplemented!("inject a real DdlGenerator via AppServices")
             }
-            fn ddl_line_count(&self, _table: &crate::domain::Table) -> usize {
+            fn ddl_line_count(
+                &self,
+                _database_type: DatabaseType,
+                _table: &crate::domain::Table,
+            ) -> usize {
                 0
             }
         }
@@ -33,6 +44,7 @@ impl AppServices {
 
             fn build_update_sql(
                 &self,
+                database_type: DatabaseType,
                 schema: &str,
                 table: &str,
                 column: &str,
@@ -45,10 +57,20 @@ impl AppServices {
                     .map(|(key, value)| format!("\"{key}\" = '{value}'"))
                     .collect::<Vec<_>>()
                     .join(" AND ");
-                format!("UPDATE \"{schema}\".\"{table}\" SET {set_clause} WHERE {where_clause}")
+                match database_type {
+                    DatabaseType::PostgreSQL => {
+                        format!(
+                            "UPDATE \"{schema}\".\"{table}\" SET {set_clause} WHERE {where_clause}"
+                        )
+                    }
+                    DatabaseType::SQLite => {
+                        format!("UPDATE \"{table}\" SET {set_clause} WHERE {where_clause}")
+                    }
+                }
             }
             fn build_bulk_delete_sql(
                 &self,
+                database_type: DatabaseType,
                 schema: &str,
                 table: &str,
                 pk_pairs_per_row: &[Vec<(String, String)>],
@@ -64,7 +86,12 @@ impl AppServices {
                     })
                     .collect::<Vec<_>>()
                     .join(" OR ");
-                format!("DELETE FROM \"{schema}\".\"{table}\" WHERE {where_clause}")
+                match database_type {
+                    DatabaseType::PostgreSQL => {
+                        format!("DELETE FROM \"{schema}\".\"{table}\" WHERE {where_clause}")
+                    }
+                    DatabaseType::SQLite => format!("DELETE FROM \"{table}\" WHERE {where_clause}"),
+                }
             }
         }
 

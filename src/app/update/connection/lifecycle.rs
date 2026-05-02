@@ -129,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_cached_inspector_tab_when_capability_is_missing() {
+    fn preserves_cached_sqlite_ddl_inspector_tab() {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();
         let cached = ConnectionCache {
@@ -147,7 +147,7 @@ mod tests {
         });
         reduce(&mut state, &action);
 
-        assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
+        assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
     }
 
     #[test]

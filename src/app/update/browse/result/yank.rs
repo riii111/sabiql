@@ -58,7 +58,13 @@ pub fn reduce(
             if state.ui.inspector_tab() == InspectorTab::Ddl
                 && let Some(table) = state.session.table_detail().as_ref()
             {
-                let ddl = services.ddl_generator.generate_ddl(table);
+                let ddl = services.ddl_generator.generate_ddl(
+                    state
+                        .session
+                        .active_database_type()
+                        .unwrap_or(crate::domain::DatabaseType::PostgreSQL),
+                    table,
+                );
                 state.flash_timers.set(FlashId::Ddl, now);
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
@@ -429,7 +435,11 @@ mod tests {
 
         struct FakeDdlGenerator;
         impl DdlGenerator for FakeDdlGenerator {
-            fn generate_ddl(&self, table: &Table) -> String {
+            fn generate_ddl(
+                &self,
+                _database_type: crate::domain::DatabaseType,
+                table: &Table,
+            ) -> String {
                 format!("CREATE TABLE {}.{} ();", table.schema, table.name)
             }
         }

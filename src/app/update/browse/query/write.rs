@@ -71,6 +71,10 @@ fn build_update_preview(
     }
 
     let sql = services.sql_dialect.build_update_sql(
+        state
+            .session
+            .active_database_type()
+            .unwrap_or(crate::domain::DatabaseType::PostgreSQL),
         &target.schema,
         &target.table,
         &column_name,
@@ -483,6 +487,41 @@ mod tests {
             match dispatched {
                 Action::OpenWritePreviewConfirm(preview) => {
                     assert!(preview.sql.contains("UPDATE"));
+                }
+                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn sqlite_active_database_type_uses_sqlite_update_preview() {
+            let mut state = editable_state();
+            state.session.set_dsn_for_test("sqlite:///tmp/app.db");
+            state
+                .session
+                .set_active_database_type_for_test(Some(crate::domain::DatabaseType::SQLite));
+            let mut detail = users_table_detail();
+            detail.schema = "main".to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.set_table_for_test("main", "users");
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let dispatched = match &effects[0] {
+                Effect::DispatchActions(actions) => actions.first().expect("action"),
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            match dispatched {
+                Action::OpenWritePreviewConfirm(preview) => {
+                    assert_eq!(
+                        preview.sql,
+                        "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
+                    );
                 }
                 other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
             }

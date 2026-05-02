@@ -13,7 +13,6 @@ use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
-use crate::app::ports::outbound::DdlGenerator;
 use crate::app::services::AppServices;
 use crate::domain::Table;
 use crate::primitives::atoms::panel_block;
@@ -166,12 +165,16 @@ impl Inspector {
                     ViewportPlan::default()
                 }
                 InspectorTab::Ddl => {
+                    let database_type = state
+                        .session
+                        .active_database_type()
+                        .unwrap_or(crate::domain::DatabaseType::PostgreSQL);
+                    let ddl = services.ddl_generator.generate_ddl(database_type, table);
                     Self::render_ddl(
                         frame,
                         inner,
-                        table,
+                        ddl,
                         state.ui.inspector_scroll_offset(),
-                        &*services.ddl_generator,
                         &state.flash_timers,
                         now,
                         theme,
@@ -691,15 +694,12 @@ impl Inspector {
     fn render_ddl(
         frame: &mut Frame,
         area: Rect,
-        table: &Table,
+        ddl: String,
         scroll_offset: usize,
-        ddl_gen: &dyn DdlGenerator,
         flash_timers: &crate::app::model::shared::flash_timer::FlashTimerStore,
         now: Instant,
         theme: &ThemePalette,
     ) {
-        let ddl = ddl_gen.generate_ddl(table);
-
         let total_lines = ddl.lines().count();
         let visible_lines = area.height as usize;
 
