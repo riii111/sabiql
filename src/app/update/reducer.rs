@@ -73,8 +73,10 @@ fn reduce_inner(
             state.should_quit = true;
             vec![]
         }
-        Action::Resize(_w, h) => {
+        Action::Resize(w, h) => {
+            state.ui.terminal_width = w;
             state.ui.terminal_height = h;
+            state.ui.clamp_help_offsets();
             vec![]
         }
         Action::Render => {
@@ -208,8 +210,12 @@ mod tests {
         }
 
         #[test]
-        fn resize_updates_terminal_height() {
+        fn resize_updates_terminal_size_and_clamps_help_offsets() {
             let mut state = create_test_state();
+            state.ui.terminal_width = 20;
+            state.ui.terminal_height = 10;
+            state.ui.help_scroll_offset = usize::MAX;
+            state.ui.help_horizontal_offset = usize::MAX;
             let now = Instant::now();
 
             let effects = reduce(
@@ -219,7 +225,13 @@ mod tests {
                 &AppServices::stub(),
             );
 
+            assert_eq!(state.ui.terminal_width, 100);
             assert_eq!(state.ui.terminal_height, 50);
+            assert_eq!(state.ui.help_scroll_offset, state.ui.help_max_scroll());
+            assert_eq!(
+                state.ui.help_horizontal_offset,
+                state.ui.help_max_horizontal_scroll()
+            );
             assert!(effects.is_empty());
         }
 
@@ -463,7 +475,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help_scroll_offset, 19);
+            assert_eq!(state.ui.help_scroll_offset, 18);
             assert!(effects.is_empty());
         }
 
@@ -509,6 +521,65 @@ mod tests {
             );
 
             assert_eq!(state.ui.help_scroll_offset, 0);
+        }
+
+        #[test]
+        fn help_horizontal_scroll_saturates_at_bounds() {
+            let mut state = create_test_state();
+            state.ui.terminal_width = 40;
+            state.ui.help_horizontal_offset = state.ui.help_max_horizontal_scroll();
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(
+                state.ui.help_horizontal_offset,
+                state.ui.help_max_horizontal_scroll()
+            );
+
+            reduce(
+                &mut state,
+                Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Left,
+                    amount: ScrollAmount::Line,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(
+                state.ui.help_horizontal_offset,
+                state.ui.help_max_horizontal_scroll().saturating_sub(1)
+            );
+        }
+
+        #[test]
+        fn help_close_resets_vertical_and_horizontal_offsets() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::Help);
+            state.ui.help_scroll_offset = 3;
+            state.ui.help_horizontal_offset = 4;
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::CloseModal(ModalKind::Help),
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.help_scroll_offset, 0);
+            assert_eq!(state.ui.help_horizontal_offset, 0);
         }
     }
 

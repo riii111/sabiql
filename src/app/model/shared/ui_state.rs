@@ -8,7 +8,7 @@ use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
 use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
-use crate::update::input::keybindings::help_content_line_count;
+use crate::update::input::keybindings::{help_content_line_count, help_content_width};
 use unicode_width::UnicodeWidthStr;
 
 pub use super::picker::clamp_scroll_offset;
@@ -22,9 +22,12 @@ pub const EXPLORER_PANEL_BORDER_WIDTH: u16 = 2;
 pub const EXPLORER_HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
 pub const EXPLORER_SCROLLBAR_RESERVED_WIDTH: u16 = 1;
 // Help modal height as a percent of the available terminal height.
+pub const HELP_MODAL_WIDTH_PERCENT: u16 = 70;
 pub const HELP_MODAL_HEIGHT_PERCENT: u16 = 80;
 // Top and bottom modal border rows subtracted from the inner visible area.
 pub const MODAL_VERTICAL_BORDER_OVERHEAD: usize = 2;
+pub const MODAL_HORIZONTAL_BORDER_OVERHEAD: usize = 2;
+pub const HELP_HORIZONTAL_SCROLLBAR_OVERHEAD: usize = 1;
 pub const DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,7 +187,9 @@ pub struct UiState {
     pub jsonb_detail_editor_visible_rows: usize,
 
     pub help_scroll_offset: usize,
+    pub help_horizontal_offset: usize,
 
+    pub terminal_width: u16,
     pub terminal_height: u16,
 
     pub key_sequence: KeySequenceState,
@@ -193,6 +198,7 @@ pub struct UiState {
 impl UiState {
     pub fn new() -> Self {
         Self {
+            terminal_width: 80,
             terminal_height: 24,
             jsonb_detail_editor_visible_rows: DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS,
             ..Default::default()
@@ -234,10 +240,28 @@ impl UiState {
     pub fn help_visible_rows(&self) -> usize {
         (self.terminal_height as usize * HELP_MODAL_HEIGHT_PERCENT as usize / 100)
             .saturating_sub(MODAL_VERTICAL_BORDER_OVERHEAD)
+            .saturating_sub(HELP_HORIZONTAL_SCROLLBAR_OVERHEAD)
     }
 
     pub fn help_max_scroll(&self) -> usize {
         help_content_line_count().saturating_sub(self.help_visible_rows())
+    }
+
+    pub fn help_visible_columns(&self) -> usize {
+        (self.terminal_width as usize * HELP_MODAL_WIDTH_PERCENT as usize / 100)
+            .saturating_sub(MODAL_HORIZONTAL_BORDER_OVERHEAD)
+            .saturating_sub(1)
+    }
+
+    pub fn help_max_horizontal_scroll(&self) -> usize {
+        help_content_width().saturating_sub(self.help_visible_columns())
+    }
+
+    pub fn clamp_help_offsets(&mut self) {
+        self.help_scroll_offset = self.help_scroll_offset.min(self.help_max_scroll());
+        self.help_horizontal_offset = self
+            .help_horizontal_offset
+            .min(self.help_max_horizontal_scroll());
     }
 
     pub fn toggle_focus(&mut self) -> bool {
@@ -323,6 +347,7 @@ mod tests {
         fn new_sets_terminal_height() {
             let state = UiState::new();
 
+            assert_eq!(state.terminal_width, 80);
             assert_eq!(state.terminal_height, 24);
         }
     }
@@ -586,7 +611,20 @@ mod tests {
                 ..Default::default()
             };
 
-            assert_eq!(state.help_visible_rows(), 17);
+            assert_eq!(state.help_visible_rows(), 16);
+        }
+
+        #[test]
+        fn help_max_horizontal_scroll_uses_modal_width() {
+            let state = UiState {
+                terminal_width: 80,
+                ..Default::default()
+            };
+
+            assert_eq!(
+                state.help_max_horizontal_scroll(),
+                help_content_width().saturating_sub(53)
+            );
         }
     }
 

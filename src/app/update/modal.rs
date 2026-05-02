@@ -16,6 +16,24 @@ fn scroll_help_by(state: &mut AppState, direction: ScrollDirection, delta: usize
         direction.clamp_vertical_offset(state.ui.help_scroll_offset, max_scroll, delta);
 }
 
+fn scroll_help_horizontally(state: &mut AppState, direction: ScrollDirection) {
+    match direction {
+        ScrollDirection::Left => {
+            state.ui.help_horizontal_offset = state.ui.help_horizontal_offset.saturating_sub(1);
+        }
+        ScrollDirection::Right => {
+            state.ui.help_horizontal_offset =
+                (state.ui.help_horizontal_offset + 1).min(state.ui.help_max_horizontal_scroll());
+        }
+        ScrollDirection::Up | ScrollDirection::Down => {}
+    }
+}
+
+fn reset_help_offsets(state: &mut AppState) {
+    state.ui.help_scroll_offset = 0;
+    state.ui.help_horizontal_offset = 0;
+}
+
 pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::OpenModal(ModalKind::TablePicker) => {
@@ -38,7 +56,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ToggleModal(ModalKind::Help) => {
             if state.modal.active_mode() == InputMode::Help {
                 state.modal.set_mode(InputMode::Normal);
-                state.ui.help_scroll_offset = 0;
+                reset_help_offsets(state);
             } else {
                 state.modal.set_mode(InputMode::Help);
             }
@@ -46,7 +64,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::CloseModal(ModalKind::Help) => {
             state.modal.set_mode(InputMode::Normal);
-            state.ui.help_scroll_offset = 0;
+            reset_help_offsets(state);
             Some(vec![])
         }
         Action::Scroll {
@@ -55,9 +73,26 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             amount,
         } => {
             match amount {
+                ScrollAmount::Line
+                    if matches!(direction, ScrollDirection::Left | ScrollDirection::Right) =>
+                {
+                    scroll_help_horizontally(state, *direction);
+                }
                 ScrollAmount::Line => scroll_help_by(state, *direction, 1),
-                ScrollAmount::ToStart => state.ui.help_scroll_offset = 0,
-                ScrollAmount::ToEnd => state.ui.help_scroll_offset = state.ui.help_max_scroll(),
+                ScrollAmount::ToStart => {
+                    if matches!(direction, ScrollDirection::Left | ScrollDirection::Right) {
+                        state.ui.help_horizontal_offset = 0;
+                    } else {
+                        state.ui.help_scroll_offset = 0;
+                    }
+                }
+                ScrollAmount::ToEnd => {
+                    if matches!(direction, ScrollDirection::Left | ScrollDirection::Right) {
+                        state.ui.help_horizontal_offset = state.ui.help_max_horizontal_scroll();
+                    } else {
+                        state.ui.help_scroll_offset = state.ui.help_max_scroll();
+                    }
+                }
                 ScrollAmount::HalfPage | ScrollAmount::FullPage => {
                     if let Some(delta) = amount.page_delta(state.ui.help_visible_rows()) {
                         scroll_help_by(state, *direction, delta);

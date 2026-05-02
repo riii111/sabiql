@@ -181,6 +181,30 @@ pub const HELP_ROWS: &[ModeRow] = &[
         ],
     },
     ModeRow {
+        key_short: "h/l / ←→",
+        key: "h / l / ← / →",
+        desc_short: "H-Scroll",
+        description: "Scroll left / right",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Left,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
+            },
+        ],
+    },
+    ModeRow {
         key_short: "?/Esc",
         key: "? / Esc",
         desc_short: "Close",
