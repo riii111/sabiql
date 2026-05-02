@@ -184,7 +184,7 @@ async fn main() -> Result<()> {
 
         tokio::select! {
             Some(event) = tui.next_event() => {
-                let action = handle_event(event, &state, &services);
+                let action = handle_event(event, &state);
                 if !action.is_none() {
                     drain_and_process_terminal_events(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
                 }
@@ -376,7 +376,7 @@ async fn drain_and_process_terminal_events(
             break;
         };
         drained += 1;
-        let action = handle_event(event, state, services);
+        let action = handle_event(event, state);
         if action.is_none() {
             continue;
         }

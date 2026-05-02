@@ -15,7 +15,7 @@ pub fn reduce_connection(
     action: &Action,
     now: Instant,
 ) -> Option<Vec<Effect>> {
-    lifecycle::reduce(state, action, now)
+    lifecycle::reduce(state, action)
         .or_else(|| setup::reduce(state, action, now))
         .or_else(|| error::reduce(state, action, now))
         .or_else(|| selector::reduce(state, action, now))

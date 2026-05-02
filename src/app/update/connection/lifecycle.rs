@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::cmd::effect::Effect;
 use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
@@ -24,7 +22,7 @@ fn reset_for_new_connection(
     state.session.disable_read_only();
 }
 
-pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
         Action::TryConnect => {
             if state.session.connection_state().is_not_connected()
@@ -100,7 +98,7 @@ mod tests {
         state.ui.set_inspector_tab(InspectorTab::Indexes);
 
         let action = create_switch_action(&new_id, "new_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action);
 
         let saved = state.connection_caches.get(&current_id).unwrap();
         assert_eq!(saved.explorer_selected, 5);
@@ -120,7 +118,7 @@ mod tests {
         state.connection_caches.save(&target_id, cached);
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action);
 
         assert_eq!(state.ui.explorer_selected(), 42);
         assert_eq!(state.ui.inspector_tab(), InspectorTab::ForeignKeys);
@@ -147,7 +145,7 @@ mod tests {
             name: "app.db".to_string(),
             database_type: DatabaseType::SQLite,
         });
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action);
 
         assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
     }
@@ -158,7 +156,7 @@ mod tests {
         let new_id = ConnectionId::new();
 
         let action = create_switch_action(&new_id, "fresh_db");
-        let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+        let effects = reduce(&mut state, &action).unwrap();
 
         assert!(
             effects
@@ -182,7 +180,7 @@ mod tests {
             name: "app.db".to_string(),
             database_type: DatabaseType::SQLite,
         });
-        let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+        let effects = reduce(&mut state, &action).unwrap();
 
         assert!(
             effects
@@ -219,7 +217,7 @@ mod tests {
             name: "app.db".to_string(),
             database_type: DatabaseType::SQLite,
         });
-        let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+        let effects = reduce(&mut state, &action).unwrap();
 
         assert!(
             !effects
@@ -246,7 +244,7 @@ mod tests {
             .session
             .set_connection_state(ConnectionState::NotConnected);
 
-        let effects = reduce(&mut state, &Action::TryConnect, Instant::now()).unwrap();
+        let effects = reduce(&mut state, &Action::TryConnect).unwrap();
 
         assert!(
             effects
@@ -265,7 +263,7 @@ mod tests {
         let new_id = ConnectionId::new();
 
         let action = create_switch_action(&new_id, "target_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action);
 
         assert_eq!(state.session.active_connection_id(), Some(&new_id));
         assert_eq!(state.session.dsn(), Some("postgres://localhost/target_db"));
@@ -286,7 +284,7 @@ mod tests {
             .save(&target_id, ConnectionCache::default());
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action);
 
         assert_eq!(state.session.connection_state(), ConnectionState::Connected);
     }
@@ -302,7 +300,7 @@ mod tests {
         state.result_interaction.activate_cell(3, 2);
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action);
 
         assert_eq!(
             state.result_interaction.selection().mode(),
@@ -318,7 +316,7 @@ mod tests {
         state.result_interaction.activate_cell(5, 0);
 
         let action = create_switch_action(&new_id, "fresh_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action);
 
         assert_eq!(
             state.result_interaction.selection().mode(),
@@ -333,7 +331,7 @@ mod tests {
         state.session.enable_read_only();
 
         let action = create_switch_action(&new_id, "fresh_db");
-        reduce(&mut state, &action, Instant::now());
+        reduce(&mut state, &action);
 
         assert!(!state.session.is_read_only());
     }
@@ -344,7 +342,7 @@ mod tests {
         let new_id = ConnectionId::new();
 
         let action = create_switch_action(&new_id, "any_db");
-        let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+        let effects = reduce(&mut state, &action).unwrap();
 
         assert!(
             effects
