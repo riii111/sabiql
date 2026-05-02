@@ -282,7 +282,11 @@ impl HelpOverlay {
 
     fn key_line(key: &str, desc: &str, theme: &ThemePalette) -> Line<'static> {
         let key_width = UnicodeWidthStr::width(key);
-        let padding = HELP_KEY_COLUMN_WIDTH.saturating_sub(key_width) + HELP_KEY_DESC_GAP;
+        let padding = if key_width > HELP_KEY_COLUMN_WIDTH {
+            HELP_KEY_DESC_GAP
+        } else {
+            HELP_KEY_COLUMN_WIDTH.saturating_sub(key_width)
+        };
 
         Line::from(vec![
             Span::styled(

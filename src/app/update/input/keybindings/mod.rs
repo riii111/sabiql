@@ -368,9 +368,13 @@ pub fn help_content_width() -> usize {
     help_section_titles()
         .map(|title| UnicodeWidthStr::width("▸ ") + UnicodeWidthStr::width(title))
         .chain(help_row_entries().map(|(key, desc)| {
+            let key_width = UnicodeWidthStr::width(key);
             HELP_KEY_INDENT_WIDTH
-                + UnicodeWidthStr::width(key).max(HELP_KEY_COLUMN_WIDTH)
-                + HELP_KEY_DESC_GAP
+                + if key_width > HELP_KEY_COLUMN_WIDTH {
+                    key_width + HELP_KEY_DESC_GAP
+                } else {
+                    HELP_KEY_COLUMN_WIDTH
+                }
                 + UnicodeWidthStr::width(desc)
         }))
         .max()
