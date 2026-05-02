@@ -44,4 +44,36 @@ mod tests {
     fn quote_ident_escapes_embedded_quotes() {
         assert_eq!(quote_ident(r#"my"table"#), r#""my""table""#);
     }
+
+    #[test]
+    fn row_count_query_quotes_table_name() {
+        assert_eq!(
+            row_count_query(r#"my"table"#),
+            r#"SELECT COUNT(*) AS count FROM "my""table""#
+        );
+    }
+
+    #[test]
+    fn pragma_queries_quote_identifiers() {
+        assert_eq!(
+            table_xinfo_query(r#"my"table"#),
+            r#"PRAGMA table_xinfo("my""table")"#
+        );
+        assert_eq!(
+            table_info_query(r#"my"table"#),
+            r#"PRAGMA table_info("my""table")"#
+        );
+        assert_eq!(
+            index_list_query(r#"my"table"#),
+            r#"PRAGMA index_list("my""table")"#
+        );
+        assert_eq!(
+            foreign_key_list_query(r#"my"table"#),
+            r#"PRAGMA foreign_key_list("my""table")"#
+        );
+        assert_eq!(
+            index_info_query(r#"my"index"#),
+            r#"PRAGMA index_info("my""index")"#
+        );
+    }
 }

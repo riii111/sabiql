@@ -117,20 +117,23 @@ impl SqliteAdapter {
         }
     }
 
+    fn extract_primary_key(columns: &[RawColumn]) -> Vec<String> {
+        let mut primary_key: Vec<(i64, String)> = columns
+            .iter()
+            .filter(|column| column.pk > 0)
+            .map(|column| (column.pk, column.name.clone()))
+            .collect();
+        primary_key.sort_by_key(|(pk, _)| *pk);
+        primary_key.into_iter().map(|(_, name)| name).collect()
+    }
+
     async fn primary_key_columns(
         &self,
         path: &str,
         table: &str,
     ) -> Result<Vec<String>, DbOperationError> {
-        let mut primary_key: Vec<(i64, String)> = self
-            .columns(path, table)
-            .await?
-            .into_iter()
-            .filter(|column| column.pk > 0)
-            .map(|column| (column.pk, column.name))
-            .collect();
-        primary_key.sort_by_key(|(pk, _)| *pk);
-        Ok(primary_key.into_iter().map(|(_, name)| name).collect())
+        let columns = self.columns(path, table).await?;
+        Ok(Self::extract_primary_key(&columns))
     }
 
     async fn indexes(&self, path: &str, table: &str) -> Result<Vec<Index>, DbOperationError> {
@@ -187,9 +190,18 @@ impl SqliteAdapter {
                     }
                     referenced_primary_keys
                         .get(&fk.table)
-                        .and_then(|primary_key| primary_key.get(fk.seq as usize))
+                        .and_then(|primary_key| {
+                            usize::try_from(fk.seq)
+                                .ok()
+                                .and_then(|idx| primary_key.get(idx))
+                        })
                         .cloned()
-                        .unwrap_or_default()
+                        .ok_or_else(|| {
+                            DbOperationError::MetadataParseFailed(format!(
+                                "SQLite foreign key references missing primary key column: {}.{}",
+                                fk.table, fk.seq
+                            ))
+                        })?
                 }
             };
 
@@ -242,12 +254,13 @@ impl SqliteAdapter {
             .collect::<std::collections::HashSet<_>>();
 
         let mut raw_columns = self.columns(path, table).await?;
+        if raw_columns.is_empty() {
+            return Err(DbOperationError::ObjectMissing(format!(
+                "SQLite table not found: {table}"
+            )));
+        }
         raw_columns.sort_by_key(|column| column.cid);
-        let mut primary_key: Vec<(i64, String)> = raw_columns
-            .iter()
-            .filter(|column| column.pk > 0)
-            .map(|column| (column.pk, column.name.clone()))
-            .collect();
+        let primary_key = Self::extract_primary_key(&raw_columns);
         let columns: Vec<Column> = raw_columns
             .into_iter()
             .map(|column| {
@@ -266,9 +279,7 @@ impl SqliteAdapter {
                 }
             })
             .collect();
-        primary_key.sort_by_key(|(pk, _)| *pk);
-        let primary_key = (!primary_key.is_empty())
-            .then(|| primary_key.into_iter().map(|(_, name)| name).collect());
+        let primary_key = (!primary_key.is_empty()).then_some(primary_key);
 
         Ok(Table {
             schema: MAIN_SCHEMA.to_string(),
@@ -441,6 +452,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn metadata_for_empty_database_returns_no_tables() {
+        let (_dir, dsn) = make_db("");
+        let adapter = SqliteAdapter::new();
+
+        let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+
+        assert_eq!(metadata.schemas, vec![Schema::new("main")]);
+        assert!(metadata.table_summaries.is_empty());
+    }
+
+    #[tokio::test]
     async fn table_detail_loads_columns_indexes_and_foreign_keys() {
         let (_dir, dsn) = make_db(
             r#"
@@ -484,6 +506,20 @@ mod tests {
         assert_eq!(fk.on_delete, FkAction::Cascade);
         assert!(detail.rls.is_none());
         assert!(detail.triggers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn table_detail_without_primary_key_sets_primary_key_none() {
+        let (_dir, dsn) = make_db("CREATE TABLE logs(message TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let detail = adapter
+            .fetch_table_detail(&dsn, "main", "logs")
+            .await
+            .unwrap();
+
+        assert_eq!(detail.primary_key, None);
+        assert_eq!(detail.columns.len(), 1);
     }
 
     #[tokio::test]
@@ -577,6 +613,16 @@ mod tests {
         let adapter = SqliteAdapter::new();
 
         let result = adapter.fetch_table_detail(&dsn, "other", "users").await;
+
+        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+    }
+
+    #[tokio::test]
+    async fn missing_table_returns_object_missing() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter.fetch_table_detail(&dsn, "main", "missing").await;
 
         assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
     }

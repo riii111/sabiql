@@ -120,10 +120,6 @@ mod tests {
     mod inspector_tabs {
         use super::*;
 
-        fn services_with_two_tabs() -> AppServices {
-            AppServices::stub()
-        }
-
         fn use_two_tabs(state: &mut AppState) {
             state
                 .session
@@ -142,7 +138,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::InspectorNextTab,
-                &services_with_two_tabs(),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -158,7 +154,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::InspectorPrevTab,
-                &services_with_two_tabs(),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
