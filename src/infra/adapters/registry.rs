@@ -2,8 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use app::ports::outbound::{
-    DatabaseCapabilities, DatabaseCapabilityProvider, DbOperationError, DdlGenerator, DsnBuilder,
-    MetadataProvider, QueryExecutor, SqlDialect,
+    DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
 };
 use async_trait::async_trait;
 use domain::connection::{ConnectionProfile, DatabaseType};
@@ -38,9 +37,7 @@ impl DbAdapterRegistry {
     }
 
     fn sqlite_query_not_implemented() -> DbOperationError {
-        DbOperationError::ConnectionFailed(
-            "SQLite query execution is not implemented yet".to_string(),
-        )
+        DbOperationError::QueryFailed("SQLite query execution is not implemented yet".to_string())
     }
 }
 
@@ -56,14 +53,6 @@ impl DsnBuilder for DbAdapterRegistry {
                 format!("sqlite://{path}")
             }
         }
-    }
-}
-
-impl DatabaseCapabilityProvider for DbAdapterRegistry {
-    fn capabilities(&self) -> DatabaseCapabilities {
-        // SAB-204 keeps capabilities startup-wide. Per-connection capability
-        // dispatch belongs with the SQLite adapter skeleton.
-        self.postgres.capabilities()
     }
 }
 
