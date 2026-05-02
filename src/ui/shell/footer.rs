@@ -14,8 +14,8 @@ use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
     INSPECTOR_DDL_KEYS, JSONB_DETAIL_ROWS, JSONB_EDIT_ROWS, JSONB_SEARCH_KEYS, OVERLAY_KEYS,
-    QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
-    SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
+    QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SETTINGS_ROWS, SQL_MODAL_CONFIRMING_KEYS,
+    SQL_MODAL_KEYS, SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -143,6 +143,7 @@ impl Footer {
                         list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
+                    list.push(GLOBAL_KEYS[idx::global::SETTINGS].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::EXIT_FOCUS].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
                     list
@@ -198,6 +199,7 @@ impl Footer {
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
+                    list.push(GLOBAL_KEYS[idx::global::SETTINGS].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
                     list
                 }
@@ -229,6 +231,13 @@ impl Footer {
                 HELP_ROWS[idx::help::H_SCROLL].as_hint(),
                 HELP_ROWS[idx::help::CLOSE].as_hint(),
             ],
+            InputMode::Settings => {
+                vec![
+                    SETTINGS_ROWS[idx::settings::APPLY].as_hint(),
+                    SETTINGS_ROWS[idx::settings::SELECT].as_hint(),
+                    SETTINGS_ROWS[idx::settings::CANCEL].as_hint(),
+                ]
+            }
             InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {
                 if matches!(

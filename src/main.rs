@@ -26,7 +26,7 @@ use app::model::shared::db_capabilities::DbCapabilities;
 use app::model::shared::input_mode::InputMode;
 use app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
-    ServiceFileError,
+    ServiceFileError, SettingsStore,
 };
 use app::services::AppServices;
 use app::update::action::Action;
@@ -34,7 +34,7 @@ use app::update::input::handle_event;
 use app::update::reducer::reduce;
 use infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
-    PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
+    PgServiceFileReader, PostgresAdapter, TomlConnectionStore, TomlSettingsStore,
 };
 use infra::config::project_root::{find_project_root, get_project_name};
 use infra::export::DotExporter;
@@ -90,8 +90,11 @@ async fn main() -> Result<()> {
     let metadata_cache = TtlCache::new(300);
     let completion_engine = RefCell::new(CompletionEngine::new());
     let connection_store = TomlConnectionStore::new()?;
+    let settings_store = TomlSettingsStore::new()?;
+    let app_settings = settings_store.load().unwrap_or_default();
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
+    let settings_store = Arc::new(settings_store);
 
     let db_capabilities: DbCapabilities = adapter.capabilities().into();
     let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
@@ -109,6 +112,7 @@ async fn main() -> Result<()> {
         .clipboard(Arc::new(ArboardClipboard))
         .folder_opener(Arc::new(NativeFolderOpener))
         .query_history_store(Arc::new(FileQueryHistoryStore::new()))
+        .settings_store(Arc::clone(&settings_store) as _)
         .metadata_cache(metadata_cache.clone())
         .action_tx(action_tx.clone())
         .build();
@@ -120,6 +124,7 @@ async fn main() -> Result<()> {
     };
 
     let mut state = AppState::new(project_name);
+    state.ui.set_theme(app_settings.theme_id);
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {

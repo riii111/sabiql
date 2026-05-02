@@ -11,6 +11,7 @@ use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::connection_store::ConnectionStoreError;
 use crate::ports::outbound::folder_opener::FolderOpenError;
 use crate::ports::outbound::query_history::QueryHistoryError;
+use crate::ports::outbound::settings_store::SettingsStoreError;
 use std::collections::HashMap;
 
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Table};
@@ -191,6 +192,7 @@ pub enum ListMotion {
 pub enum ModalKind {
     TablePicker,
     CommandPalette,
+    Settings,
     Help,
     SqlModal,
     ErTablePicker,
@@ -339,6 +341,14 @@ pub enum Action {
     EnterCommandLine,
     ExitCommandLine,
     CommandLineSubmit,
+
+    // Settings
+    SettingsSelectNextTheme,
+    SettingsSelectPreviousTheme,
+    SettingsApply,
+    SettingsCancel,
+    SettingsSaved,
+    SettingsSaveFailed(SettingsStoreError),
 
     // Connection list navigation
     ConnectionsLoaded(ConnectionsLoadedPayload),

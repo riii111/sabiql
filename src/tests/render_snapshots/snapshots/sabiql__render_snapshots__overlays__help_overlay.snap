@@ -13,9 +13,10 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  ?                   Toggle help                                                                               ┃│                        │
 │                        │  Ctrl+P              Open Table Picker                                                                         ┃│                        │
 │                        │  Ctrl+K              Open Command Palette                                                                      ┃│                        │
+│                        │  Ctrl+,              Open Settings                                                                             ┃│                        │
 │                        │  :                   Enter command line                                                                        ┃│                        │
 │                        │  f                   Toggle Focus                                                                              ┃│                        │
-│                        │  1/2/3               Switch pane focus                                                                         ┃│                        │
+│                        │  1/2/3               Switch pane focus                                                                         ││                        │
 │                        │  Tab/⇧Tab            Inspector prev/next tab                                                                   ││                        │
 │                        │  r                   Reload metadata                                                                           ││                        │
 │                        │  s                   Open SQL Editor                                                                           ││                        │
@@ -25,9 +26,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  Ctrl+R              Toggle Read-Only                                                                          ││                        │
 │                        │  Ctrl+O              Open Query History                                                                        ││                        │
 │                        │                                                                                                                ││                        │
-│                        │▸ Navigation                                                                                                    ││                        │
-│                        │  j / ↓               Move down / scroll                                                                        ││────────────────────────┘
-│                        │  k / ↑               Move up / scroll                                                                          ││────────────────────────┐
+│                        │▸ Navigation                                                                                                    ││────────────────────────┘
+│                        │  j / ↓               Move down / scroll                                                                        ││────────────────────────┐
+│                        │  k / ↑               Move up / scroll                                                                          ││                        │
 │                        │  g / Home            First item / top                                                                          ││                        │
 │                        │  G / End             Last item / bottom                                                                        ││                        │
 │                        │  H                   First visible item                                                                        ││                        │
@@ -45,8 +46,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  ] / [               Navigate history newer/older                                                              ││                        │
 │                        │  Ctrl+H              Exit history (back to latest)                                                             ││                        │
 │                        │                                                                                                                ││                        │
-│                        │▸ Result Pane                                                                                                   ││                        │
-│                        │  Enter               Enter cell selection at the current viewport anchor                                       ▼│                        │
+│                        │▸ Result Pane                                                                                                   ▼│                        │
 │                        ╰ ?/Esc Close ────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

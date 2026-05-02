@@ -21,6 +21,12 @@ pub fn handle_command_palette_keys(combo: KeyCombo) -> Action {
         .unwrap_or(Action::None)
 }
 
+pub fn handle_settings_keys(combo: KeyCombo) -> Action {
+    keybindings::SETTINGS
+        .resolve(&combo)
+        .unwrap_or(Action::None)
+}
+
 pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::QUERY_HISTORY_PICKER.resolve(&combo) {
         return action;
@@ -188,6 +194,35 @@ mod tests {
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
+        }
+    }
+
+    mod settings {
+        use super::*;
+
+        #[rstest]
+        #[case(Key::Enter, Action::SettingsApply)]
+        #[case(Key::Esc, Action::SettingsCancel)]
+        #[case(Key::Down, Action::SettingsSelectNextTheme)]
+        #[case(Key::Up, Action::SettingsSelectPreviousTheme)]
+        fn settings_keys_map_to_actions(#[case] key: Key, #[case] expected: Action) {
+            let result = handle_settings_keys(combo(key));
+
+            assert_eq!(format!("{result:?}"), format!("{expected:?}"));
+        }
+
+        #[test]
+        fn char_j_selects_next_theme() {
+            let result = handle_settings_keys(combo(Key::Char('j')));
+
+            assert!(matches!(result, Action::SettingsSelectNextTheme));
+        }
+
+        #[test]
+        fn char_k_selects_previous_theme() {
+            let result = handle_settings_keys(combo(Key::Char('k')));
+
+            assert!(matches!(result, Action::SettingsSelectPreviousTheme));
         }
     }
 

@@ -76,6 +76,9 @@ pub const QUERY_HISTORY_PICKER: ModeBindings = ModeBindings {
 pub const COMMAND_PALETTE: ModeBindings = ModeBindings {
     rows: COMMAND_PALETTE_ROWS,
 };
+pub const SETTINGS: ModeBindings = ModeBindings {
+    rows: SETTINGS_ROWS,
+};
 pub const CONNECTION_SELECTOR: ModeBindings = ModeBindings {
     rows: CONNECTION_SELECTOR_ROWS,
 };
@@ -93,6 +96,7 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("ER_PICKER", &ER_PICKER),
     ("QUERY_HISTORY_PICKER", &QUERY_HISTORY_PICKER),
     ("COMMAND_PALETTE", &COMMAND_PALETTE),
+    ("SETTINGS", &SETTINGS),
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
     ("JSONB_DETAIL", &JSONB_DETAIL),
     ("JSONB_EDIT", &JSONB_EDIT),
@@ -104,19 +108,20 @@ pub mod idx {
         pub const HELP: usize = 1;
         pub const TABLE_PICKER: usize = 2;
         pub const PALETTE: usize = 3;
-        pub const COMMAND_LINE: usize = 4;
-        pub const FOCUS: usize = 5;
-        pub const EXIT_FOCUS: usize = 6;
-        pub const PANE_SWITCH: usize = 7;
-        pub const INSPECTOR_TABS: usize = 8;
-        pub const RELOAD: usize = 9;
-        pub const SQL: usize = 10;
-        pub const ER_DIAGRAM: usize = 11;
-        pub const CONNECTIONS: usize = 12;
-        pub const CSV_EXPORT: usize = 13;
-        pub const READ_ONLY: usize = 14;
-        pub const EXIT_READ_ONLY: usize = 15;
-        pub const QUERY_HISTORY: usize = 16;
+        pub const SETTINGS: usize = 4;
+        pub const COMMAND_LINE: usize = 5;
+        pub const FOCUS: usize = 6;
+        pub const EXIT_FOCUS: usize = 7;
+        pub const PANE_SWITCH: usize = 8;
+        pub const INSPECTOR_TABS: usize = 9;
+        pub const RELOAD: usize = 10;
+        pub const SQL: usize = 11;
+        pub const ER_DIAGRAM: usize = 12;
+        pub const CONNECTIONS: usize = 13;
+        pub const CSV_EXPORT: usize = 14;
+        pub const READ_ONLY: usize = 15;
+        pub const EXIT_READ_ONLY: usize = 16;
+        pub const QUERY_HISTORY: usize = 17;
     }
 
     pub mod footer_nav {
@@ -242,6 +247,12 @@ pub mod idx {
         pub const ESC_CLOSE: usize = 2;
     }
 
+    pub mod settings {
+        pub const APPLY: usize = 0;
+        pub const SELECT: usize = 1;
+        pub const CANCEL: usize = 2;
+    }
+
     pub mod help {
         pub const SCROLL: usize = 0;
         pub const TOP_BOTTOM: usize = 1;
@@ -331,7 +342,7 @@ pub const fn help_content_line_count() -> usize {
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)
     //   HISTORY_KEYS: Open/Exit (1 pair)
     const DEDUP_PAIRS: usize = 3;
-    const SECTION_COUNT: usize = 25;
+    const SECTION_COUNT: usize = 26;
     const SECTION_HEADERS: usize = SECTION_COUNT;
     const BLANK_SEPARATORS: usize = SECTION_COUNT - 1;
     SECTION_HEADERS
@@ -357,6 +368,7 @@ pub const fn help_content_line_count() -> usize {
         + QUERY_HISTORY_PICKER_ROWS.len()
         + TABLE_PICKER_ROWS.len()
         + COMMAND_PALETTE_ROWS.len()
+        + SETTINGS_ROWS.len()
         + HELP_ROWS.len()
         + CONFIRM_DIALOG_KEYS.len()
         + JSONB_DETAIL_ROWS.len()
@@ -403,6 +415,7 @@ fn help_section_titles() -> impl Iterator<Item = &'static str> {
         "Query History Picker",
         "Table Picker",
         "Command Palette",
+        "Settings",
         "Help Overlay",
         "Confirm Dialog",
         "JSONB Detail",
@@ -491,6 +504,7 @@ fn help_row_entries() -> impl Iterator<Item = (&'static str, &'static str)> {
                         .iter()
                         .map(|row| (row.key, row.description)),
                 )
+                .chain(SETTINGS_ROWS.iter().map(|row| (row.key, row.description)))
                 .chain(
                     CONFIRM_DIALOG_KEYS
                         .iter()
@@ -522,6 +536,10 @@ pub fn is_command_line(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::COMMAND_LINE]
         .combos
         .contains(combo)
+}
+
+pub fn is_settings(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::SETTINGS].combos.contains(combo)
 }
 
 pub fn is_focus_toggle(combo: &KeyCombo) -> bool {
@@ -556,6 +574,7 @@ mod tests {
             assert!(idx::global::HELP < GLOBAL_KEYS.len());
             assert!(idx::global::TABLE_PICKER < GLOBAL_KEYS.len());
             assert!(idx::global::PALETTE < GLOBAL_KEYS.len());
+            assert!(idx::global::SETTINGS < GLOBAL_KEYS.len());
             assert!(idx::global::COMMAND_LINE < GLOBAL_KEYS.len());
             assert!(idx::global::FOCUS < GLOBAL_KEYS.len());
             assert!(idx::global::EXIT_FOCUS < GLOBAL_KEYS.len());
@@ -678,6 +697,11 @@ mod tests {
             assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_ROWS.len());
             assert!(idx::cmd_palette::ESC_CLOSE < COMMAND_PALETTE_ROWS.len());
 
+            // SETTINGS_ROWS
+            assert!(idx::settings::APPLY < SETTINGS_ROWS.len());
+            assert!(idx::settings::SELECT < SETTINGS_ROWS.len());
+            assert!(idx::settings::CANCEL < SETTINGS_ROWS.len());
+
             // HELP_ROWS
             assert!(idx::help::SCROLL < HELP_ROWS.len());
             assert!(idx::help::TOP_BOTTOM < HELP_ROWS.len());
@@ -767,6 +791,7 @@ mod tests {
                 QUERY_HISTORY_PICKER_ROWS.len(),
                 TABLE_PICKER_ROWS.len(),
                 COMMAND_PALETTE_ROWS.len(),
+                SETTINGS_ROWS.len(),
                 HELP_ROWS.len(),
                 CONFIRM_DIALOG_KEYS.len(),
                 JSONB_DETAIL_ROWS.len(),
@@ -795,6 +820,7 @@ mod tests {
             #[case(idx::global::HELP, Action::ToggleModal(ModalKind::Help))]
             #[case(idx::global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
             #[case(idx::global::PALETTE, Action::OpenModal(ModalKind::CommandPalette))]
+            #[case(idx::global::SETTINGS, Action::OpenModal(ModalKind::Settings))]
             #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
             #[case(idx::global::RELOAD, Action::ReloadMetadata)]
             #[case(idx::global::SQL, Action::OpenModal(ModalKind::SqlModal))]
@@ -1197,7 +1223,7 @@ mod tests {
 
             #[test]
             fn all_mode_bindings_count() {
-                assert_eq!(ALL_MODE_BINDINGS.len(), 9);
+                assert_eq!(ALL_MODE_BINDINGS.len(), 10);
             }
         }
     }

@@ -43,6 +43,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
         InputMode::CellEdit => editors::handle_cell_edit_keys(combo),
         InputMode::TablePicker => pickers::handle_table_picker_keys(combo),
         InputMode::CommandPalette => pickers::handle_command_palette_keys(combo),
+        InputMode::Settings => pickers::handle_settings_keys(combo),
         InputMode::Help => overlays::handle_help_keys(combo),
         InputMode::SqlModal => {
             let completion_visible = state.sql_modal.completion().visible

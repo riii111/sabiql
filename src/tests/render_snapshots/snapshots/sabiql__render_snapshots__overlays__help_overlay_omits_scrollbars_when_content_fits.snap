@@ -38,6 +38,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  ?                   Toggle help                                                                                           │                          │
 │                          │  Ctrl+P              Open Table Picker                                                                                     │                          │
 │                          │  Ctrl+K              Open Command Palette                                                                                  │                          │
+│                          │  Ctrl+,              Open Settings                                                                                         │                          │
 │                          │  :                   Enter command line                                                                                    │                          │
 │                          │  f                   Toggle Focus                                                                                          │                          │
 │                          │  1/2/3               Switch pane focus                                                                                     │                          │
@@ -150,9 +151,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │▸ Command Line                                                                                                              │                          │
 │                          │  :quit               Quit application                                                                                      │                          │
 │                          │  :help               Show help                                                                                             │                          │
-│                          │  :sql                Open SQL Editor                                                                                       │                          │
-│                          │  :erd                Open ER Diagram                                                                                       │──────────────────────────┘
-│                          │  ←→                  Move cursor                                                                                           │──────────────────────────┐
+│                          │  :sql                Open SQL Editor                                                                                       │──────────────────────────┘
+│                          │  :erd                Open ER Diagram                                                                                       │──────────────────────────┐
+│                          │  ←→                  Move cursor                                                                                           │                          │
 │                          │  Home/End            Jump to start/end                                                                                     │                          │
 │                          │  Enter               Submit command                                                                                        │                          │
 │                          │  Esc                 Exit command line                                                                                     │                          │
@@ -208,6 +209,11 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  j / k / Ctrl+N / Ctrl+P / ↑ / ↓  Navigate                                                                                 │                          │
 │                          │  Esc                 Close                                                                                                 │                          │
 │                          │                                                                                                                            │                          │
+│                          │▸ Settings                                                                                                                  │                          │
+│                          │  Enter               Apply setting                                                                                         │                          │
+│                          │  j / k / ↑ / ↓       Select setting                                                                                        │                          │
+│                          │  Esc                 Cancel                                                                                                │                          │
+│                          │                                                                                                                            │                          │
 │                          │▸ Help Overlay                                                                                                              │                          │
 │                          │  j / k / Ctrl+N / Ctrl+P / ↑ / ↓  Scroll down / up                                                                         │                          │
 │                          │  g / Home / G / End  Jump to top / bottom                                                                                  │                          │
@@ -241,12 +247,6 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  type                Type to search                                                                                        │                          │
 │                          │  Enter               Confirm search                                                                                        │                          │
 │                          │  Esc                 Cancel search                                                                                         │                          │
-│                          │                                                                                                                            │                          │
-│                          │                                                                                                                            │                          │
-│                          │                                                                                                                            │                          │
-│                          │                                                                                                                            │                          │
-│                          │                                                                                                                            │                          │
-│                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │

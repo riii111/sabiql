@@ -51,4 +51,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                                                                                                                                                   │
 │                                                                                                                                                                   │
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Select  ^E:Export  ]/[:Page  ?:Help  f:Exit Focus  q:Quit
+Enter:Select  ^E:Export  ]/[:Page  ?:Help  ^,:Settings  f:Exit Focus  q:Quit

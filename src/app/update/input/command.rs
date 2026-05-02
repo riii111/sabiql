@@ -6,6 +6,8 @@ pub enum Command {
     Help,
     Sql,
     Erd,
+    Settings,
+    Theme,
     Write,
     Unknown(String),
 }
@@ -16,6 +18,8 @@ pub fn parse_command(input: &str) -> Command {
         "?" | "help" => Command::Help,
         "sql" => Command::Sql,
         "erd" => Command::Erd,
+        "settings" => Command::Settings,
+        "theme" => Command::Theme,
         "w" | "write" => Command::Write,
         other => Command::Unknown(other.to_string()),
     }
@@ -27,6 +31,7 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Help => Action::ToggleModal(ModalKind::Help),
         Command::Sql => Action::OpenModal(ModalKind::SqlModal),
         Command::Erd => Action::OpenModal(ModalKind::ErTablePicker),
+        Command::Settings | Command::Theme => Action::OpenModal(ModalKind::Settings),
         Command::Write => Action::SubmitCellEditWrite,
         Command::Unknown(_) => Action::None,
     }
@@ -71,6 +76,20 @@ mod tests {
             let result = parse_command("erd");
 
             assert_eq!(result, Command::Erd);
+        }
+
+        #[test]
+        fn settings_returns_settings() {
+            let result = parse_command("settings");
+
+            assert_eq!(result, Command::Settings);
+        }
+
+        #[test]
+        fn theme_returns_theme() {
+            let result = parse_command("theme");
+
+            assert_eq!(result, Command::Theme);
         }
 
         #[rstest]
@@ -135,6 +154,20 @@ mod tests {
                 result,
                 Action::OpenModal(ModalKind::ErTablePicker)
             ));
+        }
+
+        #[test]
+        fn settings_returns_open_settings_action() {
+            let result = command_to_action(Command::Settings);
+
+            assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
+        }
+
+        #[test]
+        fn theme_returns_open_settings_action() {
+            let result = command_to_action(Command::Theme);
+
+            assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
         }
 
         #[test]

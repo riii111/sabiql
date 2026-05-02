@@ -40,6 +40,14 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::ctrl(Key::Char('k'))],
     },
     KeyBinding {
+        key_short: "^,",
+        key: "Ctrl+,",
+        desc_short: "Settings",
+        description: "Open Settings",
+        action: Action::OpenModal(ModalKind::Settings),
+        combos: &[KeyCombo::ctrl(Key::Char(','))],
+    },
+    KeyBinding {
         key_short: ":",
         key: ":",
         desc_short: "Cmd",

@@ -53,6 +53,38 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.ui.table_picker.reset();
             Some(vec![])
         }
+        Action::OpenModal(ModalKind::Settings) => {
+            state.settings.open(state.ui.theme_id());
+            state.modal.set_mode(InputMode::Settings);
+            Some(vec![])
+        }
+        Action::SettingsSelectNextTheme => {
+            let theme_id = state.settings.select_next_theme();
+            state.ui.set_theme(theme_id);
+            Some(vec![])
+        }
+        Action::SettingsSelectPreviousTheme => {
+            let theme_id = state.settings.select_previous_theme();
+            state.ui.set_theme(theme_id);
+            Some(vec![])
+        }
+        Action::SettingsApply => {
+            let theme_id = state.settings.selected_theme();
+            state.ui.set_theme(theme_id);
+            state.modal.set_mode(InputMode::Normal);
+            state.set_success(format!("Theme set to {}", theme_id.label()));
+            Some(vec![Effect::SaveSettings { theme_id }])
+        }
+        Action::SettingsCancel | Action::CloseModal(ModalKind::Settings) => {
+            state.ui.set_theme(state.settings.previous_theme());
+            state.modal.set_mode(InputMode::Normal);
+            Some(vec![])
+        }
+        Action::SettingsSaved => Some(vec![]),
+        Action::SettingsSaveFailed(error) => {
+            state.set_error(format!("Failed to save settings: {error}"));
+            Some(vec![])
+        }
         Action::ToggleModal(ModalKind::Help) => {
             if state.modal.active_mode() == InputMode::Help {
                 state.modal.set_mode(InputMode::Normal);
@@ -388,6 +420,84 @@ mod tests {
 
     fn create_test_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    mod settings {
+        use super::*;
+        use crate::model::shared::theme_id::ThemeId;
+
+        #[test]
+        fn open_settings_tracks_current_theme() {
+            let mut state = create_test_state();
+            state.ui.set_theme(ThemeId::Light);
+
+            let effects = reduce_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::Settings),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Settings);
+            assert_eq!(state.settings.previous_theme(), ThemeId::Light);
+            assert_eq!(state.settings.selected_theme(), ThemeId::Light);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn theme_navigation_previews_selected_theme() {
+            let mut state = create_test_state();
+            reduce_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::Settings),
+                Instant::now(),
+            );
+
+            reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
+
+            assert_eq!(state.settings.selected_theme(), ThemeId::Light);
+            assert_eq!(state.ui.theme_id(), ThemeId::Light);
+        }
+
+        #[test]
+        fn cancel_restores_previous_theme() {
+            let mut state = create_test_state();
+            reduce_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::Settings),
+                Instant::now(),
+            );
+            reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
+
+            let effects =
+                reduce_modal(&mut state, &Action::SettingsCancel, Instant::now()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.ui.theme_id(), ThemeId::Default);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn apply_keeps_selected_theme_and_returns_save_effect() {
+            let mut state = create_test_state();
+            reduce_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::Settings),
+                Instant::now(),
+            );
+            reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
+
+            let effects = reduce_modal(&mut state, &Action::SettingsApply, Instant::now()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.ui.theme_id(), ThemeId::Light);
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SaveSettings {
+                    theme_id: ThemeId::Light
+                }]
+            ));
+        }
     }
 
     mod confirm_dialog {
