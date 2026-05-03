@@ -222,7 +222,10 @@ impl Footer {
                     COMMAND_PALETTE_ROWS[idx::cmd_palette::ESC_CLOSE].as_hint(),
                 ]
             }
-            InputMode::Help => vec![HELP_ROWS[idx::help::CLOSE].as_hint()],
+            InputMode::Help => vec![
+                HELP_ROWS[idx::help::H_SCROLL].as_hint(),
+                HELP_ROWS[idx::help::CLOSE].as_hint(),
+            ],
             InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {
                 if matches!(
