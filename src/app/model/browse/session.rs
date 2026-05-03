@@ -288,8 +288,7 @@ impl BrowseSession {
     }
 
     pub fn active_database_type_or_default(&self) -> DatabaseType {
-        self.active_database_type
-            .unwrap_or(DatabaseType::PostgreSQL)
+        self.active_database_type.unwrap_or_default()
     }
 
     pub fn active_db_capabilities(&self) -> &DbCapabilities {
@@ -871,6 +870,16 @@ mod tests {
             assert!(session.selected_table_key().is_none());
             assert!(session.table_detail().is_none());
             assert_eq!(session.selection_generation(), 0);
+        }
+
+        #[test]
+        fn active_database_type_or_default_returns_postgresql_when_none() {
+            let session = BrowseSession::default();
+
+            assert_eq!(
+                session.active_database_type_or_default(),
+                DatabaseType::PostgreSQL
+            );
         }
     }
 }

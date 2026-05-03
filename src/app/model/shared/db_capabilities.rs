@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_supports_metadata_only_inspector_tabs() {
+    fn sqlite_supports_inspector_tabs_including_ddl() {
         let caps = DbCapabilities::sqlite_like();
 
         assert!(!caps.supports_explain());
