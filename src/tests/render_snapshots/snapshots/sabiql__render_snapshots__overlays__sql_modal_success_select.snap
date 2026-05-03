@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                                  ✓ 2 rows (0.01s)  │       │
-│       ╰ ⌥Enter/F5: Run │ i: Insert │ Tab/⇧Tab: Switch │ Esc: Close ──╯       │
+│       ╰ ⌥Enter/F5: Run │ ^E: Explain │ i: Insert │ Esc: Close ───────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
