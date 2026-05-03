@@ -2,26 +2,53 @@
 source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│> public.us╭ Help ────────────────────────────────────────────────╮───────────┐
-│  public.po│▸ Global Keys                                        ▲│           │
-│  public.co│  q                   Quit application               ┃│           │
-│           │  ?                   Toggle help                    ││           │
-│           │  Ctrl+P              Open Table Picker              ││           │
-│           │  Ctrl+K              Open Command Palette           ││           │
-│           │  :                   Enter command line             ││           │
-│           │  f                   Toggle Focus                   ││           │
-│           │  1/2/3               Switch pane focus              ││           │
-│           │  Tab/⇧Tab            Inspector prev/next tab        ││───────────┘
-│           │  r                   Reload metadata                ││───────────┐
-│           │  s                   Open SQL Editor                ││           │
-│           │  e                   Open ER Diagram                ││           │
-│           │  c                   Open Connection Selector       ││           │
-│           │  Ctrl+E              Export result to CSV           ││           │
-│           │  Ctrl+R              Toggle Read-Only               ││           │
-│           │  Ctrl+O              Open Query History             ││           │
-│           │                                                     ▼│           │
-│           │ col   0% ◀︎════════════════════─────────────────────▶︎ │           │
-└───────────╰ ?/Esc Close ─────────────────────────────────────────╯───────────┘
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││(select a table)                                                                                                          │
+│  public.comments                      ││                                                                                                                          │
+│                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
+│                        │▸ Global Keys                                                                                                   ▲│                        │
+│                        │  q                   Quit application                                                                          ┃│                        │
+│                        │  ?                   Toggle help                                                                               ┃│                        │
+│                        │  Ctrl+P              Open Table Picker                                                                         ┃│                        │
+│                        │  Ctrl+K              Open Command Palette                                                                      ┃│                        │
+│                        │  :                   Enter command line                                                                        ┃│                        │
+│                        │  f                   Toggle Focus                                                                              ┃│                        │
+│                        │  1/2/3               Switch pane focus                                                                         ┃│                        │
+│                        │  Tab/⇧Tab            Inspector prev/next tab                                                                   ││                        │
+│                        │  r                   Reload metadata                                                                           ││                        │
+│                        │  s                   Open SQL Editor                                                                           ││                        │
+│                        │  e                   Open ER Diagram                                                                           ││                        │
+│                        │  c                   Open Connection Selector                                                                  ││                        │
+│                        │  Ctrl+E              Export result to CSV                                                                      ││                        │
+│                        │  Ctrl+R              Toggle Read-Only                                                                          ││                        │
+│                        │  Ctrl+O              Open Query History                                                                        ││                        │
+│                        │                                                                                                                ││                        │
+│                        │▸ Navigation                                                                                                    ││                        │
+│                        │  j / ↓               Move down / scroll                                                                        ││────────────────────────┘
+│                        │  k / ↑               Move up / scroll                                                                          ││────────────────────────┐
+│                        │  g / Home            First item / top                                                                          ││                        │
+│                        │  G / End             Last item / bottom                                                                        ││                        │
+│                        │  H                   First visible item                                                                        ││                        │
+│                        │  M                   Middle of visible items                                                                   ││                        │
+│                        │  L                   Last visible item                                                                         ││                        │
+│                        │  zz / zt / zb        Scroll cursor to center/top/bottom                                                        ││                        │
+│                        │  Ctrl+D / Ctrl+U     Scroll half page down/up                                                                  ││                        │
+│                        │  Ctrl+F/B / PgDn/Up  Scroll full page down/up                                                                  ││                        │
+│                        │  h / l               Scroll left/right                                                                         ││                        │
+│                        │  ]                   Next page (Preview)                                                                       ││                        │
+│                        │  [                   Previous page (Preview)                                                                   ││                        │
+│                        │                                                                                                                ││                        │
+│                        │▸ Result History                                                                                                ││                        │
+│                        │  Ctrl+H              Toggle Result History                                                                     ││                        │
+│                        │  ] / [               Navigate history newer/older                                                              ││                        │
+│                        │  Ctrl+H              Exit history (back to latest)                                                             ││                        │
+│                        │                                                                                                                ││                        │
+│                        │▸ Result Pane                                                                                                   ││                        │
+│                        │  Enter               Enter cell selection at the current viewport anchor                                       ▼│                        │
+│                        ╰ ?/Esc Close ────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 h/l / ←→:H-Scroll  ?/Esc:Close

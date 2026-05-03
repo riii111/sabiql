@@ -2,26 +2,53 @@
 source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
-│  public.posts    ││(select a table)                                          │
-│  public.comments ││                                                          │
-│       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │ SELECT                                                       │       │
-│       │        ┌───────────────────────────────────────────┐         │       │
-│       │        │ posts       table                         │         │       │
-│       │        │ comments    table                         │         │       │
-│       │        │ id          column                        │         │       │
-│       │        │ name        column                        │         │───────┘
-│       │        │ email       column                        │         │───────┐
-│       │        │ created_at  column                        │         │       │
-│       │        │ updated_at  column                        │         │       │
-│       │        │ COUNT       keyword                       │         │       │
-│       │ ───────└───────────────────────────────────────────┘──────── │       │
-│       │  [INSERT]                                             Ready  │       │
-│       ╰ ⌥Enter/F5: Run │ ^E: Explain │ ^L: Clear │ ^O: History │ Esc:╯       │
-│                  ││                                                          │
-│                  ││                                                          │
-└──────────────────┘└──────────────────────────────────────────────────────────┘
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││(select a table)                                                                                                          │
+│  public.comments                      ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────────────────────────────────────────────────────────────────────────╮               │
+│                │ SELECT                                                                                                                           │               │
+│                │        ┌───────────────────────────────────────────┐                                                                             │               │
+│                │        │ posts       table                         │                                                                             │               │
+│                │        │ comments    table                         │                                                                             │               │
+│                │        │ id          column                        │                                                                             │               │
+│                │        │ name        column                        │                                                                             │               │
+│                │        │ email       column                        │                                                                             │               │
+│                │        │ created_at  column                        │                                                                             │               │
+│                │        │ updated_at  column                        │                                                                             │               │
+│                │        │ COUNT       keyword                       │                                                                             │               │
+│                │        └───────────────────────────────────────────┘                                                                             │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │───────────────┘
+│                │                                                                                                                                  │───────────────┐
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │               │
+│                │  [INSERT]                                                                                                                 Ready  │               │
+│                ╰ ⌥Enter/F5: Run │ ^E: Explain │ ^L: Clear │ ^O: History │ Esc: Normal ────────────────────────────────────────────────────────────╯               │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ⌥Enter/F5:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal
