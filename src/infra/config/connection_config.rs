@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::app::model::shared::theme_id::ThemeId;
+use crate::app::ports::outbound::AppSettings;
 use crate::domain::connection::{
     ConnectionId, ConnectionName, ConnectionNameError, ConnectionProfile, SslMode,
 };
@@ -14,6 +16,8 @@ pub struct ConfigVersionCheck {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConnectionConfigFile {
     pub version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
     pub connections: Vec<ConnectionConfigEntry>,
 }
 
@@ -33,6 +37,7 @@ impl From<&[ConnectionProfile]> for ConnectionConfigFile {
     fn from(profiles: &[ConnectionProfile]) -> Self {
         Self {
             version: CURRENT_VERSION,
+            theme: None,
             connections: profiles
                 .iter()
                 .map(|p| ConnectionConfigEntry {
@@ -47,6 +52,26 @@ impl From<&[ConnectionProfile]> for ConnectionConfigFile {
                 })
                 .collect(),
         }
+    }
+}
+
+impl ConnectionConfigFile {
+    pub fn app_settings(&self) -> AppSettings {
+        if self.version != CURRENT_VERSION {
+            return AppSettings::default();
+        }
+
+        AppSettings {
+            theme_id: self
+                .theme
+                .as_deref()
+                .and_then(ThemeId::from_config_value)
+                .unwrap_or_default(),
+        }
+    }
+
+    pub fn set_app_settings(&mut self, settings: AppSettings) {
+        self.theme = Some(settings.theme_id.config_value().to_string());
     }
 }
 
@@ -70,5 +95,43 @@ impl TryFrom<&ConnectionConfigFile> for Vec<ConnectionProfile> {
                 })
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_theme_maps_to_app_settings() {
+        let config = ConnectionConfigFile {
+            version: CURRENT_VERSION,
+            theme: Some("light".to_string()),
+            connections: vec![],
+        };
+
+        assert_eq!(config.app_settings().theme_id, ThemeId::Light);
+    }
+
+    #[test]
+    fn unknown_theme_falls_back_to_default() {
+        let config = ConnectionConfigFile {
+            version: CURRENT_VERSION,
+            theme: Some("terminal".to_string()),
+            connections: vec![],
+        };
+
+        assert_eq!(config.app_settings().theme_id, ThemeId::Default);
+    }
+
+    #[test]
+    fn missing_theme_falls_back_to_default() {
+        let config = ConnectionConfigFile {
+            version: CURRENT_VERSION,
+            theme: None,
+            connections: vec![],
+        };
+
+        assert_eq!(config.app_settings().theme_id, ThemeId::Default);
     }
 }

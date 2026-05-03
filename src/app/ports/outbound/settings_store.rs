@@ -21,6 +21,10 @@ pub enum SettingsStoreError {
     Io(#[source] Arc<std::io::Error>),
     #[error("TOML serialize error: {0}")]
     TomlSerialize(#[source] Arc<toml::ser::Error>),
+    #[error("TOML deserialize error: {0}")]
+    TomlDeserialize(#[source] Arc<toml::de::Error>),
+    #[error("Config version mismatch: found {found}, expected {expected}")]
+    VersionMismatch { found: u32, expected: u32 },
 }
 
 impl From<std::io::Error> for SettingsStoreError {
@@ -32,6 +36,12 @@ impl From<std::io::Error> for SettingsStoreError {
 impl From<toml::ser::Error> for SettingsStoreError {
     fn from(error: toml::ser::Error) -> Self {
         Self::TomlSerialize(Arc::new(error))
+    }
+}
+
+impl From<toml::de::Error> for SettingsStoreError {
+    fn from(error: toml::de::Error) -> Self {
+        Self::TomlDeserialize(Arc::new(error))
     }
 }
 
