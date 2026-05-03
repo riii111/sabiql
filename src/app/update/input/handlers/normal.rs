@@ -102,9 +102,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     if kb::is_command_line(&combo) {
         return Action::EnterCommandLine;
     }
-    if kb::is_settings(&combo) {
-        return Action::OpenModal(ModalKind::Settings);
-    }
     if kb::is_reload(&combo) {
         return Action::ReloadMetadata;
     }

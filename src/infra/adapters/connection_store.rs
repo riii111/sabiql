@@ -51,8 +51,6 @@ impl TomlConnectionStore {
     }
 
     fn write_all(&self, profiles: &[ConnectionProfile]) -> Result<(), ConnectionStoreError> {
-        let _guard = app_config_file::lock();
-
         let mut config = ConnectionConfigFile::from(profiles);
         if let Some(existing_config) = self.load_config_file()? {
             config.theme = existing_config.theme;
@@ -80,6 +78,7 @@ impl ConnectionStore for TomlConnectionStore {
     }
 
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError> {
+        let _guard = app_config_file::lock();
         let mut profiles = self.load_all()?;
 
         let normalized_name = profile.name.normalized();
@@ -110,6 +109,7 @@ impl ConnectionStore for TomlConnectionStore {
     }
 
     fn delete(&self, id: &ConnectionId) -> Result<(), ConnectionStoreError> {
+        let _guard = app_config_file::lock();
         let mut profiles = self.load_all()?;
         let original_len = profiles.len();
         profiles.retain(|p| &p.id != id);
