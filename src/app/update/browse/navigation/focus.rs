@@ -151,7 +151,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::ForeignKeys);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
         }
     }
 }

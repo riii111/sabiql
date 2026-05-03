@@ -185,10 +185,12 @@ impl QueryExecutor for DbAdapterRegistry {
     }
 }
 
-// SQLite query and DDL support is intentionally out of scope for SAB-235.
 impl DdlGenerator for DbAdapterRegistry {
-    fn generate_ddl(&self, table: &Table) -> String {
-        self.postgres.generate_ddl(table)
+    fn generate_ddl(&self, database_type: DatabaseType, table: &Table) -> String {
+        match database_type {
+            DatabaseType::PostgreSQL => self.postgres.generate_ddl(database_type, table),
+            DatabaseType::SQLite => self.sqlite.generate_ddl(database_type, table),
+        }
     }
 }
 
@@ -203,24 +205,50 @@ impl SqlDialect for DbAdapterRegistry {
 
     fn build_update_sql(
         &self,
+        database_type: DatabaseType,
         schema: &str,
         table: &str,
         column: &str,
         new_value: &str,
         pk_pairs: &[(String, String)],
     ) -> String {
-        self.postgres
-            .build_update_sql(schema, table, column, new_value, pk_pairs)
+        match database_type {
+            DatabaseType::PostgreSQL => self.postgres.build_update_sql(
+                database_type,
+                schema,
+                table,
+                column,
+                new_value,
+                pk_pairs,
+            ),
+            DatabaseType::SQLite => self.sqlite.build_update_sql(
+                database_type,
+                schema,
+                table,
+                column,
+                new_value,
+                pk_pairs,
+            ),
+        }
     }
 
     fn build_bulk_delete_sql(
         &self,
+        database_type: DatabaseType,
         schema: &str,
         table: &str,
         pk_pairs_per_row: &[Vec<(String, String)>],
     ) -> String {
-        self.postgres
-            .build_bulk_delete_sql(schema, table, pk_pairs_per_row)
+        match database_type {
+            DatabaseType::PostgreSQL => {
+                self.postgres
+                    .build_bulk_delete_sql(database_type, schema, table, pk_pairs_per_row)
+            }
+            DatabaseType::SQLite => {
+                self.sqlite
+                    .build_bulk_delete_sql(database_type, schema, table, pk_pairs_per_row)
+            }
+        }
     }
 }
 
@@ -228,6 +256,7 @@ impl SqlDialect for DbAdapterRegistry {
 mod tests {
     use super::*;
     use domain::connection::SslMode;
+    use domain::{Column, ColumnAttributes};
     use std::process::Command;
 
     fn make_sqlite_dsn(sql: &str) -> (tempfile::TempDir, String) {
@@ -240,6 +269,29 @@ mod tests {
             .unwrap();
         assert!(status.success());
         (dir, format!("sqlite://{}", path.display()))
+    }
+
+    fn make_table() -> Table {
+        Table {
+            schema: "main".to_string(),
+            name: "users".to_string(),
+            owner: None,
+            columns: vec![Column {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                default: None,
+                attributes: ColumnAttributes::from_parts(false, true, false),
+                comment: None,
+                ordinal_position: 1,
+            }],
+            primary_key: Some(vec!["id".to_string()]),
+            foreign_keys: vec![],
+            indexes: vec![],
+            rls: None,
+            triggers: vec![],
+            row_count_estimate: None,
+            comment: None,
+        }
     }
 
     #[test]
@@ -269,6 +321,60 @@ mod tests {
         let dsn = registry.build_dsn(&profile);
 
         assert_eq!(dsn, "sqlite:///tmp/app.db");
+    }
+
+    #[test]
+    fn postgres_sql_generation_keeps_schema_qualified_sql() {
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let rows = vec![vec![("id".to_string(), "1".to_string())]];
+
+        let update_sql = registry.build_update_sql(
+            DatabaseType::PostgreSQL,
+            "public",
+            "users",
+            "name",
+            "Bob",
+            &[("id".into(), "1".into())],
+        );
+        let delete_sql =
+            registry.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "users", &rows);
+        let ddl = registry.generate_ddl(DatabaseType::PostgreSQL, &make_table());
+
+        assert_eq!(
+            update_sql,
+            "UPDATE \"public\".\"users\"\nSET \"name\" = 'Bob'\nWHERE \"id\" = '1';"
+        );
+        assert_eq!(
+            delete_sql,
+            "DELETE FROM \"public\".\"users\"\nWHERE \"id\" IN ('1');"
+        );
+        assert!(ddl.contains("CREATE TABLE \"main\".\"users\""));
+    }
+
+    #[test]
+    fn sqlite_sql_generation_omits_schema_qualification() {
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let rows = vec![vec![("id".to_string(), "1".to_string())]];
+
+        let update_sql = registry.build_update_sql(
+            DatabaseType::SQLite,
+            "main",
+            "users",
+            "name",
+            "Bob",
+            &[("id".into(), "1".into())],
+        );
+        let delete_sql =
+            registry.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+        let ddl = registry.generate_ddl(DatabaseType::SQLite, &make_table());
+
+        assert_eq!(
+            update_sql,
+            "UPDATE \"users\"\nSET \"name\" = 'Bob'\nWHERE \"id\" = '1';"
+        );
+        assert_eq!(delete_sql, "DELETE FROM \"users\"\nWHERE \"id\" IN ('1');");
+        assert!(ddl.contains("CREATE TABLE \"users\""));
+        assert!(!ddl.contains("\"main\".\"users\""));
     }
 
     #[tokio::test]

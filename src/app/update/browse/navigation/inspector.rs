@@ -276,7 +276,7 @@ mod tests {
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
-        fn disable_ddl_for_test(state: &mut AppState) {
+        fn use_sqlite_tabs(state: &mut AppState) {
             state.session.set_active_connection(
                 &ConnectionId::new(),
                 "sqlite",
@@ -286,15 +286,12 @@ mod tests {
         }
 
         #[test]
-        fn inspector_half_page_scroll_normalizes_unsupported_ddl_tab() {
+        fn inspector_half_page_scroll_uses_sqlite_ddl_tab() {
             let mut state = state_with_table_detail(20);
-            disable_ddl_for_test(&mut state);
+            use_sqlite_tabs(&mut state);
             state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
-            let expected_delta = ScrollAmount::HalfPage
-                .page_delta(state.inspector_visible_rows())
-                .unwrap();
 
             let effects = reduce_navigation(
                 &mut state,
@@ -308,13 +305,13 @@ mod tests {
             );
 
             assert!(effects.is_some());
-            assert_eq!(state.ui.inspector_scroll_offset(), 1 + expected_delta);
+            assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
         #[test]
-        fn inspector_full_page_scroll_normalizes_unsupported_ddl_tab() {
+        fn inspector_full_page_scroll_uses_sqlite_ddl_tab() {
             let mut state = state_with_table_detail(20);
-            disable_ddl_for_test(&mut state);
+            use_sqlite_tabs(&mut state);
             state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
@@ -331,7 +328,7 @@ mod tests {
             );
 
             assert!(effects.is_some());
-            assert_eq!(state.ui.inspector_scroll_offset(), 3);
+            assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
     }
 }

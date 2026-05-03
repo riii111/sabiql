@@ -139,6 +139,7 @@ pub fn build_bulk_delete_preview(
     }
 
     let sql = services.sql_dialect.build_bulk_delete_sql(
+        state.session.active_database_type_or_default(),
         state.query.pagination.schema(),
         state.query.pagination.table(),
         &pk_pairs_per_row,
@@ -306,6 +307,10 @@ pub fn validate_all(state: &mut ConnectionSetupState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    use crate::domain::{Column, ColumnAttributes, DatabaseType, QuerySource, Table};
     use rstest::rstest;
 
     mod validate_field_name {
@@ -515,6 +520,77 @@ mod tests {
             let (page, row) = deletion_refresh_target_bulk(4, 1, 2, 1);
             assert_eq!(page, 1);
             assert_eq!(row, Some(2));
+        }
+    }
+
+    mod bulk_delete_preview {
+        use super::*;
+
+        fn editable_state(database_type: DatabaseType) -> AppState {
+            let mut state = AppState::new("test_project".to_string());
+            state.session.set_dsn_for_test(match database_type {
+                DatabaseType::PostgreSQL => "postgres://localhost/test",
+                DatabaseType::SQLite => "sqlite:///tmp/app.db",
+            });
+            state
+                .session
+                .set_active_database_type_for_test(Some(database_type));
+            state.query.set_current_result(Arc::new(QueryResult {
+                query: "SELECT * FROM users".to_string(),
+                columns: vec!["id".to_string(), "name".to_string()],
+                rows: vec![vec!["1".to_string(), "Alice".to_string()]],
+                row_count: 1,
+                execution_time_ms: 10,
+                executed_at: Instant::now(),
+                source: QuerySource::Preview,
+                error: None,
+                command_tag: None,
+            }));
+            state.session.set_table_detail_raw(Some(Table {
+                schema: "main".to_string(),
+                name: "users".to_string(),
+                owner: None,
+                columns: vec![
+                    Column {
+                        name: "id".to_string(),
+                        data_type: "INTEGER".to_string(),
+                        default: None,
+                        attributes: ColumnAttributes::PRIMARY_KEY,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "name".to_string(),
+                        data_type: "TEXT".to_string(),
+                        default: None,
+                        attributes: ColumnAttributes::NULLABLE,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                primary_key: Some(vec!["id".to_string()]),
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            }));
+            state.query.pagination.set_table_for_test("main", "users");
+            state.result_interaction.stage_row(0);
+            state
+        }
+
+        #[test]
+        fn sqlite_database_type_uses_schema_free_delete_preview() {
+            let state = editable_state(DatabaseType::SQLite);
+
+            let result = build_bulk_delete_preview(&state, &AppServices::stub()).unwrap();
+
+            assert_eq!(
+                result.preview.sql,
+                "DELETE FROM \"users\" WHERE \"id\" = '1'"
+            );
         }
     }
 }

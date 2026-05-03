@@ -1,8 +1,11 @@
+use crate::domain::DatabaseType;
+
 pub trait SqlDialect: Send + Sync {
     fn build_explain_sql(&self, query: &str) -> Option<String>;
     fn build_explain_analyze_sql(&self, query: &str) -> Option<String>;
     fn build_update_sql(
         &self,
+        database_type: DatabaseType,
         schema: &str,
         table: &str,
         column: &str,
@@ -11,6 +14,7 @@ pub trait SqlDialect: Send + Sync {
     ) -> String;
     fn build_bulk_delete_sql(
         &self,
+        database_type: DatabaseType,
         schema: &str,
         table: &str,
         pk_pairs_per_row: &[Vec<(String, String)>],

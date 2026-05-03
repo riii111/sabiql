@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use crate::app::ports::outbound::{
     DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
 };
-use crate::domain::connection::ConnectionProfile;
+use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
 
 pub struct MySqlAdapter;
@@ -123,7 +123,7 @@ impl QueryExecutor for MySqlAdapter {
 }
 
 impl DdlGenerator for MySqlAdapter {
-    fn generate_ddl(&self, _table: &Table) -> String {
+    fn generate_ddl(&self, _database_type: DatabaseType, _table: &Table) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }
 }
@@ -139,6 +139,7 @@ impl SqlDialect for MySqlAdapter {
 
     fn build_update_sql(
         &self,
+        _database_type: DatabaseType,
         _schema: &str,
         _table: &str,
         _column: &str,
@@ -150,6 +151,7 @@ impl SqlDialect for MySqlAdapter {
 
     fn build_bulk_delete_sql(
         &self,
+        _database_type: DatabaseType,
         _schema: &str,
         _table: &str,
         _pk_pairs_per_row: &[Vec<(String, String)>],

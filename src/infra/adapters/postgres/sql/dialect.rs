@@ -1,4 +1,5 @@
 use crate::app::ports::outbound::SqlDialect;
+use crate::domain::DatabaseType;
 
 use super::super::PostgresAdapter;
 use super::{quote_ident, quote_literal};
@@ -22,6 +23,7 @@ impl SqlDialect for PostgresAdapter {
 
     fn build_update_sql(
         &self,
+        _database_type: DatabaseType,
         schema: &str,
         table: &str,
         column: &str,
@@ -46,6 +48,7 @@ impl SqlDialect for PostgresAdapter {
 
     fn build_bulk_delete_sql(
         &self,
+        _database_type: DatabaseType,
         schema: &str,
         table: &str,
         pk_pairs_per_row: &[Vec<(String, String)>],
@@ -99,6 +102,7 @@ impl SqlDialect for PostgresAdapter {
 mod tests {
     use crate::adapters::postgres::PostgresAdapter;
     use crate::app::ports::outbound::SqlDialect;
+    use crate::domain::DatabaseType;
 
     mod sql_dialect_update {
         use super::*;
@@ -108,6 +112,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
+                DatabaseType::PostgreSQL,
                 "public",
                 "users",
                 "name",
@@ -126,6 +131,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
+                DatabaseType::PostgreSQL,
                 "s",
                 "t",
                 "name",
@@ -172,6 +178,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
+                DatabaseType::PostgreSQL,
                 "public",
                 "users",
                 "name",
@@ -190,6 +197,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
+                DatabaseType::PostgreSQL,
                 "public",
                 "users",
                 "name",
@@ -208,6 +216,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
+                DatabaseType::PostgreSQL,
                 "public",
                 "users",
                 "my\"col",
@@ -226,6 +235,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
 
             let sql = adapter.build_update_sql(
+                DatabaseType::PostgreSQL,
                 "public",
                 "users",
                 "path",
@@ -248,7 +258,8 @@ mod tests {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), "1".to_string())]];
 
-            let sql = adapter.build_bulk_delete_sql("public", "users", &rows);
+            let sql =
+                adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "users", &rows);
 
             assert_eq!(
                 sql,
@@ -265,7 +276,8 @@ mod tests {
                 vec![("id".to_string(), "3".to_string())],
             ];
 
-            let sql = adapter.build_bulk_delete_sql("public", "users", &rows);
+            let sql =
+                adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "users", &rows);
 
             assert_eq!(
                 sql,
@@ -287,7 +299,7 @@ mod tests {
                 ],
             ];
 
-            let sql = adapter.build_bulk_delete_sql("s", "t", &rows);
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "s", "t", &rows);
 
             assert_eq!(
                 sql,
@@ -300,7 +312,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), "NULL".to_string())]];
 
-            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "t", &rows);
 
             assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN (NULL);");
         }
@@ -310,7 +322,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), "O'Reilly".to_string())]];
 
-            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "t", &rows);
 
             assert_eq!(
                 sql,
@@ -323,7 +335,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), String::new())]];
 
-            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "t", &rows);
 
             assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('');");
         }
@@ -333,7 +345,7 @@ mod tests {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("my\"pk".to_string(), "1".to_string())]];
 
-            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "t", &rows);
 
             assert_eq!(
                 sql,

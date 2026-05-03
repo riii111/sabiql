@@ -38,6 +38,7 @@ impl DbCapabilities {
                 InspectorFeature::Columns,
                 InspectorFeature::Indexes,
                 InspectorFeature::ForeignKeys,
+                InspectorFeature::Ddl,
             ],
         )
         .into()
@@ -169,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_supports_metadata_only_inspector_tabs() {
+    fn sqlite_supports_inspector_tabs_including_ddl() {
         let caps = DbCapabilities::sqlite_like();
 
         assert!(!caps.supports_explain());
@@ -179,7 +180,8 @@ mod tests {
                 InspectorTab::Info,
                 InspectorTab::Columns,
                 InspectorTab::Indexes,
-                InspectorTab::ForeignKeys
+                InspectorTab::ForeignKeys,
+                InspectorTab::Ddl
             ]
         );
         assert_eq!(caps.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
