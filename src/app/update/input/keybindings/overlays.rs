@@ -567,6 +567,49 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
 ];
 
 // =============================================================================
+// Settings
+// =============================================================================
+
+pub const SETTINGS_ROWS: &[ModeRow] = &[
+    ModeRow {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Apply",
+        description: "Apply setting",
+        bindings: &[ExecBinding {
+            action: Action::SettingsApply,
+            combos: &[KeyCombo::plain(Key::Enter)],
+        }],
+    },
+    ModeRow {
+        key_short: "j/k/↑↓",
+        key: "j / k / ↑ / ↓",
+        desc_short: "Select",
+        description: "Select setting",
+        bindings: &[
+            ExecBinding {
+                action: Action::SettingsSelectNextTheme,
+                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::SettingsSelectPreviousTheme,
+                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+            },
+        ],
+    },
+    ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Cancel",
+        description: "Cancel",
+        bindings: &[ExecBinding {
+            action: Action::SettingsCancel,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    },
+];
+
+// =============================================================================
 // Confirm Dialog
 // =============================================================================
 

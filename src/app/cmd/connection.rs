@@ -393,6 +393,7 @@ mod tests {
                 .clipboard(Arc::new(NoopClipboardWriter))
                 .folder_opener(Arc::new(NoopFolderOpener))
                 .query_history_store(Arc::new(NoopQueryHistoryStore))
+                .settings_store(Arc::new(NoopSettingsStore))
                 .metadata_cache(cache)
                 .action_tx(tx)
                 .build();

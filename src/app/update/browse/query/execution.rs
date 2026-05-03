@@ -202,6 +202,16 @@ pub fn reduce(
                         ModalKind::ErTablePicker,
                     )])]
                 }
+                Action::OpenModal(ModalKind::Settings) => {
+                    vec![Effect::DispatchActions(vec![Action::OpenModal(
+                        ModalKind::Settings,
+                    )])]
+                }
+                Action::OpenModal(ModalKind::CommandPalette) => {
+                    vec![Effect::DispatchActions(vec![Action::OpenModal(
+                        ModalKind::CommandPalette,
+                    )])]
+                }
                 Action::SubmitCellEditWrite => {
                     vec![Effect::DispatchActions(vec![Action::SubmitCellEditWrite])]
                 }
@@ -337,6 +347,59 @@ mod tests {
                     assert!(matches!(
                         actions[0],
                         Action::OpenModal(ModalKind::ErTablePicker)
+                    ));
+                }
+                other => panic!("expected DispatchActions, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn submit_settings_dispatches_open_settings() {
+            let mut state = create_test_state();
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input.set_content("settings".to_string());
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.command_line_input.content().is_empty());
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::DispatchActions(actions) => {
+                    assert!(matches!(actions[0], Action::OpenModal(ModalKind::Settings)));
+                }
+                other => panic!("expected DispatchActions, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn submit_palette_dispatches_open_command_palette() {
+            let mut state = create_test_state();
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input.set_content("palette".to_string());
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.command_line_input.content().is_empty());
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::DispatchActions(actions) => {
+                    assert!(matches!(
+                        actions[0],
+                        Action::OpenModal(ModalKind::CommandPalette)
                     ));
                 }
                 other => panic!("expected DispatchActions, got {other:?}"),

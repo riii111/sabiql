@@ -34,9 +34,9 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "^K",
         key: "Ctrl+K",
-        desc_short: "Palette",
-        description: "Open Command Palette",
-        action: Action::OpenModal(ModalKind::CommandPalette),
+        desc_short: "Settings",
+        description: "Open Settings",
+        action: Action::OpenModal(ModalKind::Settings),
         combos: &[KeyCombo::ctrl(Key::Char('k'))],
     },
     KeyBinding {

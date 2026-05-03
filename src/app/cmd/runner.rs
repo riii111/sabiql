@@ -14,6 +14,7 @@ use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
+use crate::cmd::settings as cmd_settings;
 use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history as cmd_query_history;
 use crate::cmd::utility as cmd_utility;
@@ -23,7 +24,7 @@ use crate::model::shared::ui_state::scroll_max_offset;
 use crate::ports::outbound::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
-    Renderer,
+    Renderer, SettingsStore,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -50,12 +51,17 @@ struct UtilityDeps {
     folder_opener: Arc<dyn FolderOpener>,
 }
 
+struct SettingsDeps {
+    settings_store: Arc<dyn SettingsStore>,
+}
+
 pub struct EffectRunner {
     metadata_provider: Arc<dyn MetadataProvider>,
     connection: ConnectionDeps,
     query: QueryDeps,
     er: ErDeps,
     utility: UtilityDeps,
+    settings: SettingsDeps,
     metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 }
@@ -72,6 +78,7 @@ pub struct EffectRunnerBuilder {
     clipboard: Option<Arc<dyn ClipboardWriter>>,
     folder_opener: Option<Arc<dyn FolderOpener>>,
     query_history_store: Option<Arc<dyn QueryHistoryStore>>,
+    settings_store: Option<Arc<dyn SettingsStore>>,
     metadata_cache: Option<TtlCache<String, Arc<DatabaseMetadata>>>,
     action_tx: Option<mpsc::Sender<Action>>,
 }
@@ -133,6 +140,11 @@ impl EffectRunnerBuilder {
         self
     }
     #[must_use]
+    pub fn settings_store(mut self, v: Arc<dyn SettingsStore>) -> Self {
+        self.settings_store = Some(v);
+        self
+    }
+    #[must_use]
     pub fn metadata_cache(mut self, v: TtlCache<String, Arc<DatabaseMetadata>>) -> Self {
         self.metadata_cache = Some(v);
         self
@@ -168,6 +180,9 @@ impl EffectRunnerBuilder {
                 clipboard: self.clipboard.expect("clipboard is required"),
                 folder_opener: self.folder_opener.expect("folder_opener is required"),
             },
+            settings: SettingsDeps {
+                settings_store: self.settings_store.expect("settings_store is required"),
+            },
             metadata_cache: self.metadata_cache.expect("metadata_cache is required"),
             action_tx: self.action_tx.expect("action_tx is required"),
         }
@@ -192,6 +207,7 @@ impl EffectRunner {
             clipboard: None,
             folder_opener: None,
             query_history_store: None,
+            settings_store: None,
             metadata_cache: None,
             action_tx: None,
         }
@@ -387,6 +403,11 @@ impl EffectRunner {
 
             e @ Effect::LoadQueryHistory { .. } => {
                 cmd_query_history::run(e, &self.action_tx, &self.query.query_history_store);
+                Ok(vec![])
+            }
+
+            e @ Effect::SaveSettings { .. } => {
+                cmd_settings::run(e, &self.action_tx, &self.settings.settings_store).await;
                 Ok(vec![])
             }
 

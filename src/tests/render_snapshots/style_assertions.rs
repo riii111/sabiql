@@ -17,8 +17,8 @@ use harness::{
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier};
 use ui::theme::{
-    ComponentTokens, DEFAULT_THEME, EditorTokens, ModalTokens, SemanticTokens, SurfaceTokens,
-    TEST_CONTRAST_THEME, ThemePalette,
+    ComponentTokens, DEFAULT_THEME, EditorTokens, LIGHT_THEME, ModalTokens, SemanticTokens,
+    SurfaceTokens, TEST_CONTRAST_THEME, ThemePalette,
 };
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
@@ -338,7 +338,7 @@ fn help_overlay_uses_section_header_and_scrollbar_colors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.help_scroll_offset = 1;
+    state.ui.help_scroll_offset = 14;
 
     let buffer = render_and_get_buffer_at(&mut terminal, &mut state, now);
 
@@ -387,7 +387,7 @@ fn test_contrast_theme_applies_help_overlay_navigation_colors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.help_scroll_offset = 1;
+    state.ui.help_scroll_offset = 14;
 
     let buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
@@ -1146,4 +1146,48 @@ fn sql_completion_popup_uses_injected_theme_styles() {
         has_selected_completion,
         "Expected completion popup selection to use injected selected background"
     );
+}
+
+#[test]
+fn light_theme_applies_shell_and_sql_colors() {
+    let (mut state, now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.focused_pane = FocusedPane::Explorer;
+    let shell_buffer =
+        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &LIGHT_THEME);
+    let has_light_focus_border = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            shell_buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "─" && cell.fg == LIGHT_THEME.semantic.surface.focus_border
+            })
+        });
+    assert!(
+        has_light_focus_border,
+        "Expected shell to use light focus border color"
+    );
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.editor.set_content("SELECT 42".to_string());
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    let sql_buffer =
+        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &LIGHT_THEME);
+    let has_light_keyword = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            sql_buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "S" && cell.fg == LIGHT_THEME.component.syntax.sql_keyword
+            })
+        });
+    let has_light_number = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            sql_buffer.cell((x, y)).is_some_and(|cell| {
+                cell.symbol() == "4" && cell.fg == LIGHT_THEME.component.syntax.sql_number
+            })
+        });
+
+    assert!(has_light_keyword, "Expected SQL keyword to use light theme");
+    assert!(has_light_number, "Expected SQL number to use light theme");
 }

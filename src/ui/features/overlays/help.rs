@@ -18,8 +18,8 @@ use crate::app::update::input::keybindings::{
     GLOBAL_KEYS, HELP_KEY_COLUMN_WIDTH, HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH, HELP_ROWS,
     HISTORY_KEYS, INSPECTOR_DDL_KEYS, JSONB_DETAIL_ROWS, JSONB_EDIT_ROWS, JSONB_SEARCH_KEYS,
     KeyBinding, NAVIGATION_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS,
-    SQL_MODAL_COMPARE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS,
-    SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, help_content_width,
+    SETTINGS_ROWS, SQL_MODAL_COMPARE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
+    SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, help_content_width,
 };
 
 use crate::primitives::atoms::scroll_indicator::{
@@ -153,6 +153,12 @@ impl HelpOverlay {
         help_lines.push(Line::from(""));
         help_lines.push(Self::section("Command Palette", theme));
         for row in COMMAND_PALETTE_ROWS {
+            help_lines.push(Self::key_line(row.key, row.description, theme));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("Settings", theme));
+        for row in SETTINGS_ROWS {
             help_lines.push(Self::key_line(row.key, row.description, theme));
         }
 

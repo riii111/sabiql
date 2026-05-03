@@ -1,5 +1,6 @@
 use crate::domain::Table;
 use crate::domain::connection::{ConnectionId, SslMode};
+use crate::model::shared::theme_id::ThemeId;
 use crate::update::action::Action;
 
 #[derive(Debug, Clone)]
@@ -130,6 +131,10 @@ pub enum Effect {
     LoadQueryHistory {
         project_name: String,
         connection_id: crate::domain::ConnectionId,
+    },
+
+    SaveSettings {
+        theme_id: ThemeId,
     },
 
     // Executes effects in order (each awaits before the next),

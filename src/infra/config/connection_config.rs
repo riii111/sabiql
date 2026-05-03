@@ -14,6 +14,8 @@ pub struct ConfigVersionCheck {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConnectionConfigFile {
     pub version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
     pub connections: Vec<ConnectionConfigEntry>,
 }
 
@@ -33,6 +35,7 @@ impl From<&[ConnectionProfile]> for ConnectionConfigFile {
     fn from(profiles: &[ConnectionProfile]) -> Self {
         Self {
             version: CURRENT_VERSION,
+            theme: None,
             connections: profiles
                 .iter()
                 .map(|p| ConnectionConfigEntry {

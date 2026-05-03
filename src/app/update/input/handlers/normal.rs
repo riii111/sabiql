@@ -29,7 +29,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 };
             }
             Key::Char('k') if !state.query.is_history_mode() => {
-                return Action::OpenModal(ModalKind::CommandPalette);
+                return Action::OpenModal(ModalKind::Settings);
             }
             Key::Char('r') => {
                 return Action::ToggleReadOnly;
@@ -240,15 +240,12 @@ mod tests {
             }
 
             #[test]
-            fn ctrl_k_opens_command_palette() {
+            fn ctrl_k_opens_settings() {
                 let state = browse_state();
 
                 let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
 
-                assert!(matches!(
-                    result,
-                    Action::OpenModal(ModalKind::CommandPalette)
-                ));
+                assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
             }
 
             #[test]
