@@ -68,7 +68,7 @@ impl Inspector {
                 let style = if is_selected {
                     Style::default()
                         .fg(theme.component.navigation.tab_active)
-                        .add_modifier(Modifier::BOLD)
+                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
                 } else {
                     Style::default().fg(theme.component.navigation.tab_inactive)
                 };

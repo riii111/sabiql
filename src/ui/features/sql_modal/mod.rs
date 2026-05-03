@@ -191,7 +191,7 @@ impl SqlModal {
         let title_style = theme.modal_title_style();
         let active_style = Style::default()
             .fg(theme.component.navigation.tab_active)
-            .add_modifier(Modifier::BOLD);
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
         let inactive_style = Style::default().fg(theme.component.navigation.tab_inactive);
 
         let style_for = |tab: SqlModalTab| {
