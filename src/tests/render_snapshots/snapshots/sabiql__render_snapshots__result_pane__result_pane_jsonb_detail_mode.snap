@@ -1,27 +1,54 @@
 ---
-source: tests/render_snapshots/result_pane.rs
+source: src/tests/render_snapshots/result_pane.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
-│  public.posts    ││Owner:   postgres                                         │
-│  publi╭ JSONB Detail ── settings─────────────────────────────────────╮       │
-│       │{                                                             │       │
-│       │  "count": 5,                                                 │       │
-│       │  "nested": {                                                 │       │
-│       │    "enabled": true,                                          │       │
-│       │    "roles": [                                                │       │
-│       │      "admin",                                                │       │
-│       │      "writer"                                                │───────┘
-│       │    ]                                                         │───────┐
-│       │  },                                                          │       │
-│       │  "theme": "dark"                                             │ount...│
-│       │}                                                             │       │
-│       │                                                              │       │
-│       │                                                              │       │
-│       │✓ Valid JSON                                                  │       │
-│       ╰ y:Copy  /:Search  i:Insert  Esc:Close ───────────────────────╯       │
-│                  ││                                                          │
-└──────────────────┘└──────────────────────────────────────────────────────────┘
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││Owner:   postgres                                                                                                         │
+│  public.comments                      ││Comment: User accounts                                                                                                    │
+│                                       ││Rows:    ~100                                                                                                             │
+│                                       ││Schema:  public                                                                                                           │
+│                                       ││Table:   users                                                                                                            │
+│                ╭ JSONB Detail ── settings─────────────────────────────────────────────────────────────────────────────────────────────────────────╮               │
+│                │{                                                                                                                                 │               │
+│                │  "count": 5,                                                                                                                     │               │
+│                │  "nested": {                                                                                                                     │               │
+│                │    "enabled": true,                                                                                                              │               │
+│                │    "roles": [                                                                                                                    │               │
+│                │      "admin",                                                                                                                    │               │
+│                │      "writer"                                                                                                                    │               │
+│                │    ]                                                                                                                             │               │
+│                │  },                                                                                                                              │               │
+│                │  "theme": "dark"                                                                                                                 │               │
+│                │}                                                                                                                                 │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │───────────────┘
+│                │                                                                                                                                  │───────────────┐
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │r"]}}          │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │✓ Valid JSON                                                                                                                      │               │
+│                ╰ y:Copy  /:Search  i:Insert  Esc:Close ───────────────────────────────────────────────────────────────────────────────────────────╯               │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 y:Copy  i:Insert  /:Search  n/N:Next/Prev  hjkl/↑↓←→:Move  Esc:Close

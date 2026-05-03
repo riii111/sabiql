@@ -94,6 +94,10 @@ mod tests {
             ScrollAmount::FullPage
         )]
         #[case(combo(Key::PageUp), ScrollDirection::Up, ScrollAmount::FullPage)]
+        #[case(combo(Key::Char('h')), ScrollDirection::Left, ScrollAmount::Line)]
+        #[case(combo(Key::Left), ScrollDirection::Left, ScrollAmount::Line)]
+        #[case(combo(Key::Char('l')), ScrollDirection::Right, ScrollAmount::Line)]
+        #[case(combo(Key::Right), ScrollDirection::Right, ScrollAmount::Line)]
         fn supported_help_scroll_keys_map_to_expected_action(
             #[case] combo: KeyCombo,
             #[case] direction: ScrollDirection,
@@ -108,8 +112,6 @@ mod tests {
         #[case(Key::Char('H'))]
         #[case(Key::Char('M'))]
         #[case(Key::Char('L'))]
-        #[case(Key::Char('h'))]
-        #[case(Key::Char('l'))]
         #[case(Key::Char('z'))]
         fn issue_non_goals_remain_unbound_in_help_mode(#[case] code: Key) {
             let result = handle_help_keys(combo(code));

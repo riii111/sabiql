@@ -17,8 +17,8 @@ use domain::DatabaseType;
 use ui::shell::layout::MainLayout;
 use ui::theme::{ThemePalette, palette_for};
 
-pub const TEST_WIDTH: u16 = 80;
-pub const TEST_HEIGHT: u16 = 24;
+pub const TEST_WIDTH: u16 = 165;
+pub const TEST_HEIGHT: u16 = 51;
 
 pub fn test_instant() -> Instant {
     Instant::now()

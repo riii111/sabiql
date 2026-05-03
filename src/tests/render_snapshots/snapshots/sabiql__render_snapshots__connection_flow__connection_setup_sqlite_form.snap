@@ -1,28 +1,54 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
-assertion_line: 37
 expression: output
 ---
-test_project | - | - | no dsn | localhost:5432/test                             
-┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
-│                  ││(select a table)                                          │
-│                  ││                                                          │
-│                  ││                                                          │
-│                  ││                                                          │
-│                  ││                                                          │
-│        ╭ New Connection ────────────────────────────────────────────╮        │
-│        │                                                            │        │
-│        │  Type:       [ SQLite                   ▼ ]                │        │
-│        │  Name:       [                            ]                │────────┘
-│        │  Path:       [ /tmp/app.db                ]                │────────┐
-│        │                                                            │        │
-│        │  Note: Connection info is stored locally in plain text     │        │
-│        │                                                            │        │
-│        ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Connect │ Esc: Cancel╯        │
-│                  ││                                                          │
-│                  ││                                                          │
-│                  ││                                                          │
-│                  ││                                                          │
-└──────────────────┘└──────────────────────────────────────────────────────────┘
+test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││(select a table)                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  Type:       [ SQLite                   ▼ ]                │                                                  │
+│                                       │└──────────│  Name:       [                            ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  Path:       [ /tmp/app.db                ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │                                                            │                                                  │
+│                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Connect │ Esc: Cancel╯                                                  │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ^S:Connect  Tab:Next  ⇧Tab:Prev  Esc:Cancel

@@ -1,28 +1,54 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
-assertion_line: 48
 expression: output
 ---
-test_project | - | - | no dsn | localhost:5432/test                             
-┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
-│                  ││(select a table)                                          │
-│                  ││                                                          │
-│        ╭ New Connection ────────────────────────────────────────────╮        │
-│        │                                                            │        │
-│        │  Type:       [ PostgreSQL               ▼ ]                │        │
-│        │  Name:       [                            ]                │        │
-│        │  Host:       [ db.example.com             ]                │        │
-│        │  Port:       [ 5432                       ]                │        │
-│        │  Database:   [                            ]                │────────┘
-│        │  User:       [                            ]                │────────┐
-│        │  Password:   [                            ]                │        │
-│        │  SSL Mode:   [ prefer                   ▼ ]                │        │
-│        │                                                            │        │
-│        │  Note: Connection info is stored locally in plain text     │        │
-│        │                                                            │        │
-│        ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Connect │ Esc: Cancel╯        │
-│                  ││                                                          │
-│                  ││                                                          │
-└──────────────────┘└──────────────────────────────────────────────────────────┘
+test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││(select a table)                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
+│                                       ││          │  Name:       [                            ]                │                                                  │
+│                                       ││          │  Host:       [ db.example.com             ]                │                                                  │
+│                                       │└──────────│  Port:       [ 5432                       ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  Database:   [                            ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  User:       [                            ]                │                                                  │
+│                                       ││          │  Password:   [                            ]                │                                                  │
+│                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Connect │ Esc: Cancel╯                                                  │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ^S:Connect  Tab:Next  ⇧Tab:Prev  Esc:Cancel
