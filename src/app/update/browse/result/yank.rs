@@ -58,13 +58,9 @@ pub fn reduce(
             if state.ui.inspector_tab() == InspectorTab::Ddl
                 && let Some(table) = state.session.table_detail().as_ref()
             {
-                let ddl = services.ddl_generator.generate_ddl(
-                    state
-                        .session
-                        .active_database_type()
-                        .unwrap_or(crate::domain::DatabaseType::PostgreSQL),
-                    table,
-                );
+                let ddl = services
+                    .ddl_generator
+                    .generate_ddl(state.session.active_database_type_or_default(), table);
                 state.flash_timers.set(FlashId::Ddl, now);
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
