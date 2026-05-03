@@ -17,14 +17,14 @@ impl ThemeId {
 
     pub const fn config_value(self) -> &'static str {
         match self {
-            Self::Default => "default",
+            Self::Default => "dark",
             Self::Light => "light",
         }
     }
 
     pub fn from_config_value(value: &str) -> Option<Self> {
         match value {
-            "default" | "sabiql-dark" | "dark" => Some(Self::Default),
+            "dark" => Some(Self::Default),
             "light" => Some(Self::Light),
             _ => None,
         }
@@ -64,6 +64,17 @@ mod tests {
                 Some(theme)
             );
         }
+    }
+
+    #[test]
+    fn default_config_value_is_dark() {
+        assert_eq!(ThemeId::Default.config_value(), "dark");
+    }
+
+    #[test]
+    fn deprecated_default_aliases_are_rejected() {
+        assert_eq!(ThemeId::from_config_value("default"), None);
+        assert_eq!(ThemeId::from_config_value("sabiql-dark"), None);
     }
 
     #[test]

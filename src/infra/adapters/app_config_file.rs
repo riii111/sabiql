@@ -59,7 +59,7 @@ pub(crate) fn write_config_file(config_dir: &Path, content: &str) -> Result<(), 
 
 pub(crate) fn render_config_file(content: &str) -> String {
     format!(
-        "# sabiql connection configuration\n# WARNING: Passwords are stored in plain text\n\n{content}"
+        "# sabiql configuration\n# WARNING: Connection passwords are stored in plain text\n\n{content}"
     )
 }
 
