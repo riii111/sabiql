@@ -268,6 +268,10 @@ impl SqlModal {
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
+                (
+                    "Tab/⇧Tab",
+                    SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
+                ),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
             ])
         });
@@ -275,6 +279,10 @@ impl SqlModal {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
+                (
+                    "Tab/⇧Tab",
+                    SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
+                ),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
             ])
         });

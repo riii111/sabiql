@@ -1,26 +1,53 @@
 ---
-source: tests/render_snapshots/confirm_dialogs.rs
+source: src/tests/render_snapshots/confirm_dialogs.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│> public.us╭ Confirm UPDATE: users ───────────────────────────────╮───────────┐
-│  public.po│                                                      │           │
-│  public.co│ ✓ LOW RISK                                           │           │
-│           │                                                      │           │
-│           │ Diff                                                 │           │
-│           │   target_audience:                                   │           │
-│           │     ...                                              │           │
-│           │         "100-500",                                   │           │
-│           │   -     "500+"                                       │           │
-│           │   +     "600+"                                       │───────────┘
-│           │       ],                                             │───────────┐
-│           │     ...                                              │           │
-│           │                                                      │           │
-│           │ SQL Preview                                          │           │
-│           │   UPDATE "public"."users"                            │           │
-│           │   SET "target_audience" =                            │           │
-│           │ '{"company_size":["100-500","600+"],"industries":["t │           │
-│           │ echnology","finance"]}'                              │           │
-│           │                                                      │           │
-└───────────╰ Enter: Confirm │ Esc: Cancel ────────────────────────╯───────────┘
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││Owner:   postgres                                                                                                         │
+│  public.comments                      ││Comment: User accounts                                                                                                    │
+│                                       ││Rows:    ~100                                                                                                             │
+│                                       ││Schema:  public                                                                                                           │
+│                                       ││Table:   users                                                                                                            │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                            ╭ Confirm UPDATE: users ──────────────────────────────────────────────────────────────────────────────────╮                            │
+│                            │                                                                                                         │                            │
+│                            │ ✓ LOW RISK                                                                                              │                            │
+│                            │                                                                                                         │                            │
+│                            │ Diff                                                                                                    │                            │
+│                            │   target_audience:                                                                                      │                            │
+│                            │     ...                                                                                                 │                            │
+│                            │         "100-500",                                                                                      │                            │
+│                            │   -     "500+"                                                                                          │────────────────────────────┘
+│                            │   +     "600+"                                                                                          │────────────────────────────┐
+│                            │       ],                                                                                                │                            │
+│                            │     ...                                                                                                 │                            │
+│                            │                                                                                                         │                            │
+│                            │ SQL Preview                                                                                             │                            │
+│                            │   UPDATE "public"."users"                                                                               │                            │
+│                            │   SET "target_audience" = '{"company_size":["100-500","600+"],"industries":["technology","finance"]}'   │                            │
+│                            │   WHERE "id" = '1';                                                                                     │                            │
+│                            │                                                                                                         │                            │
+│                            ╰ Enter: Confirm │ Esc: Cancel ───────────────────────────────────────────────────────────────────────────╯                            │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
