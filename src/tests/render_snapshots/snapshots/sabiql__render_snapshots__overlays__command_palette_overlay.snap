@@ -1,27 +1,54 @@
 ---
-source: tests/render_snapshots/overlays.rs
+source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
-│  public.posts    ││(select a table)                                          │
-│  public.comments ││                                                          │
-│                  ││                                                          │
-│                  │╭ Command Palette ─────────────────────╮                   │
-│                  ││  q                  Quit application │                   │
-│                  ││  ?                  Toggle help      │                   │
-│                  ││  Ctrl+P             Open Table Picker│                   │
-│                  ││  f                  Toggle Focus mode│                   │
-│                  ││  r                  Reload metadata  │───────────────────┘
-│                  ││  s                  Open SQL Editor  │───────────────────┐
-│                  ││  e                  Open ER Diagram  │                   │
-│                  ││  c                  Open Connection S│                   │
-│                  ││  Ctrl+E             Export result to │                   │
-│                  ││  Ctrl+R             Enable Read-Only │                   │
-│                  │╰ Enter Select │ Esc Close ────────────╯                   │
-│                  ││                                                          │
-│                  ││                                                          │
-│                  ││                                                          │
-└──────────────────┘└──────────────────────────────────────────────────────────┘
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││(select a table)                                                                                                          │
+│  public.comments                      ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       │╭ Command Palette ────────────────────────────────────────────────────────────────╮                                        │
+│                                       ││  q                  Quit application                                            │                                        │
+│                                       ││  ?                  Toggle help                                                 │                                        │
+│                                       ││  Ctrl+P             Open Table Picker                                           │                                        │
+│                                       ││  f                  Toggle Focus mode                                           │                                        │
+│                                       ││  r                  Reload metadata                                             │                                        │
+│                                       ││  s                  Open SQL Editor                                             │                                        │
+│                                       ││  e                  Open ER Diagram                                             │                                        │
+│                                       ││  c                  Open Connection Selector                                    │                                        │
+│                                       ││  Ctrl+E             Export result to CSV                                        │                                        │
+│                                       ││  Ctrl+R             Enable Read-Only mode                                       │                                        │
+│                                       ││  Ctrl+R             Disable Read-Only mode                                      │────────────────────────────────────────┘
+│                                       ││  Ctrl+O             Open Query History                                          │────────────────────────────────────────┐
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       ││                                                                                 │                                        │
+│                                       │╰ Enter Select │ Esc Close ───────────────────────────────────────────────────────╯                                        │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 Enter:Execute  Esc:Close

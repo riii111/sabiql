@@ -1,27 +1,54 @@
 ---
-source: tests/render_snapshots/er_diagram.rs
+source: src/tests/render_snapshots/er_diagram.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
-│  public.posts    ││(select a table)                                          │
-│  public.commen╭ ER Diagram ──────────────────────────────────╮               │
-│               │  >                                           │               │
-│               │  Mode:    Full ER                            │               │
-│               │  Targets: all 3 tables                       │               │
-│               │  Output:  er_full.dot                        │               │
-│               │▸   ✔ public.users                            │               │
-│               │    ✔ public.posts                            │               │
-│               │    ✔ public.comments                         │───────────────┘
-│               │                                              │───────────────┐
-│               │                                              │               │
-│               │                                              │               │
-│               │                                              │               │
-│               │                                              │               │
-│               │                                              │               │
-│               │                                              │               │
-│               ╰ 3/3 selected │ Space Select │ ^A All │ Enter ╯               │
-│                  ││                                                          │
-└──────────────────┘└──────────────────────────────────────────────────────────┘
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││(select a table)                                                                                                          │
+│  public.comments                      ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                ╭ ER Diagram ─────────────────────────────────────────────────────────────────────────────────────╮                                │
+│                                │  >                                                                                              │                                │
+│                                │  Mode:    Full ER                                                                               │                                │
+│                                │  Targets: all 3 tables                                                                          │                                │
+│                                │  Output:  er_full.dot                                                                           │                                │
+│                                │▸   ✔ public.users                                                                               │                                │
+│                                │    ✔ public.posts                                                                               │                                │
+│                                │    ✔ public.comments                                                                            │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │────────────────────────────────┘
+│                                │                                                                                                 │────────────────────────────────┐
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                │                                                                                                 │                                │
+│                                ╰ 3/3 selected │ Space Select │ ^A All │ Enter Generate │ Esc Cancel ─────────────────────────────╯                                │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 Enter:Generate  Space:Select  ^A:All  type:Filter  Esc:Close

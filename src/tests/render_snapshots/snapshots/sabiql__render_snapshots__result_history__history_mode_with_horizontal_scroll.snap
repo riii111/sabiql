@@ -1,27 +1,54 @@
 ---
-source: tests/render_snapshots/result_history.rs
+source: src/tests/render_snapshots/result_history.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [3] Result Query (1 row, 12ms) ──────────────────────────────────────────────┐
-│column_1   column_2   column_3   column_4   column_5   column_6   column_7    │
-│value_1    value_2    value_3    value_4    value_5    value_6    value_7     │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│◀ 3/3 ▶ col   0% ◀︎════════════════════════════════════════════════════════──▶︎ │
-└──────────────────────────────────────────────────────────────────────────────┘
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [3] Result Query (1 row, 12ms) ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│column_1   column_2   column_3   column_4   column_5   column_6   column_7   column_8   column_9   column_10                                                       │
+│value_1    value_2    value_3    value_4    value_5    value_6    value_7    value_8    value_9    value_10                                                        │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│◀ 3/3 ▶                                                                                                                                                            │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ]/[:History  ?:Help  ^H:Back

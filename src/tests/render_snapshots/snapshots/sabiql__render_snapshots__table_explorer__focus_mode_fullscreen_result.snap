@@ -1,27 +1,54 @@
 ---
-source: tests/render_snapshots/table_explorer.rs
+source: src/tests/render_snapshots/table_explorer.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [3] Result (2 rows, 15ms) ───────────────────────────────────────────────────┐
-│id   name    email                                                            │
-│1    Alice   alice@example.com                                                │
-│2    Bob     bob@example.com                                                  │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [3] Result (2 rows, 15ms) ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│id   name    email                                                                                                                                                 │
+│1    Alice   alice@example.com                                                                                                                                     │
+│2    Bob     bob@example.com                                                                                                                                       │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+│                                                                                                                                                                   │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 Enter:Select  ^E:Export  ]/[:Page  ?:Help  f:Exit Focus  q:Quit

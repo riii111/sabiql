@@ -1,27 +1,53 @@
 ---
-source: tests/render_snapshots/confirm_dialogs.rs
+source: src/tests/render_snapshots/confirm_dialogs.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [1] Explor╭ Confirm UPDATE: users ───────────────────────────────╮            
-│> public.us│                                                      │───────────┐
-│  public.po│ ✓ LOW RISK                                           │           │
-│  public.co│                                                      │           │
-│           │ Diff                                                 │           │
-│           │   a:                                                 │           │
-│           │     - "old_a"                                        │           │
-│           │     + "new_a"                                        │           │
-│           │                                                      │           │
-│           │   b:                                                 │           │
-│           │     - "old_b"                                        │───────────┘
-│           │     + "new_b"                                        │───────────┐
-│           │                                                      │           │
-│           │   c:                                                 │           │
-│           │     - "old_c"                                        │           │
-│           │     + "new_c"                                        │           │
-│           │                                                      │           │
-│           │   d:                                                 │           │
-│           │     - "old_d"                                        │           │
-│           │     + "new_d"                                        │           │
-└───────────│                                                      │───────────┘
-            ╰ Enter: Confirm │ Esc: Cancel ────────────────────────╯
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││Owner:   postgres                                                                                                         │
+│  public.comments                      ││Comment: User accounts                                                                                                    │
+│                                       ││Rows:    ~100                                                                                                             │
+│                                       ││Schema:  public                                                                                                           │
+│                                       ││Table:   users                                                                                                            │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││        ╭ Confirm UPDATE: users ────────────────────────────────────────╮                                                 │
+│                                       ││        │                                                               │                                                 │
+│                                       ││        │ ✓ LOW RISK                                                    │                                                 │
+│                                       ││        │                                                               │                                                 │
+│                                       ││        │ Diff                                                          │                                                 │
+│                                       ││        │   a:                                                          │                                                 │
+│                                       ││        │     - "old_a"                                                 │                                                 │
+│                                       ││        │     + "new_a"                                                 │                                                 │
+│                                       ││        │                                                               │                                                 │
+│                                       ││        │   b:                                                          │                                                 │
+│                                       ││        │     - "old_b"                                                 │                                                 │
+│                                       ││        │     + "new_b"                                                 │                                                 │
+│                                       ││        │                                                               │                                                 │
+│                                       ││        │   c:                                                          │                                                 │
+│                                       │└────────│     - "old_c"                                                 │─────────────────────────────────────────────────┘
+│                                       │┌ [3] Res│     + "new_c"                                                 │─────────────────────────────────────────────────┐
+│                                       ││(select │                                                               │                                                 │
+│                                       ││        │   d:                                                          │                                                 │
+│                                       ││        │     - "old_d"                                                 │                                                 │
+│                                       ││        │     + "new_d"                                                 │                                                 │
+│                                       ││        │                                                               │                                                 │
+│                                       ││        │   e:                                                          │                                                 │
+│                                       ││        │     - "old_e"                                                 │                                                 │
+│                                       ││        │     + "new_e"                                                 │                                                 │
+│                                       ││        │                                                               │                                                 │
+│                                       ││        │ SQL Preview                                                   │                                                 │
+│                                       ││        │   UPDATE "public"."users"                                     │                                                 │
+│                                       ││        │   SET "a" = '1', "b" = '2', "c" = '3', "d" = '4', "e" = '5'   │                                                 │
+│                                       ││        │   WHERE "id" = '1';                                           │                                                 │
+│                                       ││        │                                                               │                                                 │
+│                                       ││        ╰ Enter: Confirm │ Esc: Cancel ─────────────────────────────────╯                                                 │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

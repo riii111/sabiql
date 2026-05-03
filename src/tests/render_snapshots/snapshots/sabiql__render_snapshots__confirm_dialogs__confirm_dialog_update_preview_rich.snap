@@ -1,26 +1,53 @@
 ---
-source: tests/render_snapshots/confirm_dialogs.rs
+source: src/tests/render_snapshots/confirm_dialogs.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                       
-┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
-│  public.posts    ││Owner:   postgres                                         │
-│  public.comments ││Comment: User accounts                                    │
-│           ╭ Confirm UPDATE: users ───────────────────────────────╮           │
-│           │                                                      │           │
-│           │ ✓ LOW RISK                                           │           │
-│           │                                                      │           │
-│           │ Diff                                                 │           │
-│           │   email:                                             │           │
-│           │     - "bob@example.com"                              │───────────┘
-│           │     + "new@example.com"                              │───────────┐
-│           │                                                      │           │
-│           │ SQL Preview                                          │           │
-│           │   UPDATE "public"."users"                            │           │
-│           │   SET "email" = 'new@example.com'                    │           │
-│           │   WHERE "id" = '2';                                  │           │
-│           │                                                      │           │
-│           ╰ Enter: Confirm │ Esc: Cancel ────────────────────────╯           │
-│                  ││                                                          │
-└──────────────────┘└──────────────────────────────────────────────────────────┘
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││Owner:   postgres                                                                                                         │
+│  public.comments                      ││Comment: User accounts                                                                                                    │
+│                                       ││Rows:    ~100                                                                                                             │
+│                                       ││Schema:  public                                                                                                           │
+│                                       ││Table:   users                                                                                                            │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││             ╭ Confirm UPDATE: users ───────────────────────────────╮                                                     │
+│                                       ││             │                                                      │                                                     │
+│                                       ││             │ ✓ LOW RISK                                           │                                                     │
+│                                       ││             │                                                      │                                                     │
+│                                       ││             │ Diff                                                 │                                                     │
+│                                       ││             │   email:                                             │                                                     │
+│                                       │└─────────────│     - "bob@example.com"                              │─────────────────────────────────────────────────────┘
+│                                       │┌ [3] Result ─│     + "new@example.com"                              │─────────────────────────────────────────────────────┐
+│                                       ││(select a tab│                                                      │                                                     │
+│                                       ││             │ SQL Preview                                          │                                                     │
+│                                       ││             │   UPDATE "public"."users"                            │                                                     │
+│                                       ││             │   SET "email" = 'new@example.com'                    │                                                     │
+│                                       ││             │   WHERE "id" = '2';                                  │                                                     │
+│                                       ││             │                                                      │                                                     │
+│                                       ││             ╰ Enter: Confirm │ Esc: Cancel ────────────────────────╯                                                     │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
