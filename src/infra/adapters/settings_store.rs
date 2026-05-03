@@ -1,13 +1,15 @@
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
 
+use super::app_config_file::{
+    self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
+};
+use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
 use crate::config::connection_config::{CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile};
 
-const CONFIG_FILE_NAME: &str = "connections.toml";
-
-static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
+#[cfg(test)]
+use super::app_config_file::CONFIG_FILE_NAME;
 
 pub struct TomlSettingsStore {
     config_dir: PathBuf,
@@ -23,117 +25,93 @@ impl TomlSettingsStore {
         Self { config_dir }
     }
 
-    fn settings_file_path(&self) -> PathBuf {
-        self.config_dir.join(CONFIG_FILE_NAME)
+    fn config_file_path(&self) -> PathBuf {
+        config_file_path(&self.config_dir)
     }
 
-    fn load_config_file(
-        &self,
-        strict: bool,
-    ) -> Result<Option<ConnectionConfigFile>, SettingsStoreError> {
-        let path = self.settings_file_path();
+    fn load_config_file_lenient(&self) -> Result<Option<ConnectionConfigFile>, SettingsStoreError> {
+        let path = self.config_file_path();
         if !path.exists() {
             return Ok(None);
         }
 
         let content = fs::read_to_string(&path)?;
-        let version_check = match toml::from_str::<ConfigVersionCheck>(&content) {
-            Ok(version_check) => version_check,
-            Err(e) if strict => return Err(e.into()),
-            Err(_) => return Ok(None),
+        let Ok(version_check) = toml::from_str::<ConfigVersionCheck>(&content) else {
+            return Ok(None);
         };
 
         if version_check.version != CURRENT_VERSION {
-            if strict {
-                return Err(SettingsStoreError::VersionMismatch {
-                    found: version_check.version,
-                    expected: CURRENT_VERSION,
-                });
-            }
             return Ok(None);
         }
 
-        match toml::from_str::<ConnectionConfigFile>(&content) {
-            Ok(config) => Ok(Some(config)),
-            Err(e) if strict => Err(e.into()),
-            Err(_) => Ok(None),
+        let Ok(config) = toml::from_str::<ConnectionConfigFile>(&content) else {
+            return Ok(None);
+        };
+        Ok(Some(config))
+    }
+
+    fn load_config_file_strict(&self) -> Result<Option<ConnectionConfigFile>, SettingsStoreError> {
+        let path = self.config_file_path();
+        if !path.exists() {
+            return Ok(None);
         }
+
+        let content = fs::read_to_string(&path)?;
+        let version_check: ConfigVersionCheck = toml::from_str(&content)?;
+
+        if version_check.version != CURRENT_VERSION {
+            return Err(SettingsStoreError::VersionMismatch {
+                found: version_check.version,
+                expected: CURRENT_VERSION,
+            });
+        }
+
+        Ok(Some(toml::from_str::<ConnectionConfigFile>(&content)?))
     }
 }
 
 impl SettingsStore for TomlSettingsStore {
     fn load(&self) -> Result<AppSettings, SettingsStoreError> {
         Ok(self
-            .load_config_file(false)?
-            .map_or_else(AppSettings::default, |config| config.app_settings()))
+            .load_config_file_lenient()?
+            .map_or_else(AppSettings::default, app_settings))
     }
 
     fn save(&self, settings: AppSettings) -> Result<(), SettingsStoreError> {
-        if !self.config_dir.exists() {
-            fs::create_dir_all(&self.config_dir)?;
-        }
+        let _guard = app_config_file::lock();
 
         let mut config = self
-            .load_config_file(true)?
+            .load_config_file_strict()?
             .unwrap_or_else(|| ConnectionConfigFile {
                 version: CURRENT_VERSION,
                 theme: None,
                 connections: vec![],
             });
-        config.set_app_settings(settings);
+        set_app_settings(&mut config, settings);
         let content = toml::to_string_pretty(&config)?;
-        let content_with_header = format!(
-            "# sabiql connection configuration\n# WARNING: Passwords are stored in plain text\n\n{content}"
-        );
-
-        let path = self.settings_file_path();
-        let counter = WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let tmp_path = self.config_dir.join(format!(
-            ".connections.toml.{}-{}.tmp",
-            std::process::id(),
-            counter,
-        ));
-
-        if let Err(e) = fs::write(&tmp_path, content_with_header) {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(e.into());
-        }
-
-        if let Err(e) = set_file_permissions(&tmp_path) {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(e);
-        }
-
-        if let Err(e) = fs::rename(&tmp_path, &path) {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(e.into());
-        }
+        let content_with_header = render_config_file(&content);
+        write_config_file(&self.config_dir, &content_with_header)?;
 
         Ok(())
     }
 }
 
 fn get_config_dir() -> Result<PathBuf, SettingsStoreError> {
-    let config_base = dirs::config_dir().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "Could not find config directory",
-        )
-    })?;
-    Ok(config_base.join("sabiql"))
+    Ok(app_config_dir()?)
 }
 
-#[cfg(unix)]
-fn set_file_permissions(path: &Path) -> Result<(), SettingsStoreError> {
-    use std::os::unix::fs::PermissionsExt;
-    let perms = fs::Permissions::from_mode(0o600);
-    fs::set_permissions(path, perms)?;
-    Ok(())
+fn app_settings(config: ConnectionConfigFile) -> AppSettings {
+    AppSettings {
+        theme_id: config
+            .theme
+            .as_deref()
+            .and_then(ThemeId::from_config_value)
+            .unwrap_or_default(),
+    }
 }
 
-#[cfg(not(unix))]
-fn set_file_permissions(_path: &Path) -> Result<(), SettingsStoreError> {
-    Ok(())
+fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
+    config.theme = Some(settings.theme_id.config_value().to_string());
 }
 
 #[cfg(test)]
@@ -217,6 +195,21 @@ ssl_mode = "prefer"
         fs::write(
             temp_dir.path().join(CONFIG_FILE_NAME),
             "version = 2\ntheme = \"terminal\"\nconnections = []\n",
+        )
+        .unwrap();
+        let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
+
+        let settings = store.load().unwrap();
+
+        assert_eq!(settings.theme_id, ThemeId::Default);
+    }
+
+    #[test]
+    fn missing_theme_falls_back_to_default() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join(CONFIG_FILE_NAME),
+            "version = 2\nconnections = []\n",
         )
         .unwrap();
         let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());

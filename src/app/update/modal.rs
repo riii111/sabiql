@@ -498,6 +498,25 @@ mod tests {
                 }]
             ));
         }
+
+        #[test]
+        fn save_failed_sets_error_message() {
+            let mut state = create_test_state();
+
+            let effects = reduce_modal(
+                &mut state,
+                &Action::SettingsSaveFailed(crate::ports::outbound::SettingsStoreError::Io(
+                    std::sync::Arc::new(std::io::Error::other("disk full")),
+                )),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.messages.last_error.as_deref().is_some_and(|message| {
+                message.contains("Failed to save settings") && message.contains("disk full")
+            }));
+            assert!(effects.is_empty());
+        }
     }
 
     mod confirm_dialog {

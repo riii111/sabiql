@@ -1,14 +1,17 @@
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
 
+use super::app_config_file::{
+    self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
+};
 use crate::app::ports::outbound::connection_store::{ConnectionStore, ConnectionStoreError};
 use crate::config::connection_config::{CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile};
 use crate::domain::connection::{ConnectionId, ConnectionProfile};
 
-const CONFIG_FILE_NAME: &str = "connections.toml";
-
-static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
+#[cfg(test)]
+use super::app_config_file::CONFIG_FILE_NAME;
+#[cfg(test)]
+use std::path::Path;
 
 pub struct TomlConnectionStore {
     config_dir: PathBuf,
@@ -25,7 +28,7 @@ impl TomlConnectionStore {
     }
 
     fn config_file_path(&self) -> PathBuf {
-        self.config_dir.join(CONFIG_FILE_NAME)
+        config_file_path(&self.config_dir)
     }
 
     fn load_config_file(&self) -> Result<Option<ConnectionConfigFile>, ConnectionStoreError> {
@@ -48,42 +51,15 @@ impl TomlConnectionStore {
     }
 
     fn write_all(&self, profiles: &[ConnectionProfile]) -> Result<(), ConnectionStoreError> {
-        if !self.config_dir.exists() {
-            fs::create_dir_all(&self.config_dir)?;
-        }
+        let _guard = app_config_file::lock();
 
         let mut config = ConnectionConfigFile::from(profiles);
         if let Some(existing_config) = self.load_config_file()? {
             config.theme = existing_config.theme;
         }
         let content = toml::to_string_pretty(&config)?;
-
-        let content_with_header = format!(
-            "# sabiql connection configuration\n# WARNING: Passwords are stored in plain text\n\n{content}"
-        );
-
-        let path = self.config_file_path();
-        let counter = WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let tmp_path = self.config_dir.join(format!(
-            ".connections.toml.{}-{}.tmp",
-            std::process::id(),
-            counter,
-        ));
-
-        if let Err(e) = fs::write(&tmp_path, &content_with_header) {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(e.into());
-        }
-
-        if let Err(e) = set_file_permissions(&tmp_path) {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(e);
-        }
-
-        if let Err(e) = fs::rename(&tmp_path, &path) {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(e.into());
-        }
+        let content_with_header = render_config_file(&content);
+        write_config_file(&self.config_dir, &content_with_header)?;
 
         Ok(())
     }
@@ -151,26 +127,7 @@ impl ConnectionStore for TomlConnectionStore {
 }
 
 fn get_config_dir() -> Result<PathBuf, ConnectionStoreError> {
-    let config_base = dirs::config_dir().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "Could not find config directory",
-        )
-    })?;
-    Ok(config_base.join("sabiql"))
-}
-
-#[cfg(unix)]
-fn set_file_permissions(path: &Path) -> Result<(), ConnectionStoreError> {
-    use std::os::unix::fs::PermissionsExt;
-    let perms = fs::Permissions::from_mode(0o600);
-    fs::set_permissions(path, perms)?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_file_permissions(_path: &Path) -> Result<(), ConnectionStoreError> {
-    Ok(())
+    Ok(app_config_dir()?)
 }
 
 #[cfg(test)]

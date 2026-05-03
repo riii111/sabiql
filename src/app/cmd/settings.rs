@@ -35,6 +35,8 @@ mod tests {
         saved: Mutex<Vec<AppSettings>>,
     }
 
+    struct FailingSettingsStore;
+
     impl SettingsStore for RecordingSettingsStore {
         fn load(&self) -> Result<AppSettings, SettingsStoreError> {
             Ok(AppSettings::default())
@@ -43,6 +45,18 @@ mod tests {
         fn save(&self, settings: AppSettings) -> Result<(), SettingsStoreError> {
             self.saved.lock().unwrap().push(settings);
             Ok(())
+        }
+    }
+
+    impl SettingsStore for FailingSettingsStore {
+        fn load(&self) -> Result<AppSettings, SettingsStoreError> {
+            Ok(AppSettings::default())
+        }
+
+        fn save(&self, _settings: AppSettings) -> Result<(), SettingsStoreError> {
+            Err(SettingsStoreError::Io(Arc::new(std::io::Error::other(
+                "disk full",
+            ))))
         }
     }
 
@@ -64,5 +78,25 @@ mod tests {
 
         assert_eq!(store.saved.lock().unwrap()[0].theme_id, ThemeId::Light);
         assert!(matches!(rx.recv().await, Some(Action::SettingsSaved)));
+    }
+
+    #[tokio::test]
+    async fn save_settings_dispatches_save_failed_action() {
+        let store = Arc::new(FailingSettingsStore);
+        let (tx, mut rx) = mpsc::channel(1);
+
+        run(
+            Effect::SaveSettings {
+                theme_id: ThemeId::Light,
+            },
+            &tx,
+            &(store as Arc<dyn SettingsStore>),
+        )
+        .await;
+
+        assert!(matches!(
+            rx.recv().await,
+            Some(Action::SettingsSaveFailed(_))
+        ));
     }
 }

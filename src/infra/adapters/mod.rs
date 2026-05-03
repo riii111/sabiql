@@ -1,3 +1,5 @@
+mod app_config_file;
+
 pub mod clipboard;
 pub mod config_writer;
 pub mod connection_store;
