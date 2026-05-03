@@ -2,13 +2,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use super::*;
-use app::model::app_state::AppState;
-use app::model::shared::input_mode::InputMode;
-use app::model::sql_editor::modal::SqlModalStatus;
-use app::services::AppServices;
-use app::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use app::update::browse::result::reduce_result;
-use domain::{Column, ColumnAttributes, QueryResult, QuerySource};
 use harness::{
     TEST_HEIGHT, TEST_WIDTH, connected_state, create_test_terminal_sized, render_and_get_buffer,
     render_and_get_buffer_at_with_theme, render_and_get_cursor_position, table_detail_loaded_state,
@@ -16,7 +9,14 @@ use harness::{
 };
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier};
-use ui::theme::{
+use sabiql_app::model::app_state::AppState;
+use sabiql_app::model::shared::input_mode::InputMode;
+use sabiql_app::model::sql_editor::modal::SqlModalStatus;
+use sabiql_app::services::AppServices;
+use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
+use sabiql_app::update::browse::result::reduce_result;
+use sabiql_domain::{Column, ColumnAttributes, QueryResult, QuerySource};
+use sabiql_ui::theme::{
     ComponentTokens, DEFAULT_THEME, EditorTokens, LIGHT_THEME, ModalTokens, SemanticTokens,
     SurfaceTokens, TEST_CONTRAST_THEME, ThemePalette,
 };

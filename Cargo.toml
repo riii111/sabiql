@@ -14,10 +14,10 @@ license = "MIT"
 repository = "https://github.com/riii111/sabiql"
 
 [workspace.dependencies]
-domain = { path = "src/domain", version = "1.12.0" }
-app = { path = "src/app", version = "1.12.0" }
-infra = { path = "src/infra", version = "1.12.0" }
-ui = { path = "src/ui", version = "1.12.0" }
+sabiql-domain = { path = "src/domain", version = "1.12.0" }
+sabiql-app = { path = "src/app", version = "1.12.0" }
+sabiql-infra = { path = "src/infra", version = "1.12.0" }
+sabiql-ui = { path = "src/ui", version = "1.12.0" }
 arboard = "3"
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
@@ -65,18 +65,18 @@ color-eyre.workspace = true
 clap.workspace = true
 dotenvy.workspace = true
 self_update = { workspace = true, optional = true }
-app.workspace = true
-infra.workspace = true
-ui.workspace = true
+sabiql-app.workspace = true
+sabiql-infra.workspace = true
+sabiql-ui.workspace = true
 
 [features]
 default = []
 self-update = ["dep:self_update"]
 
 [dev-dependencies]
-domain.workspace = true
-app = { workspace = true, features = ["test-support"] }
-ui = { workspace = true, features = ["test-support"] }
+sabiql-domain.workspace = true
+sabiql-app = { workspace = true, features = ["test-support"] }
+sabiql-ui = { workspace = true, features = ["test-support"] }
 ratatui.workspace = true
 rstest.workspace = true
 tempfile.workspace = true

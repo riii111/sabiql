@@ -1,10 +1,10 @@
 use super::*;
-use app::model::shared::multi_line_input::MultiLineInputState;
-use domain::query_history::{QueryHistoryEntry, QueryResultStatus};
-use domain::{ConnectionId, QueryResult};
 use harness::connected_state;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use sabiql_app::model::shared::multi_line_input::MultiLineInputState;
+use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+use sabiql_domain::{ConnectionId, QueryResult};
 
 #[test]
 fn sql_modal_with_completion() {

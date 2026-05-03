@@ -1,10 +1,10 @@
 use super::*;
-use app::model::app_state::AppState;
-use app::services::AppServices;
-use app::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use app::update::browse::result::reduce_result;
-use domain::{Column, ColumnAttributes, QueryResult};
 use harness::{table_detail_loaded_state, with_current_result};
+use sabiql_app::model::app_state::AppState;
+use sabiql_app::services::AppServices;
+use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
+use sabiql_app::update::browse::result::reduce_result;
+use sabiql_domain::{Column, ColumnAttributes, QueryResult};
 
 fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();

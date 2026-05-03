@@ -1,6 +1,6 @@
 use super::*;
-use app::model::shared::ui_state::FocusMode;
 use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
+use sabiql_app::model::shared::ui_state::FocusMode;
 
 #[test]
 fn table_selection_with_preview() {

@@ -16,30 +16,30 @@ mod tests;
 #[path = "tests/render_snapshots/mod.rs"]
 mod render_snapshots;
 
-use app::cmd::cache::TtlCache;
-use app::cmd::completion_engine::CompletionEngine;
-use app::cmd::effect::Effect;
-use app::cmd::render_schedule::next_animation_deadline;
-use app::cmd::runner::EffectRunner;
-use app::model::app_state::AppState;
-use app::model::shared::db_capabilities::DbCapabilities;
-use app::model::shared::input_mode::InputMode;
-use app::ports::outbound::{
+use sabiql_app::cmd::cache::TtlCache;
+use sabiql_app::cmd::completion_engine::CompletionEngine;
+use sabiql_app::cmd::effect::Effect;
+use sabiql_app::cmd::render_schedule::next_animation_deadline;
+use sabiql_app::cmd::runner::EffectRunner;
+use sabiql_app::model::app_state::AppState;
+use sabiql_app::model::shared::db_capabilities::DbCapabilities;
+use sabiql_app::model::shared::input_mode::InputMode;
+use sabiql_app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
     ServiceFileError, SettingsStore,
 };
-use app::services::AppServices;
-use app::update::action::Action;
-use app::update::input::handle_event;
-use app::update::reducer::reduce;
-use infra::adapters::{
+use sabiql_app::services::AppServices;
+use sabiql_app::update::action::Action;
+use sabiql_app::update::input::handle_event;
+use sabiql_app::update::reducer::reduce;
+use sabiql_infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
     PgServiceFileReader, PostgresAdapter, TomlConnectionStore, TomlSettingsStore,
 };
-use infra::config::project_root::{find_project_root, get_project_name};
-use infra::export::DotExporter;
-use ui::adapters::TuiAdapter;
-use ui::tui::TuiRunner;
+use sabiql_infra::config::project_root::{find_project_root, get_project_name};
+use sabiql_infra::export::DotExporter;
+use sabiql_ui::adapters::TuiAdapter;
+use sabiql_ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

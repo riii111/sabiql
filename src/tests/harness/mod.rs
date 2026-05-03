@@ -9,10 +9,10 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Position;
 
-use app::model::app_state::AppState;
-use app::services::AppServices;
-use ui::shell::layout::MainLayout;
-use ui::theme::{ThemePalette, palette_for};
+use sabiql_app::model::app_state::AppState;
+use sabiql_app::services::AppServices;
+use sabiql_ui::shell::layout::MainLayout;
+use sabiql_ui::theme::{ThemePalette, palette_for};
 
 pub const TEST_WIDTH: u16 = 165;
 pub const TEST_HEIGHT: u16 = 51;

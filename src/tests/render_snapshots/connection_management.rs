@@ -1,7 +1,7 @@
 use super::*;
-use app::model::shared::confirm_dialog::ConfirmIntent;
-use domain::connection::ServiceEntry;
-use domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+use sabiql_app::model::shared::confirm_dialog::ConfirmIntent;
+use sabiql_domain::connection::ServiceEntry;
+use sabiql_domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
 
 fn three_connections() -> (ConnectionId, Vec<ConnectionProfile>) {
     let active_id = ConnectionId::new();
@@ -153,7 +153,7 @@ fn connection_selector_with_active_service() {
 
 #[test]
 fn connection_selector_with_multibyte_service_name() {
-    use domain::connection::ServiceEntry;
+    use sabiql_domain::connection::ServiceEntry;
 
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

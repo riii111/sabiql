@@ -1,5 +1,5 @@
 [package]
-name = "infra"
+name = "sabiql-infra"
 version.workspace = true
 edition.workspace = true
 description = "Infrastructure layer for sabiql"
@@ -20,8 +20,8 @@ thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
 urlencoding.workspace = true
-app.workspace = true
-domain.workspace = true
+sabiql-app.workspace = true
+sabiql-domain.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

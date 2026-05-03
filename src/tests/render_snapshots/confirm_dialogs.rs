@@ -1,7 +1,7 @@
 use super::*;
-use app::model::app_state::AppState;
-use app::model::shared::confirm_dialog::ConfirmIntent;
 use harness::connected_state;
+use sabiql_app::model::app_state::AppState;
+use sabiql_app::model::shared::confirm_dialog::ConfirmIntent;
 
 fn make_update_preview(diff: Vec<ColumnDiff>, sql: String) -> WritePreview {
     make_update_preview_with_key(diff, sql, "1")
