@@ -266,6 +266,18 @@ impl SqlModal {
         static SQL: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
+                (
+                    "Tab/⇧Tab",
+                    SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
+                ),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+            ])
+        });
+        static SQL_NO_EXPLAIN: LazyLock<String> = LazyLock::new(|| {
+            SqlModal::join_hint_pairs(&[
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
                 (
                     "Tab/⇧Tab",
@@ -277,18 +289,36 @@ impl SqlModal {
         static SQL_NO_TABS: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+            ])
+        });
+        static SQL_NO_TABS_NO_EXPLAIN: LazyLock<String> = LazyLock::new(|| {
+            SqlModal::join_hint_pairs(&[
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
             ])
         });
         match tab {
             SqlModalTab::Sql if services.db_capabilities.supported_sql_modal_tabs().len() == 1 => {
-                &SQL_NO_TABS
+                if services.db_capabilities.supports_explain() {
+                    &SQL_NO_TABS
+                } else {
+                    &SQL_NO_TABS_NO_EXPLAIN
+                }
             }
             SqlModalTab::Plan => &PLAN,
             SqlModalTab::Compare if compare_can_yank => &COMPARE_WITH_YANK,
             SqlModalTab::Compare => &COMPARE_NO_YANK,
-            SqlModalTab::Sql => &SQL,
+            SqlModalTab::Sql => {
+                if services.db_capabilities.supports_explain() {
+                    &SQL
+                } else {
+                    &SQL_NO_EXPLAIN
+                }
+            }
         }
     }
 
