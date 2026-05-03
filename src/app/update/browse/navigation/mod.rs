@@ -39,13 +39,9 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
                 lines
             }),
             InspectorTab::Triggers => t.triggers.len(),
-            InspectorTab::Ddl => services.ddl_generator.ddl_line_count(
-                state
-                    .session
-                    .active_database_type()
-                    .unwrap_or(crate::domain::DatabaseType::PostgreSQL),
-                t,
-            ),
+            InspectorTab::Ddl => services
+                .ddl_generator
+                .ddl_line_count(state.session.active_database_type_or_default(), t),
         })
 }
 

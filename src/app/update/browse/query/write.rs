@@ -71,10 +71,7 @@ fn build_update_preview(
     }
 
     let sql = services.sql_dialect.build_update_sql(
-        state
-            .session
-            .active_database_type()
-            .unwrap_or(crate::domain::DatabaseType::PostgreSQL),
+        state.session.active_database_type_or_default(),
         &target.schema,
         &target.table,
         &column_name,

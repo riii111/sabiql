@@ -165,10 +165,7 @@ impl Inspector {
                     ViewportPlan::default()
                 }
                 InspectorTab::Ddl => {
-                    let database_type = state
-                        .session
-                        .active_database_type()
-                        .unwrap_or(crate::domain::DatabaseType::PostgreSQL);
+                    let database_type = state.session.active_database_type_or_default();
                     let ddl = services.ddl_generator.generate_ddl(database_type, table);
                     Self::render_ddl(
                         frame,

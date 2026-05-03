@@ -287,6 +287,11 @@ impl BrowseSession {
         self.active_database_type
     }
 
+    pub fn active_database_type_or_default(&self) -> DatabaseType {
+        self.active_database_type
+            .unwrap_or(DatabaseType::PostgreSQL)
+    }
+
     pub fn active_db_capabilities(&self) -> &DbCapabilities {
         &self.active_db_capabilities
     }
