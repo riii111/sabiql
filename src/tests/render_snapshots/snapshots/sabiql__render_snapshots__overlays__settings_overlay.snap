@@ -34,7 +34,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                   Preview ──────────────────────────────────────────────────────────────────────│                                │
 │                                │                  > Active item        Selected row                                              │                                │
 │                                │                    Secondary text     Muted text                                                │                                │
-│                                │                  ╭ Focused panel ────────────╮                                                  │                                │
+│                                │                  ╭ Focused panel ─────────────╮                                                 │                                │
 │                                │                  │ Primary text  Accent text  │                                                 │                                │
 │                                │                  ╰────────────────────────────╯                                                 │                                │
 │                                │                  Choose a theme that fits your terminal.                                        │                                │

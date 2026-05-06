@@ -38,6 +38,10 @@ impl SettingsState {
         self.selected_theme = self.selected_theme.previous();
         self.selected_theme
     }
+
+    pub fn discard_selection(&mut self) {
+        self.selected_theme = self.previous_theme;
+    }
 }
 
 #[cfg(test)]
@@ -61,5 +65,16 @@ mod tests {
 
         assert_eq!(state.select_next_theme(), ThemeId::Light);
         assert_eq!(state.select_previous_theme(), ThemeId::Default);
+    }
+
+    #[test]
+    fn discard_selection_returns_to_previous_theme() {
+        let mut state = SettingsState::default();
+        state.open(ThemeId::Default);
+        state.select_next_theme();
+
+        state.discard_selection();
+
+        assert_eq!(state.selected_theme(), ThemeId::Default);
     }
 }

@@ -74,7 +74,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![Effect::SaveSettings { theme_id }])
         }
         Action::SettingsCancel | Action::CloseModal(ModalKind::Settings) => {
-            state.ui.set_theme(state.settings.previous_theme());
+            state.settings.discard_selection();
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
@@ -424,77 +424,83 @@ mod tests {
         use super::*;
         use crate::model::shared::theme_id::ThemeId;
 
-        #[test]
-        fn open_settings_tracks_current_theme() {
-            let mut state = create_test_state();
-            state.ui.set_theme(ThemeId::Light);
+        mod theme_selection {
+            use super::*;
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::OpenModal(ModalKind::Settings),
-                Instant::now(),
-            )
-            .unwrap();
+            #[test]
+            fn opens_with_current_theme() {
+                let mut state = create_test_state();
+                state.ui.set_theme(ThemeId::Light);
 
-            assert_eq!(state.input_mode(), InputMode::Settings);
-            assert_eq!(state.settings.previous_theme(), ThemeId::Light);
-            assert_eq!(state.settings.selected_theme(), ThemeId::Light);
-            assert!(effects.is_empty());
-        }
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::OpenModal(ModalKind::Settings),
+                    Instant::now(),
+                )
+                .unwrap();
 
-        #[test]
-        fn theme_navigation_updates_selection_without_changing_app_theme() {
-            let mut state = create_test_state();
-            reduce_modal(
-                &mut state,
-                &Action::OpenModal(ModalKind::Settings),
-                Instant::now(),
-            );
+                assert_eq!(state.input_mode(), InputMode::Settings);
+                assert_eq!(state.settings.previous_theme(), ThemeId::Light);
+                assert_eq!(state.settings.selected_theme(), ThemeId::Light);
+                assert!(effects.is_empty());
+            }
 
-            reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
+            #[test]
+            fn navigates_without_applying() {
+                let mut state = create_test_state();
+                reduce_modal(
+                    &mut state,
+                    &Action::OpenModal(ModalKind::Settings),
+                    Instant::now(),
+                );
 
-            assert_eq!(state.settings.selected_theme(), ThemeId::Light);
-            assert_eq!(state.ui.theme_id(), ThemeId::Default);
-        }
+                reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
 
-        #[test]
-        fn cancel_restores_previous_theme() {
-            let mut state = create_test_state();
-            reduce_modal(
-                &mut state,
-                &Action::OpenModal(ModalKind::Settings),
-                Instant::now(),
-            );
-            reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
+                assert_eq!(state.settings.selected_theme(), ThemeId::Light);
+                assert_eq!(state.ui.theme_id(), ThemeId::Default);
+            }
 
-            let effects =
-                reduce_modal(&mut state, &Action::SettingsCancel, Instant::now()).unwrap();
+            #[test]
+            fn cancel_discards_selection() {
+                let mut state = create_test_state();
+                reduce_modal(
+                    &mut state,
+                    &Action::OpenModal(ModalKind::Settings),
+                    Instant::now(),
+                );
+                reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
 
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.ui.theme_id(), ThemeId::Default);
-            assert!(effects.is_empty());
-        }
+                let effects =
+                    reduce_modal(&mut state, &Action::SettingsCancel, Instant::now()).unwrap();
 
-        #[test]
-        fn apply_keeps_selected_theme_and_returns_save_effect() {
-            let mut state = create_test_state();
-            reduce_modal(
-                &mut state,
-                &Action::OpenModal(ModalKind::Settings),
-                Instant::now(),
-            );
-            reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
+                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert_eq!(state.settings.selected_theme(), ThemeId::Default);
+                assert_eq!(state.ui.theme_id(), ThemeId::Default);
+                assert!(effects.is_empty());
+            }
 
-            let effects = reduce_modal(&mut state, &Action::SettingsApply, Instant::now()).unwrap();
+            #[test]
+            fn apply_commits_selection() {
+                let mut state = create_test_state();
+                reduce_modal(
+                    &mut state,
+                    &Action::OpenModal(ModalKind::Settings),
+                    Instant::now(),
+                );
+                reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
 
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.ui.theme_id(), ThemeId::Light);
-            assert!(matches!(
-                effects.as_slice(),
-                [Effect::SaveSettings {
-                    theme_id: ThemeId::Light
-                }]
-            ));
+                let effects =
+                    reduce_modal(&mut state, &Action::SettingsApply, Instant::now()).unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert_eq!(state.ui.theme_id(), ThemeId::Light);
+                assert!(matches!(
+                    effects.as_slice(),
+                    [Effect::SaveSettings {
+                        theme_id: ThemeId::Light
+                    }]
+                ));
+            }
         }
 
         #[test]
