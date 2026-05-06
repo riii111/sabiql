@@ -96,7 +96,10 @@ impl SettingsOverlay {
         let selected_style = theme.picker_selected_style();
         let border_style = Style::default().fg(theme.semantic.surface.focus_border);
         let panel_title_width = PREVIEW_PANEL_TITLE.chars().count();
-        let title_rule_width = PREVIEW_PANEL_INNER_WIDTH.saturating_sub(panel_title_width);
+        debug_assert!(panel_title_width < PREVIEW_PANEL_INNER_WIDTH);
+        let title_rule_width = PREVIEW_PANEL_INNER_WIDTH
+            .saturating_sub(panel_title_width)
+            .max(1);
         let lines = vec![
             Line::from(vec![
                 Span::styled(

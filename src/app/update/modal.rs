@@ -426,6 +426,7 @@ mod tests {
 
         mod theme_selection {
             use super::*;
+            use rstest::rstest;
 
             #[test]
             fn opens_with_current_theme() {
@@ -460,8 +461,10 @@ mod tests {
                 assert_eq!(state.ui.theme_id(), ThemeId::Default);
             }
 
-            #[test]
-            fn cancel_discards_selection() {
+            #[rstest]
+            #[case(Action::SettingsCancel)]
+            #[case(Action::CloseModal(ModalKind::Settings))]
+            fn cancel_discards_selection(#[case] action: Action) {
                 let mut state = create_test_state();
                 reduce_modal(
                     &mut state,
@@ -470,8 +473,7 @@ mod tests {
                 );
                 reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
 
-                let effects =
-                    reduce_modal(&mut state, &Action::SettingsCancel, Instant::now()).unwrap();
+                let effects = reduce_modal(&mut state, &action, Instant::now()).unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert_eq!(state.settings.selected_theme(), ThemeId::Default);
