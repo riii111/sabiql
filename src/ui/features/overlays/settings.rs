@@ -15,8 +15,8 @@ impl SettingsOverlay {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let (_, inner) = render_modal(
             frame,
-            Constraint::Percentage(72),
-            Constraint::Percentage(64),
+            Constraint::Percentage(60),
+            Constraint::Percentage(48),
             " Settings ",
             " Enter Apply │ Esc Cancel ",
             theme,
