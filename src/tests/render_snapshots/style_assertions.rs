@@ -11,6 +11,7 @@ use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
+use sabiql_app::model::shared::theme_id::ThemeId;
 use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
@@ -979,6 +980,56 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         has_custom_sql_hint,
         "Expected SQL modal hint to use injected hint color"
     );
+}
+
+mod settings_theme {
+    use super::*;
+    use ratatui::buffer::Buffer;
+
+    fn has_cell(buffer: &Buffer, predicate: impl Fn(&ratatui::buffer::Cell) -> bool) -> bool {
+        for y in 0..TEST_HEIGHT {
+            for x in 0..TEST_WIDTH {
+                if buffer.cell((x, y)).is_some_and(&predicate) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn preview_uses_selected_theme() {
+        let (mut state, _now) = connected_state();
+        let mut terminal = create_test_terminal();
+
+        state.settings.open(ThemeId::Default);
+        state.settings.select_next_theme();
+        state.modal.set_mode(InputMode::Settings);
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+        let has_default_selection = has_cell(&buffer, |cell| {
+            cell.symbol() == "L" && cell.bg == DEFAULT_THEME.component.editor.completion_selected_bg
+        });
+        let has_light_preview_selection = has_cell(&buffer, |cell| {
+            cell.symbol() == "S" && cell.bg == LIGHT_THEME.component.editor.completion_selected_bg
+        });
+        let has_light_preview_focus_border = has_cell(&buffer, |cell| {
+            cell.symbol() == "─" && cell.fg == LIGHT_THEME.semantic.surface.focus_border
+        });
+
+        assert!(
+            has_default_selection,
+            "Expected settings list selection to keep current theme colors"
+        );
+        assert!(
+            has_light_preview_selection,
+            "Expected settings preview selected row to use selected theme colors"
+        );
+        assert!(
+            has_light_preview_focus_border,
+            "Expected settings preview focus border to use selected theme colors"
+        );
+    }
 }
 
 #[test]
