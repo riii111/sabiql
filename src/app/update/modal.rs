@@ -59,13 +59,11 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::SettingsSelectNextTheme => {
-            let theme_id = state.settings.select_next_theme();
-            state.ui.set_theme(theme_id);
+            state.settings.select_next_theme();
             Some(vec![])
         }
         Action::SettingsSelectPreviousTheme => {
-            let theme_id = state.settings.select_previous_theme();
-            state.ui.set_theme(theme_id);
+            state.settings.select_previous_theme();
             Some(vec![])
         }
         Action::SettingsApply => {
@@ -445,7 +443,7 @@ mod tests {
         }
 
         #[test]
-        fn theme_navigation_previews_selected_theme() {
+        fn theme_navigation_updates_selection_without_changing_app_theme() {
             let mut state = create_test_state();
             reduce_modal(
                 &mut state,
@@ -456,7 +454,7 @@ mod tests {
             reduce_modal(&mut state, &Action::SettingsSelectNextTheme, Instant::now());
 
             assert_eq!(state.settings.selected_theme(), ThemeId::Light);
-            assert_eq!(state.ui.theme_id(), ThemeId::Light);
+            assert_eq!(state.ui.theme_id(), ThemeId::Default);
         }
 
         #[test]
