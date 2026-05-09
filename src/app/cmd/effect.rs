@@ -1,6 +1,6 @@
 use crate::domain::Table;
 use crate::domain::connection::{ConnectionId, SslMode};
-use crate::model::shared::theme_id::ThemeId;
+use crate::ports::outbound::AppSettings;
 use crate::update::action::Action;
 
 #[derive(Debug, Clone)]
@@ -134,7 +134,7 @@ pub enum Effect {
     },
 
     SaveSettings {
-        theme_id: ThemeId,
+        settings: AppSettings,
     },
 
     // Executes effects in order (each awaits before the next),

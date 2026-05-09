@@ -148,6 +148,7 @@ pub enum InputTarget {
     CommandLine,
     Filter,
     ErFilter,
+    SettingsErBrowser,
     QueryHistoryFilter,
     JsonbEdit,
     JsonbSearch,
@@ -343,8 +344,10 @@ pub enum Action {
     CommandLineSubmit,
 
     // Settings
-    SettingsSelectNextTheme,
-    SettingsSelectPreviousTheme,
+    SettingsSelectNext,
+    SettingsSelectPrevious,
+    SettingsNextSection,
+    SettingsPreviousSection,
     SettingsApply,
     SettingsCancel,
     SettingsSaved,

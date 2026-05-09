@@ -249,7 +249,8 @@ pub mod idx {
     pub mod settings {
         pub const APPLY: usize = 0;
         pub const SELECT: usize = 1;
-        pub const CANCEL: usize = 2;
+        pub const SECTION: usize = 2;
+        pub const CANCEL: usize = 3;
     }
 
     pub mod help {

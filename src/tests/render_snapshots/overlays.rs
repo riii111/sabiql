@@ -433,6 +433,20 @@ fn settings_overlay() {
 }
 
 #[test]
+fn settings_overlay_er_diagram() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.settings.open(state.ui.theme_id());
+    state.settings.switch_next_section();
+    state.modal.set_mode(InputMode::Settings);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn table_picker_overlay() {
     let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();

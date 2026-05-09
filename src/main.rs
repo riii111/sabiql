@@ -125,6 +125,7 @@ async fn main() -> Result<()> {
 
     let mut state = AppState::new(project_name);
     state.ui.set_theme(app_settings.theme_id);
+    state.settings.load_er_browser(app_settings.er_browser);
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {

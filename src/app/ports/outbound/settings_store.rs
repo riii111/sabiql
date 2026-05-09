@@ -2,15 +2,17 @@ use std::sync::Arc;
 
 use crate::model::shared::theme_id::ThemeId;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppSettings {
     pub theme_id: ThemeId,
+    pub er_browser: Option<String>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme_id: ThemeId::Default,
+            er_browser: None,
         }
     }
 }

@@ -17,27 +17,27 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮                                │
 │                                │                  │                                                                              │                                │
-│                                │  > Appearance    │Theme                                                                         │                                │
-│                                │    ER Diagram    │                                                                              │                                │
-│                                │                  │  > Sabiql Dark    saved                                                      │                                │
-│                                │                  │    Light                                                                     │                                │
+│                                │    Appearance    │ER Diagram                                                                    │                                │
+│                                │  > ER Diagram    │                                                                              │                                │
+│                                │                  │Browser                                                                       │                                │
 │                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
+│                                │                  │  > System default     saved                                                  │                                │
+│                                │                  │    Google Chrome                                                             │                                │
+│                                │                  │    Firefox                                                                   │                                │
+│                                │                  │    Safari                                                                    │                                │
+│                                │                  │    Custom: []                                                                │                                │
 │                                │                  │                                                                              │────────────────────────────────┘
 │                                │                  │                                                                              │────────────────────────────────┐
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                │                  │ Preview ─────────────────────────────────────────────────────────────────────│                                │
-│                                │                  │> Active item        Selected row                                             │                                │
-│                                │                  │  Secondary text     Muted text                                               │                                │
-│                                │                  │╭ Focused panel ─────────────╮                                                │                                │
-│                                │                  ││ Primary text  Accent text  │                                                │                                │
-│                                │                  │╰────────────────────────────╯                                                │                                │
-│                                │                  │Choose a theme that fits your terminal.                                       │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                ╰ Enter Apply │ Esc Cancel ───────────────────────────────────────────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │

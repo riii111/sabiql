@@ -22,9 +22,39 @@ pub fn handle_command_palette_keys(combo: KeyCombo) -> Action {
 }
 
 pub fn handle_settings_keys(combo: KeyCombo) -> Action {
-    keybindings::SETTINGS
-        .resolve(&combo)
-        .unwrap_or(Action::None)
+    if let Some(action) = keybindings::SETTINGS.resolve(&combo) {
+        return action;
+    }
+    use crate::update::action::CursorMove;
+    match combo.key {
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::SettingsErBrowser,
+            ch: c,
+        },
+        Key::Backspace => Action::TextBackspace {
+            target: InputTarget::SettingsErBrowser,
+        },
+        Key::Delete => Action::TextDelete {
+            target: InputTarget::SettingsErBrowser,
+        },
+        Key::Left => Action::TextMoveCursor {
+            target: InputTarget::SettingsErBrowser,
+            direction: CursorMove::Left,
+        },
+        Key::Right => Action::TextMoveCursor {
+            target: InputTarget::SettingsErBrowser,
+            direction: CursorMove::Right,
+        },
+        Key::Home => Action::TextMoveCursor {
+            target: InputTarget::SettingsErBrowser,
+            direction: CursorMove::Home,
+        },
+        Key::End => Action::TextMoveCursor {
+            target: InputTarget::SettingsErBrowser,
+            direction: CursorMove::End,
+        },
+        _ => Action::None,
+    }
 }
 
 pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
@@ -203,8 +233,10 @@ mod tests {
         #[rstest]
         #[case(Key::Enter, Action::SettingsApply)]
         #[case(Key::Esc, Action::SettingsCancel)]
-        #[case(Key::Down, Action::SettingsSelectNextTheme)]
-        #[case(Key::Up, Action::SettingsSelectPreviousTheme)]
+        #[case(Key::Down, Action::SettingsSelectNext)]
+        #[case(Key::Up, Action::SettingsSelectPrevious)]
+        #[case(Key::Tab, Action::SettingsNextSection)]
+        #[case(Key::BackTab, Action::SettingsPreviousSection)]
         fn keys_map_to_actions(#[case] key: Key, #[case] expected: Action) {
             let result = handle_settings_keys(combo(key));
 
@@ -215,14 +247,27 @@ mod tests {
         fn char_j_selects_next_theme() {
             let result = handle_settings_keys(combo(Key::Char('j')));
 
-            assert!(matches!(result, Action::SettingsSelectNextTheme));
+            assert!(matches!(result, Action::SettingsSelectNext));
         }
 
         #[test]
         fn char_k_selects_previous_theme() {
             let result = handle_settings_keys(combo(Key::Char('k')));
 
-            assert!(matches!(result, Action::SettingsSelectPreviousTheme));
+            assert!(matches!(result, Action::SettingsSelectPrevious));
+        }
+
+        #[test]
+        fn other_chars_edit_custom_browser() {
+            let result = handle_settings_keys(combo(Key::Char('B')));
+
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::SettingsErBrowser,
+                    ch: 'B'
+                }
+            ));
         }
     }
 

@@ -214,6 +214,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │▸ Settings                                                                                                                  │                          │
 │                          │  Enter               Apply setting                                                                                         │                          │
 │                          │  j / k / ↑ / ↓       Select setting                                                                                        │                          │
+│                          │  Tab / Shift+Tab     Switch settings section                                                                               │                          │
 │                          │  Esc                 Cancel                                                                                                │                          │
 │                          │                                                                                                                            │                          │
 │                          │▸ Help Overlay                                                                                                              │                          │
@@ -249,7 +250,6 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  type                Type to search                                                                                        │                          │
 │                          │  Enter               Confirm search                                                                                        │                          │
 │                          │  Esc                 Cancel search                                                                                         │                          │
-│                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │

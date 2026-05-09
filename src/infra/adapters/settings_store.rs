@@ -85,6 +85,7 @@ impl SettingsStore for TomlSettingsStore {
             .unwrap_or_else(|| ConnectionConfigFile {
                 version: CURRENT_VERSION,
                 theme: None,
+                er_browser: None,
                 connections: vec![],
             });
         set_app_settings(&mut config, settings);
@@ -107,11 +108,13 @@ fn app_settings(config: ConnectionConfigFile) -> AppSettings {
             .as_deref()
             .and_then(ThemeId::from_config_value)
             .unwrap_or_default(),
+        er_browser: config.er_browser,
     }
 }
 
 fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
     config.theme = Some(settings.theme_id.config_value().to_string());
+    config.er_browser = settings.er_browser;
 }
 
 #[cfg(test)]
@@ -138,11 +141,13 @@ mod tests {
         store
             .save(AppSettings {
                 theme_id: ThemeId::Light,
+                er_browser: Some("Google Chrome".to_string()),
             })
             .unwrap();
 
         let settings = store.load().unwrap();
         assert_eq!(settings.theme_id, ThemeId::Light);
+        assert_eq!(settings.er_browser.as_deref(), Some("Google Chrome"));
     }
 
     #[test]
@@ -169,11 +174,13 @@ ssl_mode = "prefer"
         store
             .save(AppSettings {
                 theme_id: ThemeId::Light,
+                er_browser: Some("Firefox".to_string()),
             })
             .unwrap();
 
         let content = fs::read_to_string(temp_dir.path().join(CONFIG_FILE_NAME)).unwrap();
         assert!(content.contains("theme = \"light\""));
+        assert!(content.contains("er_browser = \"Firefox\""));
         assert!(content.contains("[[connections]]"));
         assert!(content.contains("name = \"Test\""));
     }
@@ -187,6 +194,7 @@ ssl_mode = "prefer"
         let settings = store.load().unwrap();
 
         assert_eq!(settings.theme_id, ThemeId::Default);
+        assert_eq!(settings.er_browser, None);
     }
 
     #[test]
@@ -228,6 +236,7 @@ ssl_mode = "prefer"
 
         let result = store.save(AppSettings {
             theme_id: ThemeId::Light,
+            er_browser: None,
         });
 
         assert!(matches!(

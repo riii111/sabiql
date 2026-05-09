@@ -5,7 +5,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::settings::{ErBrowserChoice, SettingsSection};
 use crate::app::model::shared::theme_id::ThemeId;
+use crate::primitives::atoms::{CursorKind, text_cursor_spans_with_kind};
 use crate::primitives::molecules::render_modal;
 use crate::theme::{ThemePalette, palette_for};
 
@@ -25,27 +27,52 @@ impl SettingsOverlay {
             theme,
         );
 
-        let [sidebar, content] =
-            Layout::horizontal([Constraint::Length(18), Constraint::Min(24)]).areas(inner);
-        let [theme_list, preview] =
-            Layout::vertical([Constraint::Min(5), Constraint::Length(8)]).areas(content);
+        let [sidebar, divider, content] = Layout::horizontal([
+            Constraint::Length(18),
+            Constraint::Length(1),
+            Constraint::Min(24),
+        ])
+        .areas(inner);
 
-        let sidebar_lines = vec![
-            Line::raw(""),
-            Line::from(vec![
+        let sidebar_lines = Self::sidebar_lines(state, theme);
+        frame.render_widget(Paragraph::new(sidebar_lines), sidebar);
+        let divider_lines = (0..inner.height)
+            .map(|_| Line::styled("\u{2502}", theme.modal_border_style()))
+            .collect::<Vec<_>>();
+        frame.render_widget(Paragraph::new(divider_lines), divider);
+
+        match state.settings.section() {
+            SettingsSection::Appearance => Self::render_appearance(frame, content, state, theme),
+            SettingsSection::ErDiagram => Self::render_er_diagram(frame, content, state, theme),
+        }
+    }
+
+    fn sidebar_lines(state: &AppState, theme: &ThemePalette) -> Vec<Line<'static>> {
+        let mut lines = vec![Line::raw("")];
+        for section in SettingsSection::ALL {
+            let selected = state.settings.section() == section;
+            let marker = if selected { ">" } else { " " };
+            let style = if selected {
+                Style::default()
+                    .fg(theme.component.navigation.section_header)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.semantic.text.secondary)
+            };
+            lines.push(Line::from(vec![
                 Span::styled(
-                    "  > ",
+                    format!("  {marker} "),
                     Style::default().fg(theme.component.navigation.active_indicator),
                 ),
-                Span::styled(
-                    "Appearance",
-                    Style::default()
-                        .fg(theme.component.navigation.section_header)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
-        ];
-        frame.render_widget(Paragraph::new(sidebar_lines), sidebar);
+                Span::styled(section.label(), style),
+            ]));
+        }
+        lines
+    }
+
+    fn render_appearance(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {
+        let [theme_list, preview] =
+            Layout::vertical([Constraint::Min(5), Constraint::Length(8)]).areas(content);
 
         let mut content_lines = vec![
             Line::raw(""),
@@ -80,6 +107,56 @@ impl SettingsOverlay {
         );
 
         Self::render_theme_preview(frame, preview, palette_for(state.settings.selected_theme()));
+    }
+
+    fn render_er_diagram(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {
+        let mut lines = vec![
+            Line::raw(""),
+            Line::from(Span::styled(
+                "ER Diagram",
+                Style::default()
+                    .fg(theme.semantic.text.primary)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::raw(""),
+            Line::from(Span::styled(
+                "Browser",
+                Style::default().fg(theme.semantic.text.primary),
+            )),
+            Line::raw(""),
+        ];
+
+        for choice in ErBrowserChoice::ALL {
+            let selected = state.settings.selected_er_browser_choice() == choice;
+            let saved = saved_browser_matches(state, choice);
+            let marker = if selected { ">" } else { " " };
+            let saved_label = if saved { " saved" } else { "" };
+            let style = if selected {
+                theme.picker_selected_style()
+            } else {
+                Style::default().fg(theme.semantic.text.secondary)
+            };
+            if choice == ErBrowserChoice::Custom {
+                let mut spans = vec![Span::styled(format!("  {marker} Custom: ["), style)];
+                spans.extend(text_cursor_spans_with_kind(
+                    state.settings.custom_er_browser().content(),
+                    state.settings.custom_er_browser().cursor(),
+                    state.settings.custom_er_browser().viewport_offset(),
+                    28,
+                    CursorKind::Insert,
+                    theme,
+                ));
+                spans.push(Span::styled(format!("]{saved_label}"), style));
+                lines.push(Line::from(spans));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    format!("  {marker} {:<18}{saved_label}", choice.label()),
+                    style,
+                )));
+            }
+        }
+
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
     }
 
     fn render_theme_preview(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
@@ -149,5 +226,16 @@ impl SettingsOverlay {
         ];
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    }
+}
+
+fn saved_browser_matches(state: &AppState, choice: ErBrowserChoice) -> bool {
+    match choice {
+        ErBrowserChoice::SystemDefault => state.settings.saved_er_browser().is_none(),
+        ErBrowserChoice::Custom => state
+            .settings
+            .saved_er_browser()
+            .is_some_and(|browser| !matches!(browser, "Google Chrome" | "Firefox" | "Safari")),
+        _ => state.settings.saved_er_browser() == choice.browser_name(),
     }
 }

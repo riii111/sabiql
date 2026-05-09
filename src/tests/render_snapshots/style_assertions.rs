@@ -881,7 +881,7 @@ mod settings_theme {
         let mut terminal = create_test_terminal();
 
         state.settings.open(ThemeId::Default);
-        state.settings.select_next_theme();
+        state.settings.select_next();
         state.modal.set_mode(InputMode::Settings);
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
