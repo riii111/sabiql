@@ -5,7 +5,6 @@ use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::settings::SettingsSection;
 use crate::ports::outbound::AppSettings;
 use crate::update::action::{
     Action, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection,
@@ -88,34 +87,26 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             target: InputTarget::SettingsErBrowser,
             ch,
         } => {
-            if state.settings.section() == SettingsSection::ErDiagram {
-                state.settings.input_custom_browser(*ch);
-            }
+            state.settings.input_custom_browser(*ch);
             Some(vec![])
         }
         Action::TextBackspace {
             target: InputTarget::SettingsErBrowser,
         } => {
-            if state.settings.section() == SettingsSection::ErDiagram {
-                state.settings.backspace_custom_browser();
-            }
+            state.settings.backspace_custom_browser();
             Some(vec![])
         }
         Action::TextDelete {
             target: InputTarget::SettingsErBrowser,
         } => {
-            if state.settings.section() == SettingsSection::ErDiagram {
-                state.settings.delete_custom_browser();
-            }
+            state.settings.delete_custom_browser();
             Some(vec![])
         }
         Action::TextMoveCursor {
             target: InputTarget::SettingsErBrowser,
             direction,
         } => {
-            if state.settings.section() == SettingsSection::ErDiagram {
-                state.settings.move_custom_browser_cursor(*direction);
-            }
+            state.settings.move_custom_browser_cursor(*direction);
             Some(vec![])
         }
         Action::SettingsApply => {

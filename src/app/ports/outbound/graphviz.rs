@@ -16,6 +16,8 @@ pub enum GraphvizError {
 pub enum ViewerError {
     #[error("Failed to open viewer: {0}")]
     LaunchFailed(#[from] std::io::Error),
+    #[error("{browser} is not available on this platform")]
+    UnsupportedBrowser { browser: String },
 }
 
 pub trait GraphvizRunner: Send + Sync {
@@ -63,6 +65,18 @@ mod tests {
             let message = format!("{error}");
 
             assert!(message.contains("command not found"));
+        }
+
+        #[test]
+        fn unsupported_browser_names_browser() {
+            let error = ViewerError::UnsupportedBrowser {
+                browser: "Safari".to_string(),
+            };
+
+            let message = format!("{error}");
+
+            assert!(message.contains("Safari"));
+            assert!(message.contains("not available"));
         }
     }
 }

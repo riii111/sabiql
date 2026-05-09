@@ -143,7 +143,7 @@ fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
 
     #[cfg(any(target_os = "freebsd", target_os = "linux"))]
     {
-        open_with_browser_candidates(path, browser_command_candidates(browser))
+        open_with_browser_candidates(path, browser, browser_command_candidates(browser))
     }
 
     #[cfg(target_os = "windows")]
@@ -175,7 +175,17 @@ fn browser_command_candidates(browser: &str) -> Vec<&str> {
 }
 
 #[cfg(any(target_os = "freebsd", target_os = "linux"))]
-fn open_with_browser_candidates(path: &Path, candidates: &[&str]) -> Result<(), ViewerError> {
+fn open_with_browser_candidates(
+    path: &Path,
+    browser: &str,
+    candidates: &[&str],
+) -> Result<(), ViewerError> {
+    if candidates.is_empty() {
+        return Err(ViewerError::UnsupportedBrowser {
+            browser: browser.to_string(),
+        });
+    }
+
     let mut last_error = None;
     for command in candidates {
         match Command::new(command).arg(path).spawn() {
@@ -555,6 +565,17 @@ mod tests {
                 browser_command_candidates("CustomBrowser"),
                 vec!["CustomBrowser"]
             );
+        }
+
+        #[cfg(any(target_os = "freebsd", target_os = "linux"))]
+        #[test]
+        fn empty_browser_candidates_return_unsupported_browser() {
+            let result = open_with_browser_candidates(Path::new("/tmp/er.svg"), "Safari", &[]);
+
+            assert!(matches!(
+                result,
+                Err(ViewerError::UnsupportedBrowser { browser }) if browser == "Safari"
+            ));
         }
 
         #[test]
