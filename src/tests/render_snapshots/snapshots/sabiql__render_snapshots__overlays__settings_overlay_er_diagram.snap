@@ -23,10 +23,10 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │Browser                                                                       │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │  > System default     saved                                                  │                                │
-│                                │                  │    Google Chrome                                                             │                                │
-│                                │                  │    Firefox                                                                   │                                │
-│                                │                  │    Safari                                                                    │                                │
-│                                │                  │    Custom: []                                                                │                                │
+│                                │                  │    Custom command: []                                                        │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │────────────────────────────────┘
 │                                │                  │                                                                              │────────────────────────────────┐
 │                                │                  │                                                                              │                                │

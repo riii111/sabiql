@@ -561,7 +561,7 @@ mod tests {
             }
 
             #[test]
-            fn apply_commits_er_browser_selection() {
+            fn apply_commits_empty_custom_browser_as_system_default() {
                 let mut state = create_test_state();
                 reduce_modal(
                     &mut state,
@@ -574,11 +574,11 @@ mod tests {
                 let effects =
                     reduce_modal(&mut state, &Action::SettingsApply, Instant::now()).unwrap();
 
-                assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
+                assert_eq!(state.settings.saved_er_browser(), None);
                 assert!(matches!(
                     effects.as_slice(),
                     [Effect::SaveSettings { settings }]
-                        if settings.er_browser.as_deref() == Some("Google Chrome")
+                        if settings.er_browser.is_none()
                 ));
             }
 

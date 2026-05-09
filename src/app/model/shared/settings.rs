@@ -36,67 +36,22 @@ impl SettingsSection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErBrowserChoice {
     SystemDefault,
-    GoogleChrome,
-    Firefox,
-    Safari,
     Custom,
 }
 
 impl ErBrowserChoice {
-    #[cfg(target_os = "macos")]
-    pub const ALL: [Self; 5] = [
-        Self::SystemDefault,
-        Self::GoogleChrome,
-        Self::Firefox,
-        Self::Safari,
-        Self::Custom,
-    ];
-
-    #[cfg(not(target_os = "macos"))]
-    pub const ALL: [Self; 4] = [
-        Self::SystemDefault,
-        Self::GoogleChrome,
-        Self::Firefox,
-        Self::Custom,
-    ];
+    pub const ALL: [Self; 2] = [Self::SystemDefault, Self::Custom];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::SystemDefault => "System default",
-            Self::GoogleChrome => "Google Chrome",
-            Self::Firefox => "Firefox",
-            Self::Safari => "Safari",
             Self::Custom => "Custom",
-        }
-    }
-
-    pub fn browser_name(self) -> Option<&'static str> {
-        match self {
-            Self::SystemDefault | Self::Custom => None,
-            #[cfg(target_os = "macos")]
-            Self::GoogleChrome => Some("Google Chrome"),
-            #[cfg(not(target_os = "macos"))]
-            Self::GoogleChrome => Some("google-chrome"),
-            #[cfg(target_os = "macos")]
-            Self::Firefox => Some("Firefox"),
-            #[cfg(not(target_os = "macos"))]
-            Self::Firefox => Some("firefox"),
-            #[cfg(target_os = "macos")]
-            Self::Safari => Some("Safari"),
-            #[cfg(not(target_os = "macos"))]
-            Self::Safari => None,
         }
     }
 
     pub fn from_browser_name(browser: Option<&str>) -> Self {
         match browser.map(str::trim).filter(|value| !value.is_empty()) {
             None => Self::SystemDefault,
-            Some("Google Chrome" | "google-chrome" | "google-chrome-stable") => Self::GoogleChrome,
-            Some("Firefox" | "firefox") => Self::Firefox,
-            #[cfg(target_os = "macos")]
-            Some("Safari") => Self::Safari,
-            #[cfg(not(target_os = "macos"))]
-            Some("Safari") => Self::Custom,
             Some(_) => Self::Custom,
         }
     }
@@ -197,7 +152,6 @@ impl SettingsState {
             ErBrowserChoice::Custom => {
                 normalize_browser(Some(self.custom_er_browser.content().trim().to_string()))
             }
-            choice => choice.browser_name().map(str::to_string),
         }
     }
 
@@ -348,16 +302,12 @@ mod tests {
     }
 
     #[test]
-    fn known_browser_choice_returns_browser_name() {
+    fn selecting_empty_custom_browser_returns_none() {
         let mut state = SettingsState::default();
         state.switch_next_section();
         state.select_next();
 
-        #[cfg(target_os = "macos")]
-        let expected = "Google Chrome";
-        #[cfg(not(target_os = "macos"))]
-        let expected = "google-chrome";
-        assert_eq!(state.selected_er_browser().as_deref(), Some(expected));
+        assert_eq!(state.selected_er_browser(), None);
     }
 
     #[test]
@@ -372,16 +322,14 @@ mod tests {
     }
 
     #[test]
-    fn cursor_move_does_not_switch_preset_to_custom() {
+    fn cursor_move_requires_custom_edit_mode() {
         let mut state = SettingsState::default();
         state.switch_next_section();
         state.select_next();
 
         state.move_custom_browser_cursor(CursorMove::Left);
 
-        assert_eq!(
-            state.selected_er_browser_choice(),
-            ErBrowserChoice::GoogleChrome
-        );
+        assert_eq!(state.selected_er_browser_choice(), ErBrowserChoice::Custom);
+        assert!(!state.is_editing_custom_er_browser());
     }
 }

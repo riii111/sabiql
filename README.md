@@ -43,7 +43,7 @@ Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featur
 
 - **Fuzzy Search** (`/`) — Incremental table filtering
 - **Focus Mode** (`f`) — Expand any pane to full screen
-- **Settings** (`Ctrl+K`) — Theme and appearance preferences
+- **Settings** (`Ctrl+K`) — Theme and ER diagram preferences
 - **Command Palette** (`:palette`) — Searchable command list
 
 ## Installation
@@ -82,7 +82,7 @@ On first run, enter your connection details. They are saved to your platform con
 
 Press `?` for help.
 
-Open Settings with `Ctrl+K` to switch between Sabiql Dark and Light themes.
+Open Settings with `Ctrl+K` to switch themes and configure the ER diagram browser command.
 
 ## Requirements
 
@@ -104,12 +104,6 @@ Without direnv, enter the shell explicitly:
 ```bash
 nix develop
 ```
-
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `SABIQL_BROWSER` | Browser for ER diagrams (e.g., `Arc`, `Firefox`). macOS uses `open -a`; falls back to OS default. |
 
 ## Roadmap
 

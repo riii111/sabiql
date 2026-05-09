@@ -137,7 +137,7 @@ impl SettingsOverlay {
                 Style::default().fg(theme.semantic.text.secondary)
             };
             if choice == ErBrowserChoice::Custom {
-                let mut spans = vec![Span::styled(format!("  {marker} Custom: ["), style)];
+                let mut spans = vec![Span::styled(format!("  {marker} Custom command: ["), style)];
                 spans.extend(text_cursor_spans_with_kind(
                     state.settings.custom_er_browser().content(),
                     state.settings.custom_er_browser().cursor(),
