@@ -86,7 +86,7 @@ fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
     }
 }
 
-#[cfg(any(target_os = "freebsd", target_os = "linux"))]
+#[cfg(any(target_os = "freebsd", target_os = "linux", test))]
 fn browser_command_candidates(browser: &str) -> Vec<&str> {
     match browser {
         "Google Chrome" => vec![
@@ -98,6 +98,8 @@ fn browser_command_candidates(browser: &str) -> Vec<&str> {
         ],
         "Firefox" => vec!["firefox"],
         "Safari" => vec![],
+        "Microsoft Edge" => vec!["microsoft-edge", "microsoft-edge-stable"],
+        "Brave" => vec!["brave-browser", "brave"],
         _ => vec![browser],
     }
 }
@@ -466,6 +468,22 @@ mod tests {
             assert_eq!(
                 exporter.viewer.browser.lock().unwrap().as_deref(),
                 Some("Firefox")
+            );
+        }
+
+        #[test]
+        fn browser_command_candidates_include_common_presets() {
+            assert_eq!(
+                browser_command_candidates("Microsoft Edge"),
+                vec!["microsoft-edge", "microsoft-edge-stable"]
+            );
+            assert_eq!(
+                browser_command_candidates("Brave"),
+                vec!["brave-browser", "brave"]
+            );
+            assert_eq!(
+                browser_command_candidates("CustomBrowser"),
+                vec!["CustomBrowser"]
             );
         }
 

@@ -39,15 +39,19 @@ pub enum ErBrowserChoice {
     GoogleChrome,
     Firefox,
     Safari,
+    MicrosoftEdge,
+    Brave,
     Custom,
 }
 
 impl ErBrowserChoice {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Self::SystemDefault,
         Self::GoogleChrome,
         Self::Firefox,
         Self::Safari,
+        Self::MicrosoftEdge,
+        Self::Brave,
         Self::Custom,
     ];
 
@@ -57,6 +61,8 @@ impl ErBrowserChoice {
             Self::GoogleChrome => "Google Chrome",
             Self::Firefox => "Firefox",
             Self::Safari => "Safari",
+            Self::MicrosoftEdge => "Microsoft Edge",
+            Self::Brave => "Brave",
             Self::Custom => "Custom",
         }
     }
@@ -67,6 +73,8 @@ impl ErBrowserChoice {
             Self::GoogleChrome => Some("Google Chrome"),
             Self::Firefox => Some("Firefox"),
             Self::Safari => Some("Safari"),
+            Self::MicrosoftEdge => Some("Microsoft Edge"),
+            Self::Brave => Some("Brave"),
         }
     }
 
@@ -78,6 +86,10 @@ impl ErBrowserChoice {
             }
             Some("Firefox" | "firefox") => Self::Firefox,
             Some("Safari") => Self::Safari,
+            Some("Microsoft Edge" | "microsoft-edge" | "microsoft-edge-stable") => {
+                Self::MicrosoftEdge
+            }
+            Some("Brave" | "brave" | "brave-browser") => Self::Brave,
             Some(_) => Self::Custom,
         }
     }
@@ -337,6 +349,34 @@ mod tests {
         assert_eq!(
             state.selected_er_browser().as_deref(),
             Some("Google Chrome")
+        );
+    }
+
+    #[test]
+    fn browser_choices_include_common_presets() {
+        assert_eq!(
+            ErBrowserChoice::ALL,
+            [
+                ErBrowserChoice::SystemDefault,
+                ErBrowserChoice::GoogleChrome,
+                ErBrowserChoice::Firefox,
+                ErBrowserChoice::Safari,
+                ErBrowserChoice::MicrosoftEdge,
+                ErBrowserChoice::Brave,
+                ErBrowserChoice::Custom,
+            ]
+        );
+    }
+
+    #[test]
+    fn browser_choice_recognizes_command_aliases() {
+        assert_eq!(
+            ErBrowserChoice::from_browser_name(Some("microsoft-edge-stable")),
+            ErBrowserChoice::MicrosoftEdge
+        );
+        assert_eq!(
+            ErBrowserChoice::from_browser_name(Some("brave-browser")),
+            ErBrowserChoice::Brave
         );
     }
 

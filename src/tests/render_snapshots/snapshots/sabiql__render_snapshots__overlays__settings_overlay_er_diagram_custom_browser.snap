@@ -26,11 +26,11 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │    Google Chrome                                                             │                                │
 │                                │                  │    Firefox                                                                   │                                │
 │                                │                  │    Safari                                                                    │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │Custom command                                                                │────────────────────────────────┘
-│                                │                  │  > [Brave Browser] saved                                                     │────────────────────────────────┐
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
+│                                │                  │    Microsoft Edge                                                            │                                │
+│                                │                  │    Brave                                                                     │────────────────────────────────┘
+│                                │                  │                                                                              │────────────────────────────────┐
+│                                │                  │Custom command                                                                │                                │
+│                                │                  │  > [Brave Browser] saved                                                     │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
