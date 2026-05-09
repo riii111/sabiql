@@ -43,7 +43,7 @@ impl ViewerLauncher for SystemViewerLauncher {
 
         #[cfg(target_os = "macos")]
         {
-            Command::new("open").arg(path).spawn()?;
+            open_with_default_browser(path)?;
         }
         #[cfg(any(target_os = "freebsd", target_os = "linux"))]
         {
@@ -58,6 +58,76 @@ impl ViewerLauncher for SystemViewerLauncher {
         }
         Ok(())
     }
+}
+
+#[cfg(target_os = "macos")]
+fn open_with_default_browser(path: &Path) -> Result<(), ViewerError> {
+    if let Some(bundle_id) = default_web_browser_bundle_id() {
+        Command::new("open")
+            .arg("-b")
+            .arg(bundle_id)
+            .arg(path)
+            .spawn()?;
+    } else {
+        Command::new("open").arg(path).spawn()?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn default_web_browser_bundle_id() -> Option<String> {
+    let home = std::env::var_os("HOME")?;
+    let launch_services = PathBuf::from(home)
+        .join("Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist");
+    let output = Command::new("plutil")
+        .args(["-extract", "LSHandlers", "json", "-o", "-"])
+        .arg(launch_services)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let json = String::from_utf8(output.stdout).ok()?;
+    default_web_browser_bundle_id_from_ls_handlers_json(&json)
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn default_web_browser_bundle_id_from_ls_handlers_json(json: &str) -> Option<String> {
+    let handlers: serde_json::Value = serde_json::from_str(json).ok()?;
+    let handlers = handlers.as_array()?;
+    ["https", "http"]
+        .into_iter()
+        .find_map(|scheme| {
+            handlers
+                .iter()
+                .find(|handler| {
+                    handler
+                        .get("LSHandlerURLScheme")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(scheme)
+                })
+                .and_then(handler_bundle_id)
+        })
+        .or_else(|| {
+            handlers
+                .iter()
+                .find(|handler| {
+                    handler
+                        .get("LSHandlerContentType")
+                        .and_then(serde_json::Value::as_str)
+                        == Some("com.apple.default-app.web-browser")
+                })
+                .and_then(handler_bundle_id)
+        })
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn handler_bundle_id(handler: &serde_json::Value) -> Option<String> {
+    handler
+        .get("LSHandlerRoleAll")
+        .or_else(|| handler.get("LSHandlerRoleViewer"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
 }
 
 fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
@@ -484,6 +554,44 @@ mod tests {
             assert_eq!(
                 browser_command_candidates("CustomBrowser"),
                 vec!["CustomBrowser"]
+            );
+        }
+
+        #[test]
+        fn default_browser_bundle_prefers_https_handler() {
+            let json = r#"[
+                {
+                    "LSHandlerContentType": "com.apple.default-app.web-browser",
+                    "LSHandlerRoleAll": "com.example.contenttype"
+                },
+                {
+                    "LSHandlerURLScheme": "http",
+                    "LSHandlerRoleAll": "com.example.http"
+                },
+                {
+                    "LSHandlerURLScheme": "https",
+                    "LSHandlerRoleAll": "company.thebrowser.browser"
+                }
+            ]"#;
+
+            assert_eq!(
+                default_web_browser_bundle_id_from_ls_handlers_json(json).as_deref(),
+                Some("company.thebrowser.browser")
+            );
+        }
+
+        #[test]
+        fn default_browser_bundle_falls_back_to_default_browser_content_type() {
+            let json = r#"[
+                {
+                    "LSHandlerContentType": "com.apple.default-app.web-browser",
+                    "LSHandlerRoleAll": "company.thebrowser.browser"
+                }
+            ]"#;
+
+            assert_eq!(
+                default_web_browser_bundle_id_from_ls_handlers_json(json).as_deref(),
+                Some("company.thebrowser.browser")
             );
         }
 
