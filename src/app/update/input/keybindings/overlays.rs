@@ -598,7 +598,7 @@ pub const SETTINGS_ROWS: &[ModeRow] = &[
         ],
     },
     ModeRow {
-        key_short: "Tab",
+        key_short: "Tab/⇧Tab",
         key: "Tab / Shift+Tab",
         desc_short: "Section",
         description: "Switch settings section",
@@ -609,7 +609,7 @@ pub const SETTINGS_ROWS: &[ModeRow] = &[
             },
             ExecBinding {
                 action: Action::SettingsPreviousSection,
-                combos: &[KeyCombo::plain(Key::BackTab)],
+                combos: &[KeyCombo::shift(Key::BackTab)],
             },
         ],
     },

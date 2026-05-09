@@ -99,6 +99,10 @@ mod tests {
         KeyCombo::ctrl(k)
     }
 
+    fn combo_shift(k: Key) -> KeyCombo {
+        KeyCombo::shift(k)
+    }
+
     mod table_picker {
         use super::*;
 
@@ -231,14 +235,14 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case(Key::Enter, Action::SettingsApply)]
-        #[case(Key::Esc, Action::SettingsCancel)]
-        #[case(Key::Down, Action::SettingsSelectNext)]
-        #[case(Key::Up, Action::SettingsSelectPrevious)]
-        #[case(Key::Tab, Action::SettingsNextSection)]
-        #[case(Key::BackTab, Action::SettingsPreviousSection)]
-        fn keys_map_to_actions(#[case] key: Key, #[case] expected: Action) {
-            let result = handle_settings_keys(combo(key));
+        #[case(combo(Key::Enter), Action::SettingsApply)]
+        #[case(combo(Key::Esc), Action::SettingsCancel)]
+        #[case(combo(Key::Down), Action::SettingsSelectNext)]
+        #[case(combo(Key::Up), Action::SettingsSelectPrevious)]
+        #[case(combo(Key::Tab), Action::SettingsNextSection)]
+        #[case(combo_shift(Key::BackTab), Action::SettingsPreviousSection)]
+        fn keys_map_to_actions(#[case] combo: KeyCombo, #[case] expected: Action) {
+            let result = handle_settings_keys(combo);
 
             assert_eq!(format!("{result:?}"), format!("{expected:?}"));
         }
