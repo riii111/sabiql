@@ -127,6 +127,9 @@ impl SettingsOverlay {
         ];
 
         for choice in ErBrowserChoice::ALL {
+            if choice == ErBrowserChoice::Custom {
+                continue;
+            }
             let selected = state.settings.selected_er_browser_choice() == choice;
             let saved = saved_browser_matches(state, choice);
             let marker = if selected { ">" } else { " " };
@@ -136,30 +139,43 @@ impl SettingsOverlay {
             } else {
                 Style::default().fg(theme.semantic.text.secondary)
             };
-            if choice == ErBrowserChoice::Custom {
-                let mut spans = vec![Span::styled(format!("  {marker} Custom command: ["), style)];
-                spans.extend(text_cursor_spans_with_kind(
-                    state.settings.custom_er_browser().content(),
-                    state.settings.custom_er_browser().cursor(),
-                    state.settings.custom_er_browser().viewport_offset(),
-                    28,
-                    CursorKind::Insert,
-                    theme,
-                ));
-                let edit_label = if state.settings.is_editing_custom_er_browser() {
-                    " editing"
-                } else {
-                    ""
-                };
-                spans.push(Span::styled(format!("]{saved_label}{edit_label}"), style));
-                lines.push(Line::from(spans));
-            } else {
-                lines.push(Line::from(Span::styled(
-                    format!("  {marker} {:<18}{saved_label}", choice.label()),
-                    style,
-                )));
-            }
+            lines.push(Line::from(Span::styled(
+                format!("  {marker} {:<18}{saved_label}", choice.label()),
+                style,
+            )));
         }
+
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            "Custom command",
+            Style::default().fg(theme.semantic.text.primary),
+        )));
+        let custom_selected =
+            state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom;
+        let custom_saved = saved_browser_matches(state, ErBrowserChoice::Custom);
+        let marker = if custom_selected { ">" } else { " " };
+        let saved_label = if custom_saved { " saved" } else { "" };
+        let style = if custom_selected {
+            theme.picker_selected_style()
+        } else {
+            Style::default().fg(theme.semantic.text.secondary)
+        };
+        let mut spans = vec![Span::styled(format!("  {marker} ["), style)];
+        spans.extend(text_cursor_spans_with_kind(
+            state.settings.custom_er_browser().content(),
+            state.settings.custom_er_browser().cursor(),
+            state.settings.custom_er_browser().viewport_offset(),
+            28,
+            CursorKind::Insert,
+            theme,
+        ));
+        let edit_label = if state.settings.is_editing_custom_er_browser() {
+            " editing"
+        } else {
+            ""
+        };
+        spans.push(Span::styled(format!("]{saved_label}{edit_label}"), style));
+        lines.push(Line::from(spans));
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
     }
@@ -236,8 +252,12 @@ impl SettingsOverlay {
     fn hint_text(state: &AppState) -> &'static str {
         if state.settings.is_editing_custom_er_browser() {
             " Enter Apply │ Esc Done │ Type Browser "
-        } else {
+        } else if state.settings.section() == SettingsSection::ErDiagram
+            && state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom
+        {
             " Enter Apply │ i Edit │ Tab/⇧Tab Section │ Esc Cancel "
+        } else {
+            " Enter Apply │ Tab/⇧Tab Section │ Esc Cancel "
         }
     }
 }

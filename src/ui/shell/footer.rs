@@ -7,6 +7,7 @@ use ratatui::widgets::Paragraph;
 use crate::app::model::app_state::AppState;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::settings::{ErBrowserChoice, SettingsSection};
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
@@ -232,13 +233,26 @@ impl Footer {
                 HELP_ROWS[idx::help::CLOSE].as_hint(),
             ],
             InputMode::Settings => {
-                vec![
+                if state.settings.is_editing_custom_er_browser() {
+                    return vec![
+                        SETTINGS_ROWS[idx::settings::APPLY].as_hint(),
+                        ("Esc", "Done"),
+                        ("Type", "Browser"),
+                    ];
+                }
+
+                let mut hints = vec![
                     SETTINGS_ROWS[idx::settings::APPLY].as_hint(),
                     SETTINGS_ROWS[idx::settings::SELECT].as_hint(),
-                    SETTINGS_ROWS[idx::settings::EDIT].as_hint(),
-                    SETTINGS_ROWS[idx::settings::SECTION].as_hint(),
-                    SETTINGS_ROWS[idx::settings::CANCEL].as_hint(),
-                ]
+                ];
+                if state.settings.section() == SettingsSection::ErDiagram
+                    && state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom
+                {
+                    hints.push(SETTINGS_ROWS[idx::settings::EDIT].as_hint());
+                }
+                hints.push(SETTINGS_ROWS[idx::settings::SECTION].as_hint());
+                hints.push(SETTINGS_ROWS[idx::settings::CANCEL].as_hint());
+                hints
             }
             InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {

@@ -26,9 +26,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │    Google Chrome                                                             │                                │
 │                                │                  │    Firefox                                                                   │                                │
 │                                │                  │    Safari                                                                    │                                │
-│                                │                  │    Custom command: []                                                        │                                │
-│                                │                  │                                                                              │────────────────────────────────┘
-│                                │                  │                                                                              │────────────────────────────────┐
+│                                │                  │                                                                              │                                │
+│                                │                  │Custom command                                                                │────────────────────────────────┘
+│                                │                  │    []                                                                        │────────────────────────────────┐
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
@@ -40,7 +40,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                ╰ Enter Apply │ i Edit │ Tab/⇧Tab Section │ Esc Cancel ───────────────────────────────────────────╯                                │
+│                                ╰ Enter Apply │ Tab/⇧Tab Section │ Esc Cancel ────────────────────────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -52,4 +52,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Apply  j/k/↑↓:Select  i:Edit  Tab/⇧Tab:Section  Esc:Cancel
+Enter:Apply  j/k/↑↓:Select  Tab/⇧Tab:Section  Esc:Cancel
