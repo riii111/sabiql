@@ -126,7 +126,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             };
             state.ui.set_theme(theme_id);
             state.settings.commit_selection();
-            state.modal.set_mode(InputMode::Normal);
             state.set_success("Settings saved".to_string());
             Some(vec![Effect::SaveSettings { settings }])
         }
@@ -551,7 +550,7 @@ mod tests {
                 let effects =
                     reduce_modal(&mut state, &Action::SettingsApply, Instant::now()).unwrap();
 
-                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert_eq!(state.input_mode(), InputMode::Settings);
                 assert_eq!(state.ui.theme_id(), ThemeId::Light);
                 assert!(matches!(
                     effects.as_slice(),
@@ -574,6 +573,7 @@ mod tests {
                 let effects =
                     reduce_modal(&mut state, &Action::SettingsApply, Instant::now()).unwrap();
 
+                assert_eq!(state.input_mode(), InputMode::Settings);
                 assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
                 assert!(matches!(
                     effects.as_slice(),
@@ -608,6 +608,7 @@ mod tests {
                 let effects =
                     reduce_modal(&mut state, &Action::SettingsApply, Instant::now()).unwrap();
 
+                assert_eq!(state.input_mode(), InputMode::Settings);
                 assert!(matches!(
                     effects.as_slice(),
                     [Effect::SaveSettings { settings }]
