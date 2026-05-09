@@ -115,9 +115,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 theme_id,
                 er_browser: state.settings.selected_er_browser(),
             };
-            state.ui.set_theme(theme_id);
-            state.settings.commit_selection();
-            state.set_success("Settings saved".to_string());
             Some(vec![Effect::SaveSettings { settings }])
         }
         Action::SettingsCancel | Action::CloseModal(ModalKind::Settings) => {
@@ -125,7 +122,14 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
-        Action::SettingsSaved => Some(vec![]),
+        Action::SettingsSaved(settings) => {
+            state.ui.set_theme(settings.theme_id);
+            state
+                .settings
+                .commit_saved(settings.theme_id, settings.er_browser.clone());
+            state.set_success("Settings saved".to_string());
+            Some(vec![])
+        }
         Action::SettingsSaveFailed(error) => {
             state.set_error(format!("Failed to save settings: {error}"));
             Some(vec![])
@@ -529,7 +533,7 @@ mod tests {
             }
 
             #[test]
-            fn apply_commits_selection() {
+            fn apply_emits_settings_save_effect() {
                 let mut state = create_test_state();
                 reduce_modal(
                     &mut state,
@@ -542,7 +546,7 @@ mod tests {
                     reduce_modal(&mut state, &Action::SettingsApply, Instant::now()).unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
-                assert_eq!(state.ui.theme_id(), ThemeId::Light);
+                assert_eq!(state.ui.theme_id(), ThemeId::Default);
                 assert!(matches!(
                     effects.as_slice(),
                     [Effect::SaveSettings { settings }]
@@ -551,7 +555,7 @@ mod tests {
             }
 
             #[test]
-            fn apply_commits_er_browser_selection() {
+            fn apply_emits_er_browser_save_effect() {
                 let mut state = create_test_state();
                 reduce_modal(
                     &mut state,
@@ -565,7 +569,7 @@ mod tests {
                     reduce_modal(&mut state, &Action::SettingsApply, Instant::now()).unwrap();
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
-                assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
+                assert_eq!(state.settings.saved_er_browser(), None);
                 assert!(matches!(
                     effects.as_slice(),
                     [Effect::SaveSettings { settings }]
@@ -605,6 +609,41 @@ mod tests {
                     [Effect::SaveSettings { settings }]
                         if settings.er_browser.as_deref() == Some("B")
                 ));
+            }
+
+            #[test]
+            fn save_success_commits_pending_settings() {
+                let mut state = create_test_state();
+                reduce_modal(
+                    &mut state,
+                    &Action::OpenModal(ModalKind::Settings),
+                    Instant::now(),
+                );
+                reduce_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+                reduce_modal(&mut state, &Action::SettingsNextSection, Instant::now());
+                reduce_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::SettingsSaved(AppSettings {
+                        theme_id: ThemeId::Light,
+                        er_browser: Some("Google Chrome".to_string()),
+                    }),
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.ui.theme_id(), ThemeId::Light);
+                assert_eq!(state.settings.previous_theme(), ThemeId::Light);
+                assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
+                assert!(
+                    state
+                        .messages
+                        .last_success
+                        .as_deref()
+                        .is_some_and(|message| { message.contains("Settings saved") })
+                );
+                assert!(effects.is_empty());
             }
         }
 

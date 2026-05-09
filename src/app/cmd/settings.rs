@@ -13,9 +13,9 @@ pub(crate) async fn run(
         return;
     };
 
-    let result = settings_store.save(settings);
+    let result = settings_store.save(settings.clone());
     let action = match result {
-        Ok(()) => Action::SettingsSaved,
+        Ok(()) => Action::SettingsSaved(settings),
         Err(error) => Action::SettingsSaveFailed(error),
     };
     let _ = action_tx.send(action).await;
@@ -84,7 +84,12 @@ mod tests {
             store.saved.lock().unwrap()[0].er_browser.as_deref(),
             Some("Firefox")
         );
-        assert!(matches!(rx.recv().await, Some(Action::SettingsSaved)));
+        assert!(matches!(
+            rx.recv().await,
+            Some(Action::SettingsSaved(settings))
+                if settings.theme_id == ThemeId::Light
+                    && settings.er_browser.as_deref() == Some("Firefox")
+        ));
     }
 
     #[tokio::test]

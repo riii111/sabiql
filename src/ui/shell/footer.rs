@@ -427,4 +427,36 @@ mod tests {
             expected_visible
         );
     }
+
+    #[test]
+    fn settings_custom_browser_hint_shows_edit_when_selected() {
+        let mut state = AppState::new("test".to_string());
+        let services = AppServices::stub();
+        state.modal.set_mode(InputMode::Settings);
+        state.settings.switch_next_section();
+        state.settings.start_custom_browser_edit();
+        state.settings.stop_custom_browser_edit();
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(hints.contains(&("i", "Edit")));
+        assert!(hints.contains(&("Tab/⇧Tab", "Section")));
+        assert!(hints.contains(&("Esc", "Cancel")));
+    }
+
+    #[test]
+    fn settings_custom_browser_edit_hint_shows_done_and_typing() {
+        let mut state = AppState::new("test".to_string());
+        let services = AppServices::stub();
+        state.modal.set_mode(InputMode::Settings);
+        state.settings.switch_next_section();
+        state.settings.start_custom_browser_edit();
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert_eq!(
+            hints,
+            vec![("Enter", "Apply"), ("Esc", "Done"), ("Type", "Browser")]
+        );
+    }
 }

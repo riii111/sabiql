@@ -161,20 +161,24 @@ impl SettingsOverlay {
             Style::default().fg(theme.semantic.text.secondary)
         };
         let mut spans = vec![Span::styled(format!("  {marker} ["), style)];
-        spans.extend(text_cursor_spans_with_kind(
-            state.settings.custom_er_browser().content(),
-            state.settings.custom_er_browser().cursor(),
-            state.settings.custom_er_browser().viewport_offset(),
-            28,
-            CursorKind::Insert,
-            theme,
-        ));
         let edit_label = if state.settings.is_editing_custom_er_browser() {
             " editing"
         } else {
             ""
         };
-        spans.push(Span::styled(format!("]{saved_label}{edit_label}"), style));
+        let suffix = format!("]{saved_label}{edit_label}");
+        let input_width = usize::from(content.width)
+            .saturating_sub(5 + suffix.chars().count())
+            .max(1);
+        spans.extend(text_cursor_spans_with_kind(
+            state.settings.custom_er_browser().content(),
+            state.settings.custom_er_browser().cursor(),
+            state.settings.custom_er_browser().viewport_offset(),
+            input_width,
+            CursorKind::Insert,
+            theme,
+        ));
+        spans.push(Span::styled(suffix, style));
         lines.push(Line::from(spans));
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);

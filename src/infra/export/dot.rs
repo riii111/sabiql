@@ -186,21 +186,17 @@ fn open_with_browser_candidates(
         });
     }
 
-    let mut last_error = None;
     for command in candidates {
         match Command::new(command).arg(path).spawn() {
             Ok(_) => return Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                last_error = Some(error);
-            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
     }
-    Err(last_error
-        .unwrap_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::NotFound, "browser command not found")
-        })
-        .into())
+    Err(ViewerError::BrowserCommandNotFound {
+        browser: browser.to_string(),
+        candidates: candidates.join(", "),
+    })
 }
 
 pub struct DotExporter<G = SystemGraphvizRunner, V = SystemViewerLauncher> {

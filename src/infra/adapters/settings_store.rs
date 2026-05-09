@@ -134,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn save_and_load_round_trips_theme() {
+    fn save_and_load_round_trips_settings() {
         let temp_dir = TempDir::new().unwrap();
         let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
 

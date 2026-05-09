@@ -19,17 +19,19 @@ impl SettingsSection {
     }
 
     fn next(self) -> Self {
-        match self {
-            Self::Appearance => Self::ErDiagram,
-            Self::ErDiagram => Self::Appearance,
-        }
+        let index = Self::ALL
+            .iter()
+            .position(|section| *section == self)
+            .unwrap_or(0);
+        Self::ALL[(index + 1) % Self::ALL.len()]
     }
 
     fn previous(self) -> Self {
-        match self {
-            Self::Appearance => Self::ErDiagram,
-            Self::ErDiagram => Self::Appearance,
-        }
+        let index = Self::ALL
+            .iter()
+            .position(|section| *section == self)
+            .unwrap_or(0);
+        Self::ALL[(index + Self::ALL.len() - 1) % Self::ALL.len()]
     }
 }
 
@@ -81,9 +83,13 @@ impl ErBrowserChoice {
     pub fn from_browser_name(browser: Option<&str>) -> Self {
         match browser.map(str::trim).filter(|value| !value.is_empty()) {
             None => Self::SystemDefault,
-            Some("Google Chrome" | "google-chrome" | "google-chrome-stable" | "chromium") => {
-                Self::GoogleChrome
-            }
+            Some(
+                "Google Chrome"
+                | "google-chrome"
+                | "google-chrome-stable"
+                | "chromium"
+                | "chromium-browser",
+            ) => Self::GoogleChrome,
             Some("Firefox" | "firefox") => Self::Firefox,
             Some("Safari") => Self::Safari,
             Some("Microsoft Edge" | "microsoft-edge" | "microsoft-edge-stable") => {
@@ -263,9 +269,13 @@ impl SettingsState {
         }
     }
 
-    pub fn commit_selection(&mut self) {
-        self.previous_theme = self.selected_theme;
-        self.saved_er_browser = self.selected_er_browser();
+    pub fn commit_saved(&mut self, theme: ThemeId, er_browser: Option<String>) {
+        self.previous_theme = theme;
+        self.selected_theme = theme;
+        self.saved_er_browser = normalize_browser(er_browser);
+        self.selected_er_browser_choice =
+            ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
+        self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
     }
 
@@ -335,7 +345,7 @@ mod tests {
     fn custom_browser_normalizes_empty_string_to_none() {
         let mut state = SettingsState::default();
         state.switch_next_section();
-        state.select_previous();
+        state.start_custom_browser_edit();
 
         assert_eq!(state.selected_er_browser(), None);
     }
@@ -370,6 +380,10 @@ mod tests {
 
     #[test]
     fn browser_choice_recognizes_command_aliases() {
+        assert_eq!(
+            ErBrowserChoice::from_browser_name(Some("chromium-browser")),
+            ErBrowserChoice::GoogleChrome
+        );
         assert_eq!(
             ErBrowserChoice::from_browser_name(Some("microsoft-edge-stable")),
             ErBrowserChoice::MicrosoftEdge

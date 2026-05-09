@@ -18,6 +18,8 @@ pub enum ViewerError {
     LaunchFailed(#[from] std::io::Error),
     #[error("{browser} is not available on this platform")]
     UnsupportedBrowser { browser: String },
+    #[error("Browser command not found for {browser}. Tried: {candidates}")]
+    BrowserCommandNotFound { browser: String, candidates: String },
 }
 
 pub trait GraphvizRunner: Send + Sync {
@@ -77,6 +79,20 @@ mod tests {
 
             assert!(message.contains("Safari"));
             assert!(message.contains("not available"));
+        }
+
+        #[test]
+        fn browser_command_not_found_lists_candidates() {
+            let error = ViewerError::BrowserCommandNotFound {
+                browser: "Google Chrome".to_string(),
+                candidates: "google-chrome, chromium".to_string(),
+            };
+
+            let message = format!("{error}");
+
+            assert!(message.contains("Google Chrome"));
+            assert!(message.contains("google-chrome"));
+            assert!(message.contains("chromium"));
         }
     }
 }
