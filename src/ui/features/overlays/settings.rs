@@ -148,8 +148,6 @@ impl SettingsOverlay {
                 ));
                 let edit_label = if state.settings.is_editing_custom_er_browser() {
                     " editing"
-                } else if selected {
-                    " ^E edit"
                 } else {
                     ""
                 };
@@ -239,7 +237,7 @@ impl SettingsOverlay {
         if state.settings.is_editing_custom_er_browser() {
             " Enter Apply │ Esc Done │ Type Browser "
         } else {
-            " Enter Apply │ ^E Edit │ Tab/⇧Tab Section │ Esc Cancel "
+            " Enter Apply │ i Edit │ Tab/⇧Tab Section │ Esc Cancel "
         }
     }
 }

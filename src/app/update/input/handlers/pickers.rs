@@ -262,7 +262,7 @@ mod tests {
         #[case(combo(Key::Up), Action::SettingsSelectPrevious)]
         #[case(combo(Key::Char('j')), Action::SettingsSelectNext)]
         #[case(combo(Key::Char('k')), Action::SettingsSelectPrevious)]
-        #[case(KeyCombo::ctrl(Key::Char('e')), Action::SettingsStartCustomBrowserEdit)]
+        #[case(combo(Key::Char('i')), Action::SettingsStartCustomBrowserEdit)]
         #[case(combo(Key::Tab), Action::SettingsNextSection)]
         #[case(combo_shift(Key::BackTab), Action::SettingsPreviousSection)]
         fn keys_map_to_actions(#[case] combo: KeyCombo, #[case] expected: Action) {
@@ -301,7 +301,7 @@ mod tests {
         }
 
         #[test]
-        fn other_chars_edit_custom_browser() {
+        fn other_chars_edit_custom_browser_when_editing() {
             let state = editing_custom_browser_state();
             let result = handle_settings_keys(combo(Key::Char('B')), &state);
 

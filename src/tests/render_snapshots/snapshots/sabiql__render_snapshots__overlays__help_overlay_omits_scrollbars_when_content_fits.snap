@@ -215,7 +215,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │▸ Settings                                                                                                                  │                          │
 │                          │  Enter               Apply setting                                                                                         │                          │
 │                          │  j / k / ↑ / ↓       Select setting                                                                                        │                          │
-│                          │  Ctrl+E              Edit custom browser                                                                                   │                          │
+│                          │  i                   Edit custom browser                                                                                   │                          │
 │                          │  Tab / Shift+Tab     Switch settings section                                                                               │                          │
 │                          │  Esc                 Cancel                                                                                                │                          │
 │                          │                                                                                                                            │                          │

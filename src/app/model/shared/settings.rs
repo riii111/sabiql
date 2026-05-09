@@ -36,22 +36,48 @@ impl SettingsSection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErBrowserChoice {
     SystemDefault,
+    GoogleChrome,
+    Firefox,
+    Safari,
     Custom,
 }
 
 impl ErBrowserChoice {
-    pub const ALL: [Self; 2] = [Self::SystemDefault, Self::Custom];
+    pub const ALL: [Self; 5] = [
+        Self::SystemDefault,
+        Self::GoogleChrome,
+        Self::Firefox,
+        Self::Safari,
+        Self::Custom,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::SystemDefault => "System default",
+            Self::GoogleChrome => "Google Chrome",
+            Self::Firefox => "Firefox",
+            Self::Safari => "Safari",
             Self::Custom => "Custom",
+        }
+    }
+
+    pub fn browser_name(self) -> Option<&'static str> {
+        match self {
+            Self::SystemDefault | Self::Custom => None,
+            Self::GoogleChrome => Some("Google Chrome"),
+            Self::Firefox => Some("Firefox"),
+            Self::Safari => Some("Safari"),
         }
     }
 
     pub fn from_browser_name(browser: Option<&str>) -> Self {
         match browser.map(str::trim).filter(|value| !value.is_empty()) {
             None => Self::SystemDefault,
+            Some("Google Chrome" | "google-chrome" | "google-chrome-stable" | "chromium") => {
+                Self::GoogleChrome
+            }
+            Some("Firefox" | "firefox") => Self::Firefox,
+            Some("Safari") => Self::Safari,
             Some(_) => Self::Custom,
         }
     }
@@ -152,6 +178,7 @@ impl SettingsState {
             ErBrowserChoice::Custom => {
                 normalize_browser(Some(self.custom_er_browser.content().trim().to_string()))
             }
+            choice => choice.browser_name().map(str::to_string),
         }
     }
 
@@ -302,12 +329,15 @@ mod tests {
     }
 
     #[test]
-    fn selecting_empty_custom_browser_returns_none() {
+    fn known_browser_choice_returns_logical_browser_name() {
         let mut state = SettingsState::default();
         state.switch_next_section();
         state.select_next();
 
-        assert_eq!(state.selected_er_browser(), None);
+        assert_eq!(
+            state.selected_er_browser().as_deref(),
+            Some("Google Chrome")
+        );
     }
 
     #[test]
@@ -322,14 +352,28 @@ mod tests {
     }
 
     #[test]
-    fn cursor_move_requires_custom_edit_mode() {
+    fn cursor_move_does_not_switch_preset_to_custom() {
         let mut state = SettingsState::default();
         state.switch_next_section();
         state.select_next();
 
         state.move_custom_browser_cursor(CursorMove::Left);
 
-        assert_eq!(state.selected_er_browser_choice(), ErBrowserChoice::Custom);
+        assert_eq!(
+            state.selected_er_browser_choice(),
+            ErBrowserChoice::GoogleChrome
+        );
+    }
+
+    #[test]
+    fn custom_browser_input_requires_edit_mode() {
+        let mut state = SettingsState::default();
+        state.switch_next_section();
+        state.select_previous();
+
+        state.input_custom_browser('f');
+
         assert!(!state.is_editing_custom_er_browser());
+        assert_eq!(state.custom_er_browser().content(), "");
     }
 }

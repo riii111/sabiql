@@ -598,13 +598,13 @@ pub const SETTINGS_ROWS: &[ModeRow] = &[
         ],
     },
     ModeRow {
-        key_short: "^E",
-        key: "Ctrl+E",
+        key_short: "i",
+        key: "i",
         desc_short: "Edit",
         description: "Edit custom browser",
         bindings: &[ExecBinding {
             action: Action::SettingsStartCustomBrowserEdit,
-            combos: &[KeyCombo::ctrl(Key::Char('e'))],
+            combos: &[KeyCombo::plain(Key::Char('i'))],
         }],
     },
     ModeRow {

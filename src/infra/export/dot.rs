@@ -37,18 +37,7 @@ pub struct SystemViewerLauncher;
 impl ViewerLauncher for SystemViewerLauncher {
     fn open_file(&self, path: &Path, browser: Option<&str>) -> Result<(), ViewerError> {
         if let Some(browser) = browser.map(str::trim).filter(|value| !value.is_empty()) {
-            #[cfg(target_os = "macos")]
-            {
-                Command::new("open")
-                    .arg("-a")
-                    .arg(browser)
-                    .arg(path)
-                    .spawn()?;
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                Command::new(browser).arg(path).spawn()?;
-            }
+            open_with_browser(path, browser)?;
             return Ok(());
         }
 
@@ -69,6 +58,67 @@ impl ViewerLauncher for SystemViewerLauncher {
         }
         Ok(())
     }
+}
+
+fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg("-a")
+            .arg(browser)
+            .arg(path)
+            .spawn()?;
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "freebsd", target_os = "linux"))]
+    {
+        open_with_browser_candidates(path, browser_command_candidates(browser))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(["/C", "start", "", browser])
+            .arg(path)
+            .spawn()?;
+        Ok(())
+    }
+}
+
+#[cfg(any(target_os = "freebsd", target_os = "linux"))]
+fn browser_command_candidates(browser: &str) -> Vec<&str> {
+    match browser {
+        "Google Chrome" => vec![
+            "google-chrome",
+            "google-chrome-stable",
+            "chromium",
+            "chromium-browser",
+            "chrome",
+        ],
+        "Firefox" => vec!["firefox"],
+        "Safari" => vec![],
+        _ => vec![browser],
+    }
+}
+
+#[cfg(any(target_os = "freebsd", target_os = "linux"))]
+fn open_with_browser_candidates(path: &Path, candidates: &[&str]) -> Result<(), ViewerError> {
+    let mut last_error = None;
+    for command in candidates {
+        match Command::new(command).arg(path).spawn() {
+            Ok(_) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                last_error = Some(error);
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(last_error
+        .unwrap_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "browser command not found")
+        })
+        .into())
 }
 
 pub struct DotExporter<G = SystemGraphvizRunner, V = SystemViewerLauncher> {
