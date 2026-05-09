@@ -42,7 +42,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
-│                                ╰ Enter Confirm  n New  e Edit  d Delete  Esc Close ──────────────────────────────────────────────╯                                │
+│                                ╰ Enter: Confirm │ n: New │ e: Edit │ d: Delete │ Esc: Close ─────────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

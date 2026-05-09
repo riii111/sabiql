@@ -18,6 +18,22 @@ pub fn hint_line(hints: &[(&str, &str)], theme: &ThemePalette) -> Line<'static> 
     Line::from(spans)
 }
 
+pub fn modal_hint_line(hints: &[(&str, &str)], theme: &ThemePalette) -> Line<'static> {
+    let mut spans = Vec::new();
+
+    spans.push(Span::styled(" ", theme.modal_hint_style()));
+    for (i, (key, desc)) in hints.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" │ ", theme.modal_hint_style()));
+        }
+        spans.push(key_text(key, theme));
+        spans.push(Span::styled(format!(": {desc}"), theme.modal_hint_style()));
+    }
+    spans.push(Span::styled(" ", theme.modal_hint_style()));
+
+    Line::from(spans)
+}
+
 pub fn chip_hint_line(key: &str, desc: &str, theme: &ThemePalette) -> Line<'static> {
     let chip = key_chip(key, theme);
     let padding_len = 15usize.saturating_sub(key.len() + 4);

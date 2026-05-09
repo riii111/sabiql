@@ -11,7 +11,7 @@ use crate::domain::connection::ConnectionId;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,
 };
-use crate::primitives::molecules::render_modal;
+use crate::primitives::molecules::{modal_hint_line, render_modal_with_hint_line};
 use crate::theme::ThemePalette;
 
 const PREFIX_DISPLAY_WIDTH: usize = 2;
@@ -26,20 +26,20 @@ impl ConnectionSelector {
             state.connection_list_items(),
             state.ui.connection_list_selected,
         );
-        let hint = Self::build_hint_string(is_service_selected);
-        let (_outer, inner) = render_modal(
+        let hint = Self::build_hints(is_service_selected);
+        let (_outer, inner) = render_modal_with_hint_line(
             frame,
             Constraint::Percentage(60),
             Constraint::Percentage(60),
             " Select Connection ",
-            &hint,
+            modal_hint_line(&hint, theme),
             theme,
         );
 
         render_connection_list(frame, inner, state, theme)
     }
 
-    fn build_hint_string(is_service_selected: bool) -> String {
+    fn build_hints(is_service_selected: bool) -> Vec<(&'static str, &'static str)> {
         let r = CONNECTION_SELECTOR_ROWS;
         use idx::connection_selector as cs;
 
@@ -50,11 +50,7 @@ impl ConnectionSelector {
         }
         hints.push(r[cs::CLOSE].as_hint());
 
-        let hint_parts: Vec<String> = hints
-            .iter()
-            .map(|(key, desc)| format!("{key} {desc}"))
-            .collect();
-        format!(" {} ", hint_parts.join("  "))
+        hints
     }
 }
 

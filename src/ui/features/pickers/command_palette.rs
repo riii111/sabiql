@@ -7,18 +7,18 @@ use crate::app::model::app_state::AppState;
 use crate::app::update::input::palette::palette_commands;
 use crate::theme::ThemePalette;
 
-use crate::primitives::molecules::render_modal;
+use crate::primitives::molecules::{modal_hint_line, render_modal_with_hint_line};
 
 pub struct CommandPalette;
 
 impl CommandPalette {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
-        let (_, inner) = render_modal(
+        let (_, inner) = render_modal_with_hint_line(
             frame,
             Constraint::Percentage(50),
             Constraint::Percentage(50),
             " Command Palette ",
-            " Enter Select │ Esc Close ",
+            modal_hint_line(&[("Enter", "Select"), ("Esc", "Close")], theme),
             theme,
         );
 

@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 407
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                                           
@@ -272,7 +271,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
-│                          ╰ ?/Esc Close ───────────────────────────────────────────────────────────────────────────────────────────────────────────────╯                          │
+│                          ╰ ?/Esc: Close ──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯                          │
 │                                           ││                                                                                                                                     │
 │                                           ││                                                                                                                                     │
 │                                           ││                                                                                                                                     │

@@ -5,8 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
-use crate::primitives::atoms::text_cursor_spans;
-use crate::primitives::molecules::render_modal;
+use crate::primitives::atoms::{key_text, text_cursor_spans};
+use crate::primitives::molecules::render_modal_with_hint_line;
 use crate::theme::ThemePalette;
 
 pub(super) fn filter_visible_width(raw_width: usize, cursor: usize, char_count: usize) -> usize {
@@ -31,12 +31,19 @@ impl TablePicker {
         theme: &ThemePalette,
     ) -> TablePickerRenderMetrics {
         let filtered_count = state.filtered_tables().len();
-        let (_, inner) = render_modal(
+        let (_, inner) = render_modal_with_hint_line(
             frame,
             Constraint::Percentage(60),
             Constraint::Percentage(70),
             " Table Picker ",
-            &format!(" {filtered_count} tables │ Enter Select "),
+            Line::from(vec![
+                Span::styled(
+                    format!(" {filtered_count} tables │ "),
+                    theme.modal_hint_style(),
+                ),
+                key_text("Enter", theme),
+                Span::styled(": Select ", theme.modal_hint_style()),
+            ]),
             theme,
         );
 

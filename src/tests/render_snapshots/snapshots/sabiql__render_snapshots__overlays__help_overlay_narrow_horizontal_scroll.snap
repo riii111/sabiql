@@ -23,5 +23,5 @@ test_project | test_db | - | no dsn | localhost:54
 │       │rt)                             ││      │
 │       │    Execute query               ▼│      │
 │       │ col  26% ◀︎────═════───────────▶︎ │      │
-└───────╰ ?/Esc Close ────────────────────╯──────┘
+└───────╰ ?/Esc: Close ───────────────────╯──────┘
 h/l / ←→:H-Scroll  ?/Esc:Close
