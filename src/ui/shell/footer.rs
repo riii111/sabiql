@@ -7,7 +7,6 @@ use ratatui::widgets::Paragraph;
 use crate::app::model::app_state::AppState;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::settings::{ErBrowserChoice, SettingsSection};
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
@@ -15,12 +14,13 @@ use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
     INSPECTOR_DDL_KEYS, JSONB_DETAIL_ROWS, JSONB_EDIT_ROWS, JSONB_SEARCH_KEYS, OVERLAY_KEYS,
-    QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SETTINGS_ROWS, SQL_MODAL_CONFIRMING_KEYS,
-    SQL_MODAL_KEYS, SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
+    QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
+    SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
 };
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
 use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
+use crate::settings_hints::settings_hints;
 use crate::theme::ThemePalette;
 
 pub struct Footer;
@@ -232,28 +232,7 @@ impl Footer {
                 HELP_ROWS[idx::help::H_SCROLL].as_hint(),
                 HELP_ROWS[idx::help::CLOSE].as_hint(),
             ],
-            InputMode::Settings => {
-                if state.settings.is_editing_custom_er_browser() {
-                    return vec![
-                        SETTINGS_ROWS[idx::settings::APPLY].as_hint(),
-                        ("Esc", "Done"),
-                        ("Type", "Browser"),
-                    ];
-                }
-
-                let mut hints = vec![
-                    SETTINGS_ROWS[idx::settings::APPLY].as_hint(),
-                    SETTINGS_ROWS[idx::settings::SELECT].as_hint(),
-                ];
-                if state.settings.section() == SettingsSection::ErDiagram
-                    && state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom
-                {
-                    hints.push(SETTINGS_ROWS[idx::settings::EDIT].as_hint());
-                }
-                hints.push(SETTINGS_ROWS[idx::settings::SECTION].as_hint());
-                hints.push(SETTINGS_ROWS[idx::settings::CANCEL].as_hint());
-                hints
-            }
+            InputMode::Settings => settings_hints(state),
             InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {
                 if matches!(
