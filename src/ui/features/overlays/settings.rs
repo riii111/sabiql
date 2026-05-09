@@ -23,7 +23,7 @@ impl SettingsOverlay {
             Constraint::Percentage(60),
             Constraint::Percentage(48),
             " Settings ",
-            " Enter Apply │ Esc Cancel ",
+            " Enter Apply │ Tab/⇧Tab Section │ Esc Cancel ",
             theme,
         );
 

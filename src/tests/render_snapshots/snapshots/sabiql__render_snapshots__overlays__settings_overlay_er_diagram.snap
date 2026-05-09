@@ -39,7 +39,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                ╰ Enter Apply │ Esc Cancel ───────────────────────────────────────────────────────────────────────╯                                │
+│                                ╰ Enter Apply │ Tab/⇧Tab Section │ Esc Cancel ────────────────────────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
