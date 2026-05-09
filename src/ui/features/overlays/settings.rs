@@ -23,7 +23,7 @@ impl SettingsOverlay {
             Constraint::Percentage(60),
             Constraint::Percentage(48),
             " Settings ",
-            " Enter Apply │ Tab/⇧Tab Section │ Esc Cancel ",
+            Self::hint_text(state),
             theme,
         );
 
@@ -146,7 +146,14 @@ impl SettingsOverlay {
                     CursorKind::Insert,
                     theme,
                 ));
-                spans.push(Span::styled(format!("]{saved_label}"), style));
+                let edit_label = if state.settings.is_editing_custom_er_browser() {
+                    " editing"
+                } else if selected {
+                    " ^E edit"
+                } else {
+                    ""
+                };
+                spans.push(Span::styled(format!("]{saved_label}{edit_label}"), style));
                 lines.push(Line::from(spans));
             } else {
                 lines.push(Line::from(Span::styled(
@@ -226,6 +233,14 @@ impl SettingsOverlay {
         ];
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    }
+
+    fn hint_text(state: &AppState) -> &'static str {
+        if state.settings.is_editing_custom_er_browser() {
+            " Enter Apply │ Esc Done │ Type Browser "
+        } else {
+            " Enter Apply │ ^E Edit │ Tab/⇧Tab Section │ Esc Cancel "
+        }
     }
 }
 

@@ -235,6 +235,7 @@ impl Footer {
                 vec![
                     SETTINGS_ROWS[idx::settings::APPLY].as_hint(),
                     SETTINGS_ROWS[idx::settings::SELECT].as_hint(),
+                    SETTINGS_ROWS[idx::settings::EDIT].as_hint(),
                     SETTINGS_ROWS[idx::settings::SECTION].as_hint(),
                     SETTINGS_ROWS[idx::settings::CANCEL].as_hint(),
                 ]

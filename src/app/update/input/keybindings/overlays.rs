@@ -582,20 +582,30 @@ pub const SETTINGS_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "↑↓",
-        key: "↑ / ↓",
+        key_short: "j/k/↑↓",
+        key: "j / k / ↑ / ↓",
         desc_short: "Select",
         description: "Select setting",
         bindings: &[
             ExecBinding {
                 action: Action::SettingsSelectNext,
-                combos: &[KeyCombo::plain(Key::Down)],
+                combos: &[KeyCombo::plain(Key::Down), KeyCombo::plain(Key::Char('j'))],
             },
             ExecBinding {
                 action: Action::SettingsSelectPrevious,
-                combos: &[KeyCombo::plain(Key::Up)],
+                combos: &[KeyCombo::plain(Key::Up), KeyCombo::plain(Key::Char('k'))],
             },
         ],
+    },
+    ModeRow {
+        key_short: "^E",
+        key: "Ctrl+E",
+        desc_short: "Edit",
+        description: "Edit custom browser",
+        bindings: &[ExecBinding {
+            action: Action::SettingsStartCustomBrowserEdit,
+            combos: &[KeyCombo::ctrl(Key::Char('e'))],
+        }],
     },
     ModeRow {
         key_short: "Tab/⇧Tab",

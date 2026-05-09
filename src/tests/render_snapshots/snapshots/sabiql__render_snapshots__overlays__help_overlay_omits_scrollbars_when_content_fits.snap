@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 407
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                                           
@@ -213,7 +214,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │                                                                                                                            │                          │
 │                          │▸ Settings                                                                                                                  │                          │
 │                          │  Enter               Apply setting                                                                                         │                          │
-│                          │  ↑ / ↓               Select setting                                                                                        │                          │
+│                          │  j / k / ↑ / ↓       Select setting                                                                                        │                          │
+│                          │  Ctrl+E              Edit custom browser                                                                                   │                          │
 │                          │  Tab / Shift+Tab     Switch settings section                                                                               │                          │
 │                          │  Esc                 Cancel                                                                                                │                          │
 │                          │                                                                                                                            │                          │
@@ -250,7 +252,6 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  type                Type to search                                                                                        │                          │
 │                          │  Enter               Confirm search                                                                                        │                          │
 │                          │  Esc                 Cancel search                                                                                         │                          │
-│                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │

@@ -125,6 +125,7 @@ pub struct SettingsState {
     saved_er_browser: Option<String>,
     selected_er_browser_choice: ErBrowserChoice,
     custom_er_browser: TextInputState,
+    editing_custom_er_browser: bool,
     section: SettingsSection,
 }
 
@@ -136,6 +137,7 @@ impl Default for SettingsState {
             saved_er_browser: None,
             selected_er_browser_choice: ErBrowserChoice::SystemDefault,
             custom_er_browser: TextInputState::default(),
+            editing_custom_er_browser: false,
             section: SettingsSection::Appearance,
         }
     }
@@ -155,6 +157,7 @@ impl SettingsState {
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
+        self.editing_custom_er_browser = false;
         self.section = SettingsSection::Appearance;
     }
 
@@ -182,6 +185,12 @@ impl SettingsState {
         &self.custom_er_browser
     }
 
+    pub fn is_editing_custom_er_browser(&self) -> bool {
+        self.editing_custom_er_browser
+            && self.section == SettingsSection::ErDiagram
+            && self.selected_er_browser_choice == ErBrowserChoice::Custom
+    }
+
     pub fn selected_er_browser(&self) -> Option<String> {
         match self.selected_er_browser_choice {
             ErBrowserChoice::SystemDefault => None,
@@ -193,10 +202,12 @@ impl SettingsState {
     }
 
     pub fn switch_next_section(&mut self) {
+        self.editing_custom_er_browser = false;
         self.section = self.section.next();
     }
 
     pub fn switch_previous_section(&mut self) {
+        self.editing_custom_er_browser = false;
         self.section = self.section.previous();
     }
 
@@ -206,6 +217,7 @@ impl SettingsState {
                 self.selected_theme = self.selected_theme.next();
             }
             SettingsSection::ErDiagram => {
+                self.editing_custom_er_browser = false;
                 self.selected_er_browser_choice = self.selected_er_browser_choice.next();
             }
         }
@@ -217,28 +229,43 @@ impl SettingsState {
                 self.selected_theme = self.selected_theme.previous();
             }
             SettingsSection::ErDiagram => {
+                self.editing_custom_er_browser = false;
                 self.selected_er_browser_choice = self.selected_er_browser_choice.previous();
             }
         }
     }
 
+    pub fn start_custom_browser_edit(&mut self) {
+        if self.section == SettingsSection::ErDiagram {
+            self.selected_er_browser_choice = ErBrowserChoice::Custom;
+            self.editing_custom_er_browser = true;
+        }
+    }
+
+    pub fn stop_custom_browser_edit(&mut self) {
+        self.editing_custom_er_browser = false;
+    }
+
     pub fn input_custom_browser(&mut self, ch: char) {
-        self.selected_er_browser_choice = ErBrowserChoice::Custom;
-        self.custom_er_browser.insert_char(ch);
+        if self.is_editing_custom_er_browser() {
+            self.custom_er_browser.insert_char(ch);
+        }
     }
 
     pub fn backspace_custom_browser(&mut self) {
-        self.selected_er_browser_choice = ErBrowserChoice::Custom;
-        self.custom_er_browser.backspace();
+        if self.is_editing_custom_er_browser() {
+            self.custom_er_browser.backspace();
+        }
     }
 
     pub fn delete_custom_browser(&mut self) {
-        self.selected_er_browser_choice = ErBrowserChoice::Custom;
-        self.custom_er_browser.delete();
+        if self.is_editing_custom_er_browser() {
+            self.custom_er_browser.delete();
+        }
     }
 
     pub fn move_custom_browser_cursor(&mut self, direction: CursorMove) {
-        if self.selected_er_browser_choice == ErBrowserChoice::Custom {
+        if self.is_editing_custom_er_browser() {
             self.custom_er_browser.move_cursor(direction);
         }
     }
@@ -246,6 +273,7 @@ impl SettingsState {
     pub fn commit_selection(&mut self) {
         self.previous_theme = self.selected_theme;
         self.saved_er_browser = self.selected_er_browser();
+        self.editing_custom_er_browser = false;
     }
 
     pub fn discard_selection(&mut self) {
@@ -253,6 +281,7 @@ impl SettingsState {
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
+        self.editing_custom_er_browser = false;
     }
 }
 

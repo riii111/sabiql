@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 463
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -25,7 +26,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │    Google Chrome                                                             │                                │
 │                                │                  │    Firefox                                                                   │                                │
 │                                │                  │    Safari                                                                    │                                │
-│                                │                  │  > Custom: [Brave Browser] saved                                             │                                │
+│                                │                  │  > Custom: [Brave Browser] saved ^E edit                                     │                                │
 │                                │                  │                                                                              │────────────────────────────────┘
 │                                │                  │                                                                              │────────────────────────────────┐
 │                                │                  │                                                                              │                                │
@@ -39,7 +40,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                ╰ Enter Apply │ Tab/⇧Tab Section │ Esc Cancel ────────────────────────────────────────────────────╯                                │
+│                                ╰ Enter Apply │ ^E Edit │ Tab/⇧Tab Section │ Esc Cancel ──────────────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +52,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Apply  ↑↓:Select  Tab/⇧Tab:Section  Esc:Cancel
+Enter:Apply  j/k/↑↓:Select  ^E:Edit  Tab/⇧Tab:Section  Esc:Cancel

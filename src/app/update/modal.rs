@@ -76,6 +76,14 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.settings.switch_previous_section();
             Some(vec![])
         }
+        Action::SettingsStartCustomBrowserEdit => {
+            state.settings.start_custom_browser_edit();
+            Some(vec![])
+        }
+        Action::SettingsStopCustomBrowserEdit => {
+            state.settings.stop_custom_browser_edit();
+            Some(vec![])
+        }
         Action::TextInput {
             target: InputTarget::SettingsErBrowser,
             ch,
@@ -583,6 +591,11 @@ mod tests {
                     Instant::now(),
                 );
                 reduce_modal(&mut state, &Action::SettingsNextSection, Instant::now());
+                reduce_modal(
+                    &mut state,
+                    &Action::SettingsStartCustomBrowserEdit,
+                    Instant::now(),
+                );
                 reduce_modal(
                     &mut state,
                     &Action::TextInput {

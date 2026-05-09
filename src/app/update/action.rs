@@ -348,6 +348,8 @@ pub enum Action {
     SettingsSelectPrevious,
     SettingsNextSection,
     SettingsPreviousSection,
+    SettingsStartCustomBrowserEdit,
+    SettingsStopCustomBrowserEdit,
     SettingsApply,
     SettingsCancel,
     SettingsSaved,

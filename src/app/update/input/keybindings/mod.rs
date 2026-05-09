@@ -249,8 +249,9 @@ pub mod idx {
     pub mod settings {
         pub const APPLY: usize = 0;
         pub const SELECT: usize = 1;
-        pub const SECTION: usize = 2;
-        pub const CANCEL: usize = 3;
+        pub const EDIT: usize = 2;
+        pub const SECTION: usize = 3;
+        pub const CANCEL: usize = 4;
     }
 
     pub mod help {
@@ -699,6 +700,7 @@ mod tests {
             // SETTINGS_ROWS
             assert!(idx::settings::APPLY < SETTINGS_ROWS.len());
             assert!(idx::settings::SELECT < SETTINGS_ROWS.len());
+            assert!(idx::settings::EDIT < SETTINGS_ROWS.len());
             assert!(idx::settings::SECTION < SETTINGS_ROWS.len());
             assert!(idx::settings::CANCEL < SETTINGS_ROWS.len());
 

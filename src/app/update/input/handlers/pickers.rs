@@ -1,3 +1,4 @@
+use crate::model::app_state::AppState;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo};
 
@@ -21,12 +22,21 @@ pub fn handle_command_palette_keys(combo: KeyCombo) -> Action {
         .unwrap_or(Action::None)
 }
 
-pub fn handle_settings_keys(combo: KeyCombo) -> Action {
+pub fn handle_settings_keys(combo: KeyCombo, state: &AppState) -> Action {
+    if state.settings.is_editing_custom_er_browser() {
+        return handle_custom_browser_edit_keys(combo);
+    }
     if let Some(action) = keybindings::SETTINGS.resolve(&combo) {
         return action;
     }
+    Action::None
+}
+
+fn handle_custom_browser_edit_keys(combo: KeyCombo) -> Action {
     use crate::update::action::CursorMove;
     match combo.key {
+        Key::Enter => Action::SettingsApply,
+        Key::Esc => Action::SettingsStopCustomBrowserEdit,
         Key::Char(c) => Action::TextInput {
             target: InputTarget::SettingsErBrowser,
             ch: c,
@@ -234,22 +244,38 @@ mod tests {
     mod settings {
         use super::*;
 
+        fn settings_state() -> AppState {
+            AppState::new("test".to_string())
+        }
+
+        fn editing_custom_browser_state() -> AppState {
+            let mut state = settings_state();
+            state.settings.switch_next_section();
+            state.settings.start_custom_browser_edit();
+            state
+        }
+
         #[rstest]
         #[case(combo(Key::Enter), Action::SettingsApply)]
         #[case(combo(Key::Esc), Action::SettingsCancel)]
         #[case(combo(Key::Down), Action::SettingsSelectNext)]
         #[case(combo(Key::Up), Action::SettingsSelectPrevious)]
+        #[case(combo(Key::Char('j')), Action::SettingsSelectNext)]
+        #[case(combo(Key::Char('k')), Action::SettingsSelectPrevious)]
+        #[case(KeyCombo::ctrl(Key::Char('e')), Action::SettingsStartCustomBrowserEdit)]
         #[case(combo(Key::Tab), Action::SettingsNextSection)]
         #[case(combo_shift(Key::BackTab), Action::SettingsPreviousSection)]
         fn keys_map_to_actions(#[case] combo: KeyCombo, #[case] expected: Action) {
-            let result = handle_settings_keys(combo);
+            let state = settings_state();
+            let result = handle_settings_keys(combo, &state);
 
             assert_eq!(format!("{result:?}"), format!("{expected:?}"));
         }
 
         #[test]
-        fn char_j_edits_custom_browser() {
-            let result = handle_settings_keys(combo(Key::Char('j')));
+        fn char_j_edits_custom_browser_when_editing() {
+            let state = editing_custom_browser_state();
+            let result = handle_settings_keys(combo(Key::Char('j')), &state);
 
             assert!(matches!(
                 result,
@@ -261,8 +287,9 @@ mod tests {
         }
 
         #[test]
-        fn char_k_edits_custom_browser() {
-            let result = handle_settings_keys(combo(Key::Char('k')));
+        fn char_k_edits_custom_browser_when_editing() {
+            let state = editing_custom_browser_state();
+            let result = handle_settings_keys(combo(Key::Char('k')), &state);
 
             assert!(matches!(
                 result,
@@ -275,7 +302,8 @@ mod tests {
 
         #[test]
         fn other_chars_edit_custom_browser() {
-            let result = handle_settings_keys(combo(Key::Char('B')));
+            let state = editing_custom_browser_state();
+            let result = handle_settings_keys(combo(Key::Char('B')), &state);
 
             assert!(matches!(
                 result,
@@ -284,6 +312,14 @@ mod tests {
                     ch: 'B'
                 }
             ));
+        }
+
+        #[test]
+        fn esc_stops_custom_browser_editing() {
+            let state = editing_custom_browser_state();
+            let result = handle_settings_keys(combo(Key::Esc), &state);
+
+            assert!(matches!(result, Action::SettingsStopCustomBrowserEdit));
         }
     }
 
