@@ -21,11 +21,11 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │  > ER Diagram    │                                                                              │                                │
 │                                │                  │Browser                                                                       │                                │
 │                                │                  │                                                                              │                                │
-│                                │                  │  > System default     saved                                                  │                                │
+│                                │                  │    System default                                                            │                                │
 │                                │                  │    Google Chrome                                                             │                                │
 │                                │                  │    Firefox                                                                   │                                │
 │                                │                  │    Safari                                                                    │                                │
-│                                │                  │    Custom: []                                                                │                                │
+│                                │                  │  > Custom: [Brave Browser] saved                                             │                                │
 │                                │                  │                                                                              │────────────────────────────────┘
 │                                │                  │                                                                              │────────────────────────────────┐
 │                                │                  │                                                                              │                                │

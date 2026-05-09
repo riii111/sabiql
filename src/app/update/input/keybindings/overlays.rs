@@ -582,18 +582,18 @@ pub const SETTINGS_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "j/k/↑↓",
-        key: "j / k / ↑ / ↓",
+        key_short: "↑↓",
+        key: "↑ / ↓",
         desc_short: "Select",
         description: "Select setting",
         bindings: &[
             ExecBinding {
                 action: Action::SettingsSelectNext,
-                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+                combos: &[KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
                 action: Action::SettingsSelectPrevious,
-                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+                combos: &[KeyCombo::plain(Key::Up)],
             },
         ],
     },

@@ -51,4 +51,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Apply  j/k/↑↓:Select  Tab/⇧Tab:Section  Esc:Cancel
+Enter:Apply  ↑↓:Select  Tab/⇧Tab:Section  Esc:Cancel

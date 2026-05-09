@@ -230,12 +230,5 @@ impl SettingsOverlay {
 }
 
 fn saved_browser_matches(state: &AppState, choice: ErBrowserChoice) -> bool {
-    match choice {
-        ErBrowserChoice::SystemDefault => state.settings.saved_er_browser().is_none(),
-        ErBrowserChoice::Custom => state
-            .settings
-            .saved_er_browser()
-            .is_some_and(|browser| !matches!(browser, "Google Chrome" | "Firefox" | "Safari")),
-        _ => state.settings.saved_er_browser() == choice.browser_name(),
-    }
+    ErBrowserChoice::from_browser_name(state.settings.saved_er_browser()) == choice
 }

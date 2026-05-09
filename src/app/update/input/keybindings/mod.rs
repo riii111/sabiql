@@ -699,6 +699,7 @@ mod tests {
             // SETTINGS_ROWS
             assert!(idx::settings::APPLY < SETTINGS_ROWS.len());
             assert!(idx::settings::SELECT < SETTINGS_ROWS.len());
+            assert!(idx::settings::SECTION < SETTINGS_ROWS.len());
             assert!(idx::settings::CANCEL < SETTINGS_ROWS.len());
 
             // HELP_ROWS

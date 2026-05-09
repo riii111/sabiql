@@ -43,11 +43,20 @@ pub enum ErBrowserChoice {
 }
 
 impl ErBrowserChoice {
+    #[cfg(target_os = "macos")]
     pub const ALL: [Self; 5] = [
         Self::SystemDefault,
         Self::GoogleChrome,
         Self::Firefox,
         Self::Safari,
+        Self::Custom,
+    ];
+
+    #[cfg(not(target_os = "macos"))]
+    pub const ALL: [Self; 4] = [
+        Self::SystemDefault,
+        Self::GoogleChrome,
+        Self::Firefox,
         Self::Custom,
     ];
 
@@ -64,18 +73,30 @@ impl ErBrowserChoice {
     pub fn browser_name(self) -> Option<&'static str> {
         match self {
             Self::SystemDefault | Self::Custom => None,
+            #[cfg(target_os = "macos")]
             Self::GoogleChrome => Some("Google Chrome"),
+            #[cfg(not(target_os = "macos"))]
+            Self::GoogleChrome => Some("google-chrome"),
+            #[cfg(target_os = "macos")]
             Self::Firefox => Some("Firefox"),
+            #[cfg(not(target_os = "macos"))]
+            Self::Firefox => Some("firefox"),
+            #[cfg(target_os = "macos")]
             Self::Safari => Some("Safari"),
+            #[cfg(not(target_os = "macos"))]
+            Self::Safari => None,
         }
     }
 
-    fn from_browser_name(browser: Option<&str>) -> Self {
+    pub fn from_browser_name(browser: Option<&str>) -> Self {
         match browser.map(str::trim).filter(|value| !value.is_empty()) {
             None => Self::SystemDefault,
-            Some("Google Chrome") => Self::GoogleChrome,
-            Some("Firefox") => Self::Firefox,
+            Some("Google Chrome" | "google-chrome" | "google-chrome-stable") => Self::GoogleChrome,
+            Some("Firefox" | "firefox") => Self::Firefox,
+            #[cfg(target_os = "macos")]
             Some("Safari") => Self::Safari,
+            #[cfg(not(target_os = "macos"))]
+            Some("Safari") => Self::Custom,
             Some(_) => Self::Custom,
         }
     }
@@ -217,8 +238,9 @@ impl SettingsState {
     }
 
     pub fn move_custom_browser_cursor(&mut self, direction: CursorMove) {
-        self.selected_er_browser_choice = ErBrowserChoice::Custom;
-        self.custom_er_browser.move_cursor(direction);
+        if self.selected_er_browser_choice == ErBrowserChoice::Custom {
+            self.custom_er_browser.move_cursor(direction);
+        }
     }
 
     pub fn commit_selection(&mut self) {
@@ -302,10 +324,11 @@ mod tests {
         state.switch_next_section();
         state.select_next();
 
-        assert_eq!(
-            state.selected_er_browser().as_deref(),
-            Some("Google Chrome")
-        );
+        #[cfg(target_os = "macos")]
+        let expected = "Google Chrome";
+        #[cfg(not(target_os = "macos"))]
+        let expected = "google-chrome";
+        assert_eq!(state.selected_er_browser().as_deref(), Some(expected));
     }
 
     #[test]
@@ -317,5 +340,19 @@ mod tests {
 
         assert_eq!(state.selected_er_browser_choice(), ErBrowserChoice::Custom);
         assert_eq!(state.custom_er_browser().content(), "Brave Browser");
+    }
+
+    #[test]
+    fn cursor_move_does_not_switch_preset_to_custom() {
+        let mut state = SettingsState::default();
+        state.switch_next_section();
+        state.select_next();
+
+        state.move_custom_browser_cursor(CursorMove::Left);
+
+        assert_eq!(
+            state.selected_er_browser_choice(),
+            ErBrowserChoice::GoogleChrome
+        );
     }
 }

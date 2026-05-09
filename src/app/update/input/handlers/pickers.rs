@@ -248,17 +248,29 @@ mod tests {
         }
 
         #[test]
-        fn char_j_selects_next_theme() {
+        fn char_j_edits_custom_browser() {
             let result = handle_settings_keys(combo(Key::Char('j')));
 
-            assert!(matches!(result, Action::SettingsSelectNext));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::SettingsErBrowser,
+                    ch: 'j'
+                }
+            ));
         }
 
         #[test]
-        fn char_k_selects_previous_theme() {
+        fn char_k_edits_custom_browser() {
             let result = handle_settings_keys(combo(Key::Char('k')));
 
-            assert!(matches!(result, Action::SettingsSelectPrevious));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::SettingsErBrowser,
+                    ch: 'k'
+                }
+            ));
         }
 
         #[test]
