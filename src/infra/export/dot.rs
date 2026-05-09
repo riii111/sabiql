@@ -35,19 +35,19 @@ impl GraphvizRunner for SystemGraphvizRunner {
 pub struct SystemViewerLauncher;
 
 impl ViewerLauncher for SystemViewerLauncher {
-    fn open_file(&self, path: &Path) -> Result<(), ViewerError> {
-        if let Ok(browser) = std::env::var("SABIQL_BROWSER") {
+    fn open_file(&self, path: &Path, browser: Option<&str>) -> Result<(), ViewerError> {
+        if let Some(browser) = browser.map(str::trim).filter(|value| !value.is_empty()) {
             #[cfg(target_os = "macos")]
             {
                 Command::new("open")
                     .arg("-a")
-                    .arg(&browser)
+                    .arg(browser)
                     .arg(path)
                     .spawn()?;
             }
             #[cfg(not(target_os = "macos"))]
             {
-                Command::new(&browser).arg(path).spawn()?;
+                Command::new(browser).arg(path).spawn()?;
             }
             return Ok(());
         }
@@ -165,13 +165,14 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
         dot_content: &str,
         filename: &str,
         cache_dir: &Path,
+        browser: Option<&str>,
     ) -> ErExportResult<PathBuf> {
         let dot_path = cache_dir.join(filename);
         std::fs::write(&dot_path, dot_content)?;
 
         let svg_path = dot_path.with_extension("svg");
         self.graphviz.convert_dot_to_svg(&dot_path, &svg_path)?;
-        self.viewer.open_file(&svg_path)?;
+        self.viewer.open_file(&svg_path, browser)?;
 
         Self::cleanup_er_files(cache_dir, &[&dot_path, &svg_path]);
 
@@ -207,9 +208,10 @@ impl<G: GraphvizRunner + 'static, V: ViewerLauncher + 'static> ErDiagramExporter
         tables: &[ErTableInfo],
         filename: &str,
         cache_dir: &Path,
+        browser: Option<&str>,
     ) -> ErExportResult<PathBuf> {
         let dot_content = Self::generate_full_dot(tables);
-        self.export(&dot_content, filename, cache_dir)
+        self.export(&dot_content, filename, cache_dir, browser)
     }
 }
 
@@ -351,6 +353,7 @@ mod tests {
         struct MockViewer {
             called: AtomicBool,
             should_fail: bool,
+            browser: std::sync::Mutex<Option<String>>,
         }
 
         impl MockViewer {
@@ -358,6 +361,7 @@ mod tests {
                 Self {
                     called: AtomicBool::new(false),
                     should_fail: false,
+                    browser: std::sync::Mutex::new(None),
                 }
             }
 
@@ -365,13 +369,15 @@ mod tests {
                 Self {
                     called: AtomicBool::new(false),
                     should_fail: true,
+                    browser: std::sync::Mutex::new(None),
                 }
             }
         }
 
         impl ViewerLauncher for MockViewer {
-            fn open_file(&self, _path: &Path) -> Result<(), ViewerError> {
+            fn open_file(&self, _path: &Path, browser: Option<&str>) -> Result<(), ViewerError> {
                 self.called.store(true, Ordering::SeqCst);
+                *self.browser.lock().unwrap() = browser.map(str::to_string);
                 if self.should_fail {
                     Err(ViewerError::LaunchFailed(std::io::Error::other(
                         "mock failure",
@@ -389,11 +395,28 @@ mod tests {
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
 
-            let result = exporter.export("digraph {}", "test.dot", temp_dir.path());
+            let result = exporter.export("digraph {}", "test.dot", temp_dir.path(), None);
 
             assert!(result.is_ok());
             assert!(exporter.graphviz.called.load(Ordering::SeqCst));
             assert!(exporter.viewer.called.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn passes_browser_to_viewer() {
+            let graphviz = MockGraphviz::new();
+            let viewer = MockViewer::new();
+            let exporter = DotExporter::with_dependencies(graphviz, viewer);
+            let temp_dir = tempfile::tempdir().unwrap();
+
+            let result =
+                exporter.export("digraph {}", "test.dot", temp_dir.path(), Some("Firefox"));
+
+            assert!(result.is_ok());
+            assert_eq!(
+                exporter.viewer.browser.lock().unwrap().as_deref(),
+                Some("Firefox")
+            );
         }
 
         #[test]
@@ -403,7 +426,7 @@ mod tests {
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
 
-            let result = exporter.export("digraph {}", "test.dot", temp_dir.path());
+            let result = exporter.export("digraph {}", "test.dot", temp_dir.path(), None);
 
             assert!(result.is_err());
             let err_msg = result.unwrap_err().to_string();
@@ -418,7 +441,7 @@ mod tests {
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
 
-            let result = exporter.export("digraph {}", "test.dot", temp_dir.path());
+            let result = exporter.export("digraph {}", "test.dot", temp_dir.path(), None);
 
             assert!(result.is_err());
             let err_msg = result.unwrap_err().to_string();
@@ -434,7 +457,7 @@ mod tests {
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
 
-            let result = exporter.export("digraph {}", "test.dot", temp_dir.path());
+            let result = exporter.export("digraph {}", "test.dot", temp_dir.path(), None);
 
             assert!(result.is_err());
             let err_msg = result.unwrap_err().to_string();
@@ -452,7 +475,7 @@ mod tests {
 
             let exporter = DotExporter::with_dependencies(MockGraphviz::new(), MockViewer::new());
             exporter
-                .export("digraph {}", "er_new.dot", temp_dir.path())
+                .export("digraph {}", "er_new.dot", temp_dir.path(), None)
                 .unwrap();
 
             assert!(!old_dot.exists());
@@ -470,7 +493,7 @@ mod tests {
 
             let exporter = DotExporter::with_dependencies(MockGraphviz::new(), MockViewer::new());
             exporter
-                .export("digraph {}", "er_new.dot", temp_dir.path())
+                .export("digraph {}", "er_new.dot", temp_dir.path(), None)
                 .unwrap();
 
             assert!(log_file.exists());
@@ -487,7 +510,7 @@ mod tests {
 
             let exporter =
                 DotExporter::with_dependencies(MockGraphviz::not_installed(), MockViewer::new());
-            let result = exporter.export("digraph {}", "er_new.dot", temp_dir.path());
+            let result = exporter.export("digraph {}", "er_new.dot", temp_dir.path(), None);
 
             assert!(result.is_err());
             assert!(old_dot.exists());
@@ -504,7 +527,7 @@ mod tests {
 
             let exporter =
                 DotExporter::with_dependencies(MockGraphviz::new(), MockViewer::failing());
-            let result = exporter.export("digraph {}", "er_new.dot", temp_dir.path());
+            let result = exporter.export("digraph {}", "er_new.dot", temp_dir.path(), None);
 
             assert!(result.is_err());
             assert!(temp_dir.path().join("er_new.dot").exists());

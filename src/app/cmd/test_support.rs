@@ -31,6 +31,7 @@ impl ErDiagramExporter for NoopErExporter {
         _tables: &[ErTableInfo],
         _filename: &str,
         _cache_dir: &Path,
+        _browser: Option<&str>,
     ) -> ErExportResult<PathBuf> {
         Ok(PathBuf::from("/tmp/er.svg"))
     }

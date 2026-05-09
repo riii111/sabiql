@@ -23,7 +23,7 @@ pub trait GraphvizRunner: Send + Sync {
 }
 
 pub trait ViewerLauncher: Send + Sync {
-    fn open_file(&self, path: &Path) -> Result<(), ViewerError>;
+    fn open_file(&self, path: &Path, browser: Option<&str>) -> Result<(), ViewerError>;
 }
 
 #[cfg(test)]

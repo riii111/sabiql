@@ -40,6 +40,7 @@ pub async fn run(
                 total_tables,
                 project_name,
                 target_tables,
+                state.settings.saved_er_browser().map(str::to_string),
             )
             .await
         }
@@ -80,6 +81,7 @@ async fn handle_generate_diagram(
     total_tables: usize,
     project_name: String,
     target_tables: Vec<String>,
+    browser: Option<String>,
 ) -> Result<()> {
     let all_tables = collect_cached_er_tables(completion_engine);
     if all_tables.is_empty() {
@@ -118,6 +120,7 @@ async fn handle_generate_diagram(
         cache_dir,
         action_tx.clone(),
         filename,
+        browser,
     );
     Ok(())
 }
