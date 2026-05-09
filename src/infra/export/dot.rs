@@ -143,7 +143,7 @@ fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
 
     #[cfg(any(target_os = "freebsd", target_os = "linux"))]
     {
-        open_with_browser_candidates(path, browser, browser_command_candidates(browser))
+        open_with_browser_candidates(path, browser, &browser_command_candidates(browser))
     }
 
     #[cfg(target_os = "windows")]
