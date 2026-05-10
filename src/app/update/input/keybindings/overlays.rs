@@ -75,7 +75,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
 pub const HELP_ROWS: &[ModeRow] = &[
     ModeRow {
         key_short: "^N/^P/j/k/↑↓",
-        key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
+        key: "Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
         bindings: &[
@@ -85,11 +85,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[
-                    KeyCombo::plain(Key::Char('j')),
-                    KeyCombo::plain(Key::Down),
-                    KeyCombo::ctrl(Key::Char('n')),
-                ],
+                combos: &[KeyCombo::plain(Key::Down), KeyCombo::ctrl(Key::Char('n'))],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -97,17 +93,13 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[
-                    KeyCombo::plain(Key::Char('k')),
-                    KeyCombo::plain(Key::Up),
-                    KeyCombo::ctrl(Key::Char('p')),
-                ],
+                combos: &[KeyCombo::plain(Key::Up), KeyCombo::ctrl(Key::Char('p'))],
             },
         ],
     },
     ModeRow {
-        key_short: "g/G/Home/End",
-        key: "g / Home / G / End",
+        key_short: "Home/End",
+        key: "Home / End",
         desc_short: "Top/Btm",
         description: "Jump to top / bottom",
         bindings: &[
@@ -117,7 +109,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::ToStart,
                 },
-                combos: &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
+                combos: &[KeyCombo::plain(Key::Home)],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -125,7 +117,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::ToEnd,
                 },
-                combos: &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
+                combos: &[KeyCombo::plain(Key::End)],
             },
         ],
     },
@@ -181,8 +173,8 @@ pub const HELP_ROWS: &[ModeRow] = &[
         ],
     },
     ModeRow {
-        key_short: "h/l / ←→",
-        key: "h / l / ← / →",
+        key_short: "←→",
+        key: "← / →",
         desc_short: "H-Scroll",
         description: "Scroll left / right",
         bindings: &[
@@ -192,7 +184,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Left,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
+                combos: &[KeyCombo::plain(Key::Left)],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -200,7 +192,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Right,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
+                combos: &[KeyCombo::plain(Key::Right)],
             },
         ],
     },

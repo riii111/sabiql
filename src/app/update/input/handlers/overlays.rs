@@ -78,15 +78,11 @@ mod tests {
         }
 
         #[rstest]
-        #[case(combo(Key::Char('j')), ScrollDirection::Down, ScrollAmount::Line)]
         #[case(combo(Key::Down), ScrollDirection::Down, ScrollAmount::Line)]
         #[case(combo_ctrl(Key::Char('n')), ScrollDirection::Down, ScrollAmount::Line)]
-        #[case(combo(Key::Char('k')), ScrollDirection::Up, ScrollAmount::Line)]
         #[case(combo(Key::Up), ScrollDirection::Up, ScrollAmount::Line)]
         #[case(combo_ctrl(Key::Char('p')), ScrollDirection::Up, ScrollAmount::Line)]
-        #[case(combo(Key::Char('g')), ScrollDirection::Up, ScrollAmount::ToStart)]
         #[case(combo(Key::Home), ScrollDirection::Up, ScrollAmount::ToStart)]
-        #[case(combo(Key::Char('G')), ScrollDirection::Down, ScrollAmount::ToEnd)]
         #[case(combo(Key::End), ScrollDirection::Down, ScrollAmount::ToEnd)]
         #[case(
             combo_ctrl(Key::Char('d')),
@@ -110,9 +106,7 @@ mod tests {
             ScrollAmount::FullPage
         )]
         #[case(combo(Key::PageUp), ScrollDirection::Up, ScrollAmount::FullPage)]
-        #[case(combo(Key::Char('h')), ScrollDirection::Left, ScrollAmount::Line)]
         #[case(combo(Key::Left), ScrollDirection::Left, ScrollAmount::Line)]
-        #[case(combo(Key::Char('l')), ScrollDirection::Right, ScrollAmount::Line)]
         #[case(combo(Key::Right), ScrollDirection::Right, ScrollAmount::Line)]
         fn supported_help_scroll_keys_map_to_expected_action(
             #[case] combo: KeyCombo,
@@ -129,6 +123,12 @@ mod tests {
         #[case(Key::Char('M'))]
         #[case(Key::Char('L'))]
         #[case(Key::Char('z'))]
+        #[case(Key::Char('j'))]
+        #[case(Key::Char('k'))]
+        #[case(Key::Char('g'))]
+        #[case(Key::Char('G'))]
+        #[case(Key::Char('h'))]
+        #[case(Key::Char('l'))]
         fn non_scroll_chars_filter_help(#[case] code: Key) {
             let result = handle_help_keys(combo(code));
 

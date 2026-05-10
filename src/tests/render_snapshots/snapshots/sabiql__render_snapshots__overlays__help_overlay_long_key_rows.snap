@@ -1,6 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 377
+assertion_line: 396
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -9,47 +9,47 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │  public.posts                         ││(select a table)                                                                                                          │
 │  public.comments                      ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │  Esc                 Close editor                                                                              ▲│                        │
-│                        │  Ctrl+L              Clear editor                                                                              ││                        │
-│                        │  Ctrl+O              Open Query History                                                                        ││                        │
-│                        │  Esc                 Return to Normal mode                                                                     ││                        │
-│                        │  ↑↓←→                Move cursor                                                                               ││                        │
-│                        │  Home/End            Line start/end                                                                            ││                        │
-│                        │  Tab                 Insert tab / Accept completion                                                            ││                        │
-│                        │  Ctrl+Space          Trigger completion                                                                        ││                        │
-│                        │  :w                  Preview and confirm UPDATE                                                                ││                        │
-│                        │  type                Edit cell value                                                                           ││                        │
-│                        │  ←→                  Move cursor                                                                               ││                        │
-│                        │  Home/End            Jump to start/end                                                                         ││                        │
-│                        │  :                   Open command line                                                                         ││                        │
-│                        │  Esc                 Exit to Cell Active (draft preserved)                                                     ││                        │
-│                        │  Home / End          Line start/end                                                                            ││                        │
-│                        │  Esc                 Cancel and return to editor                                                               ┃│                        │
+│                        │  Esc                                  Close editor                                                             ▲│                        │
+│                        │  Ctrl+L                               Clear editor                                                             ││                        │
+│                        │  Ctrl+O                               Open Query History                                                       ││                        │
+│                        │  Esc                                  Return to Normal mode                                                    ││                        │
+│                        │  ↑↓←→                                 Move cursor                                                              ││                        │
+│                        │  Home/End                             Line start/end                                                           ││                        │
+│                        │  Tab                                  Insert tab / Accept completion                                           ││                        │
+│                        │  Ctrl+Space                           Trigger completion                                                       ││                        │
+│                        │  :w                                   Preview and confirm UPDATE                                               ││                        │
+│                        │  type                                 Edit cell value                                                          ││                        │
+│                        │  ←→                                   Move cursor                                                              ││                        │
+│                        │  Home/End                             Jump to start/end                                                        ││                        │
+│                        │  :                                    Open command line                                                        ││                        │
+│                        │  Esc                                  Exit to Cell Active (draft preserved)                                    ││                        │
+│                        │  Home / End                           Line start/end                                                           ││                        │
+│                        │  Esc                                  Cancel and return to editor                                              ┃│                        │
 │                        │                                                                                                                ┃│                        │
 │                        │▸ Search / Filter                                                                                               ┃│                        │
-│                        │  type                Type to filter                                                                            ┃│────────────────────────┘
-│                        │  type                Type to search                                                                            ┃│────────────────────────┐
-│                        │  Enter               Confirm search                                                                            ┃│                        │
-│                        │  Esc                 Cancel search                                                                             ┃│                        │
-│                        │  j / k / Ctrl+N / Ctrl+P / ↑ / ↓  Scroll down / up                                                             ┃│                        │
-│                        │  g / Home / G / End  Jump to top / bottom                                                                      ┃│                        │
-│                        │  Ctrl+D / Ctrl+U     Scroll half page down / up                                                                ││                        │
+│                        │  type                                 Type to filter                                                           ┃│────────────────────────┘
+│                        │  type                                 Type to search                                                           ┃│────────────────────────┐
+│                        │  Enter                                Confirm search                                                           ┃│                        │
+│                        │  Esc                                  Cancel search                                                            ┃│                        │
+│                        │  Ctrl+N / Ctrl+P / ↑ / ↓              Scroll down / up                                                         ┃│                        │
+│                        │  Home / End                           Jump to top / bottom                                                     ┃│                        │
+│                        │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                               ││                        │
 │                        │  Ctrl+F / Ctrl+B / PageDown / PageUp  Scroll full page down / up                                               ││                        │
-│                        │  h / l / ← / →       Scroll left / right                                                                       ││                        │
-│                        │  type                Filter help                                                                               ││                        │
-│                        │  Backspace           Edit filter                                                                               ││                        │
-│                        │  Esc                 Clear filter or close help                                                                ││                        │
-│                        │  ?                   Close help                                                                                ││                        │
+│                        │  ← / →                                Scroll left / right                                                      ││                        │
+│                        │  type                                 Filter help                                                              ││                        │
+│                        │  Backspace                            Edit filter                                                              ││                        │
+│                        │  Esc                                  Clear filter or close help                                               ││                        │
+│                        │  ?                                    Close help                                                               ││                        │
 │                        │                                                                                                                ││                        │
 │                        │▸ Connections                                                                                                   ││                        │
-│                        │  Tab/⇧Tab            Next/Previous field                                                                       ││                        │
-│                        │  Tab                 Next field                                                                                ││                        │
-│                        │  ⇧Tab                Previous field                                                                            ││                        │
-│                        │  Ctrl+S              Save and connect                                                                          ││                        │
-│                        │  Esc                 Cancel                                                                                    ││                        │
-│                        │  Enter               Toggle dropdown (SSL field)                                                               ▼│                        │
+│                        │  Tab/⇧Tab                             Next/Previous field                                                      ││                        │
+│                        │  Tab                                  Next field                                                               ││                        │
+│                        │  ⇧Tab                                 Previous field                                                           ││                        │
+│                        │  Ctrl+S                               Save and connect                                                         ││                        │
+│                        │  Esc                                  Cancel                                                                   ││                        │
+│                        │  Enter                                Toggle dropdown (SSL field)                                              ▼│                        │
 │                        ╰ type: Filter │ Backspace: Edit │ Esc: Close │ ?: Close ─────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-h/l / ←→:H-Scroll  ?:Close
+←→:H-Scroll  ?:Close

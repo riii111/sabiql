@@ -13,14 +13,13 @@ use crate::app::model::shared::ui_state::{
     HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT, HelpViewportLayout,
     help_viewport_layout_for,
 };
-use crate::app::update::input::keybindings::{
-    HELP_KEY_COLUMN_WIDTH, HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH,
-};
+use crate::app::update::input::keybindings::{HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH};
 
 use crate::primitives::atoms::scroll_indicator::{
     HorizontalScrollParams, VerticalScrollParams, clamp_scroll_offset,
     render_horizontal_scroll_indicator, render_vertical_scroll_indicator_bar,
 };
+use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 
 pub struct HelpOverlay;
@@ -130,6 +129,7 @@ impl HelpOverlay {
     }
 
     fn document_lines(document: &HelpDocument, theme: &ThemePalette) -> Vec<Line<'static>> {
+        let key_column_width = document.key_column_width();
         let mut lines = vec![Self::filter_line(document.filter(), theme), Line::raw("")];
         for (index, section) in document.sections().iter().enumerate() {
             if index > 0 {
@@ -137,38 +137,41 @@ impl HelpOverlay {
             }
             lines.push(Self::section(section.title(), theme));
             for row in section.rows() {
-                lines.push(Self::row_line(row, theme));
+                lines.push(Self::row_line(row, key_column_width, theme));
             }
         }
         lines
     }
 
     fn filter_line(filter: &str, theme: &ThemePalette) -> Line<'static> {
-        Line::from(vec![
-            Span::styled(
-                "Filter: ",
-                Style::default().fg(theme.semantic.text.secondary),
-            ),
-            Span::styled(
-                format!("{filter}_"),
-                Style::default()
-                    .fg(theme.semantic.text.accent)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ])
+        let mut spans = vec![Span::styled(
+            "Filter: ",
+            Style::default().fg(theme.semantic.text.secondary),
+        )];
+        spans.extend(text_cursor_spans(
+            filter,
+            filter.chars().count(),
+            0,
+            usize::MAX,
+            theme,
+        ));
+        Line::from(spans)
     }
 
-    fn row_line(row: &HelpRow, theme: &ThemePalette) -> Line<'static> {
-        Self::key_line(row.key(), row.description(), theme)
+    fn row_line(row: &HelpRow, key_column_width: usize, theme: &ThemePalette) -> Line<'static> {
+        Self::key_line(row.key(), row.description(), key_column_width, theme)
     }
 
-    fn key_line(key: &str, desc: &str, theme: &ThemePalette) -> Line<'static> {
+    fn key_line(
+        key: &str,
+        desc: &str,
+        key_column_width: usize,
+        theme: &ThemePalette,
+    ) -> Line<'static> {
         let key_width = UnicodeWidthStr::width(key);
-        let padding = if key_width > HELP_KEY_COLUMN_WIDTH {
-            HELP_KEY_DESC_GAP
-        } else {
-            HELP_KEY_COLUMN_WIDTH.saturating_sub(key_width)
-        };
+        let padding = key_column_width
+            .saturating_sub(key_width)
+            .saturating_add(HELP_KEY_DESC_GAP);
 
         Line::from(vec![
             Span::styled(
