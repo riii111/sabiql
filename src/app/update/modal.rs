@@ -1,10 +1,11 @@
 use std::time::Instant;
 
+use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::flash_timer::FlashId;
-use crate::model::shared::help::{HelpDocument, HelpOrigin};
+use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::AppSettings;
 use crate::update::action::{
@@ -526,6 +527,72 @@ mod tests {
 
     fn create_test_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    mod help {
+        use super::*;
+
+        fn open_help(state: &mut AppState) {
+            reduce_modal(
+                state,
+                &Action::OpenModal(ModalKind::CommandPalette),
+                Instant::now(),
+            );
+            reduce_modal(state, &Action::ToggleModal(ModalKind::Help), Instant::now());
+            assert_eq!(state.input_mode(), InputMode::Help);
+        }
+
+        #[test]
+        fn escape_clears_filter_before_closing_help() {
+            let mut state = create_test_state();
+            open_help(&mut state);
+            state.ui.help.insert_filter_char('c');
+
+            let effects = reduce_modal(&mut state, &Action::HelpEscape, Instant::now()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Help);
+            assert!(state.ui.help.filter().content().is_empty());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn escape_closes_help_when_filter_is_empty() {
+            let mut state = create_test_state();
+            open_help(&mut state);
+
+            let effects = reduce_modal(&mut state, &Action::HelpEscape, Instant::now()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn filter_text_actions_update_help_state() {
+            let mut state = create_test_state();
+            open_help(&mut state);
+
+            let input_effects = reduce_modal(
+                &mut state,
+                &Action::TextInput {
+                    target: InputTarget::HelpFilter,
+                    ch: 'k',
+                },
+                Instant::now(),
+            )
+            .unwrap();
+            let backspace_effects = reduce_modal(
+                &mut state,
+                &Action::TextBackspace {
+                    target: InputTarget::HelpFilter,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.ui.help.filter().content().is_empty());
+            assert!(input_effects.is_empty());
+            assert!(backspace_effects.is_empty());
+        }
     }
 
     mod settings {

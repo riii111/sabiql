@@ -7,12 +7,8 @@ pub fn handle_help_keys(combo: KeyCombo) -> Action {
         return action;
     }
 
-    match combo.key {
-        keybindings::Key::Char(ch) if combo.modifiers == Modifiers::NONE => Action::TextInput {
-            target: crate::update::action::InputTarget::HelpFilter,
-            ch,
-        },
-        keybindings::Key::Char(ch) if combo.modifiers == Modifiers::SHIFT => Action::TextInput {
+    match (combo.key, combo.modifiers) {
+        (keybindings::Key::Char(ch), Modifiers::NONE | Modifiers::SHIFT) => Action::TextInput {
             target: crate::update::action::InputTarget::HelpFilter,
             ch,
         },

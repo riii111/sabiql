@@ -7,8 +7,8 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::theme::ThemePalette;
 
+use crate::app::catalog::{HelpDocument, HelpRow};
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::help::{HelpDocument, HelpRow};
 use crate::app::model::shared::ui_state::{
     HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT, HelpViewportLayout,
     help_viewport_layout_for,

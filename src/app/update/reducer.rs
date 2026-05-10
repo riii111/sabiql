@@ -10,11 +10,11 @@ use super::{
     reduce_connection, reduce_er, reduce_explain_with_services, reduce_metadata, reduce_modal,
     reduce_navigation, reduce_query, reduce_result, reduce_sql_modal,
 };
+use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
 use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
-use crate::model::shared::help::HelpDocument;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::services::AppServices;
