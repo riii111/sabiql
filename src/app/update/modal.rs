@@ -48,7 +48,7 @@ fn scroll_help_horizontally(state: &mut AppState, direction: ScrollDirection) {
 }
 
 fn close_help(state: &mut AppState) {
-    state.modal.set_mode(InputMode::Normal);
+    state.modal.pop_mode();
     state.ui.help.close();
 }
 
@@ -157,7 +157,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             } else {
                 let origin = HelpOrigin::from_state(state);
                 state.ui.help.open(origin);
-                state.modal.set_mode(InputMode::Help);
+                state.modal.push_mode(InputMode::Help);
             }
             Some(vec![])
         }
@@ -537,7 +537,7 @@ mod tests {
         }
 
         #[test]
-        fn escape_closes_help_with_filter() {
+        fn escape_returns_to_help_origin_with_filter() {
             let mut state = create_test_state();
             open_help(&mut state);
             state.ui.help.insert_filter_char('c');
@@ -549,13 +549,13 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::CommandPalette);
             assert!(state.ui.help.filter().content().is_empty());
             assert!(effects.is_empty());
         }
 
         #[test]
-        fn escape_closes_help_when_filter_is_empty() {
+        fn escape_returns_to_help_origin_when_filter_is_empty() {
             let mut state = create_test_state();
             open_help(&mut state);
 
@@ -566,7 +566,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::CommandPalette);
             assert!(effects.is_empty());
         }
 

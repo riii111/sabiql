@@ -698,6 +698,29 @@ mod tests {
             assert_eq!(state.ui.help.scroll_offset(), 0);
             assert!(effects.is_empty());
         }
+
+        #[test]
+        fn close_help_returns_to_origin_mode() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::SqlModal);
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::ToggleModal(ModalKind::Help),
+                now,
+                &AppServices::stub(),
+            );
+            let effects = reduce(
+                &mut state,
+                Action::CloseModal(ModalKind::Help),
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::SqlModal);
+            assert!(effects.is_empty());
+        }
     }
 
     mod sql_modal_debounce {

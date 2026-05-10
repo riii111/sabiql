@@ -190,7 +190,7 @@ pub fn reduce(
                 }
                 Action::ToggleModal(ModalKind::Help) => {
                     state.ui.help.open(HelpOrigin::CommandLine);
-                    state.modal.set_mode(InputMode::Help);
+                    state.modal.push_mode(InputMode::Help);
                     vec![]
                 }
                 Action::OpenModal(ModalKind::SqlModal) => {
