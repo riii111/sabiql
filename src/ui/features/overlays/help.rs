@@ -130,7 +130,7 @@ impl HelpOverlay {
 
     fn document_lines(document: &HelpDocument, theme: &ThemePalette) -> Vec<Line<'static>> {
         let key_column_width = document.key_column_width();
-        let mut lines = vec![Self::filter_line(document.filter(), theme), Line::raw("")];
+        let mut lines = vec![Self::filter_line(document, theme), Line::raw("")];
         for (index, section) in document.sections().iter().enumerate() {
             if index > 0 {
                 lines.push(Line::raw(""));
@@ -143,14 +143,14 @@ impl HelpOverlay {
         lines
     }
 
-    fn filter_line(filter: &str, theme: &ThemePalette) -> Line<'static> {
+    fn filter_line(document: &HelpDocument, theme: &ThemePalette) -> Line<'static> {
         let mut spans = vec![Span::styled(
             "Filter: ",
             Style::default().fg(theme.semantic.text.secondary),
         )];
         spans.extend(text_cursor_spans(
-            filter,
-            filter.chars().count(),
+            document.filter(),
+            document.filter_cursor(),
             0,
             usize::MAX,
             theme,

@@ -262,6 +262,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn normal_origin_captures_focused_pane() {
+        let mut state = AppState::new("test".to_string());
+        state.ui.focused_pane = FocusedPane::Inspector;
+
+        let origin = HelpOrigin::from_state(&state);
+
+        assert!(matches!(
+            origin,
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Inspector,
+                result_active: false,
+                history_mode: false,
+            }
+        ));
+    }
+
+    #[test]
+    fn normal_origin_captures_active_result_cell() {
+        let mut state = AppState::new("test".to_string());
+        state.result_interaction.activate_cell(1, 2);
+
+        let origin = HelpOrigin::from_state(&state);
+
+        assert!(matches!(
+            origin,
+            HelpOrigin::Normal {
+                result_active: true,
+                history_mode: false,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn normal_origin_captures_history_mode() {
+        let mut state = AppState::new("test".to_string());
+        state.query.enter_history(0);
+
+        let origin = HelpOrigin::from_state(&state);
+
+        assert!(matches!(
+            origin,
+            HelpOrigin::Normal {
+                result_active: false,
+                history_mode: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn filter_input_resets_offsets() {
         let mut state = HelpState::default();
         state.set_scroll_offset(10);

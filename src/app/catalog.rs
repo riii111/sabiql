@@ -16,6 +16,7 @@ use crate::update::input::keybindings::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpDocument {
     filter: String,
+    filter_cursor: usize,
     sections: Vec<HelpSection>,
 }
 
@@ -25,10 +26,15 @@ const SECTION_HEADER_LINE_COUNT: usize = 1;
 
 impl HelpDocument {
     pub fn from_state(state: &AppState) -> Self {
-        Self::new(state.ui.help.origin(), state.ui.help.filter().content())
+        let filter = state.ui.help.filter();
+        Self::new_with_cursor(state.ui.help.origin(), filter.content(), filter.cursor())
     }
 
     pub fn new(origin: HelpOrigin, filter: &str) -> Self {
+        Self::new_with_cursor(origin, filter, filter.chars().count())
+    }
+
+    pub fn new_with_cursor(origin: HelpOrigin, filter: &str, filter_cursor: usize) -> Self {
         let normalized = filter.trim().to_lowercase();
         let mut sections = vec![current_section(origin)];
         sections.extend(reference_sections());
@@ -49,12 +55,17 @@ impl HelpDocument {
 
         Self {
             filter: filter.to_string(),
+            filter_cursor: filter_cursor.min(filter.chars().count()),
             sections,
         }
     }
 
     pub fn filter(&self) -> &str {
         &self.filter
+    }
+
+    pub fn filter_cursor(&self) -> usize {
+        self.filter_cursor
     }
 
     pub fn sections(&self) -> &[HelpSection] {
@@ -527,6 +538,14 @@ mod tests {
             document.key_column_width()
                 >= UnicodeWidthStr::width("Ctrl+F / Ctrl+B / PageDown / PageUp")
         );
+    }
+
+    #[test]
+    fn document_preserves_filter_cursor() {
+        let document = HelpDocument::new_with_cursor(HelpOrigin::Help, "copy", 2);
+
+        assert_eq!(document.filter(), "copy");
+        assert_eq!(document.filter_cursor(), 2);
     }
 
     #[test]
