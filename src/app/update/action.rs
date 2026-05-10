@@ -286,7 +286,6 @@ pub enum Action {
         target: InputTarget,
         direction: CursorMove,
     },
-    HelpEscape,
     Select(SelectMotion),
     ListSelect {
         target: ListTarget,

@@ -262,7 +262,7 @@ pub mod idx {
         pub const H_SCROLL: usize = 4;
         pub const TYPE_FILTER: usize = 5;
         pub const EDIT_FILTER: usize = 6;
-        pub const CLEAR_OR_CLOSE: usize = 7;
+        pub const ESC_CLOSE: usize = 7;
         pub const CLOSE: usize = 8;
     }
 
@@ -533,7 +533,7 @@ mod tests {
             assert!(idx::help::H_SCROLL < HELP_ROWS.len());
             assert!(idx::help::TYPE_FILTER < HELP_ROWS.len());
             assert!(idx::help::EDIT_FILTER < HELP_ROWS.len());
-            assert!(idx::help::CLEAR_OR_CLOSE < HELP_ROWS.len());
+            assert!(idx::help::ESC_CLOSE < HELP_ROWS.len());
             assert!(idx::help::CLOSE < HELP_ROWS.len());
 
             // RESULT_ACTIVE_KEYS

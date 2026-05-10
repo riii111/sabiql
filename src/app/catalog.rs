@@ -382,7 +382,12 @@ fn rows_from_binding_iter<'a>(bindings: impl IntoIterator<Item = &'a KeyBinding>
     let mut rows = Vec::new();
     let mut i = 0;
     while i < bindings.len() {
-        if i + 1 < bindings.len() && bindings[i].key == bindings[i + 1].key {
+        if i + 1 < bindings.len()
+            && let Some(row) = paired_binding_row(bindings[i], bindings[i + 1])
+        {
+            rows.push(row);
+            i += 2;
+        } else if i + 1 < bindings.len() && bindings[i].key == bindings[i + 1].key {
             rows.push(HelpRow::new(
                 bindings[i].key,
                 format!("Toggle {}", bindings[i].desc_short),
@@ -394,6 +399,24 @@ fn rows_from_binding_iter<'a>(bindings: impl IntoIterator<Item = &'a KeyBinding>
         }
     }
     rows
+}
+
+fn paired_binding_row(first: &KeyBinding, second: &KeyBinding) -> Option<HelpRow> {
+    let pair = (first.desc_short, second.desc_short);
+    let (description, separator) = match pair {
+        ("Down", "Up") if first.description.starts_with("Move") => {
+            ("Move down / up / scroll", " / ")
+        }
+        ("Down", "Up") => ("Scroll down / up", " / "),
+        ("Top", "Bottom") => ("Jump to top / bottom", " / "),
+        ("Next Page", "Prev Page") => ("Next / previous page", " / "),
+        _ => return None,
+    };
+
+    Some(HelpRow::new(
+        format!("{}{}{}", first.key, separator, second.key),
+        description,
+    ))
 }
 
 fn rows_from_mode_rows(rows: &[ModeRow]) -> Vec<HelpRow> {

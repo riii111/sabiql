@@ -51,10 +51,10 @@ mod tests {
         }
 
         #[test]
-        fn esc_maps_to_contextual_help_escape() {
+        fn esc_closes_help() {
             let result = handle_help_keys(combo(Key::Esc));
 
-            assert!(matches!(result, Action::HelpEscape));
+            assert!(matches!(result, Action::CloseModal(ModalKind::Help)));
         }
 
         #[test]

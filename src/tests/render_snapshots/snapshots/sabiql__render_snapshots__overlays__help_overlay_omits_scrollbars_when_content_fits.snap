@@ -51,10 +51,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  Ctrl+R                               Enable Read-Only mode                                                                │                          │
 │                          │                                                                                                                            │                          │
 │                          │▸ Navigation                                                                                                                │                          │
-│                          │  j / ↓                                Move down / scroll                                                                   │                          │
-│                          │  k / ↑                                Move up / scroll                                                                     │                          │
-│                          │  g / Home                             First item / top                                                                     │                          │
-│                          │  G / End                              Last item / bottom                                                                   │                          │
+│                          │  j / ↓ / k / ↑                        Move down / up / scroll                                                              │                          │
+│                          │  g / Home / G / End                   Jump to top / bottom                                                                 │                          │
 │                          │  H                                    First visible item                                                                   │                          │
 │                          │  M                                    Middle of visible items                                                              │                          │
 │                          │  L                                    Last visible item                                                                    │                          │
@@ -62,8 +60,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  Ctrl+D / Ctrl+U                      Scroll half page down/up                                                             │                          │
 │                          │  Ctrl+F/B / PgDn/Up                   Scroll full page down/up                                                             │                          │
 │                          │  h / l                                Scroll left/right                                                                    │                          │
-│                          │  ]                                    Next page (Preview)                                                                  │                          │
-│                          │  [                                    Previous page (Preview)                                                              │                          │
+│                          │  ] / [                                Next / previous page                                                                 │                          │
 │                          │                                                                                                                            │                          │
 │                          │▸ Open / Switch                                                                                                             │                          │
 │                          │  Ctrl+P                               Open Table Picker                                                                    │                          │
@@ -121,7 +118,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  ← / →                                Scroll left / right                                                                  │                          │
 │                          │  type                                 Filter help                                                                          │                          │
 │                          │  Backspace                            Edit filter                                                                          │                          │
-│                          │  Esc                                  Clear filter or close help                                                           │                          │
+│                          │  Esc                                  Close help                                                                           │                          │
 │                          │  ?                                    Close help                                                                           │                          │
 │                          │                                                                                                                            │                          │
 │                          │▸ Connections                                                                                                               │                          │
@@ -152,18 +149,17 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  j / k / Ctrl+N / Ctrl+P / ↑ / ↓      Navigate items                                                                       │                          │
 │                          │  type                                 Type to filter                                                                       │                          │
 │                          │  Enter                                View error details                                                                   │                          │
-│                          │  Enter                                Confirm                                                                              │──────────────────────────┘
-│                          │  Ctrl+N / j / ↓                       Scroll down                                                                          │──────────────────────────┐
-│                          │  Ctrl+P / k / ↑                       Scroll up                                                                            │                          │
+│                          │  Enter                                Confirm                                                                              │                          │
+│                          │  Ctrl+N / j / ↓ / Ctrl+P / k / ↑      Scroll down / up                                                                     │                          │
 │                          │  Esc                                  Cancel                                                                               │                          │
-│                          │  Ctrl+N / Ctrl+P / ↑ / ↓              Scroll down / up                                                                     │                          │
-│                          │  Home / End                           Jump to top / bottom                                                                 │                          │
+│                          │  Ctrl+N / Ctrl+P / ↑ / ↓              Scroll down / up                                                                     │──────────────────────────┘
+│                          │  Home / End                           Jump to top / bottom                                                                 │──────────────────────────┐
 │                          │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                                           │                          │
 │                          │  Ctrl+F / Ctrl+B / PageDown / PageUp  Scroll full page down / up                                                           │                          │
 │                          │  ← / →                                Scroll left / right                                                                  │                          │
 │                          │  type                                 Filter help                                                                          │                          │
 │                          │  Backspace                            Edit filter                                                                          │                          │
-│                          │  Esc                                  Clear filter or close help                                                           │                          │
+│                          │  Esc                                  Close help                                                                           │                          │
 │                          │  ?                                    Close help                                                                           │                          │
 │                          │                                                                                                                            │                          │
 │                          │▸ Advanced                                                                                                                  │                          │
@@ -190,6 +186,10 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  0 / $ / w / b / Home / End           Move by word or line boundary                                                        │                          │
 │                          │  gg / G / H / M / L                   Jump by buffer or viewport                                                           │                          │
 │                          │  Esc / q                              Close JSONB detail                                                                   │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
+│                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │

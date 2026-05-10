@@ -27,21 +27,12 @@ pub struct HelpOverlay;
 impl HelpOverlay {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let document = HelpDocument::from_state(state);
-        let footer = if document.filter().is_empty() {
-            FooterHintBar::new([
-                ("type", "Filter"),
-                ("Backspace", "Edit"),
-                ("Esc", "Close"),
-                ("?", "Close"),
-            ])
-        } else {
-            FooterHintBar::new([
-                ("type", "Filter"),
-                ("Backspace", "Edit"),
-                ("Esc", "Clear"),
-                ("?", "Close"),
-            ])
-        };
+        let footer = FooterHintBar::new([
+            ("type", "Filter"),
+            ("Backspace", "Edit"),
+            ("Esc", "Close"),
+            ("?", "Close"),
+        ]);
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(HELP_MODAL_WIDTH_PERCENT),

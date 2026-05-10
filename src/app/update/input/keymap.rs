@@ -146,7 +146,7 @@ mod tests {
         fn matches_binding_in_rows() {
             let result = resolve_mode(&KeyCombo::plain(Key::Esc), HELP_ROWS);
 
-            assert!(matches!(result, Some(Action::HelpEscape)));
+            assert!(matches!(result, Some(Action::CloseModal(ModalKind::Help))));
         }
 
         #[test]

@@ -79,16 +79,6 @@ impl HelpState {
         self.reset_offsets();
     }
 
-    pub fn clear_filter_or_should_close(&mut self) -> bool {
-        if self.filter.content().is_empty() {
-            true
-        } else {
-            self.filter.clear();
-            self.reset_offsets();
-            false
-        }
-    }
-
     pub fn clamp_offsets(&mut self, max_scroll: usize, max_horizontal_scroll: usize) {
         self.scroll_offset = self.scroll_offset.min(max_scroll);
         self.horizontal_offset = self.horizontal_offset.min(max_horizontal_scroll);
@@ -323,15 +313,5 @@ mod tests {
         assert_eq!(state.filter().content(), "c");
         assert_eq!(state.scroll_offset(), 0);
         assert_eq!(state.horizontal_offset(), 0);
-    }
-
-    #[test]
-    fn escape_clears_filter_before_closing() {
-        let mut state = HelpState::default();
-        state.insert_filter_char('c');
-
-        assert!(!state.clear_filter_or_should_close());
-        assert!(state.filter().content().is_empty());
-        assert!(state.clear_filter_or_should_close());
     }
 }

@@ -165,12 +165,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             close_help(state);
             Some(vec![])
         }
-        Action::HelpEscape => {
-            if state.ui.help.clear_filter_or_should_close() {
-                close_help(state);
-            }
-            Some(vec![])
-        }
         Action::TextInput {
             target: InputTarget::HelpFilter,
             ch,
@@ -543,14 +537,19 @@ mod tests {
         }
 
         #[test]
-        fn escape_clears_filter_before_closing_help() {
+        fn escape_closes_help_with_filter() {
             let mut state = create_test_state();
             open_help(&mut state);
             state.ui.help.insert_filter_char('c');
 
-            let effects = reduce_modal(&mut state, &Action::HelpEscape, Instant::now()).unwrap();
+            let effects = reduce_modal(
+                &mut state,
+                &Action::CloseModal(ModalKind::Help),
+                Instant::now(),
+            )
+            .unwrap();
 
-            assert_eq!(state.input_mode(), InputMode::Help);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.ui.help.filter().content().is_empty());
             assert!(effects.is_empty());
         }
@@ -560,7 +559,12 @@ mod tests {
             let mut state = create_test_state();
             open_help(&mut state);
 
-            let effects = reduce_modal(&mut state, &Action::HelpEscape, Instant::now()).unwrap();
+            let effects = reduce_modal(
+                &mut state,
+                &Action::CloseModal(ModalKind::Help),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());

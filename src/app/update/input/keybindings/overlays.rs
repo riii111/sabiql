@@ -218,10 +218,10 @@ pub const HELP_ROWS: &[ModeRow] = &[
     ModeRow {
         key_short: "Esc",
         key: "Esc",
-        desc_short: "Clear/Close",
-        description: "Clear filter or close help",
+        desc_short: "Close",
+        description: "Close help",
         bindings: &[ExecBinding {
-            action: Action::HelpEscape,
+            action: Action::CloseModal(ModalKind::Help),
             combos: &[KeyCombo::plain(Key::Esc)],
         }],
     },
