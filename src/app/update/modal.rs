@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::flash_timer::FlashId;
+use crate::model::shared::help::{HelpDocument, HelpOrigin};
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::AppSettings;
 use crate::update::action::{
@@ -12,27 +13,39 @@ use crate::update::action::{
 };
 
 fn scroll_help_by(state: &mut AppState, direction: ScrollDirection, delta: usize) {
-    let max_scroll = state.ui.help_max_scroll();
-    state.ui.help_scroll_offset =
-        direction.clamp_vertical_offset(state.ui.help_scroll_offset, max_scroll, delta);
+    let document = HelpDocument::from_state(state);
+    let max_scroll = state
+        .ui
+        .help_max_scroll(document.line_count(), document.content_width());
+    let offset = direction.clamp_vertical_offset(state.ui.help.scroll_offset(), max_scroll, delta);
+    state.ui.help.set_scroll_offset(offset);
 }
 
 fn scroll_help_horizontally(state: &mut AppState, direction: ScrollDirection) {
     match direction {
         ScrollDirection::Left => {
-            state.ui.help_horizontal_offset = state.ui.help_horizontal_offset.saturating_sub(1);
+            state
+                .ui
+                .help
+                .set_horizontal_offset(state.ui.help.horizontal_offset().saturating_sub(1));
         }
         ScrollDirection::Right => {
-            state.ui.help_horizontal_offset =
-                (state.ui.help_horizontal_offset + 1).min(state.ui.help_max_horizontal_scroll());
+            let document = HelpDocument::from_state(state);
+            let max_scroll = state
+                .ui
+                .help_max_horizontal_scroll(document.line_count(), document.content_width());
+            state
+                .ui
+                .help
+                .set_horizontal_offset((state.ui.help.horizontal_offset() + 1).min(max_scroll));
         }
         ScrollDirection::Up | ScrollDirection::Down => {}
     }
 }
 
-fn reset_help_offsets(state: &mut AppState) {
-    state.ui.help_scroll_offset = 0;
-    state.ui.help_horizontal_offset = 0;
+fn close_help(state: &mut AppState) {
+    state.modal.set_mode(InputMode::Normal);
+    state.ui.help.close();
 }
 
 pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -136,16 +149,35 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::ToggleModal(ModalKind::Help) => {
             if state.modal.active_mode() == InputMode::Help {
-                state.modal.set_mode(InputMode::Normal);
-                reset_help_offsets(state);
+                close_help(state);
             } else {
+                let origin = HelpOrigin::from_state(state);
+                state.ui.help.open(origin);
                 state.modal.set_mode(InputMode::Help);
             }
             Some(vec![])
         }
         Action::CloseModal(ModalKind::Help) => {
-            state.modal.set_mode(InputMode::Normal);
-            reset_help_offsets(state);
+            close_help(state);
+            Some(vec![])
+        }
+        Action::HelpEscape => {
+            if state.ui.help.clear_filter_or_should_close() {
+                close_help(state);
+            }
+            Some(vec![])
+        }
+        Action::TextInput {
+            target: InputTarget::HelpFilter,
+            ch,
+        } => {
+            state.ui.help.insert_filter_char(*ch);
+            Some(vec![])
+        }
+        Action::TextBackspace {
+            target: InputTarget::HelpFilter,
+        } => {
+            state.ui.help.backspace_filter();
             Some(vec![])
         }
         Action::Scroll {
@@ -162,20 +194,33 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 ScrollAmount::Line => scroll_help_by(state, *direction, 1),
                 ScrollAmount::ToStart => {
                     if matches!(direction, ScrollDirection::Left | ScrollDirection::Right) {
-                        state.ui.help_horizontal_offset = 0;
+                        state.ui.help.set_horizontal_offset(0);
                     } else {
-                        state.ui.help_scroll_offset = 0;
+                        state.ui.help.set_scroll_offset(0);
                     }
                 }
                 ScrollAmount::ToEnd => {
+                    let document = HelpDocument::from_state(state);
                     if matches!(direction, ScrollDirection::Left | ScrollDirection::Right) {
-                        state.ui.help_horizontal_offset = state.ui.help_max_horizontal_scroll();
+                        let max_scroll = state.ui.help_max_horizontal_scroll(
+                            document.line_count(),
+                            document.content_width(),
+                        );
+                        state.ui.help.set_horizontal_offset(max_scroll);
                     } else {
-                        state.ui.help_scroll_offset = state.ui.help_max_scroll();
+                        let max_scroll = state
+                            .ui
+                            .help_max_scroll(document.line_count(), document.content_width());
+                        state.ui.help.set_scroll_offset(max_scroll);
                     }
                 }
                 ScrollAmount::HalfPage | ScrollAmount::FullPage => {
-                    if let Some(delta) = amount.page_delta(state.ui.help_visible_rows()) {
+                    let document = HelpDocument::from_state(state);
+                    if let Some(delta) = amount.page_delta(
+                        state
+                            .ui
+                            .help_visible_rows(document.line_count(), document.content_width()),
+                    ) {
                         scroll_help_by(state, *direction, delta);
                     }
                 }

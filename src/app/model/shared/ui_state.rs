@@ -3,12 +3,12 @@ use std::time::Instant;
 
 use super::focused_pane::FocusedPane;
 
+use super::help::HelpState;
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
 use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
-use crate::update::input::keybindings::{help_content_line_count, help_content_width};
 use unicode_width::UnicodeWidthStr;
 
 pub use super::picker::clamp_scroll_offset;
@@ -195,8 +195,7 @@ pub struct UiState {
     pub result_pane_height: u16,
     pub jsonb_detail_editor_visible_rows: usize,
 
-    pub help_scroll_offset: usize,
-    pub help_horizontal_offset: usize,
+    pub help: HelpState,
 
     pub terminal_width: u16,
     pub terminal_height: u16,
@@ -246,41 +245,41 @@ impl UiState {
         self.inspector_pane_height.saturating_sub(3) as usize
     }
 
-    pub fn help_visible_rows(&self) -> usize {
-        self.help_viewport_layout().visible_rows
+    pub fn help_visible_rows(&self, total_lines: usize, content_width: usize) -> usize {
+        self.help_viewport_layout(total_lines, content_width)
+            .visible_rows
     }
 
-    pub fn help_max_scroll(&self) -> usize {
-        help_content_line_count().saturating_sub(self.help_visible_rows())
+    pub fn help_max_scroll(&self, total_lines: usize, content_width: usize) -> usize {
+        total_lines.saturating_sub(self.help_visible_rows(total_lines, content_width))
     }
 
-    pub fn help_visible_columns(&self) -> usize {
-        self.help_viewport_layout().visible_columns
+    pub fn help_visible_columns(&self, total_lines: usize, content_width: usize) -> usize {
+        self.help_viewport_layout(total_lines, content_width)
+            .visible_columns
     }
 
-    pub fn help_max_horizontal_scroll(&self) -> usize {
-        help_content_width().saturating_sub(self.help_visible_columns())
+    pub fn help_max_horizontal_scroll(&self, total_lines: usize, content_width: usize) -> usize {
+        content_width.saturating_sub(self.help_visible_columns(total_lines, content_width))
     }
 
-    pub fn clamp_help_offsets(&mut self) {
-        self.help_scroll_offset = self.help_scroll_offset.min(self.help_max_scroll());
-        self.help_horizontal_offset = self
-            .help_horizontal_offset
-            .min(self.help_max_horizontal_scroll());
+    pub fn clamp_help_offsets(&mut self, total_lines: usize, content_width: usize) {
+        let max_scroll = self.help_max_scroll(total_lines, content_width);
+        let max_horizontal_scroll = self.help_max_horizontal_scroll(total_lines, content_width);
+        self.help.clamp_offsets(max_scroll, max_horizontal_scroll);
     }
 
-    pub fn help_viewport_layout(&self) -> HelpViewportLayout {
+    pub fn help_viewport_layout(
+        &self,
+        total_lines: usize,
+        content_width: usize,
+    ) -> HelpViewportLayout {
         let base_rows = (self.terminal_height as usize * HELP_MODAL_HEIGHT_PERCENT as usize / 100)
             .saturating_sub(MODAL_VERTICAL_BORDER_OVERHEAD);
         let base_columns = (self.terminal_width as usize * HELP_MODAL_WIDTH_PERCENT as usize / 100)
             .saturating_sub(MODAL_HORIZONTAL_BORDER_OVERHEAD);
 
-        help_viewport_layout_for(
-            base_rows,
-            base_columns,
-            help_content_line_count(),
-            help_content_width(),
-        )
+        help_viewport_layout_for(base_rows, base_columns, total_lines, content_width)
     }
 
     pub fn toggle_focus(&mut self) -> bool {
@@ -640,56 +639,64 @@ mod tests {
         #[test]
         fn help_max_scroll_plus_viewport_equals_content_line_count() {
             let terminal_height: u16 = 24;
+            let total_lines = 100;
+            let content_width = 80;
             let state = UiState {
                 terminal_height,
                 ..Default::default()
             };
-            let viewport = state.help_visible_rows();
+            let viewport = state.help_visible_rows(total_lines, content_width);
 
-            let max = state.help_max_scroll();
+            let max = state.help_max_scroll(total_lines, content_width);
 
             assert_eq!(
                 max + viewport,
-                help_content_line_count(),
+                total_lines,
                 "max_scroll({}) + viewport({}) != total_lines({})",
                 max,
                 viewport,
-                help_content_line_count()
+                total_lines
             );
         }
 
         #[test]
         fn help_max_scroll_is_zero_when_terminal_very_tall() {
+            let total_lines = 100;
+            let content_width = 80;
             let state = UiState {
                 terminal_height: 1000,
                 ..Default::default()
             };
 
-            let max = state.help_max_scroll();
+            let max = state.help_max_scroll(total_lines, content_width);
 
             assert_eq!(max, 0);
         }
 
         #[test]
         fn help_visible_rows_matches_modal_layout_height() {
+            let total_lines = 100;
+            let content_width = 80;
             let state = UiState {
                 terminal_height: 24,
                 ..Default::default()
             };
 
-            assert_eq!(state.help_visible_rows(), 16);
+            assert_eq!(state.help_visible_rows(total_lines, content_width), 16);
         }
 
         #[test]
         fn help_max_horizontal_scroll_uses_modal_width() {
+            let total_lines = 100;
+            let content_width = 80;
             let state = UiState {
                 terminal_width: 80,
                 ..Default::default()
             };
 
             assert_eq!(
-                state.help_max_horizontal_scroll(),
-                help_content_width().saturating_sub(53)
+                state.help_max_horizontal_scroll(total_lines, content_width),
+                content_width.saturating_sub(53)
             );
         }
 

@@ -152,6 +152,7 @@ pub enum InputTarget {
     QueryHistoryFilter,
     JsonbEdit,
     JsonbSearch,
+    HelpFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,6 +286,7 @@ pub enum Action {
         target: InputTarget,
         direction: CursorMove,
     },
+    HelpEscape,
     Select(SelectMotion),
     ListSelect {
         target: ListTarget,

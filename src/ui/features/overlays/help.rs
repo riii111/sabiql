@@ -8,18 +8,13 @@ use unicode_width::UnicodeWidthStr;
 use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::help::{HelpDocument, HelpRow};
 use crate::app::model::shared::ui_state::{
     HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT, HelpViewportLayout,
     help_viewport_layout_for,
 };
 use crate::app::update::input::keybindings::{
-    CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_ROWS, CONFIRM_DIALOG_KEYS,
-    CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, ER_PICKER_ROWS,
-    GLOBAL_KEYS, HELP_KEY_COLUMN_WIDTH, HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH, HELP_ROWS,
-    HISTORY_KEYS, INSPECTOR_DDL_KEYS, JSONB_DETAIL_ROWS, JSONB_EDIT_ROWS, JSONB_SEARCH_KEYS,
-    KeyBinding, NAVIGATION_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS,
-    SETTINGS_ROWS, SQL_MODAL_COMPARE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
-    SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, help_content_width,
+    HELP_KEY_COLUMN_WIDTH, HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH,
 };
 
 use crate::primitives::atoms::scroll_indicator::{
@@ -32,168 +27,34 @@ pub struct HelpOverlay;
 
 impl HelpOverlay {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
+        let document = HelpDocument::from_state(state);
+        let footer = if document.filter().is_empty() {
+            FooterHintBar::new([
+                ("type", "Filter"),
+                ("Backspace", "Edit"),
+                ("Esc", "Close"),
+                ("?", "Close"),
+            ])
+        } else {
+            FooterHintBar::new([
+                ("type", "Filter"),
+                ("Backspace", "Edit"),
+                ("Esc", "Clear"),
+                ("?", "Close"),
+            ])
+        };
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(HELP_MODAL_WIDTH_PERCENT),
             Constraint::Percentage(HELP_MODAL_HEIGHT_PERCENT),
             " Help ",
-            FooterHintBar::new([("?/Esc", "Close")]),
+            footer,
             theme,
         );
 
-        let mut help_lines = vec![Self::section("Global Keys", theme)];
-        Self::push_dedup(&mut help_lines, GLOBAL_KEYS, theme);
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Navigation", theme));
-        for entry in NAVIGATION_KEYS {
-            help_lines.push(Self::key_line(entry.key, entry.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Result History", theme));
-        Self::push_dedup(&mut help_lines, HISTORY_KEYS, theme);
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Result Pane", theme));
-        for kb in RESULT_ACTIVE_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Inspector Pane (DDL tab)", theme));
-        for kb in INSPECTOR_DDL_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Cell Edit", theme));
-        for kb in CELL_EDIT_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("SQL Editor (Normal)", theme));
-        for kb in SQL_MODAL_NORMAL_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("SQL Editor (Insert)", theme));
-        for kb in SQL_MODAL_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("SQL Editor (Plan)", theme));
-        for kb in SQL_MODAL_PLAN_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("SQL Editor (Compare)", theme));
-        for kb in SQL_MODAL_COMPARE_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("SQL Editor (Confirm)", theme));
-        for kb in SQL_MODAL_CONFIRMING_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Overlays", theme));
-        for kb in OVERLAY_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Command Line", theme));
-        for kb in COMMAND_LINE_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Connection Setup", theme));
-        for kb in CONNECTION_SETUP_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Connection Error", theme));
-        for row in CONNECTION_ERROR_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Connection Selector", theme));
-        for row in CONNECTION_SELECTOR_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("ER Diagram Picker", theme));
-        for row in ER_PICKER_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Query History Picker", theme));
-        for row in QUERY_HISTORY_PICKER_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Table Picker", theme));
-        for row in TABLE_PICKER_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Command Palette", theme));
-        for row in COMMAND_PALETTE_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Settings", theme));
-        for row in SETTINGS_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Help Overlay", theme));
-        for row in HELP_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Confirm Dialog", theme));
-        for kb in CONFIRM_DIALOG_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("JSONB Detail", theme));
-        for row in JSONB_DETAIL_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("JSONB Edit", theme));
-        for row in JSONB_EDIT_ROWS {
-            help_lines.push(Self::key_line(row.key, row.description, theme));
-        }
-
-        help_lines.push(Line::raw(""));
-        help_lines.push(Self::section("JSONB Search", theme));
-        for kb in JSONB_SEARCH_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description, theme));
-        }
-
-        let total_lines = help_lines.len();
-        let content_width = help_content_width();
+        let help_lines = Self::document_lines(&document, theme);
+        let total_lines = document.line_count();
+        let content_width = document.content_width();
         let viewport = help_viewport_layout_for(
             inner.height as usize,
             inner.width as usize,
@@ -203,10 +64,10 @@ impl HelpOverlay {
         let content_area = Self::content_area(inner, viewport);
         let viewport_height = content_area.height as usize;
         let scroll_offset =
-            clamp_scroll_offset(state.ui.help_scroll_offset, viewport_height, total_lines);
+            clamp_scroll_offset(state.ui.help.scroll_offset(), viewport_height, total_lines);
         let viewport_width = content_area.width as usize;
         let horizontal_offset = clamp_scroll_offset(
-            state.ui.help_horizontal_offset,
+            state.ui.help.horizontal_offset(),
             viewport_width,
             content_width,
         );
@@ -268,22 +129,37 @@ impl HelpOverlay {
         ])
     }
 
-    fn push_dedup(lines: &mut Vec<Line<'static>>, bindings: &[KeyBinding], theme: &ThemePalette) {
-        let mut i = 0;
-        while i < bindings.len() {
-            if i + 1 < bindings.len() && bindings[i].key == bindings[i + 1].key {
-                let toggle_desc = format!("Toggle {}", bindings[i].desc_short);
-                lines.push(Self::key_line(bindings[i].key, &toggle_desc, theme));
-                i += 2;
-            } else {
-                lines.push(Self::key_line(
-                    bindings[i].key,
-                    bindings[i].description,
-                    theme,
-                ));
-                i += 1;
+    fn document_lines(document: &HelpDocument, theme: &ThemePalette) -> Vec<Line<'static>> {
+        let mut lines = vec![Self::filter_line(document.filter(), theme), Line::raw("")];
+        for (index, section) in document.sections().iter().enumerate() {
+            if index > 0 {
+                lines.push(Line::raw(""));
+            }
+            lines.push(Self::section(section.title(), theme));
+            for row in section.rows() {
+                lines.push(Self::row_line(row, theme));
             }
         }
+        lines
+    }
+
+    fn filter_line(filter: &str, theme: &ThemePalette) -> Line<'static> {
+        Line::from(vec![
+            Span::styled(
+                "Filter: ",
+                Style::default().fg(theme.semantic.text.secondary),
+            ),
+            Span::styled(
+                format!("{filter}_"),
+                Style::default()
+                    .fg(theme.semantic.text.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])
+    }
+
+    fn row_line(row: &HelpRow, theme: &ThemePalette) -> Line<'static> {
+        Self::key_line(row.key(), row.description(), theme)
     }
 
     fn key_line(key: &str, desc: &str, theme: &ThemePalette) -> Line<'static> {

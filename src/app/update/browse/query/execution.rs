@@ -5,6 +5,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::{QueryResult, QuerySource};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::services::AppServices;
@@ -188,6 +189,7 @@ pub fn reduce(
                     vec![]
                 }
                 Action::ToggleModal(ModalKind::Help) => {
+                    state.ui.help.open(HelpOrigin::CommandLine);
                     state.modal.set_mode(InputMode::Help);
                     vec![]
                 }

@@ -3,7 +3,17 @@ use crate::update::input::keybindings::{self, KeyCombo};
 use crate::update::input::keymap;
 
 pub fn handle_help_keys(combo: KeyCombo) -> Action {
-    keybindings::HELP.resolve(&combo).unwrap_or(Action::None)
+    if let Some(action) = keybindings::HELP.resolve(&combo) {
+        return action;
+    }
+
+    match combo.key {
+        keybindings::Key::Char(ch) => Action::TextInput {
+            target: crate::update::action::InputTarget::HelpFilter,
+            ch,
+        },
+        _ => Action::None,
+    }
 }
 
 pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
@@ -14,7 +24,7 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
 mod tests {
     use super::*;
     use crate::update::action::ModalKind;
-    use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::action::{InputTarget, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
@@ -41,10 +51,10 @@ mod tests {
         }
 
         #[test]
-        fn esc_closes_help() {
+        fn esc_clears_filter_or_closes_help() {
             let result = handle_help_keys(combo(Key::Esc));
 
-            assert!(matches!(result, Action::CloseModal(ModalKind::Help)));
+            assert!(matches!(result, Action::HelpEscape));
         }
 
         #[test]
@@ -55,10 +65,16 @@ mod tests {
         }
 
         #[test]
-        fn unknown_key_returns_none() {
+        fn char_falls_through_to_filter_input() {
             let result = handle_help_keys(combo(Key::Char('a')));
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::HelpFilter,
+                    ch: 'a'
+                }
+            ));
         }
 
         #[rstest]
@@ -113,10 +129,16 @@ mod tests {
         #[case(Key::Char('M'))]
         #[case(Key::Char('L'))]
         #[case(Key::Char('z'))]
-        fn issue_non_goals_remain_unbound_in_help_mode(#[case] code: Key) {
+        fn non_scroll_chars_filter_help(#[case] code: Key) {
             let result = handle_help_keys(combo(code));
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::HelpFilter,
+                    ..
+                }
+            ));
         }
     }
 

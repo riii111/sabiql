@@ -2,6 +2,7 @@ pub mod confirm_dialog;
 pub mod db_capabilities;
 pub mod flash_timer;
 pub mod focused_pane;
+pub mod help;
 pub mod input_mode;
 pub mod inspector_tab;
 pub mod key_sequence;

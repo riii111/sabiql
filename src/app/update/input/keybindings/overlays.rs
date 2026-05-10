@@ -205,13 +205,42 @@ pub const HELP_ROWS: &[ModeRow] = &[
         ],
     },
     ModeRow {
-        key_short: "?/Esc",
-        key: "? / Esc",
+        key_short: "type",
+        key: "type",
+        desc_short: "Filter",
+        description: "Filter help",
+        bindings: &[],
+    },
+    ModeRow {
+        key_short: "Backspace",
+        key: "Backspace",
+        desc_short: "Edit",
+        description: "Edit filter",
+        bindings: &[ExecBinding {
+            action: Action::TextBackspace {
+                target: InputTarget::HelpFilter,
+            },
+            combos: &[KeyCombo::plain(Key::Backspace)],
+        }],
+    },
+    ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Clear/Close",
+        description: "Clear filter or close help",
+        bindings: &[ExecBinding {
+            action: Action::HelpEscape,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    },
+    ModeRow {
+        key_short: "?",
+        key: "?",
         desc_short: "Close",
         description: "Close help",
         bindings: &[ExecBinding {
             action: Action::CloseModal(ModalKind::Help),
-            combos: &[KeyCombo::plain(Key::Char('?')), KeyCombo::plain(Key::Esc)],
+            combos: &[KeyCombo::plain(Key::Char('?'))],
         }],
     },
 ];
