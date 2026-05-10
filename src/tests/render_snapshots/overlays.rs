@@ -2,6 +2,7 @@ use super::*;
 use harness::connected_state;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use sabiql_app::model::shared::help::HelpOrigin;
 use sabiql_app::model::shared::multi_line_input::MultiLineInputState;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use sabiql_domain::{ConnectionId, QueryResult};
@@ -365,12 +366,30 @@ fn help_overlay() {
 }
 
 #[test]
+fn help_overlay_filtered_current_result() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.focused_pane = FocusedPane::Result;
+    state.result_interaction.activate_cell(0, 0);
+    state.ui.help.open(HelpOrigin::from_state(&state));
+    for ch in "copy".chars() {
+        state.ui.help.insert_filter_char(ch);
+    }
+    state.modal.set_mode(InputMode::Help);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn help_overlay_long_key_rows() {
     let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.help_scroll_offset = 58;
+    state.ui.help.set_scroll_offset(58);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -385,8 +404,8 @@ fn help_overlay_narrow_horizontal_scroll() {
     state.modal.set_mode(InputMode::Help);
     state.ui.terminal_width = 50;
     state.ui.terminal_height = 24;
-    state.ui.help_scroll_offset = 58;
-    state.ui.help_horizontal_offset = 18;
+    state.ui.help.set_scroll_offset(58);
+    state.ui.help.set_horizontal_offset(18);
 
     let output = render_to_string(&mut terminal, &mut state);
 

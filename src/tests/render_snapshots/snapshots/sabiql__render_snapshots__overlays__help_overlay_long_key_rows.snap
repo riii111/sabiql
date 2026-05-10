@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 377
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -8,47 +9,47 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │  public.posts                         ││(select a table)                                                                                                          │
 │  public.comments                      ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │  Home/End            Jump to start/end                                                                         ▲│                        │
-│                        │  :                   Open command line                                                                         ││                        │
-│                        │  Esc                 Exit to Cell Active (draft preserved)                                                     ││                        │
-│                        │                                                                                                                ││                        │
-│                        │▸ SQL Editor (Normal)                                                                                           ││                        │
-│                        │  Alt+Enter / F5      Execute query                                                                             ││                        │
-│                        │  y                   Copy query to clipboard                                                                   ││                        │
-│                        │  i                   Enter Insert mode                                                                         ││                        │
-│                        │  A                   Append at line end                                                                        ││                        │
-│                        │  h / j / k / l / ↑↓←→Move cursor                                                                               ││                        │
-│                        │  0 / $ / w / b / Home / End  Move by word or line boundary                                                     ││                        │
-│                        │  gg / G / H / M / L  Jump by buffer or viewport                                                                ┃│                        │
-│                        │  Esc                 Close editor                                                                              ┃│                        │
-│                        │  Ctrl+L              Clear editor                                                                              ┃│                        │
-│                        │  Ctrl+O              Open Query History                                                                        ┃│                        │
-│                        │                                                                                                                ┃│                        │
-│                        │▸ SQL Editor (Insert)                                                                                           ┃│                        │
-│                        │  Alt+Enter / F5      Execute query                                                                             ││                        │
-│                        │  Esc                 Return to Normal mode                                                                     ││────────────────────────┘
-│                        │  ↑↓←→                Move cursor                                                                               ││────────────────────────┐
+│                        │  Esc                 Close editor                                                                              ▲│                        │
+│                        │  Ctrl+L              Clear editor                                                                              ││                        │
+│                        │  Ctrl+O              Open Query History                                                                        ││                        │
+│                        │  Esc                 Return to Normal mode                                                                     ││                        │
+│                        │  ↑↓←→                Move cursor                                                                               ││                        │
 │                        │  Home/End            Line start/end                                                                            ││                        │
 │                        │  Tab                 Insert tab / Accept completion                                                            ││                        │
 │                        │  Ctrl+Space          Trigger completion                                                                        ││                        │
-│                        │  Ctrl+L              Clear editor                                                                              ││                        │
-│                        │  Ctrl+O              Open Query History                                                                        ││                        │
+│                        │  :w                  Preview and confirm UPDATE                                                                ││                        │
+│                        │  type                Edit cell value                                                                           ││                        │
+│                        │  ←→                  Move cursor                                                                               ││                        │
+│                        │  Home/End            Jump to start/end                                                                         ││                        │
+│                        │  :                   Open command line                                                                         ││                        │
+│                        │  Esc                 Exit to Cell Active (draft preserved)                                                     ││                        │
+│                        │  Home / End          Line start/end                                                                            ││                        │
+│                        │  Esc                 Cancel and return to editor                                                               ┃│                        │
+│                        │                                                                                                                ┃│                        │
+│                        │▸ Search / Filter                                                                                               ┃│                        │
+│                        │  type                Type to filter                                                                            ┃│────────────────────────┘
+│                        │  type                Type to search                                                                            ┃│────────────────────────┐
+│                        │  Enter               Confirm search                                                                            ┃│                        │
+│                        │  Esc                 Cancel search                                                                             ┃│                        │
+│                        │  j / k / Ctrl+N / Ctrl+P / ↑ / ↓  Scroll down / up                                                             ┃│                        │
+│                        │  g / Home / G / End  Jump to top / bottom                                                                      ┃│                        │
+│                        │  Ctrl+D / Ctrl+U     Scroll half page down / up                                                                ││                        │
+│                        │  Ctrl+F / Ctrl+B / PageDown / PageUp  Scroll full page down / up                                               ││                        │
+│                        │  h / l / ← / →       Scroll left / right                                                                       ││                        │
+│                        │  type                Filter help                                                                               ││                        │
+│                        │  Backspace           Edit filter                                                                               ││                        │
+│                        │  Esc                 Clear filter or close help                                                                ││                        │
+│                        │  ?                   Close help                                                                                ││                        │
 │                        │                                                                                                                ││                        │
-│                        │▸ SQL Editor (Plan)                                                                                             ││                        │
-│                        │  Ctrl+E              Run EXPLAIN on current query                                                              ││                        │
-│                        │  Alt+E               Run EXPLAIN ANALYZE on current query                                                      ││                        │
-│                        │  y                   Copy to clipboard                                                                         ││                        │
-│                        │  Ctrl+N / Ctrl+P / ↑↓ / j / k  Scroll plan text                                                                ││                        │
-│                        │  Tab                 Switch tab                                                                                ││                        │
-│                        │  Shift+Tab           Previous tab                                                                              ││                        │
-│                        │  Esc                 Close editor                                                                              ││                        │
-│                        │                                                                                                                ││                        │
-│                        │▸ SQL Editor (Compare)                                                                                          ││                        │
-│                        │  Ctrl+E              Run EXPLAIN on current query                                                              ││                        │
-│                        │  Alt+E               Run EXPLAIN ANALYZE on current query                                                      ││                        │
-│                        │  e                   Edit query in SQL tab                                                                     ▼│                        │
-│                        ╰ ?/Esc: Close ───────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                        │▸ Connections                                                                                                   ││                        │
+│                        │  Tab/⇧Tab            Next/Previous field                                                                       ││                        │
+│                        │  Tab                 Next field                                                                                ││                        │
+│                        │  ⇧Tab                Previous field                                                                            ││                        │
+│                        │  Ctrl+S              Save and connect                                                                          ││                        │
+│                        │  Esc                 Cancel                                                                                    ││                        │
+│                        │  Enter               Toggle dropdown (SSL field)                                                               ▼│                        │
+│                        ╰ type: Filter │ Backspace: Edit │ Esc: Close │ ?: Close ─────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-h/l / ←→:H-Scroll  ?/Esc:Close
+h/l / ←→:H-Scroll  ?:Close
