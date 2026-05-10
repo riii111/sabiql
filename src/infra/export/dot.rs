@@ -158,18 +158,21 @@ fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
 
 #[cfg(any(target_os = "freebsd", target_os = "linux", test))]
 fn browser_command_candidates(browser: &str) -> Vec<&str> {
-    match browser {
-        "Google Chrome" => vec![
+    match browser.trim().to_ascii_lowercase().as_str() {
+        "google chrome" | "google-chrome" | "google-chrome-stable" => vec![
             "google-chrome",
             "google-chrome-stable",
             "chromium",
             "chromium-browser",
             "chrome",
         ],
-        "Firefox" => vec!["firefox"],
-        "Safari" => vec![],
-        "Microsoft Edge" => vec!["microsoft-edge", "microsoft-edge-stable"],
-        "Brave" => vec!["brave-browser", "brave"],
+        "firefox" => vec!["firefox"],
+        "safari" => vec![],
+        "microsoft edge" | "microsoft-edge" | "microsoft-edge-stable" => {
+            vec!["microsoft-edge", "microsoft-edge-stable"]
+        }
+        "brave" | "brave-browser" => vec!["brave-browser", "brave"],
+        "arc" => vec!["arc", "Arc"],
         _ => vec![browser],
     }
 }
@@ -550,13 +553,14 @@ mod tests {
         #[test]
         fn browser_command_candidates_include_common_presets() {
             assert_eq!(
-                browser_command_candidates("Microsoft Edge"),
+                browser_command_candidates("microsoft edge"),
                 vec!["microsoft-edge", "microsoft-edge-stable"]
             );
             assert_eq!(
-                browser_command_candidates("Brave"),
+                browser_command_candidates("BRAVE"),
                 vec!["brave-browser", "brave"]
             );
+            assert_eq!(browser_command_candidates("arc"), vec!["arc", "Arc"]);
             assert_eq!(
                 browser_command_candidates("CustomBrowser"),
                 vec!["CustomBrowser"]

@@ -148,7 +148,7 @@ impl SettingsOverlay {
 
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
-            "Custom command",
+            "Other",
             Style::default().fg(theme.semantic.text.primary),
         )));
         let custom_selected =

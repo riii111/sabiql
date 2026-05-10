@@ -65,7 +65,7 @@ impl ErBrowserChoice {
             Self::Safari => "Safari",
             Self::MicrosoftEdge => "Microsoft Edge",
             Self::Brave => "Brave",
-            Self::Custom => "Custom",
+            Self::Custom => "Other",
         }
     }
 
@@ -81,21 +81,26 @@ impl ErBrowserChoice {
     }
 
     pub fn from_browser_name(browser: Option<&str>) -> Self {
-        match browser.map(str::trim).filter(|value| !value.is_empty()) {
+        match browser
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase())
+            .as_deref()
+        {
             None => Self::SystemDefault,
             Some(
-                "Google Chrome"
+                "google chrome"
                 | "google-chrome"
                 | "google-chrome-stable"
                 | "chromium"
                 | "chromium-browser",
             ) => Self::GoogleChrome,
-            Some("Firefox" | "firefox") => Self::Firefox,
-            Some("Safari") => Self::Safari,
-            Some("Microsoft Edge" | "microsoft-edge" | "microsoft-edge-stable") => {
+            Some("firefox") => Self::Firefox,
+            Some("safari") => Self::Safari,
+            Some("microsoft edge" | "microsoft-edge" | "microsoft-edge-stable") => {
                 Self::MicrosoftEdge
             }
-            Some("Brave" | "brave" | "brave-browser") => Self::Brave,
+            Some("brave" | "brave-browser") => Self::Brave,
             Some(_) => Self::Custom,
         }
     }
@@ -390,6 +395,30 @@ mod tests {
         );
         assert_eq!(
             ErBrowserChoice::from_browser_name(Some("brave-browser")),
+            ErBrowserChoice::Brave
+        );
+    }
+
+    #[test]
+    fn browser_choice_ignores_case() {
+        assert_eq!(
+            ErBrowserChoice::from_browser_name(Some("google chrome")),
+            ErBrowserChoice::GoogleChrome
+        );
+        assert_eq!(
+            ErBrowserChoice::from_browser_name(Some("FIREFOX")),
+            ErBrowserChoice::Firefox
+        );
+        assert_eq!(
+            ErBrowserChoice::from_browser_name(Some("safari")),
+            ErBrowserChoice::Safari
+        );
+        assert_eq!(
+            ErBrowserChoice::from_browser_name(Some("MICROSOFT EDGE")),
+            ErBrowserChoice::MicrosoftEdge
+        );
+        assert_eq!(
+            ErBrowserChoice::from_browser_name(Some("BRAVE")),
             ErBrowserChoice::Brave
         );
     }
