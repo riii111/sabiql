@@ -11,7 +11,7 @@ use crate::domain::connection::ConnectionId;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,
 };
-use crate::primitives::molecules::{modal_hint_line, render_modal_with_hint_line};
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
 const PREFIX_DISPLAY_WIDTH: usize = 2;
@@ -27,12 +27,12 @@ impl ConnectionSelector {
             state.ui.connection_list_selected,
         );
         let hint = Self::build_hints(is_service_selected);
-        let (_outer, inner) = render_modal_with_hint_line(
+        let (_outer, inner) = render_modal(
             frame,
             Constraint::Percentage(60),
             Constraint::Percentage(60),
             " Select Connection ",
-            modal_hint_line(&hint, theme),
+            FooterHintBar::new(hint),
             theme,
         );
 

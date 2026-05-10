@@ -8,9 +8,7 @@ use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
 use crate::primitives::atoms::highlight_sql;
-use crate::primitives::molecules::{
-    modal_hint_line, render_modal_with_hint_line, render_modal_with_hint_line_and_border_color,
-};
+use crate::primitives::molecules::{FooterHintBar, render_modal, render_modal_with_border_color};
 use crate::primitives::utils::text_utils::wrapped_line_count;
 use crate::theme::ThemePalette;
 
@@ -49,7 +47,7 @@ impl ConfirmDialog {
         theme: &ThemePalette,
     ) -> ConfirmPreviewMetrics {
         let dialog = &state.confirm_dialog;
-        let hints = [("Enter", "Confirm"), ("Esc", "Cancel")];
+        let hint = FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")]);
 
         let full_area = frame.area();
         let max_modal_width = full_area.width.saturating_sub(2).max(20);
@@ -59,7 +57,7 @@ impl ConfirmDialog {
             .map(|line| line.chars().count() as u16)
             .max()
             .unwrap_or(0);
-        let hint_width = " Enter: Confirm │ Esc: Cancel ".chars().count() as u16;
+        let hint_width = hint.width();
         let title_width = dialog.title().chars().count() as u16;
         let content_width = message_max_line.max(hint_width).max(title_width);
         let preferred_width = content_width.saturating_add(6).max(40);
@@ -73,22 +71,22 @@ impl ConfirmDialog {
         let title = format!(" {} ", dialog.title());
         let (_, modal_inner) =
             if let Some(color) = Self::intent_border_color(dialog.intent(), theme) {
-                render_modal_with_hint_line_and_border_color(
+                render_modal_with_border_color(
                     frame,
                     Constraint::Length(modal_width),
                     Constraint::Length(modal_height),
                     &title,
-                    modal_hint_line(&hints, theme),
+                    hint,
                     color,
                     theme,
                 )
             } else {
-                render_modal_with_hint_line(
+                render_modal(
                     frame,
                     Constraint::Length(modal_width),
                     Constraint::Length(modal_height),
                     &title,
-                    modal_hint_line(&hints, theme),
+                    hint,
                     theme,
                 )
             };
@@ -239,18 +237,18 @@ impl ConfirmDialog {
         // +4 = border top/bottom (2) + vertical padding (2)
         let modal_height = (wrapped_height + 4).clamp(min_modal_height, max_modal_height);
 
-        let hints = if blocked {
-            vec![("Esc", "Cancel")]
+        let hint = if blocked {
+            FooterHintBar::new([("Esc", "Cancel")])
         } else {
-            vec![("Enter", "Confirm"), ("Esc", "Cancel")]
+            FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")])
         };
 
-        let (_, modal_inner) = render_modal_with_hint_line_and_border_color(
+        let (_, modal_inner) = render_modal_with_border_color(
             frame,
             Constraint::Length(modal_width),
             Constraint::Length(modal_height),
             &title,
-            modal_hint_line(&hints, theme),
+            hint,
             border_color,
             theme,
         );

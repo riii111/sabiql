@@ -26,24 +26,7 @@ pub fn render_scrim(frame: &mut Frame, theme: &ThemePalette) {
     );
 }
 
-pub fn modal_block_with_hint(title: String, hint: String, theme: &ThemePalette) -> Block<'static> {
-    modal_block_with_hint_color(
-        title,
-        Line::styled(hint, theme.modal_hint_style()),
-        theme.component.modal.border,
-        theme,
-    )
-}
-
-pub fn modal_block_with_hint_line(
-    title: String,
-    hint: Line<'static>,
-    theme: &ThemePalette,
-) -> Block<'static> {
-    modal_block_with_hint_color(title, hint, theme.component.modal.border, theme)
-}
-
-pub fn modal_block_with_hint_color(
+pub fn modal_block(
     title: String,
     hint: Line<'static>,
     border_color: Color,

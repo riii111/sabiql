@@ -8,7 +8,7 @@ use crate::app::model::connection::setup::{
 };
 use crate::domain::connection::SslMode;
 use crate::primitives::atoms::text_cursor_spans;
-use crate::primitives::molecules::{modal_hint_line, render_modal_with_hint_line};
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
 const LABEL_WIDTH: u16 = 12;
@@ -42,20 +42,17 @@ impl ConnectionSetup {
         } else {
             (" New Connection ", "Connect")
         };
-        let (_, modal_inner) = render_modal_with_hint_line(
+        let (_, modal_inner) = render_modal(
             frame,
             Constraint::Length(modal_width),
             Constraint::Length(modal_height),
             title,
-            modal_hint_line(
-                &[
-                    ("Tab", "Next"),
-                    ("Shift+Tab", "Prev"),
-                    ("Ctrl+S", submit_desc),
-                    ("Esc", "Cancel"),
-                ],
-                theme,
-            ),
+            FooterHintBar::new([
+                ("Tab", "Next"),
+                ("Shift+Tab", "Prev"),
+                ("Ctrl+S", submit_desc),
+                ("Esc", "Cancel"),
+            ]),
             theme,
         );
 

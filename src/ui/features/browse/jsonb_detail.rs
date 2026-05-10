@@ -13,7 +13,7 @@ use crate::primitives::atoms::{
     CursorKind, ModalTextSurface, build_modal_text_surface_lines, render_modal_text_surface,
     set_terminal_cursor, text_cursor_spans_with_kind,
 };
-use crate::primitives::molecules::{modal_hint_line, render_modal_with_hint_line};
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
 pub struct JsonbDetailRenderMetrics {
@@ -55,12 +55,12 @@ impl JsonbDetail {
             ]
         };
 
-        let (_area, inner) = render_modal_with_hint_line(
+        let (_area, inner) = render_modal(
             frame,
             Constraint::Percentage(80),
             Constraint::Percentage(70),
             &title,
-            modal_hint_line(&hints, theme),
+            FooterHintBar::new(hints),
             theme,
         );
 

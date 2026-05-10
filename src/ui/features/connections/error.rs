@@ -9,7 +9,7 @@ use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
 use crate::primitives::atoms::key_chip;
-use crate::primitives::molecules::render_modal;
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
 
 pub struct ConnectionError;
@@ -51,13 +51,12 @@ impl ConnectionError {
         };
         let height = Constraint::Length((FIXED_OVERHEAD + details_height).clamp(9, max_height));
 
-        let hint_text = " Esc to close ";
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
             height,
             " Connection Error ",
-            hint_text,
+            FooterHintBar::new([("Esc", "Close")]),
             theme,
         );
 

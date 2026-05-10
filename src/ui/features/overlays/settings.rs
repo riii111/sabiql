@@ -9,7 +9,7 @@ use crate::app::model::shared::settings::{ErBrowserChoice, SettingsSection};
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::primitives::atoms::{CursorKind, text_cursor_spans_with_kind};
 use crate::primitives::molecules::render_modal;
-use crate::settings_hints::settings_modal_hint_text;
+use crate::settings_hints::settings_modal_hint_bar;
 use crate::theme::{ThemePalette, palette_for};
 
 const PREVIEW_PANEL_INNER_WIDTH: usize = 28;
@@ -19,13 +19,12 @@ pub struct SettingsOverlay;
 
 impl SettingsOverlay {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
-        let hint = settings_modal_hint_text(state);
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(60),
             Constraint::Percentage(48),
             " Settings ",
-            &hint,
+            settings_modal_hint_bar(state),
             theme,
         );
 

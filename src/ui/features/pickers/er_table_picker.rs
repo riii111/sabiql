@@ -6,11 +6,11 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::domain::er::er_output_filename;
-use crate::primitives::atoms::{key_text, text_cursor_spans};
+use crate::primitives::atoms::text_cursor_spans;
 use crate::theme::ThemePalette;
 
 use crate::features::pickers::table_picker::filter_visible_width;
-use crate::primitives::molecules::render_modal_with_hint_line;
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 
 pub struct ErTablePicker;
 
@@ -63,25 +63,20 @@ impl ErTablePicker {
             er_output_filename(&selected_vec, total_count)
         };
 
-        let (_, inner) = render_modal_with_hint_line(
+        let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(60),
             Constraint::Percentage(70),
             " ER Diagram ",
-            Line::from(vec![
-                Span::styled(
-                    format!(" {selected_count}/{total_count} selected │ "),
-                    theme.modal_hint_style(),
-                ),
-                key_text("Space", theme),
-                Span::styled(": Select │ ", theme.modal_hint_style()),
-                key_text("^A", theme),
-                Span::styled(": All │ ", theme.modal_hint_style()),
-                key_text("Enter", theme),
-                Span::styled(": Generate │ ", theme.modal_hint_style()),
-                key_text("Esc", theme),
-                Span::styled(": Cancel ", theme.modal_hint_style()),
-            ]),
+            FooterHintBar::with_prefix(
+                format!("{selected_count}/{total_count} selected"),
+                [
+                    ("Space", "Select"),
+                    ("^A", "All"),
+                    ("Enter", "Generate"),
+                    ("Esc", "Cancel"),
+                ],
+            ),
             theme,
         );
 

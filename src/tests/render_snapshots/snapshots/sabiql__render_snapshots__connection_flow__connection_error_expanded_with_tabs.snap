@@ -32,7 +32,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                        │    Is the server running on that host and accepting TCP/IP connections?                                         │                        │
 │                        │                                                                                                                 │                        │
 │                        │Actions:  e  Re-enter   s  Switch   d  Details   y  Copy                                                         │                        │
-│                        ╰ Esc to close ───────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

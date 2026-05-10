@@ -8,8 +8,8 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::query_history::GroupedEntry;
 use crate::domain::query_history::{Iso8601Timestamp, QueryResultStatus};
 use crate::features::pickers::table_picker::filter_visible_width;
-use crate::primitives::atoms::{key_text, text_cursor_spans};
-use crate::primitives::molecules::render_modal_with_hint_line;
+use crate::primitives::atoms::text_cursor_spans;
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::{StatusTone, ThemePalette};
 
 const TIMESTAMP_WIDTH: usize = 18;
@@ -112,21 +112,15 @@ impl QueryHistoryPicker {
         // border(2) + filter(1) + actual entries + preview — capped at 70%
         let desired_height = (2 + 1 + (grouped_count as u16).max(1) + preview_est).min(max_height);
 
-        let border_footer = Line::from(vec![
-            Span::styled(
-                format!(" {grouped_count} entries │ type to filter │ "),
-                theme.modal_hint_style(),
-            ),
-            key_text("Enter", theme),
-            Span::styled(": Select ", theme.modal_hint_style()),
-        ]);
-
-        let (_, inner) = render_modal_with_hint_line(
+        let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
             Constraint::Max(desired_height),
             " Query History ",
-            border_footer,
+            FooterHintBar::with_prefix(
+                format!("{grouped_count} entries │ type to filter"),
+                [("Enter", "Select")],
+            ),
             theme,
         );
 

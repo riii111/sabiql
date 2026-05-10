@@ -1,6 +1,7 @@
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::settings::{ErBrowserChoice, SettingsSection};
 use crate::app::update::input::keybindings::{SETTINGS_ROWS, idx};
+use crate::primitives::molecules::FooterHintBar;
 
 const EDIT_DONE_HINT: (&str, &str) = ("Esc", "Done");
 const EDIT_TYPE_HINT: (&str, &str) = ("Type", "Browser");
@@ -28,12 +29,7 @@ pub fn settings_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
     hints
 }
 
-pub fn settings_modal_hint_text(state: &AppState) -> String {
-    let body = settings_hints(state)
-        .into_iter()
-        .filter(|(key, _)| *key != SETTINGS_ROWS[idx::settings::SELECT].key_short)
-        .map(|(key, desc)| format!("{key} {desc}"))
-        .collect::<Vec<_>>()
-        .join(" │ ");
-    format!(" {body} ")
+pub fn settings_modal_hint_bar(state: &AppState) -> FooterHintBar {
+    FooterHintBar::new(settings_hints(state))
+        .without_item(SETTINGS_ROWS[idx::settings::SELECT].key_short)
 }
