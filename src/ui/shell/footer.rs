@@ -200,6 +200,7 @@ impl Footer {
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
+                    list.push(GLOBAL_KEYS[idx::global::COMMAND_PALETTE].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::SETTINGS].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
                     list

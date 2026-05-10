@@ -109,18 +109,19 @@ pub mod idx {
         pub const TABLE_PICKER: usize = 2;
         pub const SETTINGS: usize = 3;
         pub const COMMAND_LINE: usize = 4;
-        pub const FOCUS: usize = 5;
-        pub const EXIT_FOCUS: usize = 6;
-        pub const PANE_SWITCH: usize = 7;
-        pub const INSPECTOR_TABS: usize = 8;
-        pub const RELOAD: usize = 9;
-        pub const SQL: usize = 10;
-        pub const ER_DIAGRAM: usize = 11;
-        pub const CONNECTIONS: usize = 12;
-        pub const CSV_EXPORT: usize = 13;
-        pub const READ_ONLY: usize = 14;
-        pub const EXIT_READ_ONLY: usize = 15;
-        pub const QUERY_HISTORY: usize = 16;
+        pub const COMMAND_PALETTE: usize = 5;
+        pub const FOCUS: usize = 6;
+        pub const EXIT_FOCUS: usize = 7;
+        pub const PANE_SWITCH: usize = 8;
+        pub const INSPECTOR_TABS: usize = 9;
+        pub const RELOAD: usize = 10;
+        pub const SQL: usize = 11;
+        pub const ER_DIAGRAM: usize = 12;
+        pub const CONNECTIONS: usize = 13;
+        pub const CSV_EXPORT: usize = 14;
+        pub const READ_ONLY: usize = 15;
+        pub const EXIT_READ_ONLY: usize = 16;
+        pub const QUERY_HISTORY: usize = 17;
     }
 
     pub mod footer_nav {
@@ -539,6 +540,12 @@ pub fn is_command_line(combo: &KeyCombo) -> bool {
         .contains(combo)
 }
 
+pub fn is_command_palette(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::COMMAND_PALETTE]
+        .combos
+        .contains(combo)
+}
+
 pub fn is_settings(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::SETTINGS].combos.contains(combo)
 }
@@ -576,6 +583,7 @@ mod tests {
             assert!(idx::global::TABLE_PICKER < GLOBAL_KEYS.len());
             assert!(idx::global::SETTINGS < GLOBAL_KEYS.len());
             assert!(idx::global::COMMAND_LINE < GLOBAL_KEYS.len());
+            assert!(idx::global::COMMAND_PALETTE < GLOBAL_KEYS.len());
             assert!(idx::global::FOCUS < GLOBAL_KEYS.len());
             assert!(idx::global::EXIT_FOCUS < GLOBAL_KEYS.len());
             assert!(idx::global::PANE_SWITCH < GLOBAL_KEYS.len());
@@ -823,6 +831,10 @@ mod tests {
             #[case(idx::global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
             #[case(idx::global::SETTINGS, Action::OpenModal(ModalKind::Settings))]
             #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
+            #[case(
+                idx::global::COMMAND_PALETTE,
+                Action::OpenModal(ModalKind::CommandPalette)
+            )]
             #[case(idx::global::RELOAD, Action::ReloadMetadata)]
             #[case(idx::global::SQL, Action::OpenModal(ModalKind::SqlModal))]
             #[case(idx::global::ER_DIAGRAM, Action::OpenModal(ModalKind::ErTablePicker))]

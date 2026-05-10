@@ -39,6 +39,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  Ctrl+P              Open Table Picker                                                                                     │                          │
 │                          │  Ctrl+K              Open Settings                                                                                         │                          │
 │                          │  :                   Enter command line                                                                                    │                          │
+│                          │  F1                  Open Command Palette                                                                                  │                          │
 │                          │  f                   Toggle Focus                                                                                          │                          │
 │                          │  1/2/3               Switch pane focus                                                                                     │                          │
 │                          │  Tab/⇧Tab            Inspector prev/next tab                                                                               │                          │
@@ -150,9 +151,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │▸ Command Line                                                                                                              │                          │
 │                          │  :quit               Quit application                                                                                      │                          │
 │                          │  :help               Show help                                                                                             │                          │
-│                          │  :sql                Open SQL Editor                                                                                       │                          │
-│                          │  :erd                Open ER Diagram                                                                                       │──────────────────────────┘
-│                          │  :settings           Open Settings                                                                                         │──────────────────────────┐
+│                          │  :sql                Open SQL Editor                                                                                       │──────────────────────────┘
+│                          │  :erd                Open ER Diagram                                                                                       │──────────────────────────┐
+│                          │  :settings           Open Settings                                                                                         │                          │
 │                          │  :theme              Open Theme Settings                                                                                   │                          │
 │                          │  :palette            Open Command Palette                                                                                  │                          │
 │                          │  ←→                  Move cursor                                                                                           │                          │
@@ -251,7 +252,6 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  type                Type to search                                                                                        │                          │
 │                          │  Enter               Confirm search                                                                                        │                          │
 │                          │  Esc                 Cancel search                                                                                         │                          │
-│                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │

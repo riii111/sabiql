@@ -44,7 +44,7 @@ Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featur
 - **Fuzzy Search** (`/`) — Incremental table filtering
 - **Focus Mode** (`f`) — Expand any pane to full screen
 - **Settings** (`Ctrl+K`) — Theme and ER diagram preferences
-- **Command Palette** (`:palette`) — Searchable command list
+- **Command Palette** (`F1`, `:palette`) — Searchable command list
 
 ## Installation
 

@@ -47,6 +47,14 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::EnterCommandLine,
         combos: &[KeyCombo::plain(Key::Char(':'))],
     },
+    KeyBinding {
+        key_short: "F1",
+        key: "F1",
+        desc_short: "Palette",
+        description: "Open Command Palette",
+        action: Action::OpenModal(ModalKind::CommandPalette),
+        combos: &[KeyCombo::plain(Key::F(1))],
+    },
     // for the same Action::ToggleFocus. Two entries exist because the footer
     // shows different labels depending on whether focus mode is active.
     KeyBinding {

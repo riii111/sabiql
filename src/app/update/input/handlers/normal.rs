@@ -102,6 +102,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     if kb::is_command_line(&combo) {
         return Action::EnterCommandLine;
     }
+    if kb::is_command_palette(&combo) {
+        return Action::OpenModal(ModalKind::CommandPalette);
+    }
     if kb::is_reload(&combo) {
         return Action::ReloadMetadata;
     }
@@ -273,6 +276,18 @@ mod tests {
                 let result = handle_normal_mode(combo(Key::Char(':')), &state);
 
                 assert!(matches!(result, Action::EnterCommandLine));
+            }
+
+            #[test]
+            fn f1_opens_command_palette() {
+                let state = browse_state();
+
+                let result = handle_normal_mode(combo(Key::F(1)), &state);
+
+                assert!(matches!(
+                    result,
+                    Action::OpenModal(ModalKind::CommandPalette)
+                ));
             }
 
             #[test]
@@ -1204,6 +1219,7 @@ mod tests {
                 #[case(Key::Char('f'))]
                 #[case(Key::Char('r'))]
                 #[case(Key::Char(':'))]
+                #[case(Key::F(1))]
                 #[case(Key::Enter)]
                 #[case(Key::Esc)]
                 fn are_noop(#[case] key: Key) {
