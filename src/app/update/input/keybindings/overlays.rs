@@ -74,7 +74,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
 
 pub const HELP_ROWS: &[ModeRow] = &[
     ModeRow {
-        key_short: "^N/^P/j/k/↑↓",
+        key_short: "^N/^P/↑↓",
         key: "Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",

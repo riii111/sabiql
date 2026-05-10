@@ -12,11 +12,14 @@ use crate::update::action::{
     ScrollTarget,
 };
 
-fn scroll_help_by(state: &mut AppState, direction: ScrollDirection, delta: usize) {
-    let document = HelpDocument::from_state(state);
-    let max_scroll = state
-        .ui
-        .help_max_scroll(document.line_count(), document.content_width());
+fn scroll_help_by(
+    state: &mut AppState,
+    direction: ScrollDirection,
+    delta: usize,
+    line_count: usize,
+    content_width: usize,
+) {
+    let max_scroll = state.ui.help_max_scroll(line_count, content_width);
     let offset = direction.clamp_vertical_offset(state.ui.help.scroll_offset(), max_scroll, delta);
     state.ui.help.set_scroll_offset(offset);
 }
@@ -191,7 +194,16 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 {
                     scroll_help_horizontally(state, *direction);
                 }
-                ScrollAmount::Line => scroll_help_by(state, *direction, 1),
+                ScrollAmount::Line => {
+                    let document = HelpDocument::from_state(state);
+                    scroll_help_by(
+                        state,
+                        *direction,
+                        1,
+                        document.line_count(),
+                        document.content_width(),
+                    );
+                }
                 ScrollAmount::ToStart => {
                     if matches!(direction, ScrollDirection::Left | ScrollDirection::Right) {
                         state.ui.help.set_horizontal_offset(0);
@@ -216,12 +228,12 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 }
                 ScrollAmount::HalfPage | ScrollAmount::FullPage => {
                     let document = HelpDocument::from_state(state);
-                    if let Some(delta) = amount.page_delta(
-                        state
-                            .ui
-                            .help_visible_rows(document.line_count(), document.content_width()),
-                    ) {
-                        scroll_help_by(state, *direction, delta);
+                    let line_count = document.line_count();
+                    let content_width = document.content_width();
+                    if let Some(delta) =
+                        amount.page_delta(state.ui.help_visible_rows(line_count, content_width))
+                    {
+                        scroll_help_by(state, *direction, delta, line_count, content_width);
                     }
                 }
                 ScrollAmount::ViewportTop

@@ -274,6 +274,10 @@ pub struct HelpDocument {
     sections: Vec<HelpSection>,
 }
 
+const FILTER_LINE_COUNT: usize = 1;
+const FILTER_SECTION_GAP_LINES: usize = 1;
+const SECTION_HEADER_LINE_COUNT: usize = 1;
+
 impl HelpDocument {
     pub fn from_state(state: &AppState) -> Self {
         Self::new(state.ui.help.origin(), state.ui.help.filter().content())
@@ -316,9 +320,12 @@ impl HelpDocument {
         let section_lines: usize = self
             .sections
             .iter()
-            .map(|section| 1 + section.rows.len())
+            .map(|section| SECTION_HEADER_LINE_COUNT + section.rows.len())
             .sum();
-        1 + 1 + section_lines + self.sections.len().saturating_sub(1)
+        FILTER_LINE_COUNT
+            + FILTER_SECTION_GAP_LINES
+            + section_lines
+            + self.sections.len().saturating_sub(1)
     }
 
     pub fn content_width(&self) -> usize {
@@ -607,24 +614,15 @@ fn section(title: &str, rows: Vec<HelpRow>) -> HelpSection {
 }
 
 fn rows_from_bindings(bindings: &[KeyBinding]) -> Vec<HelpRow> {
-    let mut rows = Vec::new();
-    let mut i = 0;
-    while i < bindings.len() {
-        if i + 1 < bindings.len() && bindings[i].key == bindings[i + 1].key {
-            rows.push(HelpRow::new(
-                bindings[i].key,
-                format!("Toggle {}", bindings[i].desc_short),
-            ));
-            i += 2;
-        } else {
-            rows.push(HelpRow::new(bindings[i].key, bindings[i].description));
-            i += 1;
-        }
-    }
-    rows
+    rows_from_binding_iter(bindings.iter())
 }
 
 fn rows_from_binding_refs(bindings: &[&KeyBinding]) -> Vec<HelpRow> {
+    rows_from_binding_iter(bindings.iter().copied())
+}
+
+fn rows_from_binding_iter<'a>(bindings: impl IntoIterator<Item = &'a KeyBinding>) -> Vec<HelpRow> {
+    let bindings = bindings.into_iter().collect::<Vec<_>>();
     let mut rows = Vec::new();
     let mut i = 0;
     while i < bindings.len() {
@@ -742,6 +740,62 @@ mod tests {
         assert_eq!(
             document.sections()[0].rows()[0].description(),
             "Try another filter"
+        );
+    }
+
+    #[test]
+    fn line_count_uses_rendered_section_metrics() {
+        let document = HelpDocument::new(
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Explorer,
+                result_active: false,
+                history_mode: false,
+            },
+            "",
+        );
+        let section_lines: usize = document
+            .sections()
+            .iter()
+            .map(|section| SECTION_HEADER_LINE_COUNT + section.rows().len())
+            .sum();
+        let expected = FILTER_LINE_COUNT
+            + FILTER_SECTION_GAP_LINES
+            + section_lines
+            + document.sections().len().saturating_sub(1);
+
+        assert_eq!(document.line_count(), expected);
+    }
+
+    #[test]
+    fn content_width_expands_to_longest_key_label() {
+        let document = HelpDocument::new(HelpOrigin::Help, "");
+
+        assert!(
+            document.key_column_width()
+                >= UnicodeWidthStr::width("Ctrl+F / Ctrl+B / PageDown / PageUp")
+        );
+    }
+
+    #[test]
+    fn origin_from_state_maps_sql_plan_and_jsonb_search() {
+        let mut sql_state = AppState::new("test".to_string());
+        sql_state.modal.set_mode(InputMode::SqlModal);
+        sql_state.sql_modal.set_active_tab(SqlModalTab::Plan);
+        let sql_document = HelpDocument::new(HelpOrigin::from_state(&sql_state), "");
+
+        assert_eq!(
+            sql_document.sections()[0].title(),
+            "Current: SQL Editor Plan"
+        );
+
+        let mut jsonb_state = AppState::new("test".to_string());
+        jsonb_state.modal.set_mode(InputMode::JsonbDetail);
+        jsonb_state.jsonb_detail.search_mut().active = true;
+        let jsonb_document = HelpDocument::new(HelpOrigin::from_state(&jsonb_state), "");
+
+        assert_eq!(
+            jsonb_document.sections()[0].title(),
+            "Current: JSONB Search"
         );
     }
 

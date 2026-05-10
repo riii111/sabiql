@@ -1,5 +1,5 @@
 use crate::update::action::Action;
-use crate::update::input::keybindings::{self, KeyCombo};
+use crate::update::input::keybindings::{self, KeyCombo, Modifiers};
 use crate::update::input::keymap;
 
 pub fn handle_help_keys(combo: KeyCombo) -> Action {
@@ -8,7 +8,11 @@ pub fn handle_help_keys(combo: KeyCombo) -> Action {
     }
 
     match combo.key {
-        keybindings::Key::Char(ch) => Action::TextInput {
+        keybindings::Key::Char(ch) if combo.modifiers == Modifiers::NONE => Action::TextInput {
+            target: crate::update::action::InputTarget::HelpFilter,
+            ch,
+        },
+        keybindings::Key::Char(ch) if combo.modifiers == Modifiers::SHIFT => Action::TextInput {
             target: crate::update::action::InputTarget::HelpFilter,
             ch,
         },
@@ -51,7 +55,7 @@ mod tests {
         }
 
         #[test]
-        fn esc_clears_filter_or_closes_help() {
+        fn esc_maps_to_contextual_help_escape() {
             let result = handle_help_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::HelpEscape));
@@ -75,6 +79,16 @@ mod tests {
                     ch: 'a'
                 }
             ));
+        }
+
+        #[rstest]
+        #[case(KeyCombo::ctrl(Key::Char('a')))]
+        #[case(KeyCombo::alt(Key::Char('a')))]
+        #[case(KeyCombo::ctrl_alt(Key::Char('a')))]
+        fn modified_chars_do_not_filter_help(#[case] combo: KeyCombo) {
+            let result = handle_help_keys(combo);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[rstest]

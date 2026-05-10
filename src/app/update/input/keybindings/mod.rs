@@ -337,7 +337,6 @@ pub mod idx {
 // =============================================================================
 
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
-pub const HELP_KEY_COLUMN_WIDTH: usize = 20;
 pub const HELP_KEY_DESC_GAP: usize = 2;
 
 pub fn is_quit(combo: &KeyCombo) -> bool {
@@ -532,6 +531,9 @@ mod tests {
             assert!(idx::help::HALF_PAGE < HELP_ROWS.len());
             assert!(idx::help::FULL_PAGE < HELP_ROWS.len());
             assert!(idx::help::H_SCROLL < HELP_ROWS.len());
+            assert!(idx::help::TYPE_FILTER < HELP_ROWS.len());
+            assert!(idx::help::EDIT_FILTER < HELP_ROWS.len());
+            assert!(idx::help::CLEAR_OR_CLOSE < HELP_ROWS.len());
             assert!(idx::help::CLOSE < HELP_ROWS.len());
 
             // RESULT_ACTIVE_KEYS
