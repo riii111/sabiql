@@ -224,7 +224,7 @@ pub const DEFAULT_THEME: ThemePalette = ThemePalette {
         modal: ModalTokens {
             title: Color::Rgb(0xe9, 0xdb, 0xdb),
             hint: Color::Rgb(0xc0, 0xb8, 0xb0),
-            border: Color::Rgb(0x70, 0x68, 0x60),
+            border: Color::Rgb(0x76, 0x7a, 0x84),
             border_highlight: Color::Rgb(0xc0, 0xb8, 0xb8),
         },
         navigation: NavigationTokens {
@@ -297,7 +297,7 @@ pub const LIGHT_THEME: ThemePalette = ThemePalette {
         modal: ModalTokens {
             title: Color::Rgb(0x2c, 0x28, 0x2d),
             hint: Color::Rgb(0x65, 0x5d, 0x61),
-            border: Color::Rgb(0x9d, 0x94, 0x8f),
+            border: Color::Rgb(0x96, 0x98, 0xa0),
             border_highlight: Color::Rgb(0x3f, 0x70, 0x6a),
         },
         navigation: NavigationTokens {
