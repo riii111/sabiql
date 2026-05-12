@@ -7,7 +7,7 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
-mod error;
+mod panic_hooks;
 
 #[cfg(test)]
 mod tests;
@@ -66,7 +66,7 @@ enum Command {
 )]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
-    error::install_hooks()?;
+    panic_hooks::install_hooks()?;
 
     let args = Args::parse();
     if matches!(args.command, Some(Command::Update)) {
