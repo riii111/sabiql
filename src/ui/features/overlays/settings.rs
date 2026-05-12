@@ -7,9 +7,9 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::settings::{ErBrowserChoice, SettingsSection};
 use crate::app::model::shared::theme_id::ThemeId;
+use crate::features::settings::hints::settings_modal_hint_bar;
 use crate::primitives::atoms::{CursorKind, text_cursor_spans_with_kind};
 use crate::primitives::molecules::render_modal;
-use crate::settings_hints::settings_modal_hint_bar;
 use crate::theme::{ThemePalette, palette_for};
 
 const PREVIEW_PANEL_INNER_WIDTH: usize = 28;

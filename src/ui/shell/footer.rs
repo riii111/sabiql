@@ -17,10 +17,10 @@ use crate::app::update::input::keybindings::{
     QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
     SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
 };
+use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
 use crate::primitives::atoms::status_message::{MessageType, StatusMessage};
-use crate::settings_hints::settings_hints;
 use crate::theme::ThemePalette;
 
 pub struct Footer;
