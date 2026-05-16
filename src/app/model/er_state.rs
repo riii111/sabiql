@@ -91,16 +91,18 @@ impl ErPreparationState {
         self.last_signatures.clear();
         self.run.clear_active();
     }
-
-    #[cfg(test)]
-    pub fn set_run_id_for_test(&mut self, run_id: u64) {
-        self.run.set_last_id_for_test(run_id);
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn set_active_run_id(state: &mut ErPreparationState, run_id: u64) {
+        for _ in 0..run_id {
+            state.begin_smart_refresh();
+        }
+        state.mark_idle();
+    }
 
     mod is_complete {
         use super::*;
@@ -201,7 +203,7 @@ mod tests {
                 last_signatures: HashMap::from([("a".to_string(), "sig".to_string())]),
                 ..Default::default()
             };
-            state.set_run_id_for_test(5);
+            set_active_run_id(&mut state, 5);
 
             state.reset();
 

@@ -32,10 +32,4 @@ impl AsyncRun {
     pub fn is_current(&self, run_id: u64) -> bool {
         self.active_run_id == Some(run_id)
     }
-
-    #[cfg(test)]
-    pub fn set_last_id_for_test(&mut self, run_id: u64) {
-        self.run_id = run_id;
-        self.active_run_id = Some(run_id);
-    }
 }
