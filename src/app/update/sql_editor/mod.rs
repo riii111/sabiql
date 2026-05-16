@@ -1,456 +1,54 @@
-use std::fmt::Write as _;
-use std::time::{Duration, Instant};
+mod completion;
+mod editing;
+mod high_risk;
+mod mode;
+mod submit;
+mod yank;
 
-use crate::cmd::effect::Effect;
-use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
+use std::time::Instant;
+
 use crate::model::app_state::AppState;
-use crate::model::shared::flash_timer::FlashId;
-use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::text_input::{TextInputLike, TextInputState};
-use crate::model::sql_editor::modal::{
-    HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalContext, SqlModalStatus, SqlModalTab,
-    sql_modal_visible_rows,
-};
-use crate::policy::sql::statement_classifier::{self, StatementKind};
-use crate::policy::write::sql_risk::{
-    ConfirmationType, MultiStatementDecision, evaluate_multi_statement,
-};
-use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
-use crate::ports::outbound::ClipboardError;
-use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
+use crate::services::AppServices;
+use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_sql_modal(
+#[cfg(test)]
+use crate::cmd::effect::Effect;
+#[cfg(test)]
+use crate::model::shared::flash_timer::FlashId;
+#[cfg(test)]
+use crate::model::shared::input_mode::InputMode;
+#[cfg(test)]
+use crate::model::shared::text_input::{TextInputLike, TextInputState};
+#[cfg(test)]
+use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+#[cfg(test)]
+use crate::policy::write::write_guardrails::RiskLevel;
+#[cfg(test)]
+use crate::update::action::{CursorMove, InputTarget, ModalKind};
+
+pub fn dispatch_sql_modal(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    services: &crate::services::AppServices,
+    services: &AppServices,
 ) -> DispatchResult {
-    match action {
-        // Completion navigation
-        Action::CompletionNext => {
-            state.sql_modal.completion_next();
-            DispatchResult::handled()
-        }
-        Action::CompletionPrev => {
-            state.sql_modal.completion_prev();
-            DispatchResult::handled()
-        }
-        Action::CompletionDismiss => {
-            state.sql_modal.dismiss_completion();
-            DispatchResult::handled()
-        }
-
-        // Clipboard paste
-        Action::Paste(text) if state.modal.active_mode() == InputMode::SqlModal => {
-            if !matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
-                return DispatchResult::handled();
-            }
-            let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-            state.sql_modal.editor.insert_str(&normalized);
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state
-                .sql_modal
-                .schedule_completion_after_dismiss(now + Duration::from_millis(100));
-            state.sql_modal.enter_editing();
-            DispatchResult::handled()
-        }
-
-        // Text editing
-        Action::TextInput {
-            target: InputTarget::SqlModal,
-            ch: c,
-        } => {
-            state.sql_modal.enter_editing();
-            state.sql_modal.editor.insert_char(*c);
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state
-                .sql_modal
-                .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::handled()
-        }
-        Action::TextBackspace {
-            target: InputTarget::SqlModal,
-        } => {
-            state.sql_modal.enter_editing();
-            state.sql_modal.editor.backspace();
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state
-                .sql_modal
-                .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::handled()
-        }
-        Action::TextDelete {
-            target: InputTarget::SqlModal,
-        } => {
-            state.sql_modal.enter_editing();
-            state.sql_modal.editor.delete();
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state
-                .sql_modal
-                .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::handled()
-        }
-        Action::SqlModalNewLine => {
-            state.sql_modal.enter_editing();
-            state.sql_modal.editor.insert_newline();
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state
-                .sql_modal
-                .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::handled()
-        }
-        Action::SqlModalTab => {
-            state.sql_modal.enter_editing();
-            state.sql_modal.editor.insert_tab();
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state
-                .sql_modal
-                .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::handled()
-        }
-        Action::TextMoveCursor {
-            target: InputTarget::SqlModal,
-            direction: movement,
-        } => {
-            match movement {
-                CursorMove::ViewportTop
-                | CursorMove::ViewportMiddle
-                | CursorMove::ViewportBottom => {
-                    state.sql_modal.editor.move_cursor_to_viewport_position(
-                        *movement,
-                        sql_modal_visible_rows(state.ui.terminal_height),
-                    );
-                }
-                _ => state.sql_modal.editor.move_cursor(*movement),
-            }
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state.ui.key_sequence = KeySequenceState::Idle;
-            DispatchResult::handled()
-        }
-        Action::SqlModalClear => {
-            state.sql_modal.editor.clear();
-            state.sql_modal.reset_completion();
-            state.ui.key_sequence = KeySequenceState::Idle;
-            DispatchResult::handled()
-        }
-
-        // Modal open/submit
-        Action::OpenModal(ModalKind::SqlModal) => {
-            state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.open_sql_tab();
-            state.flash_timers.clear(FlashId::SqlModal);
-            if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some() {
-                DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                    Action::StartPrefetchAll,
-                ])])
-            } else {
-                DispatchResult::handled()
-            }
-        }
-        Action::SqlModalSubmit => {
-            let query = state.sql_modal.editor.content().trim().to_string();
-            if query.is_empty() {
-                return DispatchResult::handled();
-            }
-            state.sql_modal.dismiss_completion();
-
-            match evaluate_multi_statement(&query) {
-                MultiStatementDecision::Block { reason } => {
-                    state.sql_modal.finish_adhoc_error(reason);
-                    DispatchResult::handled()
-                }
-                MultiStatementDecision::Allow {
-                    risk,
-                    ref statements,
-                } => {
-                    let label = multi_statement_label(&query);
-                    let decision = AdhocRiskDecision {
-                        risk_level: risk.risk_level,
-                        label,
-                    };
-                    // In read-only mode, block if any statement is a write operation
-                    let has_write = statements.iter().any(|s| {
-                        let kind = statement_classifier::classify(s);
-                        !matches!(kind, StatementKind::Select | StatementKind::Transaction)
-                    });
-                    if state.session.read_only && has_write {
-                        state.sql_modal.finish_adhoc_error(
-                            "Read-only mode: write operations are disabled".to_string(),
-                        );
-                        return DispatchResult::handled();
-                    }
-                    match risk.confirmation {
-                        ConfirmationType::Immediate => dispatch_adhoc_if_connected(state, query),
-                        ConfirmationType::TableNameInput { target } => {
-                            state
-                                .sql_modal
-                                .begin_confirming_high(decision, Some(target));
-                            DispatchResult::handled()
-                        }
-                    }
-                }
-            }
-        }
-        Action::SqlModalCancelConfirm => {
-            if matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh { .. }
-            ) {
-                state.sql_modal.cancel_confirmation();
-                state.ui.key_sequence = KeySequenceState::Idle;
-                DispatchResult::handled()
-            } else {
-                DispatchResult::pass()
-            }
-        }
-
-        // HIGH risk confirmation input (adhoc + EXPLAIN ANALYZE)
-        Action::TextInput {
-            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
-            ch: c,
-        } => {
-            if let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target) {
-                input.insert_char(*c);
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextBackspace {
-            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
-        } => {
-            if let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target) {
-                input.backspace();
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-        Action::TextMoveCursor {
-            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
-            direction: movement,
-        } => {
-            if let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target) {
-                input.move_cursor(*movement);
-                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
-            }
-            DispatchResult::handled()
-        }
-
-        Action::SqlModalHighRiskConfirmExecute => {
-            // `matches!` + flag instead of `if let` because the immutable borrow
-            // from pattern matching must end before we can mutate `state.sql_modal.status`.
-            let matched = matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh {
-                    target_name,
-                    input,
-                    ..
-                } if target_name.as_ref().is_some_and(|n| input.content() == n)
-            );
-            if matched {
-                let query = state.sql_modal.editor.content().trim().to_string();
-                return dispatch_adhoc_if_connected(state, query);
-            }
-            DispatchResult::handled()
-        }
-
-        // Completion accept
-        Action::CompletionAccept => {
-            if let Some((trigger_pos, replacement)) =
-                state.sql_modal.selected_completion_replacement()
-            {
-                if state.sql_modal.editor.cursor() < trigger_pos {
-                    state.sql_modal.dismiss_completion();
-                    return DispatchResult::handled();
-                }
-
-                let start_byte = state.sql_modal.editor.char_to_byte_index(trigger_pos);
-                let end_byte = state
-                    .sql_modal
-                    .editor
-                    .char_to_byte_index(state.sql_modal.editor.cursor());
-                // Manually manipulate the underlying content for drain + insert_str at byte level.
-                // This is the one place where we need byte-level access that MultiLineInputState
-                // doesn't directly support, so we rebuild via set_content.
-                let mut content = state.sql_modal.editor.content().to_string();
-                content.drain(start_byte..end_byte);
-                content.insert_str(start_byte, &replacement);
-                let new_cursor = trigger_pos + replacement.chars().count();
-                state
-                    .sql_modal
-                    .editor
-                    .set_content_with_cursor(content, new_cursor);
-                state
-                    .sql_modal
-                    .editor
-                    .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-                state.sql_modal.dismiss_completion();
-            }
-            DispatchResult::handled()
-        }
-
-        // Completion trigger/update
-        Action::CompletionTrigger => DispatchResult::handled_with(vec![Effect::TriggerCompletion]),
-        Action::CompletionUpdated {
-            candidates,
-            trigger_position,
-            visible,
-        } => {
-            state
-                .sql_modal
-                .apply_completion_update(candidates, *trigger_position, *visible);
-            DispatchResult::handled()
-        }
-
-        Action::SqlModalAppendInsert => {
-            state.sql_modal.editor.move_cursor(CursorMove::LineEnd);
-            state
-                .sql_modal
-                .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state.sql_modal.enter_editing();
-            DispatchResult::handled()
-        }
-        Action::SqlModalEnterInsert => {
-            state.sql_modal.enter_editing();
-            DispatchResult::handled()
-        }
-        Action::SqlModalEnterNormal => {
-            state.sql_modal.enter_normal();
-            DispatchResult::handled()
-        }
-        Action::SqlModalYank => {
-            let active_tab = services
-                .db_capabilities
-                .normalize_sql_modal_tab(state.sql_modal.active_tab());
-            let content = match active_tab {
-                SqlModalTab::Plan => state.explain.plan_text.clone(),
-                SqlModalTab::Compare => match (&state.explain.left, &state.explain.right) {
-                    (Some(l), Some(r)) => {
-                        let result = compare_plans(&l.plan, &r.plan);
-                        let verdict = match result.verdict {
-                            ComparisonVerdict::Improved => "Improved",
-                            ComparisonVerdict::Worsened => "Worsened",
-                            ComparisonVerdict::Similar => "Similar",
-                            ComparisonVerdict::Unavailable => "Unavailable",
-                        };
-                        let mut verdict_section = verdict.to_string();
-                        for reason in &result.reasons {
-                            let _ = write!(verdict_section, "\n  • {reason}");
-                        }
-
-                        let mut sections = vec![verdict_section];
-                        for (pos, s) in [("Left", l), ("Right", r)] {
-                            let mode = if s.plan.is_analyze {
-                                "ANALYZE"
-                            } else {
-                                "EXPLAIN"
-                            };
-                            sections.push(format!(
-                                "--- {}: {} ({}, {:.2}s) ---\n{}",
-                                pos,
-                                s.source.label(),
-                                mode,
-                                s.plan.execution_secs(),
-                                s.plan.raw_text
-                            ));
-                        }
-                        Some(sections.join("\n\n"))
-                    }
-                    _ => None,
-                },
-                SqlModalTab::Sql => {
-                    if state.sql_modal.editor.content().is_empty() {
-                        None
-                    } else {
-                        Some(state.sql_modal.editor.content().to_string())
-                    }
-                }
-            };
-            match content {
-                Some(c) if !c.is_empty() => {
-                    DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-                        content: c,
-                        on_success: Some(Action::SqlModalYankSuccess),
-                        on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
-                            "Clipboard unavailable".into(),
-                        ))),
-                    }])
-                }
-                _ => DispatchResult::handled(),
-            }
-        }
-        Action::SqlModalYankSuccess => {
-            state.flash_timers.set(FlashId::SqlModal, now);
-            DispatchResult::handled()
-        }
-
-        _ => DispatchResult::pass(),
-    }
+    completion::reduce_completion(state, action, now)
+        .or_else(|| editing::reduce_editing(state, action, now))
+        .or_else(|| mode::reduce_mode(state, action, now))
+        .or_else(|| submit::reduce_submit(state, action, now))
+        .or_else(|| high_risk::reduce_high_risk_confirmation(state, action, now))
+        .or_else(|| yank::reduce_yank(state, action, now, services))
 }
 
-fn high_risk_input_mut(
-    sql_modal: &mut SqlModalContext,
-    target: InputTarget,
-) -> Option<&mut TextInputState> {
-    match target {
-        InputTarget::SqlModalHighRisk => sql_modal.confirming_high_input_mut(),
-        InputTarget::SqlModalAnalyzeHighRisk => sql_modal.confirming_analyze_high_input_mut(),
-        _ => None,
-    }
-}
-
-fn multi_statement_label(sql: &str) -> &'static str {
-    use crate::policy::write::sql_risk::split_statements;
-    let mut worst_level = RiskLevel::Low;
-    let mut worst_label = "SQL";
-    for stmt in split_statements(sql) {
-        let kind = statement_classifier::classify(&stmt);
-        let d = evaluate_sql_risk(&kind);
-        if d.risk_level > worst_level || (d.risk_level == worst_level && d.label != "SQL") {
-            worst_level = d.risk_level;
-            worst_label = d.label;
-        }
-    }
-    worst_label
-}
-
-fn dispatch_adhoc_if_connected(state: &mut AppState, query: String) -> DispatchResult {
-    let Some(dsn) = state.session.dsn.clone() else {
-        state
-            .sql_modal
-            .finish_adhoc_error("No active connection".to_string());
-        return DispatchResult::handled();
-    };
-
-    state.sql_modal.begin_adhoc_running();
-    DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
-        dsn,
-        query,
-        read_only: state.session.read_only,
-    }])
+#[cfg(test)]
+fn reduce_sql_modal(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+    services: &AppServices,
+) -> DispatchResult {
+    dispatch_sql_modal(state, action, now, services)
 }
 
 #[cfg(test)]

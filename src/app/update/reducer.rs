@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    dispatch_connection, dispatch_modal, reduce_er, reduce_explain_with_services, reduce_metadata,
-    reduce_navigation, reduce_query, reduce_result, reduce_sql_modal,
+    dispatch_connection, dispatch_modal, dispatch_sql_modal, reduce_er,
+    reduce_explain_with_services, reduce_metadata, reduce_navigation, reduce_query, reduce_result,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -52,7 +52,7 @@ fn reduce_inner(
         // reset view state here and return Pass, relying on reduce_query for the page change.
         .or_else(|| reduce_result(state, &action, services, now))
         .or_else(|| reduce_navigation(state, &action, services, now))
-        .or_else(|| reduce_sql_modal(state, &action, now, services))
+        .or_else(|| dispatch_sql_modal(state, &action, now, services))
         .or_else(|| reduce_explain_with_services(state, &action, now, services))
         .or_else(|| reduce_metadata(state, &action, now))
         .or_else(|| reduce_er(state, &action, now))
