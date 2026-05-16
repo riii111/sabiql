@@ -203,10 +203,7 @@ pub fn reduce_sql_modal(
                         return DispatchResult::handled();
                     }
                     match risk.confirmation {
-                        ConfirmationType::Immediate => {
-                            state.sql_modal.begin_adhoc_running();
-                            DispatchResult::handled_with(adhoc_effects(state, query))
-                        }
+                        ConfirmationType::Immediate => dispatch_adhoc_if_connected(state, query),
                         ConfirmationType::TableNameInput { target } => {
                             state
                                 .sql_modal
@@ -274,14 +271,7 @@ pub fn reduce_sql_modal(
             );
             if matched {
                 let query = state.sql_modal.editor.content().trim().to_string();
-                state.sql_modal.begin_adhoc_running();
-                if let Some(dsn) = &state.session.dsn {
-                    return DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
-                        dsn: dsn.clone(),
-                        query,
-                        read_only: state.session.read_only,
-                    }]);
-                }
+                return dispatch_adhoc_if_connected(state, query);
             }
             DispatchResult::handled()
         }
@@ -447,15 +437,20 @@ fn multi_statement_label(sql: &str) -> &'static str {
     worst_label
 }
 
-fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
-    match &state.session.dsn {
-        Some(dsn) => vec![Effect::ExecuteAdhoc {
-            dsn: dsn.clone(),
-            query,
-            read_only: state.session.read_only,
-        }],
-        None => vec![],
-    }
+fn dispatch_adhoc_if_connected(state: &mut AppState, query: String) -> DispatchResult {
+    let Some(dsn) = state.session.dsn.clone() else {
+        state
+            .sql_modal
+            .finish_adhoc_error("No active connection".to_string());
+        return DispatchResult::handled();
+    };
+
+    state.sql_modal.begin_adhoc_running();
+    DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
+        dsn,
+        query,
+        read_only: state.session.read_only,
+    }])
 }
 
 #[cfg(test)]
@@ -736,6 +731,24 @@ mod tests {
         }
 
         #[test]
+        fn submit_medium_risk_without_dsn_sets_error() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("UPDATE users SET x=1 WHERE id=1".to_string());
+
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error));
+            assert_eq!(
+                state.sql_modal.last_adhoc_error(),
+                Some("No active connection")
+            );
+            assert!(effects.is_handled_and(Vec::is_empty));
+        }
+
+        #[test]
         fn high_risk_input_appends_char() {
             let mut state = confirming_high_state("DROP TABLE users", Some("users"));
 
@@ -817,6 +830,34 @@ mod tests {
                     .iter()
                     .any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
             );
+        }
+
+        #[test]
+        fn high_risk_confirm_without_dsn_sets_error() {
+            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            for c in "users".chars() {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::SqlModalHighRisk,
+                        ch: c,
+                    },
+                    Instant::now(),
+                );
+            }
+
+            let effects = reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskConfirmExecute,
+                Instant::now(),
+            );
+
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error));
+            assert_eq!(
+                state.sql_modal.last_adhoc_error(),
+                Some("No active connection")
+            );
+            assert!(effects.is_handled_and(Vec::is_empty));
         }
 
         #[test]
