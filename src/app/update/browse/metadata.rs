@@ -80,30 +80,29 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> D
                     state.ui.set_explorer_selection(Some(idx));
                     // Refresh preview and detail: DDL or reload may have changed
                     // data/schema even though the table still exists.
-                    if let Some(dsn) = state.session.dsn.clone() {
-                        let page = state.query.pagination.current_page;
-                        let generation = state.session.selection_generation();
-                        let query_run_id = state.query.begin_running(now);
-                        let detail_run_id = state.session.begin_table_detail_run();
-                        effects.push(Effect::ExecutePreview {
-                            dsn: dsn.clone(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
-                            generation,
-                            run_id: query_run_id,
-                            limit: PREVIEW_PAGE_SIZE,
-                            offset: page * PREVIEW_PAGE_SIZE,
-                            target_page: page,
-                            read_only: state.session.read_only,
-                        });
-                        effects.push(Effect::FetchTableDetail {
-                            dsn: dsn.clone(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
-                            generation,
-                            run_id: detail_run_id,
-                        });
-                    }
+                    let dsn = dsn.clone();
+                    let page = state.query.pagination.current_page;
+                    let generation = state.session.selection_generation();
+                    let query_run_id = state.query.begin_running(now);
+                    let detail_run_id = state.session.begin_table_detail_run();
+                    effects.push(Effect::ExecutePreview {
+                        dsn: dsn.clone(),
+                        schema: state.query.pagination.schema.clone(),
+                        table: state.query.pagination.table.clone(),
+                        generation,
+                        run_id: query_run_id,
+                        limit: PREVIEW_PAGE_SIZE,
+                        offset: page * PREVIEW_PAGE_SIZE,
+                        target_page: page,
+                        read_only: state.session.read_only,
+                    });
+                    effects.push(Effect::FetchTableDetail {
+                        dsn,
+                        schema: state.query.pagination.schema.clone(),
+                        table: state.query.pagination.table.clone(),
+                        generation,
+                        run_id: detail_run_id,
+                    });
                 } else {
                     // The previously selected table was removed (e.g. via DROP TABLE).
                     // Clear all selection state to avoid stale references.

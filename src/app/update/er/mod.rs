@@ -548,6 +548,31 @@ mod tests {
         }
 
         #[test]
+        fn mismatched_dsn_returns_empty_for_failed() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.set_run_id_for_test(1);
+            state.er_preparation.status = ErStatus::Waiting;
+            state.session.set_metadata(Some(make_metadata(5)));
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://other/test".to_string(),
+                    run_id: 1,
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                    new_metadata: None,
+                }),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(state.session.metadata().unwrap().table_summaries.len(), 5);
+            assert!(state.messages.last_error.is_none());
+        }
+
+        #[test]
         fn no_metadata_sets_idle_and_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.set_run_id_for_test(1);
