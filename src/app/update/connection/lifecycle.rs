@@ -9,7 +9,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{restore_cache, save_current_cache};
 
-pub fn reduce_connection_lifecycle(
+pub(super) fn reduce_connection_lifecycle(
     state: &mut AppState,
     action: &Action,
     _now: Instant,

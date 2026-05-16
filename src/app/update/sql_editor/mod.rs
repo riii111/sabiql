@@ -1,5 +1,6 @@
 mod completion;
 mod editing;
+mod helpers;
 mod high_risk;
 mod mode;
 mod submit;

@@ -1,6 +1,5 @@
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::policy::sql::statement_classifier::{self, StatementKind};
@@ -10,6 +9,8 @@ use crate::policy::write::sql_risk::{
 use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+
+use super::helpers::start_adhoc_if_connected;
 
 fn multi_statement_label(sql: &str) -> &'static str {
     use crate::policy::write::sql_risk::split_statements;
@@ -25,22 +26,6 @@ fn multi_statement_label(sql: &str) -> &'static str {
     }
     worst_label
 }
-pub(super) fn dispatch_adhoc_if_connected(state: &mut AppState, query: String) -> DispatchResult {
-    let Some(dsn) = state.session.dsn.clone() else {
-        state
-            .sql_modal
-            .finish_adhoc_error("No active connection".to_string());
-        return DispatchResult::handled();
-    };
-
-    state.sql_modal.begin_adhoc_running();
-    DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
-        dsn,
-        query,
-        read_only: state.session.read_only,
-    }])
-}
-
 pub(super) fn reduce_submit(
     state: &mut AppState,
     action: &Action,
@@ -80,7 +65,7 @@ pub(super) fn reduce_submit(
                         return DispatchResult::handled();
                     }
                     match risk.confirmation {
-                        ConfirmationType::Immediate => dispatch_adhoc_if_connected(state, query),
+                        ConfirmationType::Immediate => start_adhoc_if_connected(state, query),
                         ConfirmationType::TableNameInput { target } => {
                             state
                                 .sql_modal

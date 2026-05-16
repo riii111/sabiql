@@ -9,7 +9,7 @@ use crate::model::sql_editor::modal::{
 use crate::update::action::{Action, InputTarget};
 use crate::update::dispatch_result::DispatchResult;
 
-use super::submit::dispatch_adhoc_if_connected;
+use super::helpers::start_adhoc_if_connected;
 
 fn high_risk_input_mut(
     sql_modal: &mut SqlModalContext,
@@ -85,7 +85,7 @@ pub(super) fn reduce_high_risk_confirmation(
             );
             if matched {
                 let query = state.sql_modal.editor.content().trim().to_string();
-                return dispatch_adhoc_if_connected(state, query);
+                return start_adhoc_if_connected(state, query);
             }
             DispatchResult::handled()
         }

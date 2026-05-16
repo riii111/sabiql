@@ -33,7 +33,7 @@ pub fn dispatch_explain(
 }
 
 #[cfg(test)]
-pub fn reduce_explain_with_services(
+fn reduce_explain_with_services(
     state: &mut AppState,
     action: &Action,
     now: Instant,
@@ -43,7 +43,7 @@ pub fn reduce_explain_with_services(
 }
 
 #[cfg(test)]
-pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     dispatch_explain(state, action, now, &crate::services::AppServices::stub())
 }
 

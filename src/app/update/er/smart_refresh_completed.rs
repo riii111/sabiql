@@ -40,10 +40,12 @@ pub(super) fn reduce_smart_refresh_completed(
                 });
             }
 
-            let mut refetch: Vec<String> = Vec::new();
-            refetch.extend(stale_tables.iter().cloned());
-            refetch.extend(added_tables.iter().cloned());
-            refetch.extend(missing_in_cache.iter().cloned());
+            let mut refetch: Vec<String> = stale_tables
+                .iter()
+                .chain(added_tables)
+                .chain(missing_in_cache)
+                .cloned()
+                .collect();
             refetch.sort();
             refetch.dedup();
 

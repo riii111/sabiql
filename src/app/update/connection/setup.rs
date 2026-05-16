@@ -11,7 +11,7 @@ use crate::update::action::{Action, ConnectionTarget, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
 
-pub fn reduce_connection_setup(
+pub(super) fn reduce_connection_setup(
     state: &mut AppState,
     action: &Action,
     now: Instant,

@@ -6,7 +6,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_connection_selector(
+pub(super) fn reduce_connection_selector(
     state: &mut AppState,
     action: &Action,
     now: Instant,

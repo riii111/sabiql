@@ -6,7 +6,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_connection_error(
+pub(super) fn reduce_connection_error(
     state: &mut AppState,
     action: &Action,
     now: Instant,
