@@ -7,7 +7,15 @@ use crate::model::sql_editor::modal::FailedPrefetchEntry;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-use super::{BASE_BACKOFF_SECS, MAX_BACKOFF_SECS, MAX_PREFETCH_RETRIES, check_er_completion};
+use super::check_er_completion;
+
+const BASE_BACKOFF_SECS: u64 = 1;
+const MAX_BACKOFF_SECS: u64 = 4;
+pub(super) const MAX_PREFETCH_RETRIES: u32 = 3;
+
+pub(super) fn backoff_secs_for(retry_count: u32) -> u64 {
+    (BASE_BACKOFF_SECS * 2u64.pow(retry_count)).min(MAX_BACKOFF_SECS)
+}
 
 pub(super) fn reduce_prefetch(
     state: &mut AppState,
@@ -131,8 +139,7 @@ pub(super) fn reduce_prefetch(
                     return DispatchResult::handled_with(effects);
                 }
 
-                let backoff_secs =
-                    (BASE_BACKOFF_SECS * 2u64.pow(entry.retry_count)).min(MAX_BACKOFF_SECS);
+                let backoff_secs = backoff_secs_for(entry.retry_count);
                 let elapsed = now.saturating_duration_since(entry.failed_at).as_secs();
                 if elapsed < backoff_secs {
                     // Still in backoff — re-queue at tail and schedule a delayed retry
@@ -157,11 +164,7 @@ pub(super) fn reduce_prefetch(
                 .sql_modal
                 .prefetching_tables
                 .insert(qualified_name.clone());
-            state.er_preparation.pending_tables.remove(&qualified_name);
-            state
-                .er_preparation
-                .fetching_tables
-                .insert(qualified_name.clone());
+            state.er_preparation.start_fetching(&qualified_name);
 
             DispatchResult::handled_with(vec![Effect::PrefetchTableDetail {
                 dsn: dsn.clone(),
@@ -234,15 +237,20 @@ pub(super) fn reduce_prefetch(
                 },
             );
             state.er_preparation.requeue_for_retry(&qualified_name);
+            let should_continue_queue = !state.sql_modal.prefetch_queue.is_empty();
             if !state.sql_modal.prefetch_queue.contains(&qualified_name) {
                 state.sql_modal.prefetch_queue.push_back(qualified_name);
             }
 
             let mut effects = Vec::new();
 
-            if !state.sql_modal.prefetch_queue.is_empty() {
+            if should_continue_queue {
                 effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
             }
+            effects.push(Effect::DelayedProcessPrefetchQueue {
+                run_id: *run_id,
+                delay_secs: backoff_secs_for(prev_count + 1),
+            });
 
             effects.extend(check_er_completion(state));
 

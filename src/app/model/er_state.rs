@@ -44,7 +44,13 @@ impl ErPreparationState {
 
     pub fn on_table_failed(&mut self, qualified_name: &str, error: String) {
         self.fetching_tables.remove(qualified_name);
+        self.pending_tables.remove(qualified_name);
         self.failed_tables.insert(qualified_name.to_string(), error);
+    }
+
+    pub fn start_fetching(&mut self, qualified_name: &str) {
+        self.pending_tables.remove(qualified_name);
+        self.fetching_tables.insert(qualified_name.to_string());
     }
 
     pub fn requeue_for_retry(&mut self, qualified_name: &str) {
@@ -172,6 +178,47 @@ mod tests {
 
             assert!(!state.fetching_tables.contains("public.users"));
             assert!(state.failed_tables.contains_key("public.users"));
+        }
+
+        #[test]
+        fn removes_from_pending() {
+            let mut state = ErPreparationState::default();
+            state.pending_tables.insert("public.users".to_string());
+
+            state.on_table_failed("public.users", "timeout".to_string());
+
+            assert!(!state.pending_tables.contains("public.users"));
+        }
+    }
+
+    mod requeue_for_retry {
+        use super::*;
+
+        #[test]
+        fn moves_from_fetching_to_pending_without_failed_state() {
+            let mut state = ErPreparationState::default();
+            state.fetching_tables.insert("public.users".to_string());
+
+            state.requeue_for_retry("public.users");
+
+            assert!(!state.fetching_tables.contains("public.users"));
+            assert!(state.pending_tables.contains("public.users"));
+            assert!(!state.failed_tables.contains_key("public.users"));
+        }
+    }
+
+    mod start_fetching {
+        use super::*;
+
+        #[test]
+        fn moves_from_pending_to_fetching() {
+            let mut state = ErPreparationState::default();
+            state.pending_tables.insert("public.users".to_string());
+
+            state.start_fetching("public.users");
+
+            assert!(!state.pending_tables.contains("public.users"));
+            assert!(state.fetching_tables.contains("public.users"));
         }
     }
 

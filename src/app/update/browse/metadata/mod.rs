@@ -11,10 +11,6 @@ use crate::model::er_state::ErStatus;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) const BASE_BACKOFF_SECS: u64 = 1;
-pub(super) const MAX_BACKOFF_SECS: u64 = 4;
-pub(super) const MAX_PREFETCH_RETRIES: u32 = 3;
-
 pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     if state.er_preparation.status != ErStatus::Waiting || !state.er_preparation.is_complete() {
         return vec![];
@@ -169,6 +165,7 @@ mod tests {
     }
 
     mod prefetch_table_detail {
+        use super::prefetch::MAX_PREFETCH_RETRIES;
         use super::*;
         use crate::model::er_state::ErStatus;
 
@@ -497,7 +494,7 @@ mod tests {
         }
 
         #[test]
-        fn failure_requeues_table_for_retry() {
+        fn failure_requeues_table_for_retry_with_delayed_process() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
@@ -527,7 +524,47 @@ mod tests {
             assert!(
                 effects
                     .iter()
+                    .any(|e| matches!(e, Effect::DelayedProcessPrefetchQueue { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .all(|e| !matches!(e, Effect::ProcessPrefetchQueue { .. }))
+            );
+        }
+
+        #[test]
+        fn failure_continues_existing_queue_before_retry_delay() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_prefetch();
+            let failed = "public.users".to_string();
+            let queued = "public.posts".to_string();
+            state.sql_modal.prefetching_tables.insert(failed.clone());
+            state.sql_modal.prefetch_queue.push_back(queued);
+            state.er_preparation.fetching_tables.insert(failed);
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                effects
+                    .iter()
                     .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::DelayedProcessPrefetchQueue { .. }))
             );
         }
 
@@ -590,18 +627,18 @@ mod tests {
     }
 
     mod backoff_calculation {
-        use super::*;
+        use super::prefetch::backoff_secs_for;
 
         #[test]
         fn backoff_values() {
             // retry_count 0 → 1s
-            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(0)).min(MAX_BACKOFF_SECS), 1);
+            assert_eq!(backoff_secs_for(0), 1);
             // retry_count 1 → 2s
-            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(1)).min(MAX_BACKOFF_SECS), 2);
+            assert_eq!(backoff_secs_for(1), 2);
             // retry_count 2 → 4s
-            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(2)).min(MAX_BACKOFF_SECS), 4);
+            assert_eq!(backoff_secs_for(2), 4);
             // retry_count 3 → 4s (capped)
-            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(3)).min(MAX_BACKOFF_SECS), 4);
+            assert_eq!(backoff_secs_for(3), 4);
         }
     }
 
@@ -865,6 +902,7 @@ mod tests {
     }
 
     mod fk_neighbors_discovered {
+        use super::prefetch::MAX_PREFETCH_RETRIES;
         use super::*;
         use crate::model::er_state::ErStatus;
 
