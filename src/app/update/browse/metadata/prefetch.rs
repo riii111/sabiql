@@ -133,7 +133,7 @@ pub(super) fn reduce_prefetch(
 
                 let backoff_secs =
                     (BASE_BACKOFF_SECS * 2u64.pow(entry.retry_count)).min(MAX_BACKOFF_SECS);
-                let elapsed = entry.failed_at.elapsed().as_secs();
+                let elapsed = now.saturating_duration_since(entry.failed_at).as_secs();
                 if elapsed < backoff_secs {
                     // Still in backoff — re-queue at tail and schedule a delayed retry
                     // to avoid busy-looping while waiting for the backoff to expire.
@@ -148,6 +148,11 @@ pub(super) fn reduce_prefetch(
                 }
             }
 
+            let Some(dsn) = &state.session.dsn else {
+                state.sql_modal.prefetch_queue.push_front(qualified_name);
+                return DispatchResult::handled();
+            };
+
             state
                 .sql_modal
                 .prefetching_tables
@@ -158,16 +163,12 @@ pub(super) fn reduce_prefetch(
                 .fetching_tables
                 .insert(qualified_name.clone());
 
-            if let Some(dsn) = &state.session.dsn {
-                DispatchResult::handled_with(vec![Effect::PrefetchTableDetail {
-                    dsn: dsn.clone(),
-                    run_id: *run_id,
-                    schema: schema.clone(),
-                    table: table.clone(),
-                }])
-            } else {
-                DispatchResult::handled()
-            }
+            DispatchResult::handled_with(vec![Effect::PrefetchTableDetail {
+                dsn: dsn.clone(),
+                run_id: *run_id,
+                schema: schema.clone(),
+                table: table.clone(),
+            }])
         }
 
         Action::TableDetailCached {
@@ -235,6 +236,13 @@ pub(super) fn reduce_prefetch(
             state
                 .er_preparation
                 .on_table_failed(&qualified_name, error.user_message());
+            state
+                .er_preparation
+                .pending_tables
+                .insert(qualified_name.clone());
+            if !state.sql_modal.prefetch_queue.contains(&qualified_name) {
+                state.sql_modal.prefetch_queue.push_back(qualified_name);
+            }
 
             let mut effects = Vec::new();
 

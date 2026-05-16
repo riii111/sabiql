@@ -209,6 +209,69 @@ mod tests {
         }
 
         #[test]
+        fn backoff_uses_injected_now() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_prefetch();
+            let qualified = "public.users".to_string();
+            let failed_at = Instant::now();
+            let now = failed_at.checked_add(Duration::from_secs(1)).unwrap();
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified,
+                FailedPrefetchEntry {
+                    failed_at,
+                    error: "timeout".to_string(),
+                    retry_count: 1,
+                },
+            );
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                now,
+            )
+            .unwrap();
+
+            assert!(
+                effects.iter().any(|e| matches!(
+                    e,
+                    Effect::DelayedProcessPrefetchQueue { delay_secs: 1, .. }
+                ))
+            );
+        }
+
+        #[test]
+        fn no_dsn_requeues_without_marking_in_flight() {
+            let mut state = AppState::new("test".to_string());
+            let run_id = state.sql_modal.begin_prefetch();
+            let qualified = "public.users".to_string();
+            state
+                .er_preparation
+                .pending_tables
+                .insert(qualified.clone());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.sql_modal.prefetch_queue.front(), Some(&qualified));
+            assert!(!state.sql_modal.prefetching_tables.contains(&qualified));
+            assert!(!state.er_preparation.fetching_tables.contains(&qualified));
+            assert!(state.er_preparation.pending_tables.contains(&qualified));
+        }
+
+        #[test]
         fn retry_limit_exceeded_gives_up_and_calls_on_table_failed() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
@@ -430,6 +493,40 @@ mod tests {
                 .get(&qualified)
                 .unwrap();
             assert_eq!(entry.retry_count, 1);
+        }
+
+        #[test]
+        fn failure_requeues_table_for_retry() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_prefetch();
+            let qualified = "public.users".to_string();
+            state.sql_modal.prefetching_tables.insert(qualified.clone());
+            state
+                .er_preparation
+                .fetching_tables
+                .insert(qualified.clone());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.sql_modal.prefetch_queue.back(), Some(&qualified));
+            assert!(state.er_preparation.pending_tables.contains(&qualified));
+            assert!(!state.er_preparation.fetching_tables.contains(&qualified));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
+            );
         }
     }
 
