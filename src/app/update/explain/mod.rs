@@ -12,13 +12,6 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-#[cfg(test)]
-use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-#[cfg(test)]
-use crate::update::action::{ScrollAmount, ScrollTarget};
-
 pub fn dispatch_explain(
     state: &mut AppState,
     action: &Action,
@@ -50,11 +43,13 @@ fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Dispat
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::effect::Effect;
     use crate::model::shared::db_capabilities::DbCapabilities;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::inspector_tab::InspectorTab;
+    use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
     use crate::services::AppServices;
-    use crate::update::action::ScrollDirection;
+    use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
     use std::time::Instant;
 
     fn sql_modal_state() -> AppState {

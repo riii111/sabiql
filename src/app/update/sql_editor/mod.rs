@@ -13,21 +13,6 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-#[cfg(test)]
-use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::model::shared::flash_timer::FlashId;
-#[cfg(test)]
-use crate::model::shared::input_mode::InputMode;
-#[cfg(test)]
-use crate::model::shared::text_input::{TextInputLike, TextInputState};
-#[cfg(test)]
-use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-#[cfg(test)]
-use crate::policy::write::write_guardrails::RiskLevel;
-#[cfg(test)]
-use crate::update::action::{CursorMove, InputTarget, ModalKind};
-
 pub fn dispatch_sql_modal(
     state: &mut AppState,
     action: &Action,
@@ -45,6 +30,13 @@ pub fn dispatch_sql_modal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::effect::Effect;
+    use crate::model::shared::flash_timer::FlashId;
+    use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::text_input::{TextInputLike, TextInputState};
+    use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+    use crate::policy::write::write_guardrails::RiskLevel;
+    use crate::update::action::{CursorMove, InputTarget, ModalKind};
     use std::time::Instant;
 
     fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {

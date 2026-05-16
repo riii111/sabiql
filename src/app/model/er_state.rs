@@ -23,6 +23,10 @@ pub struct ErPreparationState {
 }
 
 impl ErPreparationState {
+    pub fn is_busy(&self) -> bool {
+        matches!(self.status, ErStatus::Rendering | ErStatus::Waiting)
+    }
+
     pub fn is_complete(&self) -> bool {
         self.pending_tables.is_empty() && self.fetching_tables.is_empty()
     }
@@ -45,6 +49,24 @@ impl ErPreparationState {
         for (table, _) in self.failed_tables.drain() {
             self.pending_tables.insert(table);
         }
+    }
+
+    pub fn mark_idle(&mut self) {
+        self.status = ErStatus::Idle;
+    }
+
+    pub fn begin_smart_refresh(&mut self) -> u64 {
+        self.run_id += 1;
+        self.status = ErStatus::Waiting;
+        self.run_id
+    }
+
+    pub fn can_generate_from_cache(&self) -> bool {
+        matches!(self.status, ErStatus::Idle | ErStatus::Waiting)
+    }
+
+    pub fn begin_rendering(&mut self) {
+        self.status = ErStatus::Rendering;
     }
 
     pub fn reset(&mut self) {

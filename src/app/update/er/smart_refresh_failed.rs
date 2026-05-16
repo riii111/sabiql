@@ -3,7 +3,6 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::er_state::ErStatus;
 use crate::update::action::{Action, SmartErRefreshError};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -27,7 +26,7 @@ pub(super) fn reduce_smart_refresh_failed(
             }
 
             let Some(metadata) = &state.session.metadata() else {
-                state.er_preparation.status = ErStatus::Idle;
+                state.er_preparation.mark_idle();
                 state.set_error("Metadata not loaded yet".to_string());
                 return DispatchResult::handled();
             };

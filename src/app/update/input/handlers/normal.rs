@@ -8,11 +8,6 @@ use crate::update::input::vim::{
     classify_command,
 };
 
-#[cfg(test)]
-use crate::model::connection::error::ConnectionErrorInfo;
-#[cfg(test)]
-use crate::model::shared::ui_state::FocusMode;
-
 pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let browse_ctx = BrowseVimContext::from(state);
     let result_navigation = browse_ctx.is_result();
@@ -178,7 +173,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::connection::error::ConnectionErrorInfo;
     use crate::model::shared::key_sequence::KeySequenceState;
+    use crate::model::shared::ui_state::FocusMode;
     use crate::update::action::{
         CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
         SelectMotion,

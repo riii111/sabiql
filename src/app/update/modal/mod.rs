@@ -11,17 +11,6 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-#[cfg(test)]
-use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::model::shared::input_mode::InputMode;
-#[cfg(test)]
-use crate::ports::outbound::AppSettings;
-#[cfg(test)]
-use crate::update::action::{
-    InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
-};
-
 pub fn dispatch_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     base::reduce_base_lifecycle(state, action, now)
         .or_else(|| settings::reduce_settings(state, action, now))
@@ -41,7 +30,13 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::cmd::effect::Effect;
     use crate::model::shared::confirm_dialog::ConfirmIntent;
+    use crate::model::shared::input_mode::InputMode;
+    use crate::ports::outbound::AppSettings;
+    use crate::update::action::{
+        InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
+    };
 
     use std::time::Instant;
 

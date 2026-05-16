@@ -8,15 +8,6 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-#[cfg(test)]
-use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::model::er_state::ErStatus;
-#[cfg(test)]
-use crate::update::action::{SmartErRefreshError, SmartErRefreshResult};
-#[cfg(test)]
-use std::sync::Arc;
-
 pub fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     diagram::reduce_diagram_lifecycle(state, action, now)
         .or_else(|| smart_refresh_completed::reduce_smart_refresh_completed(state, action, now))
@@ -28,7 +19,11 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+    use crate::cmd::effect::Effect;
     use crate::model::app_state::AppState;
+    use crate::model::er_state::ErStatus;
+    use crate::update::action::{SmartErRefreshError, SmartErRefreshResult};
+    use std::sync::Arc;
 
     fn reduce_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
         super::dispatch_er(state, action, now)
