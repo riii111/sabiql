@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2
+      - uses: taiki-e/install-action@3771e22aa892e03fd35585fae288baad1755695c # v2
         with:
           tool: nextest
       - id: test_all_features
@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2
+      - uses: taiki-e/install-action@3771e22aa892e03fd35585fae288baad1755695c # v2
         with:
           tool: cargo-audit
       - run: cargo audit
