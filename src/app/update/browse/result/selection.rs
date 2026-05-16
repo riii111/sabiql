@@ -31,11 +31,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 let col = state.result_interaction.horizontal_offset.min(cols - 1);
                 state.result_interaction.activate_cell(row, col);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ResultExitToScroll => {
             state.result_interaction.exit_cell_to_scroll();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ResultCellLeft => {
             if let Some(c) = state.result_interaction.selection().cell()
@@ -44,7 +44,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 state.result_interaction.move_cell(c - 1);
                 ensure_cell_visible(state);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ResultCellRight => {
             if let Some(c) = state.result_interaction.selection().cell() {
@@ -54,11 +54,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                     ensure_cell_visible(state);
                 }
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ResultDeleteOperatorPending => {
             state.result_interaction.start_delete_operator();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::StageRowForDelete => {
             if state.session.read_only {
@@ -66,20 +66,20 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                     "Read-only mode: delete operations are disabled".to_string(),
                     now,
                 );
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             if let Some(row_idx) = state.result_interaction.selection().row() {
                 state.result_interaction.stage_row(row_idx);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::UnstageLastStagedRow => {
             state.result_interaction.unstage_last_row();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ClearStagedDeletes => {
             state.result_interaction.clear_staged_deletes();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ResultNextPage | Action::ResultPrevPage => {
             DispatchResult::pass() // Handled entirely by the query reducer (reset only after transition confirmed)

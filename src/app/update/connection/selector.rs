@@ -11,7 +11,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
         Action::OpenModal(ModalKind::ConnectionSelector) => {
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
-            DispatchResult::effects(vec![Effect::LoadConnections])
+            DispatchResult::handled_with(vec![Effect::LoadConnections])
         }
 
         // ===== Connection Deletion =====
@@ -20,7 +20,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             let selected_idx = state.ui.connection_list_selected;
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
-                _ => return DispatchResult::no_effects(),
+                _ => return DispatchResult::handled(),
             };
             if let Some(connection) = state.connections().get(profile_idx) {
                 let id = connection.id.clone();
@@ -41,10 +41,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::DeleteConnection(id) => {
-            DispatchResult::effects(vec![Effect::DeleteConnection { id: id.clone() }])
+            DispatchResult::handled_with(vec![Effect::DeleteConnection { id: id.clone() }])
         }
         Action::ConnectionDeleted(id) => {
             if state.session.active_connection_id.as_ref() == Some(id) {
@@ -71,11 +71,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             state
                 .messages
                 .set_success_at("Connection deleted".to_string(), now);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ConnectionDeleteFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         // ===== Connection Edit =====
@@ -84,13 +84,13 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             let selected_idx = state.ui.connection_list_selected;
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
-                _ => return DispatchResult::no_effects(),
+                _ => return DispatchResult::handled(),
             };
             if let Some(connection) = state.connections().get(profile_idx) {
                 let id = connection.id.clone();
-                DispatchResult::effects(vec![Effect::LoadConnectionForEdit { id }])
+                DispatchResult::handled_with(vec![Effect::LoadConnectionForEdit { id }])
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
 

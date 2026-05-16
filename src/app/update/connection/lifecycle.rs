@@ -22,12 +22,12 @@ pub fn reduce(
             {
                 if let Some(dsn) = state.session.dsn.clone() {
                     state.session.begin_connecting(&dsn);
-                    DispatchResult::effects(vec![Effect::FetchMetadata { dsn }])
+                    DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn }])
                 } else {
-                    DispatchResult::no_effects()
+                    DispatchResult::handled()
                 }
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
 
@@ -44,7 +44,7 @@ pub fn reduce(
                 state.session.dsn = Some(dsn.clone());
                 state.session.active_connection_name = Some(name.clone());
                 state.session.read_only = false;
-                DispatchResult::effects(vec![Effect::ClearCompletionEngineCache])
+                DispatchResult::handled_with(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata
                 state.session.reset(&mut state.query);
@@ -54,7 +54,7 @@ pub fn reduce(
                 state.session.active_connection_name = Some(name.clone());
                 state.session.read_only = false;
                 state.session.begin_connecting(dsn);
-                DispatchResult::effects(vec![
+                DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::FetchMetadata { dsn: dsn.clone() },
                 ])

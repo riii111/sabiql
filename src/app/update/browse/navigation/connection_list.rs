@@ -17,7 +17,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             if next < len {
                 state.ui.set_connection_list_selection(Some(next));
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ListSelect {
             target: ListTarget::ConnectionList,
@@ -28,7 +28,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                     .ui
                     .set_connection_list_selection(Some(state.ui.connection_list_selected - 1));
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ConnectionsLoaded(ConnectionsLoadedPayload {
             profiles,
@@ -68,7 +68,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                     .ui
                     .set_connection_list_selection(Some(state.ui.connection_list_selected));
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ConfirmConnectionSelection => {
             use crate::model::connection::list::ConnectionListItem;
@@ -91,8 +91,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             state.modal.set_mode(InputMode::Normal);
 
             match effect {
-                Some(e) => DispatchResult::effects(vec![e]),
-                None => DispatchResult::no_effects(),
+                Some(e) => DispatchResult::handled_with(vec![e]),
+                None => DispatchResult::handled(),
             }
         }
 

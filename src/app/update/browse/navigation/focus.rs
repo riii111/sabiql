@@ -23,7 +23,7 @@ pub fn reduce(
                 }
             }
             state.ui.focused_pane = *pane;
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ToggleFocus => {
             let was_focus = state.ui.is_focus_mode();
@@ -31,7 +31,7 @@ pub fn reduce(
             if was_focus {
                 state.result_interaction.reset_interaction();
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ToggleReadOnly => {
             if state.session.read_only {
@@ -44,19 +44,19 @@ pub fn reduce(
             } else {
                 state.session.read_only = true;
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::InspectorNextTab => {
             state.ui.inspector_tab = services
                 .db_capabilities
                 .next_inspector_tab(state.ui.inspector_tab);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::InspectorPrevTab => {
             state.ui.inspector_tab = services
                 .db_capabilities
                 .prev_inspector_tab(state.ui.inspector_tab);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         _ => DispatchResult::pass(),

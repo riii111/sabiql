@@ -72,12 +72,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             // JSONB columns open the dedicated detail modal instead of inline edit
             if is_jsonb_cell(state) {
-                return DispatchResult::effects(vec![Effect::DispatchActions(vec![
+                return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
                     Action::OpenModal(ModalKind::JsonbDetail),
                 ])]);
             }
@@ -93,11 +93,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                         state.result_interaction.clear_write_preview();
                     }
                     state.modal.set_mode(InputMode::CellEdit);
-                    DispatchResult::no_effects()
+                    DispatchResult::handled()
                 }
                 Err(reason) => {
                     state.messages.set_error_at(reason.to_string(), now);
-                    DispatchResult::no_effects()
+                    DispatchResult::handled()
                 }
             }
         }
@@ -108,12 +108,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 state.result_interaction.discard_cell_edit();
             }
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ResultDiscardCellEdit => {
             state.result_interaction.discard_cell_edit();
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextInput {
             target: InputTarget::ResultCellEdit,
@@ -123,19 +123,19 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 .result_interaction
                 .cell_edit_input_mut()
                 .insert_char(*c);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::ResultCellEdit,
         } => {
             state.result_interaction.cell_edit_input_mut().backspace();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextDelete {
             target: InputTarget::ResultCellEdit,
         } => {
             state.result_interaction.cell_edit_input_mut().delete();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextMoveCursor {
             target: InputTarget::ResultCellEdit,
@@ -145,7 +145,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 .result_interaction
                 .cell_edit_input_mut()
                 .move_cursor(*m);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
     }

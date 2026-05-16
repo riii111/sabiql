@@ -85,7 +85,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                 }
                 _ => {} // row == 0, no-op
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -104,7 +104,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                     s.result_interaction.scroll_offset += 1;
                 }
             });
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -112,7 +112,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
             amount: ScrollAmount::ToStart,
         } => {
             move_row_or_scroll(state, 0, |s| s.result_interaction.scroll_offset = 0);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -124,7 +124,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
             move_row_or_scroll(state, max_row, |s| {
                 s.result_interaction.scroll_offset = max_scroll;
             });
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -140,7 +140,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                 state.result_interaction.move_row(target_row);
                 ensure_row_visible(state);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -152,7 +152,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                 state.result_interaction.move_row(target);
                 ensure_row_visible(state);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -168,7 +168,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                 state.result_interaction.move_row(target);
                 ensure_row_visible(state);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -179,7 +179,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
             if delta > 0 {
                 move_result_row_and_scroll(state, *direction, delta);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         // Scroll-to-cursor (zz/zt/zb): only meaningful with an active cell
         Action::ScrollToCursor {
@@ -195,7 +195,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                         row.saturating_sub(visible / 2).min(max_scroll);
                 }
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ScrollToCursor {
             target: ScrollToCursorTarget::Result,
@@ -209,7 +209,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                     state.result_interaction.scroll_offset = row.min(max_scroll);
                 }
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ScrollToCursor {
             target: ScrollToCursorTarget::Result,
@@ -225,7 +225,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                         .min(max_scroll);
                 }
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -234,7 +234,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
         } => {
             state.result_interaction.horizontal_offset =
                 calculate_prev_column_offset(state.result_interaction.horizontal_offset);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -248,7 +248,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                 state.result_interaction.horizontal_offset,
                 plan.column_count,
             );
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
     }

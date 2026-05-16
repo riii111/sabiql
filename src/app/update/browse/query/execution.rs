@@ -137,9 +137,9 @@ pub fn reduce(
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                 }
 
-                DispatchResult::effects(try_adhoc_refresh(state, result))
+                DispatchResult::handled_with(try_adhoc_refresh(state, result))
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
         Action::QueryFailed {
@@ -175,7 +175,7 @@ pub fn reduce(
                     state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::CommandLineSubmit => {
@@ -184,7 +184,7 @@ pub fn reduce(
             state.modal.pop_mode();
             state.command_line_input.clear();
 
-            DispatchResult::effects(match follow_up {
+            DispatchResult::handled_with(match follow_up {
                 Action::Quit => {
                     state.should_quit = true;
                     vec![]
@@ -249,7 +249,7 @@ pub fn reduce(
                     });
                 state.query.pagination.total_rows_estimate = row_estimate;
 
-                DispatchResult::effects(vec![Effect::ExecutePreview {
+                DispatchResult::handled_with(vec![Effect::ExecutePreview {
                     dsn: dsn.clone(),
                     schema: schema.clone(),
                     table: table.clone(),
@@ -260,20 +260,20 @@ pub fn reduce(
                     read_only: state.session.read_only,
                 }])
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
 
         Action::ExecuteAdhoc(query) => {
             if let Some(dsn) = &state.session.dsn {
                 state.query.begin_running(now);
-                DispatchResult::effects(vec![Effect::ExecuteAdhoc {
+                DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
                     dsn: dsn.clone(),
                     query: query.clone(),
                     read_only: state.session.read_only,
                 }])
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
 

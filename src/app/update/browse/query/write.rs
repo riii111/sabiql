@@ -151,13 +151,13 @@ pub fn reduce(
                             result.target_row,
                             staged_count,
                         );
-                        return DispatchResult::effects(vec![Effect::DispatchActions(vec![
+                        return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
                             Action::OpenWritePreviewConfirm(Box::new(result.preview)),
                         ])]);
                     }
                     Err(err) => {
                         state.messages.set_error_at(err.to_string(), now);
-                        return DispatchResult::no_effects();
+                        return DispatchResult::handled();
                     }
                 }
             }
@@ -167,16 +167,16 @@ pub fn reduce(
                     EditGuardrailError::WriteUnavailableWhileQueryRunning.to_string(),
                     now,
                 );
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             match build_update_preview(state, services) {
-                Ok(preview) => DispatchResult::effects(vec![Effect::DispatchActions(vec![
+                Ok(preview) => DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
                     Action::OpenWritePreviewConfirm(Box::new(preview)),
                 ])]),
                 Err(err) => {
                     state.messages.set_error_at(err.to_string(), now);
-                    DispatchResult::no_effects()
+                    DispatchResult::handled()
                 }
             }
         }
@@ -187,7 +187,7 @@ pub fn reduce(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
                 );
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             state
                 .result_interaction
@@ -225,7 +225,7 @@ pub fn reduce(
             }
             state.modal.push_mode(InputMode::ConfirmDialog);
 
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::ExecuteWrite(query) => {
@@ -234,11 +234,11 @@ pub fn reduce(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
                 );
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             if let Some(dsn) = &state.session.dsn {
                 state.query.begin_running(now);
-                DispatchResult::effects(vec![Effect::ExecuteWrite {
+                DispatchResult::handled_with(vec![Effect::ExecuteWrite {
                     dsn: dsn.clone(),
                     query: query.clone(),
                     read_only: state.session.read_only,
@@ -247,7 +247,7 @@ pub fn reduce(
                 state
                     .messages
                     .set_error_at("No active connection".to_string(), now);
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
 
@@ -266,7 +266,7 @@ pub fn reduce(
                             now,
                         );
                         state.modal.set_mode(InputMode::CellEdit);
-                        return DispatchResult::no_effects();
+                        return DispatchResult::handled();
                     }
 
                     state
@@ -278,7 +278,7 @@ pub fn reduce(
                     if let Some(dsn) = &state.session.dsn {
                         let page = state.query.pagination.current_page;
                         state.query.begin_running(now);
-                        DispatchResult::effects(vec![Effect::ExecutePreview {
+                        DispatchResult::handled_with(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
@@ -289,7 +289,7 @@ pub fn reduce(
                             read_only: state.session.read_only,
                         }])
                     } else {
-                        DispatchResult::no_effects()
+                        DispatchResult::handled()
                     }
                 }
                 WriteOperation::Delete => {
@@ -336,7 +336,7 @@ pub fn reduce(
                     if let Some(dsn) = &state.session.dsn {
                         state.query.begin_running(now);
                         state.query.pagination.reached_end = false;
-                        DispatchResult::effects(vec![Effect::ExecutePreview {
+                        DispatchResult::handled_with(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
@@ -347,7 +347,7 @@ pub fn reduce(
                             read_only: state.session.read_only,
                         }])
                     } else {
-                        DispatchResult::no_effects()
+                        DispatchResult::handled()
                     }
                 }
             }
@@ -366,7 +366,7 @@ pub fn reduce(
                 WriteOperation::Update => InputMode::CellEdit,
                 WriteOperation::Delete => InputMode::Normal,
             });
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         _ => DispatchResult::pass(),

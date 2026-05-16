@@ -21,11 +21,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
         Action::OpenModal(ModalKind::JsonbDetail) => {
             let result = match state.query.visible_result() {
                 Some(r) if r.source == QuerySource::Preview && !r.is_error() => r,
-                _ => return DispatchResult::no_effects(),
+                _ => return DispatchResult::handled(),
             };
 
             if state.query.is_history_mode() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             let table_detail = match state.session.table_detail() {
@@ -35,24 +35,24 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 {
                     td
                 }
-                _ => return DispatchResult::no_effects(),
+                _ => return DispatchResult::handled(),
             };
 
             let Some(row_idx) = state.result_interaction.selection().row() else {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             };
             let Some(col_idx) = state.result_interaction.selection().cell() else {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             };
 
             let column = match table_detail.columns.get(col_idx) {
                 Some(c) if c.data_type == "jsonb" => c,
-                _ => return DispatchResult::no_effects(),
+                _ => return DispatchResult::handled(),
             };
 
             let cell_value = match result.rows.get(row_idx).and_then(|r| r.get(col_idx)) {
                 Some(v) if !v.is_empty() => v,
-                _ => return DispatchResult::no_effects(),
+                _ => return DispatchResult::handled(),
             };
 
             let pretty_original = match serde_json::from_str::<serde_json::Value>(cell_value) {
@@ -63,7 +63,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                     state
                         .messages
                         .set_error_at(format!("Invalid JSON: {err}"), now);
-                    return DispatchResult::no_effects();
+                    return DispatchResult::handled();
                 }
             };
 
@@ -75,20 +75,20 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 pretty_original,
             );
             state.modal.push_mode(InputMode::JsonbDetail);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::CloseModal(ModalKind::JsonbDetail) => {
             apply_pending_edit_as_draft(state);
             state.jsonb_detail.close();
             state.modal.pop_mode();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::JsonbYankAll => {
             let json = state.jsonb_detail.current_json_for_yank();
             state.flash_timers.set(FlashId::JsonbDetail, now);
-            DispatchResult::effects(vec![Effect::CopyToClipboard {
+            DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content: json,
                 on_success: Some(Action::CellCopied),
                 on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
@@ -102,11 +102,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             state.jsonb_detail.enter_edit();
             state.modal.replace_mode(InputMode::JsonbEdit);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::JsonbAppendInsert => {
@@ -114,7 +114,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             state
                 .jsonb_detail
@@ -123,13 +123,13 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             update_editor_scroll(state);
             state.jsonb_detail.enter_edit();
             state.modal.replace_mode(InputMode::JsonbEdit);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::JsonbExitEdit => {
             state.jsonb_detail.exit_edit();
             state.modal.replace_mode(InputMode::JsonbDetail);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::TextInput {
@@ -145,7 +145,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             }
             update_editor_scroll(state);
             validate_editor_inline(state);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::TextBackspace {
@@ -154,7 +154,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             state.jsonb_detail.editor_mut().backspace();
             update_editor_scroll(state);
             validate_editor_inline(state);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::TextDelete {
@@ -163,7 +163,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             state.jsonb_detail.editor_mut().delete();
             update_editor_scroll(state);
             validate_editor_inline(state);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::TextMoveCursor {
@@ -184,30 +184,30 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             }
             update_editor_scroll(state);
             state.ui.key_sequence = KeySequenceState::Idle;
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::Paste(text) if state.input_mode() == InputMode::JsonbEdit => {
             state.jsonb_detail.editor_mut().insert_str(text);
             update_editor_scroll(state);
             validate_editor_inline(state);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::JsonbEnterSearch => {
             state.jsonb_detail.enter_search();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::JsonbExitSearch => {
             state.jsonb_detail.exit_search();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::JsonbSearchSubmit => {
             state.jsonb_detail.exit_search();
             jump_to_current_match(state);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::JsonbSearchNext => {
@@ -217,7 +217,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 state.jsonb_detail.search_mut().current_match = next;
                 jump_to_current_match(state);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::JsonbSearchPrev => {
@@ -231,7 +231,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 state.jsonb_detail.search_mut().current_match = prev;
                 jump_to_current_match(state);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::TextInput {
@@ -240,7 +240,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
         } => {
             state.jsonb_detail.search_mut().input.insert_char(*ch);
             update_search_matches(state);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::TextBackspace {
@@ -248,7 +248,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
         } => {
             state.jsonb_detail.search_mut().input.backspace();
             update_search_matches(state);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::TextDelete {
@@ -256,7 +256,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
         } => {
             state.jsonb_detail.search_mut().input.delete();
             update_search_matches(state);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::Paste(text)
@@ -266,7 +266,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
             state.jsonb_detail.search_mut().input.insert_str(&clean);
             update_search_matches(state);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::TextMoveCursor {
@@ -278,7 +278,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 .search_mut()
                 .input
                 .move_cursor(*direction);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         _ => DispatchResult::pass(),

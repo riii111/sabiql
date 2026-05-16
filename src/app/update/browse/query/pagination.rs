@@ -19,14 +19,14 @@ pub fn reduce(
     match action {
         Action::RequestCsvExport => {
             if !state.can_request_csv_export() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             let Some(result) = state.query.visible_result() else {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             };
             let dsn = match &state.session.dsn {
                 Some(d) => d.clone(),
-                None => return DispatchResult::no_effects(),
+                None => return DispatchResult::handled(),
             };
 
             let export_query = result.query.clone();
@@ -50,7 +50,7 @@ pub fn reduce(
             let stripped = export_query.trim_end().trim_end_matches(';').to_string();
             let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
 
-            DispatchResult::effects(vec![Effect::CountRowsForExport {
+            DispatchResult::handled_with(vec![Effect::CountRowsForExport {
                 dsn,
                 count_query,
                 export_query,
@@ -86,13 +86,13 @@ pub fn reduce(
                     },
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             } else {
                 let dsn = match &state.session.dsn {
                     Some(d) => d.clone(),
-                    None => return DispatchResult::no_effects(),
+                    None => return DispatchResult::handled(),
                 };
-                DispatchResult::effects(vec![Effect::ExportCsv {
+                DispatchResult::handled_with(vec![Effect::ExportCsv {
                     dsn,
                     query: export_query.clone(),
                     file_name: file_name.clone(),
@@ -109,9 +109,9 @@ pub fn reduce(
         } => {
             let dsn = match &state.session.dsn {
                 Some(d) => d.clone(),
-                None => return DispatchResult::no_effects(),
+                None => return DispatchResult::handled(),
             };
-            DispatchResult::effects(vec![Effect::ExportCsv {
+            DispatchResult::handled_with(vec![Effect::ExportCsv {
                 dsn,
                 query: export_query.clone(),
                 file_name: file_name.clone(),
@@ -129,12 +129,12 @@ pub fn reduce(
             let folder = Path::new(path)
                 .parent()
                 .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-            DispatchResult::effects(vec![Effect::OpenFolder { path: folder }])
+            DispatchResult::handled_with(vec![Effect::OpenFolder { path: folder }])
         }
 
         Action::CsvExportFailed(error) => {
             state.messages.set_error_at(error.user_message(), now);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::OpenFolderFailed(error) => {
@@ -142,21 +142,21 @@ pub fn reduce(
                 .messages
                 .set_error_at(format!("Failed to open folder: {error}"), now);
 
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::ResultNextPage => {
             if state.query.is_running() || !state.query.can_paginate_visible_result() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             if !state.query.pagination.can_next() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let next_page = state.query.pagination.current_page + 1;
                 state.query.begin_running(now);
                 state.result_interaction.reset_view();
-                DispatchResult::effects(vec![Effect::ExecutePreview {
+                DispatchResult::handled_with(vec![Effect::ExecutePreview {
                     dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
@@ -167,23 +167,23 @@ pub fn reduce(
                     read_only: state.session.read_only,
                 }])
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
 
         Action::ResultPrevPage => {
             if state.query.is_running() || !state.query.can_paginate_visible_result() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             if !state.query.pagination.can_prev() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let prev_page = state.query.pagination.current_page - 1;
                 state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 state.query.pagination.reached_end = false;
-                DispatchResult::effects(vec![Effect::ExecutePreview {
+                DispatchResult::handled_with(vec![Effect::ExecutePreview {
                     dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
@@ -194,7 +194,7 @@ pub fn reduce(
                     read_only: state.session.read_only,
                 }])
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
 

@@ -36,7 +36,7 @@ pub fn reduce(
                         col: Some(col_idx),
                         until: now + Duration::from_millis(200),
                     });
-                    DispatchResult::effects(vec![Effect::CopyToClipboard {
+                    DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: value,
                         on_success: Some(Action::CellCopied),
                         on_failure: Some(clipboard_unavailable()),
@@ -45,15 +45,15 @@ pub fn reduce(
                     state
                         .messages
                         .set_error_at("Cell index out of bounds".into(), now);
-                    DispatchResult::no_effects()
+                    DispatchResult::handled()
                 }
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
         Action::ResultRowYankOperatorPending => {
             state.result_interaction.start_yank_operator();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::DdlYank => {
             if state.ui.inspector_tab == InspectorTab::Ddl
@@ -61,13 +61,13 @@ pub fn reduce(
             {
                 let ddl = services.ddl_generator.generate_ddl(table);
                 state.flash_timers.set(FlashId::Ddl, now);
-                return DispatchResult::effects(vec![Effect::CopyToClipboard {
+                return DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
                     on_failure: Some(clipboard_unavailable()),
                 }]);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ResultRowYank => {
             if let Some(row_idx) = state.result_interaction.selection().row() {
@@ -91,7 +91,7 @@ pub fn reduce(
                         col: None,
                         until: now + Duration::from_millis(200),
                     });
-                    DispatchResult::effects(vec![Effect::CopyToClipboard {
+                    DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: tsv,
                         on_success: Some(Action::CellCopied),
                         on_failure: Some(clipboard_unavailable()),
@@ -100,16 +100,16 @@ pub fn reduce(
                     state
                         .messages
                         .set_error_at("Row index out of bounds".into(), now);
-                    DispatchResult::no_effects()
+                    DispatchResult::handled()
                 }
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
-        Action::CellCopied => DispatchResult::no_effects(),
+        Action::CellCopied => DispatchResult::handled(),
         Action::CopyFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
     }

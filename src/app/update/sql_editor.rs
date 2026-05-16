@@ -31,21 +31,21 @@ pub fn reduce_sql_modal(
         // Completion navigation
         Action::CompletionNext => {
             state.sql_modal.completion_next();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::CompletionPrev => {
             state.sql_modal.completion_prev();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::CompletionDismiss => {
             state.sql_modal.dismiss_completion();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         // Clipboard paste
         Action::Paste(text) if state.modal.active_mode() == InputMode::SqlModal => {
             if !matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
             state.sql_modal.editor.insert_str(&normalized);
@@ -57,7 +57,7 @@ pub fn reduce_sql_modal(
                 .sql_modal
                 .schedule_completion_after_dismiss(now + Duration::from_millis(100));
             state.sql_modal.enter_editing();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         // Text editing
@@ -74,7 +74,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::SqlModal,
@@ -88,7 +88,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextDelete {
             target: InputTarget::SqlModal,
@@ -102,7 +102,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::SqlModalNewLine => {
             state.sql_modal.enter_editing();
@@ -114,7 +114,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::SqlModalTab => {
             state.sql_modal.enter_editing();
@@ -126,7 +126,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextMoveCursor {
             target: InputTarget::SqlModal,
@@ -148,13 +148,13 @@ pub fn reduce_sql_modal(
                 .editor
                 .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
             state.ui.key_sequence = KeySequenceState::Idle;
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::SqlModalClear => {
             state.sql_modal.editor.clear();
             state.sql_modal.reset_completion();
             state.ui.key_sequence = KeySequenceState::Idle;
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         // Modal open/submit
@@ -163,24 +163,24 @@ pub fn reduce_sql_modal(
             state.sql_modal.open_sql_tab();
             state.flash_timers.clear(FlashId::SqlModal);
             if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some() {
-                DispatchResult::effects(vec![Effect::DispatchActions(vec![
+                DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
                     Action::StartPrefetchAll,
                 ])])
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
         Action::SqlModalSubmit => {
             let query = state.sql_modal.editor.content().trim().to_string();
             if query.is_empty() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             state.sql_modal.dismiss_completion();
 
             match evaluate_multi_statement(&query) {
                 MultiStatementDecision::Block { reason } => {
                     state.sql_modal.finish_adhoc_error(reason);
-                    DispatchResult::no_effects()
+                    DispatchResult::handled()
                 }
                 MultiStatementDecision::Allow {
                     risk,
@@ -200,18 +200,18 @@ pub fn reduce_sql_modal(
                         state.sql_modal.finish_adhoc_error(
                             "Read-only mode: write operations are disabled".to_string(),
                         );
-                        return DispatchResult::no_effects();
+                        return DispatchResult::handled();
                     }
                     match risk.confirmation {
                         ConfirmationType::Immediate => {
                             state.sql_modal.begin_adhoc_running();
-                            DispatchResult::effects(adhoc_effects(state, query))
+                            DispatchResult::handled_with(adhoc_effects(state, query))
                         }
                         ConfirmationType::TableNameInput { target } => {
                             state
                                 .sql_modal
                                 .begin_confirming_high(decision, Some(target));
-                            DispatchResult::no_effects()
+                            DispatchResult::handled()
                         }
                     }
                 }
@@ -224,7 +224,7 @@ pub fn reduce_sql_modal(
             ) {
                 state.sql_modal.cancel_confirmation();
                 state.ui.key_sequence = KeySequenceState::Idle;
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             } else {
                 DispatchResult::pass()
             }
@@ -239,7 +239,7 @@ pub fn reduce_sql_modal(
                 input.insert_char(*c);
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextBackspace {
             target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
@@ -248,7 +248,7 @@ pub fn reduce_sql_modal(
                 input.backspace();
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextMoveCursor {
             target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
@@ -258,7 +258,7 @@ pub fn reduce_sql_modal(
                 input.move_cursor(*movement);
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::SqlModalHighRiskConfirmExecute => {
@@ -276,14 +276,14 @@ pub fn reduce_sql_modal(
                 let query = state.sql_modal.editor.content().trim().to_string();
                 state.sql_modal.begin_adhoc_running();
                 if let Some(dsn) = &state.session.dsn {
-                    return DispatchResult::effects(vec![Effect::ExecuteAdhoc {
+                    return DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
                         dsn: dsn.clone(),
                         query,
                         read_only: state.session.read_only,
                     }]);
                 }
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         // Completion accept
@@ -293,7 +293,7 @@ pub fn reduce_sql_modal(
             {
                 if state.sql_modal.editor.cursor() < trigger_pos {
                     state.sql_modal.dismiss_completion();
-                    return DispatchResult::no_effects();
+                    return DispatchResult::handled();
                 }
 
                 let start_byte = state.sql_modal.editor.char_to_byte_index(trigger_pos);
@@ -318,11 +318,11 @@ pub fn reduce_sql_modal(
                     .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
                 state.sql_modal.dismiss_completion();
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         // Completion trigger/update
-        Action::CompletionTrigger => DispatchResult::effects(vec![Effect::TriggerCompletion]),
+        Action::CompletionTrigger => DispatchResult::handled_with(vec![Effect::TriggerCompletion]),
         Action::CompletionUpdated {
             candidates,
             trigger_position,
@@ -331,7 +331,7 @@ pub fn reduce_sql_modal(
             state
                 .sql_modal
                 .apply_completion_update(candidates, *trigger_position, *visible);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::SqlModalAppendInsert => {
@@ -341,15 +341,15 @@ pub fn reduce_sql_modal(
                 .editor
                 .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
             state.sql_modal.enter_editing();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::SqlModalEnterInsert => {
             state.sql_modal.enter_editing();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::SqlModalEnterNormal => {
             state.sql_modal.enter_normal();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::SqlModalYank => {
             let active_tab = services
@@ -401,7 +401,7 @@ pub fn reduce_sql_modal(
             };
             match content {
                 Some(c) if !c.is_empty() => {
-                    DispatchResult::effects(vec![Effect::CopyToClipboard {
+                    DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: c,
                         on_success: Some(Action::SqlModalYankSuccess),
                         on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
@@ -409,12 +409,12 @@ pub fn reduce_sql_modal(
                         ))),
                     }])
                 }
-                _ => DispatchResult::no_effects(),
+                _ => DispatchResult::handled(),
             }
         }
         Action::SqlModalYankSuccess => {
             state.flash_timers.set(FlashId::SqlModal, now);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         _ => DispatchResult::pass(),

@@ -11,11 +11,11 @@ impl DispatchResult {
         Self::Pass
     }
 
-    pub fn no_effects() -> Self {
+    pub fn handled() -> Self {
         Self::Handled(vec![])
     }
 
-    pub fn effects(effects: Vec<Effect>) -> Self {
+    pub fn handled_with(effects: Vec<Effect>) -> Self {
         Self::Handled(effects)
     }
 

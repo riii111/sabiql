@@ -11,18 +11,18 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
         Action::ShowConnectionError(info) => {
             state.connection_error.set_error(info.clone());
             state.modal.replace_mode(InputMode::ConnectionError);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::CloseConnectionError => {
             state.connection_error.details_expanded = false;
             state.connection_error.scroll_offset = 0;
             state.connection_error.clear_copied_feedback();
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ToggleConnectionErrorDetails => {
             state.connection_error.toggle_details();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::ConnectionError,
@@ -30,7 +30,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             amount: ScrollAmount::Line,
         } => {
             state.connection_error.scroll_up();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::ConnectionError,
@@ -42,31 +42,31 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             // is not subtracted. Acceptable for typical short psql errors.
             let max_scroll = state.connection_error.detail_line_count().saturating_sub(1);
             state.connection_error.scroll_down(max_scroll);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::CopyConnectionError => {
             if let Some(content) = state.connection_error.masked_details() {
-                DispatchResult::effects(vec![Effect::CopyToClipboard {
+                DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: content.to_string(),
                     on_success: Some(Action::ConnectionErrorCopied),
                     on_failure: None,
                 }])
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
         Action::ConnectionErrorCopied => {
             state.connection_error.mark_copied_at(now);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ReenterConnectionSetup => {
             if state.session.is_service_connection() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             state.connection_error.clear();
             state.session.mark_disconnected();
             state.modal.replace_mode(InputMode::ConnectionSetup);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::RetryServiceConnection => {
             if let Some(dsn) = state.session.dsn.clone() {
@@ -74,9 +74,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
                 state.session.begin_connecting(&dsn);
                 state.session.read_only = false;
                 state.modal.set_mode(InputMode::Normal);
-                DispatchResult::effects(vec![Effect::FetchMetadata { dsn }])
+                DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn }])
             } else {
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
         }
 

@@ -7,11 +7,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
         Action::OpenResultHistory => {
             let len = state.query.result_history().len();
             if len == 0 {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             state.query.enter_history(len - 1);
             state.result_interaction.reset_view();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::HistoryOlder => {
             if let Some(idx) = state.query.history_index()
@@ -20,7 +20,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                 state.query.enter_history(idx - 1);
                 state.result_interaction.reset_view();
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::HistoryNewer => {
             if let Some(idx) = state.query.history_index() {
@@ -30,12 +30,12 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                     state.result_interaction.reset_view();
                 }
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ExitResultHistory => {
             state.query.exit_history();
             state.result_interaction.reset_view();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
     }

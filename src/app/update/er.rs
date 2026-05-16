@@ -20,32 +20,32 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Dispat
             state.set_success(format!(
                 "✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"
             ));
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ErDiagramFailed(error) => {
             state.er_preparation.status = ErStatus::Idle;
             state.set_error(error.to_string());
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ErLogWriteFailed(error) => {
             state.set_error(error.to_string());
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ErOpenDiagram => {
             if matches!(
                 state.er_preparation.status,
                 ErStatus::Rendering | ErStatus::Waiting
             ) {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             let Some(dsn) = state.session.dsn.clone() else {
                 state.set_error("No active connection".to_string());
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             };
             if state.session.metadata().is_none() {
                 state.set_error("Metadata not loaded yet".to_string());
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             state.sql_modal.invalidate_prefetch();
@@ -53,7 +53,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Dispat
             state.er_preparation.status = ErStatus::Waiting;
             state.set_success("Checking for schema changes...".to_string());
 
-            DispatchResult::effects(vec![Effect::SmartErRefresh {
+            DispatchResult::handled_with(vec![Effect::SmartErRefresh {
                 dsn,
                 run_id: state.er_preparation.run_id,
             }])
@@ -69,7 +69,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Dispat
             new_signatures,
         }) => {
             if *run_id != state.er_preparation.run_id {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             state.session.set_metadata(Some(Arc::clone(new_metadata)));
@@ -114,7 +114,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Dispat
                 }]));
             }
 
-            DispatchResult::effects(effects)
+            DispatchResult::handled_with(effects)
         }
 
         Action::SmartErRefreshFailed(SmartErRefreshError {
@@ -123,7 +123,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Dispat
             new_metadata,
         }) => {
             if *run_id != state.er_preparation.run_id {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             if let Some(md) = new_metadata {
@@ -133,7 +133,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Dispat
             let Some(metadata) = &state.session.metadata() else {
                 state.er_preparation.status = ErStatus::Idle;
                 state.set_error("Metadata not loaded yet".to_string());
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             };
             let total_table_count = metadata.table_summaries.len();
             let is_scoped = !state.er_preparation.target_tables.is_empty()
@@ -147,14 +147,14 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Dispat
 
             if is_scoped {
                 let scoped_tables = state.er_preparation.target_tables.clone();
-                DispatchResult::effects(vec![
+                DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchScoped {
                         tables: scoped_tables,
                     }]),
                 ])
             } else {
-                DispatchResult::effects(vec![
+                DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchAll]),
                 ])
@@ -166,7 +166,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Dispat
                 state.er_preparation.status,
                 ErStatus::Idle | ErStatus::Waiting
             ) {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             state.er_preparation.status = ErStatus::Rendering;
@@ -175,7 +175,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Dispat
                 .metadata()
                 .map_or(0, |m| m.table_summaries.len());
 
-            DispatchResult::effects(vec![Effect::GenerateErDiagramFromCache {
+            DispatchResult::handled_with(vec![Effect::GenerateErDiagramFromCache {
                 total_tables,
                 project_name: state.runtime.project_name.clone(),
                 target_tables: state.er_preparation.target_tables.clone(),

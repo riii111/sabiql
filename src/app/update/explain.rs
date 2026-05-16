@@ -77,30 +77,30 @@ pub fn reduce_explain_with_services(
     match action {
         Action::ExplainRequest => {
             if reject_unsupported_explain(state, services) {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             let Some(dsn) = state.session.dsn.clone() else {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             };
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             if is_multi_statement(&content) {
                 show_explain_error_on_plan(state, "EXPLAIN does not support multiple statements");
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             let Some(query) = services.sql_dialect.build_explain_sql(&content) else {
                 mark_explain_unavailable(state, services);
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             };
             begin_explain_running(state, now);
 
-            DispatchResult::effects(vec![Effect::ExecuteExplain {
+            DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                 dsn,
                 query,
                 is_analyze: false,
@@ -110,25 +110,25 @@ pub fn reduce_explain_with_services(
 
         Action::ExplainAnalyzeRequest => {
             if reject_unsupported_explain(state, services) {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             let Some(dsn) = &state.session.dsn else {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             };
             let dsn = dsn.clone();
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             if is_multi_statement(&content) {
                 show_explain_error_on_plan(
                     state,
                     "EXPLAIN ANALYZE does not support multiple statements",
                 );
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             let kind = statement_classifier::classify(&content);
             let risk = evaluate_sql_risk(&kind, &content);
@@ -140,7 +140,7 @@ pub fn reduce_explain_with_services(
                     state,
                     "Read-only mode: EXPLAIN ANALYZE is blocked for DML statements.",
                 );
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
 
             state.explain.confirm_scroll_offset = 0;
@@ -156,10 +156,10 @@ pub fn reduce_explain_with_services(
                         services.sql_dialect.build_explain_analyze_sql(&content)
                     else {
                         mark_explain_unavailable(state, services);
-                        return DispatchResult::no_effects();
+                        return DispatchResult::handled();
                     };
                     begin_explain_running(state, now);
-                    return DispatchResult::effects(vec![Effect::ExecuteExplain {
+                    return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                         dsn,
                         query: explain_query,
                         is_analyze: true,
@@ -168,12 +168,12 @@ pub fn reduce_explain_with_services(
                 }
             }
 
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::ExplainAnalyzeConfirm => {
             if reject_unsupported_explain(state, services) {
-                return DispatchResult::no_effects();
+                return DispatchResult::handled();
             }
             let query = match state.sql_modal.status() {
                 SqlModalStatus::ConfirmingAnalyzeHigh {
@@ -192,17 +192,17 @@ pub fn reduce_explain_with_services(
                 let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
                 else {
                     mark_explain_unavailable(state, services);
-                    return DispatchResult::no_effects();
+                    return DispatchResult::handled();
                 };
                 begin_explain_running(state, now);
-                return DispatchResult::effects(vec![Effect::ExecuteExplain {
+                return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                     dsn,
                     query: explain_query,
                     is_analyze: true,
                     read_only: state.session.read_only,
                 }]);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::ExplainAnalyzeCancel => {
@@ -212,7 +212,7 @@ pub fn reduce_explain_with_services(
             ) {
                 state.sql_modal.cancel_confirmation();
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::ExplainCompleted {
@@ -228,12 +228,12 @@ pub fn reduce_explain_with_services(
                 *execution_time_ms,
                 &query,
             );
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::ExplainFailed(error) => {
             finish_explain_error(state, error.user_message());
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::Scroll {
@@ -268,7 +268,7 @@ pub fn reduce_explain_with_services(
                 _ => unreachable!(),
             };
             *offset = direction.clamp_vertical_offset(*offset, max, 1);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::CompareEditQuery => {
@@ -276,7 +276,7 @@ pub fn reduce_explain_with_services(
                 let query = right.full_query.clone();
                 state.sql_modal.load_query_for_editing(query);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::SqlModalNextTab => {
@@ -284,7 +284,7 @@ pub fn reduce_explain_with_services(
                 .db_capabilities
                 .next_sql_modal_tab(state.sql_modal.active_tab());
             state.sql_modal.set_active_tab(tab);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::SqlModalPrevTab => {
@@ -292,7 +292,7 @@ pub fn reduce_explain_with_services(
                 .db_capabilities
                 .prev_sql_modal_tab(state.sql_modal.active_tab());
             state.sql_modal.set_active_tab(tab);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         _ => DispatchResult::pass(),

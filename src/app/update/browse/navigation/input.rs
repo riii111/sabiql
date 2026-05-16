@@ -9,11 +9,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
         Action::Paste(text) => match state.modal.active_mode() {
             InputMode::TablePicker => {
                 state.ui.table_picker.insert_filter_str(text);
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
             InputMode::ErTablePicker => {
                 state.ui.er_picker.insert_filter_str(text);
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
             InputMode::CommandLine => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
@@ -21,7 +21,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                 state
                     .command_line_input
                     .update_viewport(state.command_line_visible_width);
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
             InputMode::CellEdit => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
@@ -29,11 +29,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                     .result_interaction
                     .cell_edit_input_mut()
                     .insert_str(&clean);
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
             InputMode::QueryHistoryPicker => {
                 state.query_history_picker.insert_filter_str(text);
-                DispatchResult::no_effects()
+                DispatchResult::handled()
             }
             _ => DispatchResult::pass(),
         },
@@ -43,30 +43,30 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
             ch: c,
         } => {
             state.ui.table_picker.insert_filter_char(*c);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::Filter,
         } => {
             state.ui.table_picker.backspace_filter();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextMoveCursor {
             target: InputTarget::Filter,
             direction: movement,
         } => {
             state.ui.table_picker.move_filter_cursor(*movement);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         Action::EnterCommandLine => {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.clear();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ExitCommandLine => {
             state.modal.pop_mode();
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextInput {
             target: InputTarget::CommandLine,
@@ -76,7 +76,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
             state
                 .command_line_input
                 .update_viewport(state.command_line_visible_width);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::CommandLine,
@@ -85,7 +85,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
             state
                 .command_line_input
                 .update_viewport(state.command_line_visible_width);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::TextMoveCursor {
             target: InputTarget::CommandLine,
@@ -95,7 +95,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
             state
                 .command_line_input
                 .update_viewport(state.command_line_visible_width);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         // -----------------------------------------------------------------
@@ -112,7 +112,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                     .table_picker
                     .set_selection(state.ui.table_picker.selected() + 1);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ListSelect {
             target: ListTarget::TablePicker | ListTarget::CommandPalette,
@@ -122,7 +122,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                 .ui
                 .table_picker
                 .set_selection(state.ui.table_picker.selected().saturating_sub(1));
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ListSelect {
             target: ListTarget::ErTablePicker,
@@ -135,7 +135,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                     .er_picker
                     .set_selection(state.ui.er_picker.selected() + 1);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ListSelect {
             target: ListTarget::ErTablePicker,
@@ -145,7 +145,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                 .ui
                 .er_picker
                 .set_selection(state.ui.er_picker.selected().saturating_sub(1));
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::ListSelect {
             target: ListTarget::CommandPalette,
@@ -158,7 +158,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
                     .table_picker
                     .set_selection(state.ui.table_picker.selected() + 1);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         _ => DispatchResult::pass(),

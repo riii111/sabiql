@@ -33,7 +33,7 @@ pub fn reduce(state: &mut AppState, action: &Action, services: &AppServices) -> 
             let max = inspector_max_scroll(state, services);
             state.ui.inspector_scroll_offset =
                 direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, 1);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -41,7 +41,7 @@ pub fn reduce(state: &mut AppState, action: &Action, services: &AppServices) -> 
             amount: ScrollAmount::ToStart,
         } => {
             state.ui.inspector_scroll_offset = 0;
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -49,7 +49,7 @@ pub fn reduce(state: &mut AppState, action: &Action, services: &AppServices) -> 
             amount: ScrollAmount::ToEnd,
         } => {
             state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -61,7 +61,7 @@ pub fn reduce(state: &mut AppState, action: &Action, services: &AppServices) -> 
                 state.ui.inspector_scroll_offset =
                     direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, delta);
             }
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -70,7 +70,7 @@ pub fn reduce(state: &mut AppState, action: &Action, services: &AppServices) -> 
         } => {
             state.ui.inspector_horizontal_offset =
                 calculate_prev_column_offset(state.ui.inspector_horizontal_offset);
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -84,7 +84,7 @@ pub fn reduce(state: &mut AppState, action: &Action, services: &AppServices) -> 
                 state.ui.inspector_horizontal_offset,
                 plan.column_count,
             );
-            DispatchResult::no_effects()
+            DispatchResult::handled()
         }
 
         _ => DispatchResult::pass(),
