@@ -6,7 +6,11 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn reduce_connection_error(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::ShowConnectionError(info) => {
             state.connection_error.set_error(info.clone());
@@ -113,11 +117,11 @@ mod tests {
             let action = scroll_down_action();
             let now = Instant::now();
 
-            reduce(&mut state, &action, now);
-            reduce(&mut state, &action, now);
+            reduce_connection_error(&mut state, &action, now);
+            reduce_connection_error(&mut state, &action, now);
             assert_eq!(state.connection_error.scroll_offset, 2);
 
-            reduce(&mut state, &action, now);
+            reduce_connection_error(&mut state, &action, now);
             assert_eq!(state.connection_error.scroll_offset, 2);
         }
     }
@@ -131,7 +135,7 @@ mod tests {
             state.session.dsn = Some("service=mydb".to_string());
             state.modal.set_mode(InputMode::ConnectionError);
 
-            reduce(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
         }
@@ -142,7 +146,7 @@ mod tests {
             state.session.dsn = Some("postgres://localhost/db".to_string());
             state.modal.set_mode(InputMode::ConnectionError);
 
-            reduce(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }

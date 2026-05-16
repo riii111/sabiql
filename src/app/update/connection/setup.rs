@@ -11,7 +11,11 @@ use crate::update::action::{Action, ConnectionTarget, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn reduce_connection_setup(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ConnectionSetup) => {
             state.connection_setup.reset();
@@ -270,7 +274,7 @@ mod tests {
         fn host_inserts_text() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
-            reduce(
+            reduce_connection_setup(
                 &mut state,
                 &Action::Paste("db.example.com".to_string()),
                 Instant::now(),
@@ -283,7 +287,7 @@ mod tests {
         fn port_filters_non_digits() {
             let mut state = setup_state_with_field(ConnectionField::Port);
 
-            reduce(
+            reduce_connection_setup(
                 &mut state,
                 &Action::Paste("54ab32".to_string()),
                 Instant::now(),
@@ -297,7 +301,7 @@ mod tests {
             let mut state = setup_state_with_field(ConnectionField::Port);
             state.connection_setup.port.set_content("54".to_string());
 
-            reduce(
+            reduce_connection_setup(
                 &mut state,
                 &Action::Paste("321000".to_string()),
                 Instant::now(),
@@ -311,7 +315,7 @@ mod tests {
             let mut state = setup_state_with_field(ConnectionField::Port);
             state.connection_setup.port.set_content("12345".to_string());
 
-            reduce(&mut state, &Action::Paste("6".to_string()), Instant::now());
+            reduce_connection_setup(&mut state, &Action::Paste("6".to_string()), Instant::now());
 
             assert_eq!(state.connection_setup.port.content(), "12345");
         }
@@ -320,7 +324,7 @@ mod tests {
         fn strips_newlines() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
-            reduce(
+            reduce_connection_setup(
                 &mut state,
                 &Action::Paste("local\nhost".to_string()),
                 Instant::now(),
@@ -334,7 +338,7 @@ mod tests {
             let mut state = setup_state_with_field(ConnectionField::SslMode);
             let ssl_mode_before = state.connection_setup.ssl_mode;
 
-            reduce(
+            reduce_connection_setup(
                 &mut state,
                 &Action::Paste("disable".to_string()),
                 Instant::now(),
@@ -347,7 +351,7 @@ mod tests {
         fn updates_cursor() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
-            reduce(
+            reduce_connection_setup(
                 &mut state,
                 &Action::Paste("db.example.com".to_string()),
                 Instant::now(),
@@ -386,7 +390,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             fill_valid_form(&mut state);
 
-            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now());
 
             assert_eq!(
                 state.session.connection_state(),
@@ -405,7 +409,7 @@ mod tests {
                 dsn: "postgres://localhost/new_db".to_string(),
                 name: "new_db".to_string(),
             });
-            reduce(&mut state, &action, Instant::now());
+            reduce_connection_setup(&mut state, &action, Instant::now());
 
             assert!(!state.session.read_only);
         }
@@ -418,7 +422,7 @@ mod tests {
         fn is_first_run_true_when_no_connections() {
             let mut state = AppState::new("test".to_string());
 
-            reduce(
+            reduce_connection_setup(
                 &mut state,
                 &Action::OpenModal(ModalKind::ConnectionSetup),
                 Instant::now(),
@@ -433,7 +437,7 @@ mod tests {
             let profile = create_profile("test");
             state.set_connections(vec![profile]);
 
-            reduce(
+            reduce_connection_setup(
                 &mut state,
                 &Action::OpenModal(ModalKind::ConnectionSetup),
                 Instant::now(),
@@ -447,7 +451,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.session.dsn = Some("postgres://localhost/db".to_string());
 
-            reduce(
+            reduce_connection_setup(
                 &mut state,
                 &Action::OpenModal(ModalKind::ConnectionSetup),
                 Instant::now(),

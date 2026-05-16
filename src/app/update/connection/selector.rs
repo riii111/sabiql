@@ -6,7 +6,11 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn reduce_connection_selector(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ConnectionSelector) => {
             state.modal.set_mode(InputMode::ConnectionSelector);
@@ -124,7 +128,7 @@ mod tests {
         fn sets_mode_and_loads_connections() {
             let mut state = AppState::new("test".to_string());
 
-            let effects = reduce(
+            let effects = reduce_connection_selector(
                 &mut state,
                 &Action::OpenModal(ModalKind::ConnectionSelector),
                 Instant::now(),
@@ -142,7 +146,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_connection_list_selection(Some(3));
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::OpenModal(ModalKind::ConnectionSelector),
                 Instant::now(),
@@ -162,7 +166,7 @@ mod tests {
             state.set_connections(vec![profile]);
             state.ui.connection_list_selected = 0;
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::RequestDeleteSelectedConnection,
                 Instant::now(),
@@ -188,7 +192,7 @@ mod tests {
             state.ui.connection_list_selected = 0;
             state.session.active_connection_id = Some(profile_id);
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::RequestDeleteSelectedConnection,
                 Instant::now(),
@@ -215,7 +219,7 @@ mod tests {
             state.set_connections(vec![profile]);
             state.ui.connection_list_selected = 0;
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::RequestDeleteSelectedConnection,
                 Instant::now(),
@@ -235,7 +239,7 @@ mod tests {
             state.set_connections(vec![]);
             state.modal.set_mode(InputMode::Normal);
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::RequestDeleteSelectedConnection,
                 Instant::now(),
@@ -253,7 +257,7 @@ mod tests {
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.modal.set_mode(InputMode::ConnectionSelector);
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::RequestDeleteSelectedConnection,
                 Instant::now(),
@@ -278,7 +282,7 @@ mod tests {
             let id_to_delete = profile1.id.clone();
             state.set_connections(vec![profile1, profile2]);
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::ConnectionDeleted(id_to_delete),
                 Instant::now(),
@@ -300,7 +304,7 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connected);
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::ConnectionDeleted(profile_id),
                 Instant::now(),
@@ -331,7 +335,7 @@ mod tests {
             state.result_interaction.horizontal_offset = 20;
             state.result_interaction.stage_row(0);
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::ConnectionDeleted(profile_id),
                 Instant::now(),
@@ -358,7 +362,7 @@ mod tests {
             state.set_connections(vec![profile1, profile2]);
             state.ui.connection_list_selected = 1;
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::ConnectionDeleted(id_to_delete),
                 Instant::now(),
@@ -374,7 +378,7 @@ mod tests {
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::ConnectionDeleted(profile_id),
                 Instant::now(),
@@ -392,7 +396,7 @@ mod tests {
             let id_to_delete = profile1.id.clone();
             state.set_connections(vec![profile1, profile2]);
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::ConnectionDeleted(id_to_delete),
                 Instant::now(),
@@ -420,7 +424,7 @@ mod tests {
             );
             state.modal.set_mode(InputMode::Normal);
 
-            reduce(
+            reduce_connection_selector(
                 &mut state,
                 &Action::ConnectionDeleted(profile_id),
                 Instant::now(),

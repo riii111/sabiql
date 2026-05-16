@@ -9,7 +9,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{restore_cache, save_current_cache};
 
-pub fn reduce(
+pub fn reduce_connection_lifecycle(
     state: &mut AppState,
     action: &Action,
     _now: Instant,
@@ -93,7 +93,7 @@ mod tests {
         state.ui.inspector_tab = InspectorTab::Indexes;
 
         let action = create_switch_action(&new_id, "new_db");
-        reduce(&mut state, &action, Instant::now(), &services);
+        reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services);
 
         let saved = state.connection_caches.get(&current_id).unwrap();
         assert_eq!(saved.explorer_selected, 5);
@@ -114,7 +114,7 @@ mod tests {
         state.connection_caches.save(&target_id, cached);
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now(), &services);
+        reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(state.ui.explorer_selected, 42);
         assert_eq!(state.ui.inspector_tab, InspectorTab::ForeignKeys);
@@ -138,7 +138,7 @@ mod tests {
         state.connection_caches.save(&target_id, cached);
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now(), &services);
+        reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(state.ui.inspector_tab, InspectorTab::Info);
     }
@@ -150,7 +150,7 @@ mod tests {
         let services = AppServices::stub();
 
         let action = create_switch_action(&new_id, "fresh_db");
-        let effects = reduce(&mut state, &action, Instant::now(), &services)
+        let effects = reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services)
             .into_effects()
             .expect("reducer should handle action");
 
@@ -172,7 +172,7 @@ mod tests {
         let services = AppServices::stub();
 
         let action = create_switch_action(&new_id, "target_db");
-        reduce(&mut state, &action, Instant::now(), &services);
+        reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(state.session.active_connection_id, Some(new_id));
         assert_eq!(
@@ -196,7 +196,7 @@ mod tests {
             .save(&target_id, ConnectionCache::default());
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now(), &services);
+        reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(state.session.connection_state(), ConnectionState::Connected);
     }
@@ -213,7 +213,7 @@ mod tests {
         state.result_interaction.activate_cell(3, 2);
 
         let action = create_switch_action(&target_id, "cached_db");
-        reduce(&mut state, &action, Instant::now(), &services);
+        reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(
             state.result_interaction.selection().mode(),
@@ -230,7 +230,7 @@ mod tests {
         state.result_interaction.activate_cell(5, 0);
 
         let action = create_switch_action(&new_id, "fresh_db");
-        reduce(&mut state, &action, Instant::now(), &services);
+        reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services);
 
         assert_eq!(
             state.result_interaction.selection().mode(),
@@ -246,7 +246,7 @@ mod tests {
         state.session.read_only = true;
 
         let action = create_switch_action(&new_id, "fresh_db");
-        reduce(&mut state, &action, Instant::now(), &services);
+        reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services);
 
         assert!(!state.session.read_only);
     }
@@ -258,7 +258,7 @@ mod tests {
         let services = AppServices::stub();
 
         let action = create_switch_action(&new_id, "any_db");
-        let effects = reduce(&mut state, &action, Instant::now(), &services)
+        let effects = reduce_connection_lifecycle(&mut state, &action, Instant::now(), &services)
             .into_effects()
             .expect("reducer should handle action");
 

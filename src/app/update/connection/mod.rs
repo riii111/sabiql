@@ -17,10 +17,10 @@ pub fn dispatch_connection(
     now: Instant,
     services: &AppServices,
 ) -> DispatchResult {
-    lifecycle::reduce(state, action, now, services)
-        .or_else(|| setup::reduce(state, action, now))
-        .or_else(|| error::reduce(state, action, now))
-        .or_else(|| selector::reduce(state, action, now))
+    lifecycle::reduce_connection_lifecycle(state, action, now, services)
+        .or_else(|| setup::reduce_connection_setup(state, action, now))
+        .or_else(|| error::reduce_connection_error(state, action, now))
+        .or_else(|| selector::reduce_connection_selector(state, action, now))
 }
 
 #[cfg(test)]
