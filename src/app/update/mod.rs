@@ -18,9 +18,9 @@ pub use browse::result::reduce_result;
 pub use connection::dispatch_connection;
 pub use dispatch_result::DispatchResult;
 pub use er::reduce_er;
+pub use explain::dispatch_explain;
 #[cfg(test)]
 pub use explain::reduce_explain;
-pub use explain::reduce_explain_with_services;
 pub use helpers::{char_to_byte_index, validate_all, validate_field};
 pub use modal::dispatch_modal;
 pub use sql_editor::dispatch_sql_modal;
