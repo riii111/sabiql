@@ -17,7 +17,7 @@ pub use browse::query::reduce_query;
 pub use browse::result::reduce_result;
 pub use connection::dispatch_connection;
 pub use dispatch_result::DispatchResult;
-pub use er::reduce_er;
+pub use er::dispatch_er;
 pub use explain::dispatch_explain;
 #[cfg(test)]
 pub use explain::reduce_explain;

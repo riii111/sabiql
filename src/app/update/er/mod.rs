@@ -1,189 +1,31 @@
-use std::sync::Arc;
+mod diagram;
+mod smart_refresh_completed;
+mod smart_refresh_failed;
+
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::er_state::ErStatus;
-use crate::update::action::{Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult};
+use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
-    match action {
-        Action::ErDiagramOpened(ErDiagramInfo {
-            path,
-            table_count,
-            total_tables,
-        }) => {
-            state.er_preparation.status = ErStatus::Idle;
-            // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
-            state.sql_modal.invalidate_prefetch();
-            state.set_success(format!(
-                "✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"
-            ));
-            DispatchResult::handled()
-        }
-        Action::ErDiagramFailed(error) => {
-            state.er_preparation.status = ErStatus::Idle;
-            state.set_error(error.to_string());
-            DispatchResult::handled()
-        }
-        Action::ErLogWriteFailed(error) => {
-            state.set_error(error.to_string());
-            DispatchResult::handled()
-        }
-        Action::ErOpenDiagram => {
-            if matches!(
-                state.er_preparation.status,
-                ErStatus::Rendering | ErStatus::Waiting
-            ) {
-                return DispatchResult::handled();
-            }
+#[cfg(test)]
+use crate::cmd::effect::Effect;
+#[cfg(test)]
+use crate::model::er_state::ErStatus;
+#[cfg(test)]
+use crate::update::action::{SmartErRefreshError, SmartErRefreshResult};
+#[cfg(test)]
+use std::sync::Arc;
 
-            let Some(dsn) = state.session.dsn.clone() else {
-                state.set_error("No active connection".to_string());
-                return DispatchResult::handled();
-            };
-            if state.session.metadata().is_none() {
-                state.set_error("Metadata not loaded yet".to_string());
-                return DispatchResult::handled();
-            }
+pub fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+    diagram::reduce_diagram_lifecycle(state, action, now)
+        .or_else(|| smart_refresh_completed::reduce_smart_refresh_completed(state, action, now))
+        .or_else(|| smart_refresh_failed::reduce_smart_refresh_failed(state, action, now))
+}
 
-            state.sql_modal.invalidate_prefetch();
-            state.er_preparation.run_id += 1;
-            state.er_preparation.status = ErStatus::Waiting;
-            state.set_success("Checking for schema changes...".to_string());
-
-            DispatchResult::handled_with(vec![Effect::SmartErRefresh {
-                dsn,
-                run_id: state.er_preparation.run_id,
-            }])
-        }
-
-        Action::SmartErRefreshCompleted(SmartErRefreshResult {
-            run_id,
-            new_metadata,
-            stale_tables,
-            added_tables,
-            removed_tables,
-            missing_in_cache,
-            new_signatures,
-        }) => {
-            if *run_id != state.er_preparation.run_id {
-                return DispatchResult::handled();
-            }
-
-            state.session.set_metadata(Some(Arc::clone(new_metadata)));
-            state
-                .er_preparation
-                .last_signatures
-                .clone_from(new_signatures);
-            state.er_preparation.total_tables = new_metadata.table_summaries.len();
-
-            let mut effects: Vec<Effect> = Vec::new();
-
-            if !removed_tables.is_empty() {
-                effects.push(Effect::EvictTablesFromCompletionCache {
-                    tables: removed_tables.clone(),
-                });
-            }
-
-            let mut refetch: Vec<String> = Vec::new();
-            refetch.extend(stale_tables.iter().cloned());
-            refetch.extend(added_tables.iter().cloned());
-            refetch.extend(missing_in_cache.iter().cloned());
-            refetch.sort();
-            refetch.dedup();
-
-            if refetch.is_empty() {
-                state.set_success(
-                    "No schema changes detected, generating ER diagram...".to_string(),
-                );
-                effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
-            } else {
-                if !stale_tables.is_empty() {
-                    effects.push(Effect::EvictTablesFromCompletionCache {
-                        tables: stale_tables.clone(),
-                    });
-                }
-                state.set_success(format!(
-                    "Refreshing {} table(s) for ER diagram...",
-                    refetch.len()
-                ));
-                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchScoped {
-                    tables: refetch,
-                }]));
-            }
-
-            DispatchResult::handled_with(effects)
-        }
-
-        Action::SmartErRefreshFailed(SmartErRefreshError {
-            run_id,
-            error,
-            new_metadata,
-        }) => {
-            if *run_id != state.er_preparation.run_id {
-                return DispatchResult::handled();
-            }
-
-            if let Some(md) = new_metadata {
-                state.session.set_metadata(Some(Arc::clone(md)));
-            }
-
-            let Some(metadata) = &state.session.metadata() else {
-                state.er_preparation.status = ErStatus::Idle;
-                state.set_error("Metadata not loaded yet".to_string());
-                return DispatchResult::handled();
-            };
-            let total_table_count = metadata.table_summaries.len();
-            let is_scoped = !state.er_preparation.target_tables.is_empty()
-                && state.er_preparation.target_tables.len() < total_table_count;
-
-            state.er_preparation.total_tables = total_table_count;
-            state.er_preparation.last_signatures.clear();
-            state.set_error(format!(
-                "Smart refresh failed ({error}), falling back to full refresh"
-            ));
-
-            if is_scoped {
-                let scoped_tables = state.er_preparation.target_tables.clone();
-                DispatchResult::handled_with(vec![
-                    Effect::ClearCompletionEngineCache,
-                    Effect::DispatchActions(vec![Action::StartPrefetchScoped {
-                        tables: scoped_tables,
-                    }]),
-                ])
-            } else {
-                DispatchResult::handled_with(vec![
-                    Effect::ClearCompletionEngineCache,
-                    Effect::DispatchActions(vec![Action::StartPrefetchAll]),
-                ])
-            }
-        }
-
-        Action::ErGenerateFromCache => {
-            if !matches!(
-                state.er_preparation.status,
-                ErStatus::Idle | ErStatus::Waiting
-            ) {
-                return DispatchResult::handled();
-            }
-
-            state.er_preparation.status = ErStatus::Rendering;
-            let total_tables = state
-                .session
-                .metadata()
-                .map_or(0, |m| m.table_summaries.len());
-
-            DispatchResult::handled_with(vec![Effect::GenerateErDiagramFromCache {
-                total_tables,
-                project_name: state.runtime.project_name.clone(),
-                target_tables: state.er_preparation.target_tables.clone(),
-            }])
-        }
-
-        _ => DispatchResult::pass(),
-    }
+#[cfg(test)]
+fn reduce_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+    dispatch_er(state, action, now)
 }
 
 #[cfg(test)]

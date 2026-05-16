@@ -7,7 +7,7 @@
 use std::time::Instant;
 
 use super::{
-    dispatch_connection, dispatch_explain, dispatch_modal, dispatch_sql_modal, reduce_er,
+    dispatch_connection, dispatch_er, dispatch_explain, dispatch_modal, dispatch_sql_modal,
     reduce_metadata, reduce_navigation, reduce_query, reduce_result,
 };
 use crate::catalog::HelpDocument;
@@ -55,7 +55,7 @@ fn reduce_inner(
         .or_else(|| dispatch_sql_modal(state, &action, now, services))
         .or_else(|| dispatch_explain(state, &action, now, services))
         .or_else(|| reduce_metadata(state, &action, now))
-        .or_else(|| reduce_er(state, &action, now))
+        .or_else(|| dispatch_er(state, &action, now))
         .or_else(|| reduce_query(state, &action, now, services))
         .into_effects()
     {
