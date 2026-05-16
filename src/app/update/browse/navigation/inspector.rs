@@ -1,9 +1,9 @@
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::services::AppServices;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::update::dispatch_result::DispatchResult;
 
 use super::inspector_max_scroll;
 
@@ -23,11 +23,7 @@ fn inspector_page_scroll_delta(
     amount.page_delta(visible)
 }
 
-pub fn reduce(
-    state: &mut AppState,
-    action: &Action,
-    services: &AppServices,
-) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action, services: &AppServices) -> DispatchResult {
     match action {
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -37,7 +33,7 @@ pub fn reduce(
             let max = inspector_max_scroll(state, services);
             state.ui.inspector_scroll_offset =
                 direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, 1);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -45,7 +41,7 @@ pub fn reduce(
             amount: ScrollAmount::ToStart,
         } => {
             state.ui.inspector_scroll_offset = 0;
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -53,7 +49,7 @@ pub fn reduce(
             amount: ScrollAmount::ToEnd,
         } => {
             state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -65,7 +61,7 @@ pub fn reduce(
                 state.ui.inspector_scroll_offset =
                     direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, delta);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -74,7 +70,7 @@ pub fn reduce(
         } => {
             state.ui.inspector_horizontal_offset =
                 calculate_prev_column_offset(state.ui.inspector_horizontal_offset);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -88,10 +84,10 @@ pub fn reduce(
                 state.ui.inspector_horizontal_offset,
                 plan.column_count,
             );
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -152,7 +148,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset, 0);
         }
 
@@ -174,7 +170,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset, expected_max);
         }
 
@@ -194,7 +190,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset, 0);
         }
 
@@ -214,7 +210,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset, 3);
         }
 
@@ -234,7 +230,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset, 15);
         }
 
@@ -253,7 +249,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset, 0);
         }
 
@@ -286,7 +282,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset, 1 + expected_delta);
         }
 
@@ -309,7 +305,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset, 3);
         }
     }

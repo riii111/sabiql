@@ -15,6 +15,7 @@ use crate::policy::write::write_update::{
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
     EditGuardrailError, build_bulk_delete_preview, editable_preview_base,
 };
@@ -138,7 +139,7 @@ pub fn reduce(
     action: &Action,
     now: Instant,
     services: &AppServices,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     match action {
         Action::SubmitCellEditWrite => {
             if !state.result_interaction.staged_delete_rows().is_empty() {
@@ -150,13 +151,13 @@ pub fn reduce(
                             result.target_row,
                             staged_count,
                         );
-                        return Some(vec![Effect::DispatchActions(vec![
+                        return DispatchResult::effects(vec![Effect::DispatchActions(vec![
                             Action::OpenWritePreviewConfirm(Box::new(result.preview)),
                         ])]);
                     }
                     Err(err) => {
                         state.messages.set_error_at(err.to_string(), now);
-                        return Some(vec![]);
+                        return DispatchResult::no_effects();
                     }
                 }
             }
@@ -166,16 +167,16 @@ pub fn reduce(
                     EditGuardrailError::WriteUnavailableWhileQueryRunning.to_string(),
                     now,
                 );
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
 
             match build_update_preview(state, services) {
-                Ok(preview) => Some(vec![Effect::DispatchActions(vec![
+                Ok(preview) => DispatchResult::effects(vec![Effect::DispatchActions(vec![
                     Action::OpenWritePreviewConfirm(Box::new(preview)),
                 ])]),
                 Err(err) => {
                     state.messages.set_error_at(err.to_string(), now);
-                    Some(vec![])
+                    DispatchResult::no_effects()
                 }
             }
         }
@@ -186,7 +187,7 @@ pub fn reduce(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
                 );
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
             state
                 .result_interaction
@@ -224,7 +225,7 @@ pub fn reduce(
             }
             state.modal.push_mode(InputMode::ConfirmDialog);
 
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::ExecuteWrite(query) => {
@@ -233,11 +234,11 @@ pub fn reduce(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
                 );
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
             if let Some(dsn) = &state.session.dsn {
                 state.query.begin_running(now);
-                Some(vec![Effect::ExecuteWrite {
+                DispatchResult::effects(vec![Effect::ExecuteWrite {
                     dsn: dsn.clone(),
                     query: query.clone(),
                     read_only: state.session.read_only,
@@ -246,7 +247,7 @@ pub fn reduce(
                 state
                     .messages
                     .set_error_at("No active connection".to_string(), now);
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
 
@@ -265,7 +266,7 @@ pub fn reduce(
                             now,
                         );
                         state.modal.set_mode(InputMode::CellEdit);
-                        return Some(vec![]);
+                        return DispatchResult::no_effects();
                     }
 
                     state
@@ -277,7 +278,7 @@ pub fn reduce(
                     if let Some(dsn) = &state.session.dsn {
                         let page = state.query.pagination.current_page;
                         state.query.begin_running(now);
-                        Some(vec![Effect::ExecutePreview {
+                        DispatchResult::effects(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
@@ -288,7 +289,7 @@ pub fn reduce(
                             read_only: state.session.read_only,
                         }])
                     } else {
-                        Some(vec![])
+                        DispatchResult::no_effects()
                     }
                 }
                 WriteOperation::Delete => {
@@ -335,7 +336,7 @@ pub fn reduce(
                     if let Some(dsn) = &state.session.dsn {
                         state.query.begin_running(now);
                         state.query.pagination.reached_end = false;
-                        Some(vec![Effect::ExecutePreview {
+                        DispatchResult::effects(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
@@ -346,7 +347,7 @@ pub fn reduce(
                             read_only: state.session.read_only,
                         }])
                     } else {
-                        Some(vec![])
+                        DispatchResult::no_effects()
                     }
                 }
             }
@@ -365,10 +366,10 @@ pub fn reduce(
                 WriteOperation::Update => InputMode::CellEdit,
                 WriteOperation::Delete => InputMode::Normal,
             });
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -418,7 +419,12 @@ mod tests {
                 Instant::now(),
                 &AppServices::stub(),
             );
-            assert!(effects.unwrap().is_empty());
+            assert!(
+                effects
+                    .into_effects()
+                    .expect("reducer should handle action")
+                    .is_empty()
+            );
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("No active cell edit session")
@@ -436,7 +442,12 @@ mod tests {
                 Instant::now(),
                 &AppServices::stub(),
             );
-            assert!(effects.unwrap().is_empty());
+            assert!(
+                effects
+                    .into_effects()
+                    .expect("reducer should handle action")
+                    .is_empty()
+            );
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Write is unavailable while query is running")
@@ -457,7 +468,12 @@ mod tests {
                 Instant::now(),
                 &AppServices::stub(),
             );
-            assert!(effects.unwrap().is_empty());
+            assert!(
+                effects
+                    .into_effects()
+                    .expect("reducer should handle action")
+                    .is_empty()
+            );
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Table metadata does not match current preview target")

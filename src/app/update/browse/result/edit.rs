@@ -7,6 +7,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::write::write_update::build_pk_pairs;
 use crate::update::action::{Action, InputTarget, ModalKind};
+use crate::update::dispatch_result::DispatchResult;
 
 use crate::update::helpers::{EditGuardrailError, editable_preview_base};
 
@@ -64,21 +65,21 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     Ok((row_idx, col_idx, cell_value))
 }
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::ResultEnterCellEdit => {
             if state.session.read_only {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
 
             // JSONB columns open the dedicated detail modal instead of inline edit
             if is_jsonb_cell(state) {
-                return Some(vec![Effect::DispatchActions(vec![Action::OpenModal(
-                    ModalKind::JsonbDetail,
-                )])]);
+                return DispatchResult::effects(vec![Effect::DispatchActions(vec![
+                    Action::OpenModal(ModalKind::JsonbDetail),
+                ])]);
             }
 
             match editable_cell_context(state) {
@@ -92,11 +93,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         state.result_interaction.clear_write_preview();
                     }
                     state.modal.set_mode(InputMode::CellEdit);
-                    Some(vec![])
+                    DispatchResult::no_effects()
                 }
                 Err(reason) => {
                     state.messages.set_error_at(reason.to_string(), now);
-                    Some(vec![])
+                    DispatchResult::no_effects()
                 }
             }
         }
@@ -107,12 +108,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.result_interaction.discard_cell_edit();
             }
             state.modal.set_mode(InputMode::Normal);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ResultDiscardCellEdit => {
             state.result_interaction.discard_cell_edit();
             state.modal.set_mode(InputMode::Normal);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextInput {
             target: InputTarget::ResultCellEdit,
@@ -122,19 +123,19 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 .result_interaction
                 .cell_edit_input_mut()
                 .insert_char(*c);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextBackspace {
             target: InputTarget::ResultCellEdit,
         } => {
             state.result_interaction.cell_edit_input_mut().backspace();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextDelete {
             target: InputTarget::ResultCellEdit,
         } => {
             state.result_interaction.cell_edit_input_mut().delete();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextMoveCursor {
             target: InputTarget::ResultCellEdit,
@@ -144,9 +145,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 .result_interaction
                 .cell_edit_input_mut()
                 .move_cursor(*m);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -210,7 +211,9 @@ mod tests {
                 .set_content("modified".to_string());
             state.modal.set_mode(InputMode::Normal);
 
-            reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(
@@ -233,7 +236,9 @@ mod tests {
                 .cell_edit_input_mut()
                 .set_content("stale-modified".to_string());
 
-            reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(state.result_interaction.cell_edit().col, Some(1));
@@ -257,7 +262,9 @@ mod tests {
                 comment: None,
             }));
 
-            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -277,7 +284,9 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now()).unwrap();
+            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
@@ -298,7 +307,9 @@ mod tests {
                 .set_content("bob".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now()).unwrap();
+            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.result_interaction.cell_edit().is_active());
@@ -339,7 +350,9 @@ mod tests {
         fn jsonb_cell_returns_dispatch_to_open_jsonb_detail() {
             let mut state = state_with_jsonb_column();
 
-            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -360,7 +373,9 @@ mod tests {
                 .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
             state.session.read_only = true;
 
-            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);

@@ -5,6 +5,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
+use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{restore_cache, save_current_cache};
 
@@ -13,7 +14,7 @@ pub fn reduce(
     action: &Action,
     _now: Instant,
     services: &AppServices,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     match action {
         Action::TryConnect => {
             if state.session.connection_state().is_not_connected()
@@ -21,12 +22,12 @@ pub fn reduce(
             {
                 if let Some(dsn) = state.session.dsn.clone() {
                     state.session.begin_connecting(&dsn);
-                    Some(vec![Effect::FetchMetadata { dsn }])
+                    DispatchResult::effects(vec![Effect::FetchMetadata { dsn }])
                 } else {
-                    Some(vec![])
+                    DispatchResult::no_effects()
                 }
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
 
@@ -43,7 +44,7 @@ pub fn reduce(
                 state.session.dsn = Some(dsn.clone());
                 state.session.active_connection_name = Some(name.clone());
                 state.session.read_only = false;
-                Some(vec![Effect::ClearCompletionEngineCache])
+                DispatchResult::effects(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata
                 state.session.reset(&mut state.query);
@@ -53,14 +54,14 @@ pub fn reduce(
                 state.session.active_connection_name = Some(name.clone());
                 state.session.read_only = false;
                 state.session.begin_connecting(dsn);
-                Some(vec![
+                DispatchResult::effects(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::FetchMetadata { dsn: dsn.clone() },
                 ])
             }
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -149,7 +150,9 @@ mod tests {
         let services = AppServices::stub();
 
         let action = create_switch_action(&new_id, "fresh_db");
-        let effects = reduce(&mut state, &action, Instant::now(), &services).unwrap();
+        let effects = reduce(&mut state, &action, Instant::now(), &services)
+            .into_effects()
+            .expect("reducer should handle action");
 
         assert!(
             effects
@@ -255,7 +258,9 @@ mod tests {
         let services = AppServices::stub();
 
         let action = create_switch_action(&new_id, "any_db");
-        let effects = reduce(&mut state, &action, Instant::now(), &services).unwrap();
+        let effects = reduce(&mut state, &action, Instant::now(), &services)
+            .into_effects()
+            .expect("reducer should handle action");
 
         assert!(
             effects

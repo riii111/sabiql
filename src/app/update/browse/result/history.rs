@@ -1,17 +1,17 @@
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::OpenResultHistory => {
             let len = state.query.result_history().len();
             if len == 0 {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
             state.query.enter_history(len - 1);
             state.result_interaction.reset_view();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::HistoryOlder => {
             if let Some(idx) = state.query.history_index()
@@ -20,7 +20,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 state.query.enter_history(idx - 1);
                 state.result_interaction.reset_view();
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::HistoryNewer => {
             if let Some(idx) = state.query.history_index() {
@@ -30,14 +30,14 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     state.result_interaction.reset_view();
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ExitResultHistory => {
             state.query.exit_history();
             state.result_interaction.reset_view();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 

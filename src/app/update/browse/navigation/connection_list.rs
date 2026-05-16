@@ -4,8 +4,9 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ConnectionsLoadedPayload, ListMotion, ListTarget};
+use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::ListSelect {
             target: ListTarget::ConnectionList,
@@ -16,7 +17,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if next < len {
                 state.ui.set_connection_list_selection(Some(next));
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ListSelect {
             target: ListTarget::ConnectionList,
@@ -27,7 +28,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     .ui
                     .set_connection_list_selection(Some(state.ui.connection_list_selected - 1));
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionsLoaded(ConnectionsLoadedPayload {
             profiles,
@@ -67,7 +68,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     .ui
                     .set_connection_list_selection(Some(state.ui.connection_list_selected));
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConfirmConnectionSelection => {
             use crate::model::connection::list::ConnectionListItem;
@@ -90,12 +91,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.modal.set_mode(InputMode::Normal);
 
             match effect {
-                Some(e) => Some(vec![e]),
-                None => Some(vec![]),
+                Some(e) => DispatchResult::effects(vec![e]),
+                None => DispatchResult::no_effects(),
             }
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 

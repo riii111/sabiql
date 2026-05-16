@@ -9,6 +9,7 @@ use crate::model::er_state::ErStatus;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::FailedPrefetchEntry;
 use crate::update::action::{Action, ModalKind, TableTarget};
+use crate::update::dispatch_result::DispatchResult;
 
 const BASE_BACKOFF_SECS: u64 = 1;
 const MAX_BACKOFF_SECS: u64 = 4;
@@ -46,7 +47,7 @@ fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     }]
 }
 
-pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::MetadataLoaded(metadata) => {
             let has_tables = !metadata.table_summaries.is_empty();
@@ -124,7 +125,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.ui.pending_er_picker = false;
             }
 
-            Some(effects)
+            DispatchResult::effects(effects)
         }
         Action::MetadataFailed(error) => {
             let error_info = ConnectionErrorInfo::from_db_operation_error(error);
@@ -137,27 +138,27 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             if state.er_preparation.status == ErStatus::Waiting {
                 state.er_preparation.status = ErStatus::Idle;
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TableDetailLoaded(detail, generation) => {
             if state.session.set_table_detail(*detail.clone(), *generation) {
                 state.ui.inspector_scroll_offset = 0;
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TableDetailFailed(error, generation) => {
             if *generation == state.session.selection_generation() {
                 state.set_error(error.user_message());
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::LoadMetadata => {
             if let Some(dsn) = state.session.dsn.clone() {
                 state.session.begin_metadata_refresh();
-                Some(vec![Effect::FetchMetadata { dsn }])
+                DispatchResult::effects(vec![Effect::FetchMetadata { dsn }])
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
         Action::LoadTableDetail(TableTarget {
@@ -166,14 +167,14 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             generation,
         }) => {
             if let Some(dsn) = &state.session.dsn {
-                Some(vec![Effect::FetchTableDetail {
+                DispatchResult::effects(vec![Effect::FetchTableDetail {
                     dsn: dsn.clone(),
                     schema: schema.clone(),
                     table: table.clone(),
                     generation: *generation,
                 }])
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
 
@@ -188,13 +189,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.messages.last_success = None;
                 state.messages.expires_at = None;
 
-                Some(vec![Effect::Sequence(vec![
+                DispatchResult::effects(vec![Effect::Sequence(vec![
                     Effect::CacheInvalidate { dsn: dsn.clone() },
                     Effect::ClearCompletionEngineCache,
                     Effect::FetchMetadata { dsn },
                 ])])
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
 
@@ -220,20 +221,20 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         .push_back(qualified_name.clone());
                     state.er_preparation.pending_tables.insert(qualified_name);
                 }
-                Some(vec![
+                DispatchResult::effects(vec![
                     Effect::ResizeCompletionCache {
                         capacity: resize_capacity,
                     },
                     Effect::ProcessPrefetchQueue,
                 ])
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
 
         Action::StartPrefetchScoped { tables } => {
             if state.sql_modal.is_prefetch_started() {
-                Some(vec![])
+                DispatchResult::no_effects()
             } else {
                 state.sql_modal.begin_prefetch();
                 state.er_preparation.pending_tables.clear();
@@ -253,13 +254,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         .pending_tables
                         .insert(qualified_name.clone());
                 }
-                Some(vec![Effect::ProcessPrefetchQueue])
+                DispatchResult::effects(vec![Effect::ProcessPrefetchQueue])
             }
         }
 
         Action::ExpandPrefetchWithFkNeighbors => {
             let seed_tables = state.er_preparation.seed_tables.clone();
-            Some(vec![Effect::ExtractFkNeighbors { seed_tables }])
+            DispatchResult::effects(vec![Effect::ExtractFkNeighbors { seed_tables }])
         }
 
         Action::FkNeighborsDiscovered { tables } => {
@@ -267,7 +268,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             if tables.is_empty() {
                 // No new neighbors — proceed to generate with what we have
-                return Some(check_er_completion(state));
+                return DispatchResult::effects(check_er_completion(state));
             }
 
             for qualified_name in tables {
@@ -280,7 +281,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                     .prefetch_queue
                     .push_back(qualified_name.clone());
             }
-            Some(vec![Effect::ProcessPrefetchQueue])
+            DispatchResult::effects(vec![Effect::ProcessPrefetchQueue])
         }
 
         Action::ProcessPrefetchQueue => {
@@ -301,9 +302,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             }
 
             if actions.is_empty() {
-                Some(vec![])
+                DispatchResult::no_effects()
             } else {
-                Some(vec![Effect::DispatchActions(actions)])
+                DispatchResult::effects(vec![Effect::DispatchActions(actions)])
             }
         }
 
@@ -311,7 +312,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             let qualified_name = format!("{schema}.{table}");
 
             if state.sql_modal.prefetching_tables.contains(&qualified_name) {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
 
             if let Some(entry) = state.sql_modal.failed_prefetch_tables.get(&qualified_name) {
@@ -326,7 +327,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                     if effects.is_empty() && state.er_preparation.status == ErStatus::Waiting {
                         effects.push(Effect::ProcessPrefetchQueue);
                     }
-                    return Some(effects);
+                    return DispatchResult::effects(effects);
                 }
 
                 let backoff_secs =
@@ -337,7 +338,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                     // to avoid busy-looping while waiting for the backoff to expire.
                     let remaining = backoff_secs - elapsed;
                     state.sql_modal.prefetch_queue.push_back(qualified_name);
-                    return Some(vec![Effect::DelayedProcessPrefetchQueue {
+                    return DispatchResult::effects(vec![Effect::DelayedProcessPrefetchQueue {
                         delay_secs: remaining,
                     }]);
                 }
@@ -354,13 +355,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 .insert(qualified_name.clone());
 
             if let Some(dsn) = &state.session.dsn {
-                Some(vec![Effect::PrefetchTableDetail {
+                DispatchResult::effects(vec![Effect::PrefetchTableDetail {
                     dsn: dsn.clone(),
                     schema: schema.clone(),
                     table: table.clone(),
                 }])
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
 
@@ -388,7 +389,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             effects.extend(check_er_completion(state));
 
-            Some(effects)
+            DispatchResult::effects(effects)
         }
 
         Action::TableDetailCacheFailed {
@@ -424,7 +425,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             effects.extend(check_er_completion(state));
 
-            Some(effects)
+            DispatchResult::effects(effects)
         }
 
         Action::TableDetailAlreadyCached { schema, table } => {
@@ -444,10 +445,10 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             effects.extend(check_er_completion(state));
 
-            Some(effects)
+            DispatchResult::effects(effects)
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -866,8 +867,9 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(530)));
 
-            let effects =
-                reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now()).unwrap();
+            let effects = reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(
                 effects
@@ -881,8 +883,9 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(50)));
 
-            let effects =
-                reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now()).unwrap();
+            let effects = reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(
                 effects

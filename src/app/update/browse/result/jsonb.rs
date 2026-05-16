@@ -14,17 +14,18 @@ use crate::model::shared::text_input::TextInputLike;
 use crate::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
+use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::JsonbDetail) => {
             let result = match state.query.visible_result() {
                 Some(r) if r.source == QuerySource::Preview && !r.is_error() => r,
-                _ => return Some(vec![]),
+                _ => return DispatchResult::no_effects(),
             };
 
             if state.query.is_history_mode() {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
 
             let table_detail = match state.session.table_detail() {
@@ -34,24 +35,24 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 {
                     td
                 }
-                _ => return Some(vec![]),
+                _ => return DispatchResult::no_effects(),
             };
 
             let Some(row_idx) = state.result_interaction.selection().row() else {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             };
             let Some(col_idx) = state.result_interaction.selection().cell() else {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             };
 
             let column = match table_detail.columns.get(col_idx) {
                 Some(c) if c.data_type == "jsonb" => c,
-                _ => return Some(vec![]),
+                _ => return DispatchResult::no_effects(),
             };
 
             let cell_value = match result.rows.get(row_idx).and_then(|r| r.get(col_idx)) {
                 Some(v) if !v.is_empty() => v,
-                _ => return Some(vec![]),
+                _ => return DispatchResult::no_effects(),
             };
 
             let pretty_original = match serde_json::from_str::<serde_json::Value>(cell_value) {
@@ -62,7 +63,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     state
                         .messages
                         .set_error_at(format!("Invalid JSON: {err}"), now);
-                    return Some(vec![]);
+                    return DispatchResult::no_effects();
                 }
             };
 
@@ -74,20 +75,20 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 pretty_original,
             );
             state.modal.push_mode(InputMode::JsonbDetail);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::CloseModal(ModalKind::JsonbDetail) => {
             apply_pending_edit_as_draft(state);
             state.jsonb_detail.close();
             state.modal.pop_mode();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::JsonbYankAll => {
             let json = state.jsonb_detail.current_json_for_yank();
             state.flash_timers.set(FlashId::JsonbDetail, now);
-            Some(vec![Effect::CopyToClipboard {
+            DispatchResult::effects(vec![Effect::CopyToClipboard {
                 content: json,
                 on_success: Some(Action::CellCopied),
                 on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
@@ -101,11 +102,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
             state.jsonb_detail.enter_edit();
             state.modal.replace_mode(InputMode::JsonbEdit);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::JsonbAppendInsert => {
@@ -113,7 +114,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
             state
                 .jsonb_detail
@@ -122,13 +123,13 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             update_editor_scroll(state);
             state.jsonb_detail.enter_edit();
             state.modal.replace_mode(InputMode::JsonbEdit);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::JsonbExitEdit => {
             state.jsonb_detail.exit_edit();
             state.modal.replace_mode(InputMode::JsonbDetail);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::TextInput {
@@ -144,7 +145,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
             update_editor_scroll(state);
             validate_editor_inline(state);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::TextBackspace {
@@ -153,7 +154,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.jsonb_detail.editor_mut().backspace();
             update_editor_scroll(state);
             validate_editor_inline(state);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::TextDelete {
@@ -162,7 +163,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.jsonb_detail.editor_mut().delete();
             update_editor_scroll(state);
             validate_editor_inline(state);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::TextMoveCursor {
@@ -183,30 +184,30 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
             update_editor_scroll(state);
             state.ui.key_sequence = KeySequenceState::Idle;
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::Paste(text) if state.input_mode() == InputMode::JsonbEdit => {
             state.jsonb_detail.editor_mut().insert_str(text);
             update_editor_scroll(state);
             validate_editor_inline(state);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::JsonbEnterSearch => {
             state.jsonb_detail.enter_search();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::JsonbExitSearch => {
             state.jsonb_detail.exit_search();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::JsonbSearchSubmit => {
             state.jsonb_detail.exit_search();
             jump_to_current_match(state);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::JsonbSearchNext => {
@@ -216,7 +217,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.jsonb_detail.search_mut().current_match = next;
                 jump_to_current_match(state);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::JsonbSearchPrev => {
@@ -230,7 +231,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.jsonb_detail.search_mut().current_match = prev;
                 jump_to_current_match(state);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::TextInput {
@@ -239,7 +240,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         } => {
             state.jsonb_detail.search_mut().input.insert_char(*ch);
             update_search_matches(state);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::TextBackspace {
@@ -247,7 +248,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         } => {
             state.jsonb_detail.search_mut().input.backspace();
             update_search_matches(state);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::TextDelete {
@@ -255,7 +256,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         } => {
             state.jsonb_detail.search_mut().input.delete();
             update_search_matches(state);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::Paste(text)
@@ -265,7 +266,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
             state.jsonb_detail.search_mut().input.insert_str(&clean);
             update_search_matches(state);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::TextMoveCursor {
@@ -277,10 +278,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 .search_mut()
                 .input
                 .move_cursor(*direction);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -857,7 +858,7 @@ mod tests {
 
             let effects = reduce(&mut state, &Action::JsonbYankAll, Instant::now());
 
-            let effects = effects.expect("should return effects");
+            let effects = effects.into_effects().expect("should return effects");
             assert_eq!(effects.len(), 1);
             assert!(
                 matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("theme"))

@@ -6,11 +6,11 @@ mod inspector;
 
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
     let active_tab = services
@@ -62,7 +62,7 @@ pub fn reduce_navigation(
     action: &Action,
     services: &AppServices,
     now: Instant,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     focus::reduce(state, action, services, now)
         .or_else(|| input::reduce(state, action))
         .or_else(|| explorer::reduce(state, action))

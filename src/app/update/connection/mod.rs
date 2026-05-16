@@ -6,17 +6,17 @@ mod setup;
 
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 
 pub fn reduce_connection(
     state: &mut AppState,
     action: &Action,
     now: Instant,
     services: &AppServices,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     lifecycle::reduce(state, action, now, services)
         .or_else(|| setup::reduce(state, action, now))
         .or_else(|| error::reduce(state, action, now))
@@ -40,7 +40,7 @@ mod tests {
             &AppServices::stub(),
         );
 
-        assert!(result.is_some());
+        assert!(result.is_handled());
     }
 
     #[test]
@@ -55,7 +55,7 @@ mod tests {
             &AppServices::stub(),
         );
 
-        assert!(result.is_none());
+        assert!(result.is_pass());
     }
 
     #[test]
@@ -69,6 +69,6 @@ mod tests {
             &AppServices::stub(),
         );
 
-        assert!(result.is_none());
+        assert!(result.is_pass());
     }
 }

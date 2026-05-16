@@ -4,17 +4,17 @@ mod write;
 
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 
 pub fn reduce_query(
     state: &mut AppState,
     action: &Action,
     now: Instant,
     services: &AppServices,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     execution::reduce(state, action, now, services)
         .or_else(|| write::reduce(state, action, now, services))
         .or_else(|| pagination::reduce(state, action, now, services))

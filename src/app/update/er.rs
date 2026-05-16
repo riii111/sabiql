@@ -5,8 +5,9 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::er_state::ErStatus;
 use crate::update::action::{Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult};
+use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
     match action {
         Action::ErDiagramOpened(ErDiagramInfo {
             path,
@@ -19,32 +20,32 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             state.set_success(format!(
                 "✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"
             ));
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ErDiagramFailed(error) => {
             state.er_preparation.status = ErStatus::Idle;
             state.set_error(error.to_string());
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ErLogWriteFailed(error) => {
             state.set_error(error.to_string());
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ErOpenDiagram => {
             if matches!(
                 state.er_preparation.status,
                 ErStatus::Rendering | ErStatus::Waiting
             ) {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
 
             let Some(dsn) = state.session.dsn.clone() else {
                 state.set_error("No active connection".to_string());
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             };
             if state.session.metadata().is_none() {
                 state.set_error("Metadata not loaded yet".to_string());
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
 
             state.sql_modal.invalidate_prefetch();
@@ -52,7 +53,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             state.er_preparation.status = ErStatus::Waiting;
             state.set_success("Checking for schema changes...".to_string());
 
-            Some(vec![Effect::SmartErRefresh {
+            DispatchResult::effects(vec![Effect::SmartErRefresh {
                 dsn,
                 run_id: state.er_preparation.run_id,
             }])
@@ -68,7 +69,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             new_signatures,
         }) => {
             if *run_id != state.er_preparation.run_id {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
 
             state.session.set_metadata(Some(Arc::clone(new_metadata)));
@@ -113,7 +114,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 }]));
             }
 
-            Some(effects)
+            DispatchResult::effects(effects)
         }
 
         Action::SmartErRefreshFailed(SmartErRefreshError {
@@ -122,7 +123,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             new_metadata,
         }) => {
             if *run_id != state.er_preparation.run_id {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
 
             if let Some(md) = new_metadata {
@@ -132,7 +133,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             let Some(metadata) = &state.session.metadata() else {
                 state.er_preparation.status = ErStatus::Idle;
                 state.set_error("Metadata not loaded yet".to_string());
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             };
             let total_table_count = metadata.table_summaries.len();
             let is_scoped = !state.er_preparation.target_tables.is_empty()
@@ -146,14 +147,14 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
 
             if is_scoped {
                 let scoped_tables = state.er_preparation.target_tables.clone();
-                Some(vec![
+                DispatchResult::effects(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchScoped {
                         tables: scoped_tables,
                     }]),
                 ])
             } else {
-                Some(vec![
+                DispatchResult::effects(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchAll]),
                 ])
@@ -165,7 +166,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 state.er_preparation.status,
                 ErStatus::Idle | ErStatus::Waiting
             ) {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
 
             state.er_preparation.status = ErStatus::Rendering;
@@ -174,14 +175,14 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 .metadata()
                 .map_or(0, |m| m.table_summaries.len());
 
-            Some(vec![Effect::GenerateErDiagramFromCache {
+            DispatchResult::effects(vec![Effect::GenerateErDiagramFromCache {
                 total_tables,
                 project_name: state.runtime.project_name.clone(),
                 target_tables: state.er_preparation.target_tables.clone(),
             }])
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -219,7 +220,9 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(0)));
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
             assert_eq!(state.er_preparation.run_id, 1);
@@ -236,7 +239,9 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(5)));
             state.er_preparation.run_id = 3;
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.er_preparation.run_id, 4);
             assert!(matches!(
@@ -251,7 +256,9 @@ mod tests {
             state.sql_modal.begin_prefetch();
             state.session.set_metadata(Some(make_metadata(0)));
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(!state.sql_modal.is_prefetch_started());
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
@@ -264,7 +271,9 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.session.set_metadata(Some(make_metadata(5)));
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -275,7 +284,9 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Rendering;
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
         }
@@ -285,7 +296,9 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Waiting;
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
         }
@@ -295,7 +308,9 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
 
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -318,8 +333,9 @@ mod tests {
             })));
             state.er_preparation.target_tables = vec!["public.users".to_string()];
 
-            let effects =
-                reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -335,8 +351,9 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Rendering;
 
-            let effects =
-                reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
         }
@@ -377,7 +394,9 @@ mod tests {
                 new_signatures: HashMap::new(),
             });
 
-            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &action, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.iter().any(|e| matches!(
                 e,
@@ -403,7 +422,9 @@ mod tests {
                 new_signatures: HashMap::new(),
             });
 
-            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &action, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(
                 effects
@@ -434,7 +455,9 @@ mod tests {
                 new_signatures: HashMap::new(),
             });
 
-            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &action, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.iter().any(|e| matches!(
                 e,
@@ -460,7 +483,9 @@ mod tests {
                 new_signatures: HashMap::new(),
             });
 
-            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &action, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.iter().any(|e| matches!(
                 e,
@@ -486,7 +511,9 @@ mod tests {
                 new_signatures: HashMap::new(),
             });
 
-            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &action, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.iter().any(|e| matches!(
                 e,
@@ -511,7 +538,9 @@ mod tests {
                 new_signatures: HashMap::new(),
             });
 
-            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &action, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
         }

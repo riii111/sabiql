@@ -1,4 +1,3 @@
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::KeySequenceState;
@@ -7,10 +6,11 @@ use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
 };
+use crate::update::dispatch_result::DispatchResult;
 
 use super::explorer_item_count;
 
-pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::Select(SelectMotion::Next) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
@@ -21,20 +21,20 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                         .set_explorer_selection(Some(state.ui.explorer_selected + 1));
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Select(SelectMotion::Previous) => {
             if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty() {
                 let new_idx = state.ui.explorer_selected.saturating_sub(1);
                 state.ui.set_explorer_selection(Some(new_idx));
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Select(SelectMotion::First) => {
             if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty() {
                 state.ui.set_explorer_selection(Some(0));
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Select(SelectMotion::Last) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
@@ -43,7 +43,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     state.ui.set_explorer_selection(Some(len - 1));
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Select(SelectMotion::ViewportMiddle) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
@@ -56,7 +56,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     state.ui.set_explorer_selection(Some(target));
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Select(SelectMotion::ViewportTop) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
@@ -66,7 +66,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     state.ui.set_explorer_selection(Some(target));
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Select(SelectMotion::ViewportBottom) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
@@ -79,7 +79,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     state.ui.set_explorer_selection(Some(target));
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::ScrollToCursor {
@@ -95,7 +95,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 state.ui.explorer_scroll_offset =
                     selected.saturating_sub(visible / 2).min(max_offset);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ScrollToCursor {
             target: ScrollToCursorTarget::Explorer,
@@ -109,7 +109,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 let max_offset = len.saturating_sub(visible);
                 state.ui.explorer_scroll_offset = selected.min(max_offset);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ScrollToCursor {
             target: ScrollToCursorTarget::Explorer,
@@ -125,17 +125,17 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     .saturating_sub(visible.saturating_sub(1))
                     .min(max_offset);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::Select(motion @ (SelectMotion::HalfPageDown | SelectMotion::FullPageDown)) => {
             let len = explorer_item_count(state);
             if len == 0 {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
             let visible = state.ui.explorer_visible_items();
             if visible == 0 {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
             let delta = match motion {
                 SelectMotion::HalfPageDown => (visible / 2).max(1),
@@ -146,16 +146,16 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             state.ui.explorer_selected = (state.ui.explorer_selected + delta).min(max_idx);
             state.ui.explorer_scroll_offset =
                 (state.ui.explorer_scroll_offset + delta).min(max_offset);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Select(motion @ (SelectMotion::HalfPageUp | SelectMotion::FullPageUp)) => {
             let len = explorer_item_count(state);
             if len == 0 {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
             let visible = state.ui.explorer_visible_items();
             if visible == 0 {
-                return Some(vec![]);
+                return DispatchResult::no_effects();
             }
             let delta = match motion {
                 SelectMotion::HalfPageUp => (visible / 2).max(1),
@@ -163,7 +163,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             };
             state.ui.explorer_selected = state.ui.explorer_selected.saturating_sub(delta);
             state.ui.explorer_scroll_offset = state.ui.explorer_scroll_offset.saturating_sub(delta);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::Scroll {
@@ -173,7 +173,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         } => {
             state.ui.explorer_horizontal_offset =
                 state.ui.explorer_horizontal_offset.saturating_sub(1);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Explorer,
@@ -190,10 +190,10 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             if state.ui.explorer_horizontal_offset < max_offset {
                 state.ui.explorer_horizontal_offset += 1;
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -315,7 +315,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.explorer_selected, 0);
         }
 

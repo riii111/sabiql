@@ -10,13 +10,14 @@ use crate::model::shared::ui_state::YankFlash;
 use crate::ports::outbound::ClipboardError;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 
 pub fn reduce(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,
     now: Instant,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     match action {
         Action::ResultCellYank => {
             if let (Some(row_idx), Some(col_idx)) = (
@@ -35,7 +36,7 @@ pub fn reduce(
                         col: Some(col_idx),
                         until: now + Duration::from_millis(200),
                     });
-                    Some(vec![Effect::CopyToClipboard {
+                    DispatchResult::effects(vec![Effect::CopyToClipboard {
                         content: value,
                         on_success: Some(Action::CellCopied),
                         on_failure: Some(clipboard_unavailable()),
@@ -44,15 +45,15 @@ pub fn reduce(
                     state
                         .messages
                         .set_error_at("Cell index out of bounds".into(), now);
-                    Some(vec![])
+                    DispatchResult::no_effects()
                 }
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
         Action::ResultRowYankOperatorPending => {
             state.result_interaction.start_yank_operator();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::DdlYank => {
             if state.ui.inspector_tab == InspectorTab::Ddl
@@ -60,13 +61,13 @@ pub fn reduce(
             {
                 let ddl = services.ddl_generator.generate_ddl(table);
                 state.flash_timers.set(FlashId::Ddl, now);
-                return Some(vec![Effect::CopyToClipboard {
+                return DispatchResult::effects(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
                     on_failure: Some(clipboard_unavailable()),
                 }]);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ResultRowYank => {
             if let Some(row_idx) = state.result_interaction.selection().row() {
@@ -90,7 +91,7 @@ pub fn reduce(
                         col: None,
                         until: now + Duration::from_millis(200),
                     });
-                    Some(vec![Effect::CopyToClipboard {
+                    DispatchResult::effects(vec![Effect::CopyToClipboard {
                         content: tsv,
                         on_success: Some(Action::CellCopied),
                         on_failure: Some(clipboard_unavailable()),
@@ -99,18 +100,18 @@ pub fn reduce(
                     state
                         .messages
                         .set_error_at("Row index out of bounds".into(), now);
-                    Some(vec![])
+                    DispatchResult::no_effects()
                 }
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
-        Action::CellCopied => Some(vec![]),
+        Action::CellCopied => DispatchResult::no_effects(),
         Action::CopyFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -477,7 +478,7 @@ mod tests {
                 Instant::now(),
             );
 
-            let effects = effects.expect("should return Some");
+            let effects = effects.into_effects().expect("should return Some");
             assert_eq!(effects.len(), 1);
             assert!(
                 matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("CREATE TABLE"))
@@ -506,7 +507,7 @@ mod tests {
                 Instant::now(),
             );
 
-            let effects = effects.expect("should return Some");
+            let effects = effects.into_effects().expect("should return Some");
             assert!(effects.is_empty());
         }
 
@@ -522,7 +523,7 @@ mod tests {
                 Instant::now(),
             );
 
-            let effects = effects.expect("should return Some");
+            let effects = effects.into_effects().expect("should return Some");
             assert!(effects.is_empty());
         }
     }

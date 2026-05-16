@@ -4,13 +4,14 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
+use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ConnectionSelector) => {
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
-            Some(vec![Effect::LoadConnections])
+            DispatchResult::effects(vec![Effect::LoadConnections])
         }
 
         // ===== Connection Deletion =====
@@ -19,7 +20,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let selected_idx = state.ui.connection_list_selected;
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
-                _ => return Some(vec![]),
+                _ => return DispatchResult::no_effects(),
             };
             if let Some(connection) = state.connections().get(profile_idx) {
                 let id = connection.id.clone();
@@ -40,9 +41,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
-        Action::DeleteConnection(id) => Some(vec![Effect::DeleteConnection { id: id.clone() }]),
+        Action::DeleteConnection(id) => {
+            DispatchResult::effects(vec![Effect::DeleteConnection { id: id.clone() }])
+        }
         Action::ConnectionDeleted(id) => {
             if state.session.active_connection_id.as_ref() == Some(id) {
                 state.session.reset(&mut state.query);
@@ -68,11 +71,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state
                 .messages
                 .set_success_at("Connection deleted".to_string(), now);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionDeleteFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         // ===== Connection Edit =====
@@ -81,17 +84,17 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let selected_idx = state.ui.connection_list_selected;
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
-                _ => return Some(vec![]),
+                _ => return DispatchResult::no_effects(),
             };
             if let Some(connection) = state.connections().get(profile_idx) {
                 let id = connection.id.clone();
-                Some(vec![Effect::LoadConnectionForEdit { id }])
+                DispatchResult::effects(vec![Effect::LoadConnectionForEdit { id }])
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -128,7 +131,9 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
-            let effects = effects.unwrap();
+            let effects = effects
+                .into_effects()
+                .expect("reducer should handle action");
             assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
         }
 

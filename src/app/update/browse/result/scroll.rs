@@ -1,10 +1,10 @@
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
 };
+use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn result_row_count(state: &AppState) -> usize {
     state.query.visible_result().map_or(0, |r| r.rows.len())
@@ -65,7 +65,7 @@ fn move_result_row_and_scroll(state: &mut AppState, direction: ScrollDirection, 
     scroll_result_by(state, direction, delta);
 }
 
-pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -85,7 +85,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 }
                 _ => {} // row == 0, no-op
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -104,7 +104,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     s.result_interaction.scroll_offset += 1;
                 }
             });
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -112,7 +112,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             amount: ScrollAmount::ToStart,
         } => {
             move_row_or_scroll(state, 0, |s| s.result_interaction.scroll_offset = 0);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -124,7 +124,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             move_row_or_scroll(state, max_row, |s| {
                 s.result_interaction.scroll_offset = max_scroll;
             });
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -140,7 +140,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 state.result_interaction.move_row(target_row);
                 ensure_row_visible(state);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -152,7 +152,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 state.result_interaction.move_row(target);
                 ensure_row_visible(state);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -168,7 +168,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 state.result_interaction.move_row(target);
                 ensure_row_visible(state);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -179,7 +179,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             if delta > 0 {
                 move_result_row_and_scroll(state, *direction, delta);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         // Scroll-to-cursor (zz/zt/zb): only meaningful with an active cell
         Action::ScrollToCursor {
@@ -195,7 +195,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                         row.saturating_sub(visible / 2).min(max_scroll);
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ScrollToCursor {
             target: ScrollToCursorTarget::Result,
@@ -209,7 +209,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     state.result_interaction.scroll_offset = row.min(max_scroll);
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ScrollToCursor {
             target: ScrollToCursorTarget::Result,
@@ -225,7 +225,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                         .min(max_scroll);
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -234,7 +234,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         } => {
             state.result_interaction.horizontal_offset =
                 calculate_prev_column_offset(state.result_interaction.horizontal_offset);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -248,9 +248,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 state.result_interaction.horizontal_offset,
                 plan.column_count,
             );
-            Some(vec![])
+            DispatchResult::no_effects()
         }
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -302,7 +302,7 @@ mod tests {
                     },
                 );
 
-                assert!(effects.is_some());
+                assert!(effects.is_handled());
                 assert_eq!(state.result_interaction.scroll_offset, 10);
             }
 

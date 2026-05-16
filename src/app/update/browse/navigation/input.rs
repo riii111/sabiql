@@ -1,19 +1,19 @@
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, InputTarget, ListMotion, ListTarget};
+use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::palette::palette_command_count;
 
-pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::Paste(text) => match state.modal.active_mode() {
             InputMode::TablePicker => {
                 state.ui.table_picker.insert_filter_str(text);
-                Some(vec![])
+                DispatchResult::no_effects()
             }
             InputMode::ErTablePicker => {
                 state.ui.er_picker.insert_filter_str(text);
-                Some(vec![])
+                DispatchResult::no_effects()
             }
             InputMode::CommandLine => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
@@ -21,7 +21,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 state
                     .command_line_input
                     .update_viewport(state.command_line_visible_width);
-                Some(vec![])
+                DispatchResult::no_effects()
             }
             InputMode::CellEdit => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
@@ -29,13 +29,13 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     .result_interaction
                     .cell_edit_input_mut()
                     .insert_str(&clean);
-                Some(vec![])
+                DispatchResult::no_effects()
             }
             InputMode::QueryHistoryPicker => {
                 state.query_history_picker.insert_filter_str(text);
-                Some(vec![])
+                DispatchResult::no_effects()
             }
-            _ => None,
+            _ => DispatchResult::pass(),
         },
 
         Action::TextInput {
@@ -43,30 +43,30 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             ch: c,
         } => {
             state.ui.table_picker.insert_filter_char(*c);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextBackspace {
             target: InputTarget::Filter,
         } => {
             state.ui.table_picker.backspace_filter();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextMoveCursor {
             target: InputTarget::Filter,
             direction: movement,
         } => {
             state.ui.table_picker.move_filter_cursor(*movement);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::EnterCommandLine => {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.clear();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ExitCommandLine => {
             state.modal.pop_mode();
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextInput {
             target: InputTarget::CommandLine,
@@ -76,7 +76,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             state
                 .command_line_input
                 .update_viewport(state.command_line_visible_width);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextBackspace {
             target: InputTarget::CommandLine,
@@ -85,7 +85,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             state
                 .command_line_input
                 .update_viewport(state.command_line_visible_width);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextMoveCursor {
             target: InputTarget::CommandLine,
@@ -95,7 +95,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             state
                 .command_line_input
                 .update_viewport(state.command_line_visible_width);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         // -----------------------------------------------------------------
@@ -112,7 +112,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     .table_picker
                     .set_selection(state.ui.table_picker.selected() + 1);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ListSelect {
             target: ListTarget::TablePicker | ListTarget::CommandPalette,
@@ -122,7 +122,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .ui
                 .table_picker
                 .set_selection(state.ui.table_picker.selected().saturating_sub(1));
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ListSelect {
             target: ListTarget::ErTablePicker,
@@ -135,7 +135,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     .er_picker
                     .set_selection(state.ui.er_picker.selected() + 1);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ListSelect {
             target: ListTarget::ErTablePicker,
@@ -145,7 +145,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .ui
                 .er_picker
                 .set_selection(state.ui.er_picker.selected().saturating_sub(1));
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ListSelect {
             target: ListTarget::CommandPalette,
@@ -158,10 +158,10 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     .table_picker
                     .set_selection(state.ui.table_picker.selected() + 1);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -187,7 +187,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.table_picker.filter_input().content(), "hello");
         }
 
@@ -264,7 +264,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_none());
+            assert!(effects.is_pass());
         }
 
         #[test]
@@ -279,7 +279,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.er_picker.filter_input().content(), "public.users");
             assert_eq!(state.ui.er_picker.selected(), 0);
         }
@@ -312,7 +312,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.query_history_picker.filter_input().content(), "users");
             assert_eq!(state.query_history_picker.selected(), 0);
         }

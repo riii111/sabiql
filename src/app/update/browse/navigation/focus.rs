@@ -1,19 +1,19 @@
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 
 pub fn reduce(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,
     _now: Instant,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     match action {
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {
@@ -23,7 +23,7 @@ pub fn reduce(
                 }
             }
             state.ui.focused_pane = *pane;
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ToggleFocus => {
             let was_focus = state.ui.is_focus_mode();
@@ -31,7 +31,7 @@ pub fn reduce(
             if was_focus {
                 state.result_interaction.reset_interaction();
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ToggleReadOnly => {
             if state.session.read_only {
@@ -44,22 +44,22 @@ pub fn reduce(
             } else {
                 state.session.read_only = true;
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::InspectorNextTab => {
             state.ui.inspector_tab = services
                 .db_capabilities
                 .next_inspector_tab(state.ui.inspector_tab);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::InspectorPrevTab => {
             state.ui.inspector_tab = services
                 .db_capabilities
                 .prev_inspector_tab(state.ui.inspector_tab);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 

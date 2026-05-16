@@ -10,6 +10,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::services::AppServices;
 use crate::update::action::{Action, ModalKind, TableTarget};
+use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::command::{command_to_action, parse_command};
 
 fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> {
@@ -57,7 +58,7 @@ pub fn reduce(
     action: &Action,
     now: Instant,
     _services: &AppServices,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     match action {
         Action::QueryCompleted {
             result,
@@ -136,9 +137,9 @@ pub fn reduce(
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                 }
 
-                Some(try_adhoc_refresh(state, result))
+                DispatchResult::effects(try_adhoc_refresh(state, result))
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
         Action::QueryFailed {
@@ -174,7 +175,7 @@ pub fn reduce(
                     state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         Action::CommandLineSubmit => {
@@ -183,7 +184,7 @@ pub fn reduce(
             state.modal.pop_mode();
             state.command_line_input.clear();
 
-            Some(match follow_up {
+            DispatchResult::effects(match follow_up {
                 Action::Quit => {
                     state.should_quit = true;
                     vec![]
@@ -248,7 +249,7 @@ pub fn reduce(
                     });
                 state.query.pagination.total_rows_estimate = row_estimate;
 
-                Some(vec![Effect::ExecutePreview {
+                DispatchResult::effects(vec![Effect::ExecutePreview {
                     dsn: dsn.clone(),
                     schema: schema.clone(),
                     table: table.clone(),
@@ -259,24 +260,24 @@ pub fn reduce(
                     read_only: state.session.read_only,
                 }])
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
 
         Action::ExecuteAdhoc(query) => {
             if let Some(dsn) = &state.session.dsn {
                 state.query.begin_running(now);
-                Some(vec![Effect::ExecuteAdhoc {
+                DispatchResult::effects(vec![Effect::ExecuteAdhoc {
                     dsn: dsn.clone(),
                     query: query.clone(),
                     read_only: state.session.read_only,
                 }])
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 

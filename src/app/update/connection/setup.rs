@@ -8,9 +8,10 @@ use crate::model::connection::setup::{
 };
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ConnectionTarget, InputTarget, ModalKind};
+use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ConnectionSetup) => {
             state.connection_setup.reset();
@@ -18,23 +19,23 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.connection_setup.is_first_run = false;
             }
             state.modal.set_mode(InputMode::ConnectionSetup);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::StartEditConnection(id) => {
-            Some(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
+            DispatchResult::effects(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
         }
         Action::ConnectionEditLoaded(profile) => {
             state.connection_setup = ConnectionSetupState::from(&**profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionEditLoadFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::CloseModal(ModalKind::ConnectionSetup) => {
             state.modal.set_mode(InputMode::Normal);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         // ===== Clipboard Paste =====
@@ -63,7 +64,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     }
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
         // ===== Connection Setup Form =====
@@ -87,7 +88,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     }
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextBackspace {
             target: InputTarget::ConnectionSetup,
@@ -97,7 +98,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 input.backspace();
                 input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::TextMoveCursor {
             target: InputTarget::ConnectionSetup,
@@ -108,7 +109,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 input.move_cursor(*movement);
                 input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionSetupNextField => {
             let setup = &mut state.connection_setup;
@@ -116,7 +117,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if let Some(next) = setup.focused_field.next() {
                 setup.focused_field = next;
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionSetupPrevField => {
             let setup = &mut state.connection_setup;
@@ -124,7 +125,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if let Some(prev) = setup.focused_field.prev() {
                 setup.focused_field = prev;
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionSetupToggleDropdown => {
             let setup = &mut state.connection_setup;
@@ -137,7 +138,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         .unwrap_or(2);
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionSetupDropdownNext => {
             let setup = &mut state.connection_setup;
@@ -147,7 +148,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     setup.ssl_dropdown.selected_index += 1;
                 }
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionSetupDropdownPrev => {
             let setup = &mut state.connection_setup;
@@ -155,7 +156,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 setup.ssl_dropdown.selected_index =
                     setup.ssl_dropdown.selected_index.saturating_sub(1);
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionSetupDropdownConfirm => {
             let setup = &mut state.connection_setup;
@@ -165,11 +166,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 }
                 setup.ssl_dropdown.is_open = false;
             }
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionSetupDropdownCancel => {
             state.connection_setup.ssl_dropdown.is_open = false;
-            Some(vec![])
+            DispatchResult::no_effects()
         }
         Action::ConnectionSetupSave => {
             let setup = &mut state.connection_setup;
@@ -177,7 +178,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if setup.validation_errors.is_empty() {
                 let port = setup.port.content().parse().unwrap_or(5432);
                 state.session.mark_connecting();
-                Some(vec![Effect::SaveAndConnect {
+                DispatchResult::effects(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.content().to_string(),
                     host: setup.host.content().to_string(),
@@ -188,7 +189,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     ssl_mode: setup.ssl_mode,
                 }])
             } else {
-                Some(vec![])
+                DispatchResult::no_effects()
             }
         }
         Action::ConnectionSetupCancel => {
@@ -199,10 +200,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     crate::model::shared::confirm_dialog::ConfirmIntent::QuitNoConnection,
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
-                Some(vec![])
+                DispatchResult::no_effects()
             } else {
                 state.modal.set_mode(InputMode::Normal);
-                Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
+                DispatchResult::effects(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
         Action::ConnectionSaveCompleted(ConnectionTarget { id, dsn, name }) => {
@@ -212,17 +213,17 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.session.active_connection_name = Some(name.clone());
             state.session.read_only = false;
             state.session.begin_connecting(dsn);
-            Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
+            DispatchResult::effects(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
         Action::ConnectionSaveFailed(e) => {
             if !state.session.connection_state().is_connected() {
                 state.session.mark_disconnected();
             }
             state.messages.set_error_at(e.to_string(), now);
-            Some(vec![])
+            DispatchResult::no_effects()
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
