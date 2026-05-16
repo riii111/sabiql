@@ -2,7 +2,6 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
@@ -28,36 +27,9 @@ pub(super) fn reduce_completion(
         }
         // Completion accept
         Action::CompletionAccept => {
-            if let Some((trigger_pos, replacement)) =
-                state.sql_modal.selected_completion_replacement()
-            {
-                if state.sql_modal.editor.cursor() < trigger_pos {
-                    state.sql_modal.dismiss_completion();
-                    return DispatchResult::handled();
-                }
-
-                let start_byte = state.sql_modal.editor.char_to_byte_index(trigger_pos);
-                let end_byte = state
-                    .sql_modal
-                    .editor
-                    .char_to_byte_index(state.sql_modal.editor.cursor());
-                // Manually manipulate the underlying content for drain + insert_str at byte level.
-                // This is the one place where we need byte-level access that MultiLineInputState
-                // doesn't directly support, so we rebuild via set_content.
-                let mut content = state.sql_modal.editor.content().to_string();
-                content.drain(start_byte..end_byte);
-                content.insert_str(start_byte, &replacement);
-                let new_cursor = trigger_pos + replacement.chars().count();
-                state
-                    .sql_modal
-                    .editor
-                    .set_content_with_cursor(content, new_cursor);
-                state
-                    .sql_modal
-                    .editor
-                    .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-                state.sql_modal.dismiss_completion();
-            }
+            state
+                .sql_modal
+                .accept_selected_completion(sql_modal_visible_rows(state.ui.terminal_height));
             DispatchResult::handled()
         }
 

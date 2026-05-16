@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use crate::domain::CommandTag;
 use crate::model::shared::multi_line_input::MultiLineInputState;
-use crate::model::shared::text_input::TextInputState;
+use crate::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
 
 use super::completion::{CompletionCandidate, CompletionState};
@@ -294,6 +294,26 @@ impl SqlModalContext {
             .candidates
             .get(self.completion.selected_index)
             .map(|candidate| (self.completion.trigger_position, candidate.text.clone()))
+    }
+
+    pub fn accept_selected_completion(&mut self, visible_rows: usize) {
+        let Some((trigger_pos, replacement)) = self.selected_completion_replacement() else {
+            return;
+        };
+        if self.editor.cursor() < trigger_pos {
+            self.dismiss_completion();
+            return;
+        }
+
+        let start_byte = self.editor.char_to_byte_index(trigger_pos);
+        let end_byte = self.editor.char_to_byte_index(self.editor.cursor());
+        let mut content = self.editor.content().to_string();
+        content.drain(start_byte..end_byte);
+        content.insert_str(start_byte, &replacement);
+        let new_cursor = trigger_pos + replacement.chars().count();
+        self.editor.set_content_with_cursor(content, new_cursor);
+        self.editor.update_scroll(visible_rows);
+        self.dismiss_completion();
     }
 
     pub fn confirming_high_input_mut(&mut self) -> Option<&mut TextInputState> {
