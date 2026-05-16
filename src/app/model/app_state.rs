@@ -682,14 +682,14 @@ mod tests {
                     .select_table("public", "users", &mut state.query.pagination);
                 let generation = state.session.selection_generation();
                 state.session.dsn = Some("dsn://test".to_string());
-                let request_id = state.session.begin_table_detail_request();
+                let run_id = state.session.begin_table_detail_run();
                 state.ui.inspector_scroll_offset = 42;
 
                 reduce_metadata(
                     &mut state,
                     &Action::TableDetailLoaded {
                         dsn: "dsn://test".to_string(),
-                        request_id,
+                        run_id,
                         detail: Box::new(make_table_detail()),
                         generation,
                     },

@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
 use crate::domain::CommandTag;
+use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
@@ -80,8 +81,7 @@ pub struct SqlModalContext {
     pub prefetching_tables: HashSet<String>,
     pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     prefetch_started: bool,
-    prefetch_batch_id: u64,
-    active_prefetch_batch_id: Option<u64>,
+    prefetch_run: AsyncRun,
     active_tab: SqlModalTab,
 }
 
@@ -93,35 +93,34 @@ impl SqlModalContext {
         self.prefetch_queue.clear();
         self.prefetching_tables.clear();
         self.failed_prefetch_tables.clear();
-        self.active_prefetch_batch_id = None;
+        self.prefetch_run.clear_active();
     }
 
     // Preserves `prefetching_tables` so in-flight requests drain naturally.
     #[must_use]
     pub fn begin_prefetch(&mut self) -> u64 {
         self.prefetch_started = true;
-        self.prefetch_batch_id += 1;
-        self.active_prefetch_batch_id = Some(self.prefetch_batch_id);
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
-        self.prefetch_batch_id
+        self.prefetch_run.begin()
     }
 
     pub fn invalidate_prefetch(&mut self) {
         self.prefetch_started = false;
-        self.active_prefetch_batch_id = None;
+        self.prefetching_tables.clear();
+        self.prefetch_run.clear_active();
     }
 
     pub fn is_prefetch_started(&self) -> bool {
         self.prefetch_started
     }
 
-    pub fn active_prefetch_batch_id(&self) -> Option<u64> {
-        self.active_prefetch_batch_id
+    pub fn active_prefetch_run_id(&self) -> Option<u64> {
+        self.prefetch_run.active_id()
     }
 
-    pub fn is_current_prefetch_batch(&self, batch_id: u64) -> bool {
-        self.active_prefetch_batch_id == Some(batch_id)
+    pub fn is_current_prefetch_run(&self, run_id: u64) -> bool {
+        self.prefetch_run.is_current(run_id)
     }
 
     // ── Adhoc status ────────────────────────────────────────────────

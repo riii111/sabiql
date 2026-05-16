@@ -55,14 +55,14 @@ pub async fn run(
 
             let prefetch_actions: Vec<Action> = state
                 .sql_modal
-                .active_prefetch_batch_id()
-                .map(|batch_id| {
+                .active_prefetch_run_id()
+                .map(|run_id| {
                     missing
                         .into_iter()
                         .filter_map(|qualified_name| {
                             qualified_name.split_once('.').map(|(schema, table)| {
                                 Action::PrefetchTableDetail {
-                                    batch_id,
+                                    run_id,
                                     schema: schema.to_string(),
                                     table: table.to_string(),
                                 }

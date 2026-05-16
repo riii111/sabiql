@@ -49,11 +49,11 @@ pub fn reduce(
 
             let stripped = export_query.trim_end().trim_end_matches(';').to_string();
             let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
-            let request_id = state.query.begin_running(now);
+            let run_id = state.query.begin_running(now);
 
             DispatchResult::handled_with(vec![Effect::CountRowsForExport {
                 dsn,
-                request_id,
+                run_id,
                 count_query,
                 export_query,
                 file_name,
@@ -63,14 +63,12 @@ pub fn reduce(
 
         Action::CsvExportRowsCounted {
             dsn,
-            request_id,
+            run_id,
             row_count,
             export_query,
             file_name,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -91,7 +89,7 @@ pub fn reduce(
                     msg,
                     crate::model::shared::confirm_dialog::ConfirmIntent::CsvExport {
                         dsn: dsn.clone(),
-                        request_id: *request_id,
+                        run_id: *run_id,
                         export_query: export_query.clone(),
                         file_name: file_name.clone(),
                         row_count: *row_count,
@@ -102,7 +100,7 @@ pub fn reduce(
             } else {
                 DispatchResult::handled_with(vec![Effect::ExportCsv {
                     dsn: dsn.clone(),
-                    request_id: *request_id,
+                    run_id: *run_id,
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
@@ -113,20 +111,18 @@ pub fn reduce(
 
         Action::ExecuteCsvExport {
             dsn,
-            request_id,
+            run_id,
             export_query,
             file_name,
             row_count,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
             DispatchResult::handled_with(vec![Effect::ExportCsv {
                 dsn: dsn.clone(),
-                request_id: *request_id,
+                run_id: *run_id,
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
@@ -136,13 +132,11 @@ pub fn reduce(
 
         Action::CsvExportSucceeded {
             dsn,
-            request_id,
+            run_id,
             path,
             row_count,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -158,14 +152,8 @@ pub fn reduce(
             DispatchResult::handled_with(vec![Effect::OpenFolder { path: folder }])
         }
 
-        Action::CsvExportFailed {
-            dsn,
-            request_id,
-            error,
-        } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+        Action::CsvExportFailed { dsn, run_id, error } => {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -191,14 +179,14 @@ pub fn reduce(
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let next_page = state.query.pagination.current_page + 1;
-                let request_id = state.query.begin_running(now);
+                let run_id = state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 DispatchResult::handled_with(vec![Effect::ExecutePreview {
                     dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.session.selection_generation(),
-                    request_id,
+                    run_id,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: next_page * PREVIEW_PAGE_SIZE,
                     target_page: next_page,
@@ -218,7 +206,7 @@ pub fn reduce(
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let prev_page = state.query.pagination.current_page - 1;
-                let request_id = state.query.begin_running(now);
+                let run_id = state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 state.query.pagination.reached_end = false;
                 DispatchResult::handled_with(vec![Effect::ExecutePreview {
@@ -226,7 +214,7 @@ pub fn reduce(
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.session.selection_generation(),
-                    request_id,
+                    run_id,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: prev_page * PREVIEW_PAGE_SIZE,
                     target_page: prev_page,
@@ -252,7 +240,7 @@ mod tests {
     use crate::update::browse::query::reduce_query;
     use crate::update::browse::query::tests::*;
 
-    fn begin_query_request(state: &mut AppState) -> u64 {
+    fn begin_query_run(state: &mut AppState) -> u64 {
         state.query.begin_running(Instant::now())
     }
 
@@ -262,10 +250,10 @@ mod tests {
         export_query: &str,
         file_name: &str,
     ) -> Action {
-        let request_id = begin_query_request(state);
+        let run_id = begin_query_run(state);
         Action::CsvExportRowsCounted {
             dsn: "postgres://localhost/test".to_string(),
-            request_id,
+            run_id,
             row_count,
             export_query: export_query.to_string(),
             file_name: file_name.to_string(),
@@ -273,20 +261,20 @@ mod tests {
     }
 
     fn csv_succeeded_action(state: &mut AppState, path: &str, row_count: Option<usize>) -> Action {
-        let request_id = begin_query_request(state);
+        let run_id = begin_query_run(state);
         Action::CsvExportSucceeded {
             dsn: "postgres://localhost/test".to_string(),
-            request_id,
+            run_id,
             path: path.to_string(),
             row_count,
         }
     }
 
     fn csv_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
-        let request_id = begin_query_request(state);
+        let run_id = begin_query_run(state);
         Action::CsvExportFailed {
             dsn: "postgres://localhost/test".to_string(),
-            request_id,
+            run_id,
             error,
         }
     }
@@ -708,14 +696,14 @@ mod tests {
         #[test]
         fn stale_rows_counted_does_not_open_confirm_or_export() {
             let mut state = create_test_state();
-            let old_request_id = begin_query_request(&mut state);
-            let _ = begin_query_request(&mut state);
+            let old_run_id = begin_query_run(&mut state);
+            let _ = begin_query_run(&mut state);
 
             let effects = reduce_query(
                 &mut state,
                 &Action::CsvExportRowsCounted {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id: old_request_id,
+                    run_id: old_run_id,
                     row_count: Some(200_000),
                     export_query: "SELECT 1".to_string(),
                     file_name: "test".to_string(),

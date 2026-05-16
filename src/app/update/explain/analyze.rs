@@ -72,10 +72,10 @@ pub(super) fn reduce_analyze(
                         mark_explain_unavailable(state, services);
                         return DispatchResult::handled();
                     };
-                    let request_id = begin_explain_running(state, now);
+                    let run_id = begin_explain_running(state, now);
                     return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                         dsn,
-                        request_id,
+                        run_id,
                         query: explain_query,
                         source_query: content,
                         is_analyze: true,
@@ -110,10 +110,10 @@ pub(super) fn reduce_analyze(
                     mark_explain_unavailable(state, services);
                     return DispatchResult::handled();
                 };
-                let request_id = begin_explain_running(state, now);
+                let run_id = begin_explain_running(state, now);
                 return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                     dsn,
-                    request_id,
+                    run_id,
                     query: explain_query,
                     source_query: query,
                     is_analyze: true,

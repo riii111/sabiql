@@ -75,10 +75,10 @@ pub(super) fn reduce_connection_error(
         Action::RetryServiceConnection => {
             if let Some(dsn) = state.session.dsn.clone() {
                 state.connection_error.clear();
-                let request_id = state.session.begin_connecting(&dsn);
+                let run_id = state.session.begin_connecting(&dsn);
                 state.session.read_only = false;
                 state.modal.set_mode(InputMode::Normal);
-                DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, request_id }])
+                DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
             } else {
                 DispatchResult::handled()
             }

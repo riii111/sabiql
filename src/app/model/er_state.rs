@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::model::shared::async_run::AsyncRun;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ErStatus {
     #[default]
@@ -19,7 +21,7 @@ pub struct ErPreparationState {
     pub seed_tables: Vec<String>,
     pub fk_expanded: bool,
     pub last_signatures: HashMap<String, String>,
-    pub run_id: u64,
+    run: AsyncRun,
 }
 
 impl ErPreparationState {
@@ -56,9 +58,17 @@ impl ErPreparationState {
     }
 
     pub fn begin_smart_refresh(&mut self) -> u64 {
-        self.run_id += 1;
+        let run_id = self.run.begin();
         self.status = ErStatus::Waiting;
-        self.run_id
+        run_id
+    }
+
+    pub fn is_current_run(&self, run_id: u64) -> bool {
+        self.run.is_current(run_id)
+    }
+
+    pub fn run_id(&self) -> u64 {
+        self.run.last_id()
     }
 
     pub fn can_generate_from_cache(&self) -> bool {
@@ -70,9 +80,21 @@ impl ErPreparationState {
     }
 
     pub fn reset(&mut self) {
-        let run_id = self.run_id;
-        *self = Self::default();
-        self.run_id = run_id;
+        self.pending_tables.clear();
+        self.fetching_tables.clear();
+        self.failed_tables.clear();
+        self.status = ErStatus::Idle;
+        self.total_tables = 0;
+        self.target_tables.clear();
+        self.seed_tables.clear();
+        self.fk_expanded = false;
+        self.last_signatures.clear();
+        self.run.clear_active();
+    }
+
+    #[cfg(test)]
+    pub fn set_run_id_for_test(&mut self, run_id: u64) {
+        self.run.set_last_id_for_test(run_id);
     }
 }
 
@@ -174,12 +196,12 @@ mod tests {
                 failed_tables: HashMap::from([("c".to_string(), "err".to_string())]),
                 status: ErStatus::Waiting,
                 total_tables: 3,
-                target_tables: vec![],
                 seed_tables: vec!["a".to_string()],
                 fk_expanded: true,
                 last_signatures: HashMap::from([("a".to_string(), "sig".to_string())]),
-                run_id: 5,
+                ..Default::default()
             };
+            state.set_run_id_for_test(5);
 
             state.reset();
 
@@ -191,7 +213,7 @@ mod tests {
             assert!(state.seed_tables.is_empty());
             assert!(!state.fk_expanded);
             assert!(state.last_signatures.is_empty());
-            assert_eq!(state.run_id, 5);
+            assert_eq!(state.run_id(), 5);
         }
     }
 

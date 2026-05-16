@@ -18,7 +18,9 @@ pub(super) fn reduce_smart_refresh_failed(
             error,
             new_metadata,
         }) => {
-            if state.session.dsn.as_ref() != Some(dsn) || *run_id != state.er_preparation.run_id {
+            if state.session.dsn.as_ref() != Some(dsn)
+                || !state.er_preparation.is_current_run(*run_id)
+            {
                 return DispatchResult::handled();
             }
 

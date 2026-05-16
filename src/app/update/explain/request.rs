@@ -43,11 +43,11 @@ pub(super) fn reduce_request(
                 mark_explain_unavailable(state, services);
                 return DispatchResult::handled();
             };
-            let request_id = begin_explain_running(state, now);
+            let run_id = begin_explain_running(state, now);
 
             DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                 dsn,
-                request_id,
+                run_id,
                 query,
                 source_query: content,
                 is_analyze: false,

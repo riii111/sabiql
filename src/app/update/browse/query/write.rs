@@ -237,10 +237,10 @@ pub fn reduce(
                 return DispatchResult::handled();
             }
             if let Some(dsn) = &state.session.dsn {
-                let request_id = state.query.begin_running(now);
+                let run_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteWrite {
                     dsn: dsn.clone(),
-                    request_id,
+                    run_id,
                     query: query.clone(),
                     read_only: state.session.read_only,
                 }])
@@ -254,12 +254,10 @@ pub fn reduce(
 
         Action::ExecuteWriteSucceeded {
             dsn,
-            request_id,
+            run_id,
             affected_rows,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -288,13 +286,13 @@ pub fn reduce(
 
                     if let Some(dsn) = &state.session.dsn {
                         let page = state.query.pagination.current_page;
-                        let request_id = state.query.begin_running(now);
+                        let run_id = state.query.begin_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
                             generation: state.session.selection_generation(),
-                            request_id,
+                            run_id,
                             limit: PREVIEW_PAGE_SIZE,
                             offset: page * PREVIEW_PAGE_SIZE,
                             target_page: page,
@@ -346,14 +344,14 @@ pub fn reduce(
                     ));
 
                     if let Some(dsn) = &state.session.dsn {
-                        let request_id = state.query.begin_running(now);
+                        let run_id = state.query.begin_running(now);
                         state.query.pagination.reached_end = false;
                         DispatchResult::handled_with(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
                             generation: state.session.selection_generation(),
-                            request_id,
+                            run_id,
                             limit: PREVIEW_PAGE_SIZE,
                             offset: target_page * PREVIEW_PAGE_SIZE,
                             target_page,
@@ -366,14 +364,8 @@ pub fn reduce(
             }
         }
 
-        Action::ExecuteWriteFailed {
-            dsn,
-            request_id,
-            error,
-        } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+        Action::ExecuteWriteFailed { dsn, run_id, error } => {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -412,24 +404,24 @@ mod tests {
     use crate::update::browse::query::reduce_query;
     use crate::update::browse::query::tests::*;
 
-    fn begin_query_request(state: &mut AppState) -> u64 {
+    fn begin_query_run(state: &mut AppState) -> u64 {
         state.query.begin_running(Instant::now())
     }
 
     fn write_succeeded_action(state: &mut AppState, affected_rows: usize) -> Action {
-        let request_id = begin_query_request(state);
+        let run_id = begin_query_run(state);
         Action::ExecuteWriteSucceeded {
             dsn: "postgres://localhost/test".to_string(),
-            request_id,
+            run_id,
             affected_rows,
         }
     }
 
     fn write_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
-        let request_id = begin_query_request(state);
+        let run_id = begin_query_run(state);
         Action::ExecuteWriteFailed {
             dsn: "postgres://localhost/test".to_string(),
-            request_id,
+            run_id,
             error,
         }
     }
@@ -440,10 +432,10 @@ mod tests {
         generation: u64,
         target_page: Option<usize>,
     ) -> Action {
-        let request_id = begin_query_request(state);
+        let run_id = begin_query_run(state);
         Action::QueryCompleted {
             dsn: "postgres://localhost/test".to_string(),
-            request_id,
+            run_id,
             result,
             generation,
             target_page,
@@ -742,14 +734,14 @@ mod tests {
         #[test]
         fn stale_write_success_does_not_refresh_or_set_message() {
             let mut state = editable_state();
-            let old_request_id = begin_query_request(&mut state);
-            let _ = begin_query_request(&mut state);
+            let old_run_id = begin_query_run(&mut state);
+            let _ = begin_query_run(&mut state);
 
             let effects = reduce_query(
                 &mut state,
                 &Action::ExecuteWriteSucceeded {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id: old_request_id,
+                    run_id: old_run_id,
                     affected_rows: 1,
                 },
                 Instant::now(),

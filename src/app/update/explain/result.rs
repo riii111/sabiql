@@ -14,15 +14,13 @@ pub(super) fn reduce_result(
     match action {
         Action::ExplainCompleted {
             dsn,
-            request_id,
+            run_id,
             query,
             plan_text,
             is_analyze,
             execution_time_ms,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             finish_explain_success(
@@ -35,14 +33,8 @@ pub(super) fn reduce_result(
             DispatchResult::handled()
         }
 
-        Action::ExplainFailed {
-            dsn,
-            request_id,
-            error,
-        } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+        Action::ExplainFailed { dsn, run_id, error } => {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             finish_explain_error(state, error.user_message());

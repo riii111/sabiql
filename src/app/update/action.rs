@@ -375,12 +375,12 @@ pub enum Action {
     ReloadMetadata,
     MetadataLoaded {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         metadata: Arc<DatabaseMetadata>,
     },
     MetadataFailed {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         error: DbOperationError,
     },
 
@@ -388,40 +388,40 @@ pub enum Action {
     LoadTableDetail(TableTarget),
     TableDetailLoaded {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         detail: Box<Table>,
         generation: u64,
     },
     TableDetailFailed {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         error: DbOperationError,
         generation: u64,
     },
 
     // Completion prefetch (does NOT update state.table_detail)
     PrefetchTableDetail {
-        batch_id: u64,
+        run_id: u64,
         schema: String,
         table: String,
     },
     TableDetailCached {
         dsn: String,
-        batch_id: u64,
+        run_id: u64,
         schema: String,
         table: String,
         detail: Box<Table>,
     },
     TableDetailCacheFailed {
         dsn: String,
-        batch_id: u64,
+        run_id: u64,
         schema: String,
         table: String,
         error: DbOperationError,
     },
     TableDetailAlreadyCached {
         dsn: String,
-        batch_id: u64,
+        run_id: u64,
         schema: String,
         table: String,
     },
@@ -436,7 +436,7 @@ pub enum Action {
         tables: Vec<String>,
     },
     ProcessPrefetchQueue {
-        batch_id: u64,
+        run_id: u64,
     },
 
     // Inspector sub-tabs
@@ -470,7 +470,7 @@ pub enum Action {
     ExplainAnalyzeCancel,
     ExplainCompleted {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         query: String,
         plan_text: String,
         is_analyze: bool,
@@ -478,7 +478,7 @@ pub enum Action {
     },
     ExplainFailed {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         error: DbOperationError,
     },
     CompareEditQuery,
@@ -501,26 +501,26 @@ pub enum Action {
     ExecuteWrite(String),
     QueryCompleted {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         result: Arc<QueryResult>,
         generation: u64,
         target_page: Option<usize>,
     },
     QueryFailed {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         error: DbOperationError,
         generation: u64,
         source: QuerySource,
     },
     ExecuteWriteSucceeded {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         affected_rows: usize,
     },
     ExecuteWriteFailed {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         error: DbOperationError,
     },
 
@@ -585,27 +585,27 @@ pub enum Action {
     RequestCsvExport,
     CsvExportRowsCounted {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         row_count: Option<usize>,
         export_query: String,
         file_name: String,
     },
     ExecuteCsvExport {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         export_query: String,
         file_name: String,
         row_count: Option<usize>,
     },
     CsvExportSucceeded {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         path: String,
         row_count: Option<usize>,
     },
     CsvExportFailed {
         dsn: String,
-        request_id: u64,
+        run_id: u64,
         error: DbOperationError,
     },
 

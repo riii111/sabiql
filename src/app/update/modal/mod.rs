@@ -527,7 +527,7 @@ mod tests {
                     "",
                     ConfirmIntent::CsvExport {
                         dsn: "postgres://localhost/test".to_string(),
-                        request_id: 1,
+                        run_id: 1,
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),

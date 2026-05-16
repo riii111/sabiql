@@ -568,7 +568,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "dsn://test".to_string(),
-                    request_id: 1,
+                    run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan".to_string(),
                     is_analyze: false,
@@ -599,7 +599,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainFailed {
                     dsn: "dsn://test".to_string(),
-                    request_id: 1,
+                    run_id: 1,
                     error: DbOperationError::QueryFailed("syntax error".to_string()),
                 },
                 Instant::now(),
@@ -631,7 +631,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "dsn://test".to_string(),
-                    request_id: 1,
+                    run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
                     is_analyze: false,
@@ -649,7 +649,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "dsn://test".to_string(),
-                    request_id: 2,
+                    run_id: 2,
                     query: "SELECT 2".to_string(),
                     plan_text: "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
                     is_analyze: false,

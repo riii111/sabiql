@@ -623,8 +623,8 @@ mod tests {
             let result = runner
                 .run(
                     vec![Effect::DispatchActions(vec![
-                        Action::ProcessPrefetchQueue { batch_id: 1 },
-                        Action::ProcessPrefetchQueue { batch_id: 1 },
+                        Action::ProcessPrefetchQueue { run_id: 1 },
+                        Action::ProcessPrefetchQueue { run_id: 1 },
                     ])],
                     &mut renderer,
                     state,
@@ -637,11 +637,11 @@ mod tests {
             assert_eq!(result.len(), 2);
             assert!(matches!(
                 result[0],
-                Action::ProcessPrefetchQueue { batch_id: 1 }
+                Action::ProcessPrefetchQueue { run_id: 1 }
             ));
             assert!(matches!(
                 result[1],
-                Action::ProcessPrefetchQueue { batch_id: 1 }
+                Action::ProcessPrefetchQueue { run_id: 1 }
             ));
         }
     }

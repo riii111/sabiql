@@ -156,13 +156,13 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
 
     let mut effects = Vec::new();
     if let Some(dsn) = state.session.dsn.clone() {
-        let request_id = state.session.begin_table_detail_request();
+        let run_id = state.session.begin_table_detail_run();
         effects.push(Effect::FetchTableDetail {
             dsn,
             schema: schema.clone(),
             table: table_name.clone(),
             generation,
-            request_id,
+            run_id,
         });
     }
     effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
@@ -905,20 +905,20 @@ mod tests {
 
         fn metadata_loaded_action(state: &mut AppState, metadata: DatabaseMetadata) -> Action {
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
-                request_id,
+                run_id,
                 metadata: Arc::new(metadata),
             }
         }
 
         fn metadata_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             Action::MetadataFailed {
                 dsn: "postgres://localhost/test".to_string(),
-                request_id,
+                run_id,
                 error,
             }
         }
@@ -1319,7 +1319,7 @@ mod tests {
             };
             let action = Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
-                request_id: 1,
+                run_id: 1,
                 metadata: Arc::new(metadata),
             };
             reduce(&mut state, action, now, &AppServices::stub());
@@ -1445,10 +1445,10 @@ mod tests {
             state.er_preparation.status = ErStatus::Waiting;
             let now = Instant::now();
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataFailed {
                 dsn: "postgres://localhost/test".to_string(),
-                request_id,
+                run_id,
                 error: DbOperationError::ConnectionFailed("connection refused".to_string()),
             };
 
@@ -1482,7 +1482,7 @@ mod tests {
         fn emits_cache_effect() {
             let mut state = create_test_state();
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let batch_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
                 .prefetching_tables
@@ -1493,7 +1493,7 @@ mod tests {
                 &mut state,
                 Action::TableDetailCached {
                     dsn: "postgres://localhost/test".to_string(),
-                    batch_id,
+                    run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     detail: make_test_table(),
@@ -1514,7 +1514,7 @@ mod tests {
         fn with_queue_returns_process_effect() {
             let mut state = create_test_state();
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let batch_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
                 .prefetch_queue
@@ -1525,7 +1525,7 @@ mod tests {
                 &mut state,
                 Action::TableDetailCached {
                     dsn: "postgres://localhost/test".to_string(),
-                    batch_id,
+                    run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     detail: make_test_table(),
@@ -1866,7 +1866,7 @@ mod tests {
                 &mut state,
                 Action::ExecuteWriteSucceeded {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id: 1,
+                    run_id: 1,
                     affected_rows: 1,
                 },
                 now,
@@ -1935,7 +1935,7 @@ mod tests {
                 &mut state,
                 Action::ExecuteWriteFailed {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id: 1,
+                    run_id: 1,
                     error: DbOperationError::QueryFailed("connection lost".to_string()),
                 },
                 now,
@@ -2044,7 +2044,7 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connecting);
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -2057,7 +2057,7 @@ mod tests {
                 &mut state,
                 Action::MetadataLoaded {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id,
+                    run_id,
                     metadata: Arc::new(metadata),
                 },
                 now,
@@ -2078,14 +2078,14 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connecting);
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             let now = Instant::now();
 
             reduce(
                 &mut state,
                 Action::MetadataFailed {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id,
+                    run_id,
                     error: DbOperationError::ConnectionFailed("connection refused".to_string()),
                 },
                 now,
@@ -2109,14 +2109,14 @@ mod tests {
                 .set_connection_state(ConnectionState::Connected);
             state.session.dsn = Some("postgres://localhost/test".to_string());
             state.session.set_metadata_state(MetadataState::Loaded);
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             let now = Instant::now();
 
             reduce(
                 &mut state,
                 Action::MetadataFailed {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id,
+                    run_id,
                     error: DbOperationError::QueryFailed("permission denied".to_string()),
                 },
                 now,
@@ -2384,10 +2384,10 @@ mod tests {
 
         fn metadata_loaded_action(state: &mut AppState) -> Action {
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
-                request_id,
+                run_id,
                 metadata: sample_metadata(),
             }
         }
@@ -2529,7 +2529,7 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let batch_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.total_tables = 1;
             state.er_preparation.fk_expanded = true;
@@ -2543,7 +2543,7 @@ mod tests {
                 &mut state,
                 Action::TableDetailAlreadyCached {
                     dsn: "postgres://localhost/test".to_string(),
-                    batch_id,
+                    run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
                 },
@@ -2564,7 +2564,7 @@ mod tests {
 
             let mut state = state_with_metadata();
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            let batch_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.total_tables = 2;
             state.er_preparation.fk_expanded = true;
@@ -2582,7 +2582,7 @@ mod tests {
                 &mut state,
                 Action::TableDetailAlreadyCached {
                     dsn: "postgres://localhost/test".to_string(),
-                    batch_id,
+                    run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
                 },
@@ -2622,12 +2622,12 @@ mod tests {
                 )],
                 fetched_at: now,
             };
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             reduce(
                 &mut state,
                 Action::MetadataLoaded {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id,
+                    run_id,
                     metadata: Arc::new(metadata),
                 },
                 now,
@@ -2671,12 +2671,12 @@ mod tests {
                 error: None,
                 command_tag: None,
             });
-            let request_id = state.query.begin_running(now);
+            let run_id = state.query.begin_running(now);
             reduce(
                 &mut state,
                 Action::QueryCompleted {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id,
+                    run_id,
                     result,
                     generation: current_gen,
                     target_page: Some(0),

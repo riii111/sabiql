@@ -106,7 +106,7 @@ pub async fn run(
             schema,
             table,
             generation,
-            request_id,
+            run_id,
             limit,
             offset,
             target_page,
@@ -123,7 +123,7 @@ pub async fn run(
                     Ok(result) => {
                         tx.send(Action::QueryCompleted {
                             dsn,
-                            request_id,
+                            run_id,
                             result: Arc::new(result),
                             generation,
                             target_page: Some(target_page),
@@ -134,7 +134,7 @@ pub async fn run(
                     Err(e) => {
                         tx.send(Action::QueryFailed {
                             dsn,
-                            request_id,
+                            run_id,
                             error: e,
                             generation,
                             source: QuerySource::Preview,
@@ -149,7 +149,7 @@ pub async fn run(
 
         Effect::ExecuteExplain {
             dsn,
-            request_id,
+            run_id,
             query,
             source_query,
             is_analyze,
@@ -170,7 +170,7 @@ pub async fn run(
                             .join("\n");
                         tx.send(Action::ExplainCompleted {
                             dsn,
-                            request_id,
+                            run_id,
                             query: source_query,
                             plan_text,
                             is_analyze,
@@ -182,7 +182,7 @@ pub async fn run(
                     Err(e) => {
                         tx.send(Action::ExplainFailed {
                             dsn,
-                            request_id,
+                            run_id,
                             error: e,
                         })
                         .await
@@ -195,7 +195,7 @@ pub async fn run(
 
         Effect::ExecuteAdhoc {
             dsn,
-            request_id,
+            run_id,
             query,
             read_only,
         } => {
@@ -227,7 +227,7 @@ pub async fn run(
                         }
                         tx.send(Action::QueryCompleted {
                             dsn,
-                            request_id,
+                            run_id,
                             result: Arc::new(result),
                             generation: 0,
                             target_page: None,
@@ -249,7 +249,7 @@ pub async fn run(
                         }
                         tx.send(Action::QueryFailed {
                             dsn,
-                            request_id,
+                            run_id,
                             error: e,
                             generation: 0,
                             source: QuerySource::Adhoc,
@@ -264,7 +264,7 @@ pub async fn run(
 
         Effect::ExecuteWrite {
             dsn,
-            request_id,
+            run_id,
             query,
             read_only,
         } => {
@@ -292,7 +292,7 @@ pub async fn run(
                         }
                         tx.send(Action::ExecuteWriteSucceeded {
                             dsn,
-                            request_id,
+                            run_id,
                             affected_rows: result.affected_rows,
                         })
                         .await
@@ -312,7 +312,7 @@ pub async fn run(
                         }
                         tx.send(Action::ExecuteWriteFailed {
                             dsn,
-                            request_id,
+                            run_id,
                             error: e,
                         })
                         .await
@@ -325,7 +325,7 @@ pub async fn run(
 
         Effect::CountRowsForExport {
             dsn,
-            request_id,
+            run_id,
             count_query,
             export_query,
             file_name,
@@ -341,7 +341,7 @@ pub async fn run(
                     .ok();
                 tx.send(Action::CsvExportRowsCounted {
                     dsn,
-                    request_id,
+                    run_id,
                     row_count,
                     export_query,
                     file_name,
@@ -354,7 +354,7 @@ pub async fn run(
 
         Effect::ExportCsv {
             dsn,
-            request_id,
+            run_id,
             query,
             file_name,
             row_count,
@@ -369,7 +369,7 @@ pub async fn run(
                     Ok(_) => {
                         tx.send(Action::CsvExportSucceeded {
                             dsn,
-                            request_id,
+                            run_id,
                             path: path.display().to_string(),
                             row_count,
                         })
@@ -379,7 +379,7 @@ pub async fn run(
                     Err(e) => {
                         tx.send(Action::CsvExportFailed {
                             dsn,
-                            request_id,
+                            run_id,
                             error: e,
                         })
                         .await
@@ -508,7 +508,7 @@ mod tests {
                         schema: "public".to_string(),
                         table: "users".to_string(),
                         generation: 1,
-                        request_id: 8,
+                        run_id: 8,
                         limit: 100,
                         offset: 0,
                         target_page: 0,
@@ -563,7 +563,7 @@ mod tests {
                         schema: "public".to_string(),
                         table: "users".to_string(),
                         generation: 1,
-                        request_id: 8,
+                        run_id: 8,
                         limit: 100,
                         offset: 0,
                         target_page: 0,

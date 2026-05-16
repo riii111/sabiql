@@ -32,20 +32,20 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
     if tag.is_schema_modifying() {
         state.sql_modal.reset_prefetch();
         state.session.set_table_detail_raw(None);
-        let request_id = state.session.begin_metadata_refresh();
+        let run_id = state.session.begin_metadata_refresh();
 
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
-        effects.push(Effect::FetchMetadata { dsn, request_id });
+        effects.push(Effect::FetchMetadata { dsn, run_id });
     } else if !state.query.pagination.table.is_empty() {
         let page = state.query.pagination.current_page;
-        let request_id = state.query.begin_running(now);
+        let run_id = state.query.begin_running(now);
         effects.push(Effect::ExecutePreview {
             dsn,
             schema: state.query.pagination.schema.clone(),
             table: state.query.pagination.table.clone(),
             generation: state.session.selection_generation(),
-            request_id,
+            run_id,
             limit: PREVIEW_PAGE_SIZE,
             offset: page * PREVIEW_PAGE_SIZE,
             target_page: page,
@@ -65,14 +65,12 @@ pub fn reduce(
     match action {
         Action::QueryCompleted {
             dsn,
-            request_id,
+            run_id,
             result,
             generation,
             target_page,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -155,14 +153,12 @@ pub fn reduce(
         }
         Action::QueryFailed {
             dsn,
-            request_id,
+            run_id,
             error,
             generation,
             source,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.query.is_current_request(*request_id)
-            {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -247,7 +243,7 @@ pub fn reduce(
             generation,
         }) => {
             if let Some(dsn) = &state.session.dsn {
-                let request_id = state.query.begin_running(now);
+                let run_id = state.query.begin_running(now);
 
                 state.query.pagination.reset();
                 state.query.pagination.schema.clone_from(schema);
@@ -273,7 +269,7 @@ pub fn reduce(
                     schema: schema.clone(),
                     table: table.clone(),
                     generation: *generation,
-                    request_id,
+                    run_id,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: 0,
                     target_page: 0,
@@ -286,10 +282,10 @@ pub fn reduce(
 
         Action::ExecuteAdhoc(query) => {
             if let Some(dsn) = &state.session.dsn {
-                let request_id = state.query.begin_running(now);
+                let run_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
                     dsn: dsn.clone(),
-                    request_id,
+                    run_id,
                     query: query.clone(),
                     read_only: state.session.read_only,
                 }])
@@ -310,7 +306,7 @@ mod tests {
     use crate::update::browse::query::reduce_query;
     use crate::update::browse::query::tests::*;
 
-    fn begin_query_request(state: &mut AppState) -> u64 {
+    fn begin_query_run(state: &mut AppState) -> u64 {
         state.query.begin_running(Instant::now())
     }
 
@@ -320,10 +316,10 @@ mod tests {
         generation: u64,
         target_page: Option<usize>,
     ) -> Action {
-        let request_id = begin_query_request(state);
+        let run_id = begin_query_run(state);
         Action::QueryCompleted {
             dsn: "postgres://localhost/test".to_string(),
-            request_id,
+            run_id,
             result,
             generation,
             target_page,
@@ -336,10 +332,10 @@ mod tests {
         generation: u64,
         source: QuerySource,
     ) -> Action {
-        let request_id = begin_query_request(state);
+        let run_id = begin_query_run(state);
         Action::QueryFailed {
             dsn: "postgres://localhost/test".to_string(),
-            request_id,
+            run_id,
             error,
             generation,
             source,
@@ -665,16 +661,16 @@ mod tests {
         }
 
         #[test]
-        fn stale_request_does_not_replace_current_result() {
+        fn stale_run_does_not_replace_current_result() {
             let mut state = create_test_state();
-            let old_request_id = begin_query_request(&mut state);
-            let _ = begin_query_request(&mut state);
+            let old_run_id = begin_query_run(&mut state);
+            let _ = begin_query_run(&mut state);
 
             reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     dsn: "postgres://localhost/test".to_string(),
-                    request_id: old_request_id,
+                    run_id: old_run_id,
                     result: adhoc_result(),
                     generation: 0,
                     target_page: None,
@@ -999,10 +995,10 @@ mod tests {
             );
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
-                request_id,
+                run_id,
                 metadata,
             };
             let meta_effects = reduce_metadata(&mut state, &action, Instant::now()).unwrap();
@@ -1037,10 +1033,10 @@ mod tests {
             );
 
             let metadata = make_metadata(vec![("public", "orders")]);
-            let request_id = state.session.begin_metadata_refresh();
+            let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
-                request_id,
+                run_id,
                 metadata,
             };
             reduce_metadata(&mut state, &action, Instant::now());

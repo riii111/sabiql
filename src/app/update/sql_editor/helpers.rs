@@ -16,11 +16,11 @@ pub(super) fn start_adhoc_if_connected(
         return DispatchResult::handled();
     };
 
-    let request_id = state.query.begin_running(now);
+    let run_id = state.query.begin_running(now);
     state.sql_modal.begin_adhoc_running();
     DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
         dsn,
-        request_id,
+        run_id,
         query,
         read_only: state.session.read_only,
     }])
