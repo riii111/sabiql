@@ -1,7 +1,7 @@
 mod analyze;
 mod helpers;
+mod output;
 mod request;
-mod result;
 mod scroll;
 mod tabs;
 
@@ -20,7 +20,7 @@ pub fn dispatch_explain(
 ) -> DispatchResult {
     request::reduce_request(state, action, now, services)
         .or_else(|| analyze::reduce_analyze(state, action, now, services))
-        .or_else(|| result::reduce_result(state, action, now))
+        .or_else(|| output::reduce_output(state, action, now))
         .or_else(|| scroll::reduce_scroll(state, action, now))
         .or_else(|| tabs::reduce_tabs(state, action, now, services))
 }

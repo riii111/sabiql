@@ -6,7 +6,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{finish_explain_error, finish_explain_success};
 
-pub(super) fn reduce_result(
+pub(super) fn reduce_output(
     state: &mut AppState,
     action: &Action,
     _now: Instant,
