@@ -7,7 +7,7 @@
 use std::time::Instant;
 
 use super::{
-    reduce_connection, reduce_er, reduce_explain_with_services, reduce_metadata, reduce_modal,
+    dispatch_connection, reduce_er, reduce_explain_with_services, reduce_metadata, reduce_modal,
     reduce_navigation, reduce_query, reduce_result, reduce_sql_modal,
 };
 use crate::catalog::HelpDocument;
@@ -46,7 +46,7 @@ fn reduce_inner(
 ) -> Vec<Effect> {
     state.result_interaction.clear_operator_pending();
 
-    if let Some(effects) = reduce_connection(state, &action, now, services)
+    if let Some(effects) = dispatch_connection(state, &action, now, services)
         .or_else(|| reduce_modal(state, &action, now))
         // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
         // reset view state here and return Pass, relying on reduce_query for the page change.

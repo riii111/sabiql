@@ -15,7 +15,7 @@ pub use browse::metadata::reduce_metadata;
 pub use browse::navigation::reduce_navigation;
 pub use browse::query::reduce_query;
 pub use browse::result::reduce_result;
-pub use connection::reduce_connection;
+pub use connection::dispatch_connection;
 pub use dispatch_result::DispatchResult;
 pub use er::reduce_er;
 #[cfg(test)]

@@ -11,7 +11,7 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_connection(
+pub fn dispatch_connection(
     state: &mut AppState,
     action: &Action,
     now: Instant,
@@ -33,7 +33,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::ConnectionSetup);
 
-        let result = reduce_connection(
+        let result = dispatch_connection(
             &mut state,
             &Action::Paste("hello".to_string()),
             Instant::now(),
@@ -48,7 +48,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
 
-        let result = reduce_connection(
+        let result = dispatch_connection(
             &mut state,
             &Action::Paste("hello".to_string()),
             Instant::now(),
@@ -62,7 +62,7 @@ mod tests {
     fn unknown_action_returns_none() {
         let mut state = AppState::new("test".to_string());
 
-        let result = reduce_connection(
+        let result = dispatch_connection(
             &mut state,
             &Action::Quit,
             Instant::now(),
