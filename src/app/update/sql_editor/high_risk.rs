@@ -25,7 +25,7 @@ fn high_risk_input_mut(
 pub(super) fn reduce_high_risk_confirmation(
     state: &mut AppState,
     action: &Action,
-    _now: Instant,
+    now: Instant,
 ) -> DispatchResult {
     match action {
         Action::SqlModalCancelConfirm => {
@@ -85,7 +85,7 @@ pub(super) fn reduce_high_risk_confirmation(
             );
             if matched {
                 let query = state.sql_modal.editor.content().trim().to_string();
-                return start_adhoc_if_connected(state, query);
+                return start_adhoc_if_connected(state, query, now);
             }
             DispatchResult::handled()
         }

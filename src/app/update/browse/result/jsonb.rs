@@ -90,10 +90,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchRe
             state.flash_timers.set(FlashId::JsonbDetail, now);
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content: json,
-                on_success: Some(Action::CellCopied),
-                on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
+                on_success: Some(Box::new(Action::CellCopied)),
+                on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
                     "Clipboard unavailable".into(),
-                ))),
+                )))),
             }])
         }
 

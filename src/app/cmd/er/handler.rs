@@ -181,12 +181,14 @@ fn handle_smart_refresh(
     let tx = action_tx.clone();
     let old_signatures = state.er_preparation.last_signatures.clone();
     let cached_tables = collect_cached_table_names(completion_engine);
+    let request_dsn = dsn.clone();
 
     tokio::spawn(async move {
         let new_metadata = match provider.fetch_metadata(&dsn).await {
             Ok(m) => m,
             Err(e) => {
                 tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn,
                     run_id,
                     error: e,
                     new_metadata: None,
@@ -202,6 +204,7 @@ fn handle_smart_refresh(
             Err(e) => {
                 let new_metadata = Arc::new(new_metadata);
                 tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn,
                     run_id,
                     error: e,
                     new_metadata: Some(Arc::clone(&new_metadata)),
@@ -246,6 +249,7 @@ fn handle_smart_refresh(
             .collect();
 
         tx.send(Action::SmartErRefreshCompleted(SmartErRefreshResult {
+            dsn: request_dsn,
             run_id,
             new_metadata: Arc::new(new_metadata),
             stale_tables,

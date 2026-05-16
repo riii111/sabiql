@@ -80,6 +80,8 @@ pub struct SqlModalContext {
     pub prefetching_tables: HashSet<String>,
     pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     prefetch_started: bool,
+    prefetch_batch_id: u64,
+    active_prefetch_batch_id: Option<u64>,
     active_tab: SqlModalTab,
 }
 
@@ -91,21 +93,35 @@ impl SqlModalContext {
         self.prefetch_queue.clear();
         self.prefetching_tables.clear();
         self.failed_prefetch_tables.clear();
+        self.active_prefetch_batch_id = None;
     }
 
     // Preserves `prefetching_tables` so in-flight requests drain naturally.
-    pub fn begin_prefetch(&mut self) {
+    #[must_use]
+    pub fn begin_prefetch(&mut self) -> u64 {
         self.prefetch_started = true;
+        self.prefetch_batch_id += 1;
+        self.active_prefetch_batch_id = Some(self.prefetch_batch_id);
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
+        self.prefetch_batch_id
     }
 
     pub fn invalidate_prefetch(&mut self) {
         self.prefetch_started = false;
+        self.active_prefetch_batch_id = None;
     }
 
     pub fn is_prefetch_started(&self) -> bool {
         self.prefetch_started
+    }
+
+    pub fn active_prefetch_batch_id(&self) -> Option<u64> {
+        self.active_prefetch_batch_id
+    }
+
+    pub fn is_current_prefetch_batch(&self, batch_id: u64) -> bool {
+        self.active_prefetch_batch_id == Some(batch_id)
     }
 
     // ── Adhoc status ────────────────────────────────────────────────
@@ -414,7 +430,7 @@ mod tests {
         #[test]
         fn reset_clears_all_state() {
             let mut ctx = SqlModalContext::default();
-            ctx.begin_prefetch();
+            let _ = ctx.begin_prefetch();
             ctx.prefetch_queue.push_back("public.users".to_string());
             ctx.prefetching_tables.insert("public.posts".to_string());
             ctx.failed_prefetch_tables.insert(

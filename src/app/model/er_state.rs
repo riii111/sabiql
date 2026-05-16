@@ -70,7 +70,9 @@ impl ErPreparationState {
     }
 
     pub fn reset(&mut self) {
+        let run_id = self.run_id;
         *self = Self::default();
+        self.run_id = run_id;
     }
 }
 
@@ -189,7 +191,7 @@ mod tests {
             assert!(state.seed_tables.is_empty());
             assert!(!state.fk_expanded);
             assert!(state.last_signatures.is_empty());
-            assert_eq!(state.run_id, 0);
+            assert_eq!(state.run_id, 5);
         }
     }
 

@@ -521,10 +521,13 @@ mod tests {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
                 state.session.dsn = Some("postgres://localhost/test".to_string());
+                let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
                     "",
                     ConfirmIntent::CsvExport {
+                        dsn: "postgres://localhost/test".to_string(),
+                        request_id: 1,
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),
@@ -798,7 +801,7 @@ mod tests {
             #[test]
             fn open_when_running_is_noop() {
                 let mut state = connected_state();
-                state.query.begin_running(Instant::now());
+                let _ = state.query.begin_running(Instant::now());
 
                 let effects = super::dispatch_modal(
                     &mut state,
@@ -929,9 +932,10 @@ mod tests {
 
                 super::dispatch_modal(
                     &mut state,
-                    &Action::QueryHistoryLoadFailed(QueryHistoryError::Io(Arc::new(
-                        std::io::Error::other("disk error"),
-                    ))),
+                    &Action::QueryHistoryLoadFailed(
+                        crate::domain::ConnectionId::from_string("test-conn"),
+                        QueryHistoryError::Io(Arc::new(std::io::Error::other("disk error"))),
+                    ),
                     now,
                 )
                 .unwrap();
@@ -950,9 +954,10 @@ mod tests {
 
                 super::dispatch_modal(
                     &mut state,
-                    &Action::QueryHistoryLoadFailed(QueryHistoryError::Io(Arc::new(
-                        std::io::Error::other("stale error"),
-                    ))),
+                    &Action::QueryHistoryLoadFailed(
+                        crate::domain::ConnectionId::from_string("test-conn"),
+                        QueryHistoryError::Io(Arc::new(std::io::Error::other("stale error"))),
+                    ),
                     now,
                 )
                 .unwrap();

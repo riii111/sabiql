@@ -49,9 +49,11 @@ pub fn reduce(
 
             let stripped = export_query.trim_end().trim_end_matches(';').to_string();
             let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
+            let request_id = state.query.begin_running(now);
 
             DispatchResult::handled_with(vec![Effect::CountRowsForExport {
                 dsn,
+                request_id,
                 count_query,
                 export_query,
                 file_name,
@@ -60,10 +62,18 @@ pub fn reduce(
         }
 
         Action::CsvExportRowsCounted {
+            dsn,
+            request_id,
             row_count,
             export_query,
             file_name,
         } => {
+            if state.session.dsn.as_ref() != Some(dsn)
+                || !state.query.is_current_request(*request_id)
+            {
+                return DispatchResult::handled();
+            }
+
             const LARGE_EXPORT_THRESHOLD: usize = 100_000;
 
             let needs_confirm = match row_count {
@@ -80,6 +90,8 @@ pub fn reduce(
                     "Confirm CSV Export",
                     msg,
                     crate::model::shared::confirm_dialog::ConfirmIntent::CsvExport {
+                        dsn: dsn.clone(),
+                        request_id: *request_id,
                         export_query: export_query.clone(),
                         file_name: file_name.clone(),
                         row_count: *row_count,
@@ -88,12 +100,9 @@ pub fn reduce(
                 state.modal.push_mode(InputMode::ConfirmDialog);
                 DispatchResult::handled()
             } else {
-                let dsn = match &state.session.dsn {
-                    Some(d) => d.clone(),
-                    None => return DispatchResult::handled(),
-                };
                 DispatchResult::handled_with(vec![Effect::ExportCsv {
-                    dsn,
+                    dsn: dsn.clone(),
+                    request_id: *request_id,
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
@@ -103,16 +112,21 @@ pub fn reduce(
         }
 
         Action::ExecuteCsvExport {
+            dsn,
+            request_id,
             export_query,
             file_name,
             row_count,
         } => {
-            let dsn = match &state.session.dsn {
-                Some(d) => d.clone(),
-                None => return DispatchResult::handled(),
-            };
+            if state.session.dsn.as_ref() != Some(dsn)
+                || !state.query.is_current_request(*request_id)
+            {
+                return DispatchResult::handled();
+            }
+
             DispatchResult::handled_with(vec![Effect::ExportCsv {
-                dsn,
+                dsn: dsn.clone(),
+                request_id: *request_id,
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
@@ -120,7 +134,19 @@ pub fn reduce(
             }])
         }
 
-        Action::CsvExportSucceeded { path, row_count } => {
+        Action::CsvExportSucceeded {
+            dsn,
+            request_id,
+            path,
+            row_count,
+        } => {
+            if state.session.dsn.as_ref() != Some(dsn)
+                || !state.query.is_current_request(*request_id)
+            {
+                return DispatchResult::handled();
+            }
+
+            state.query.mark_idle();
             let msg = match row_count {
                 Some(n) => format!("Exported {n} rows → {path}"),
                 None => format!("Exported → {path}"),
@@ -132,7 +158,18 @@ pub fn reduce(
             DispatchResult::handled_with(vec![Effect::OpenFolder { path: folder }])
         }
 
-        Action::CsvExportFailed(error) => {
+        Action::CsvExportFailed {
+            dsn,
+            request_id,
+            error,
+        } => {
+            if state.session.dsn.as_ref() != Some(dsn)
+                || !state.query.is_current_request(*request_id)
+            {
+                return DispatchResult::handled();
+            }
+
+            state.query.mark_idle();
             state.messages.set_error_at(error.user_message(), now);
             DispatchResult::handled()
         }
@@ -154,13 +191,14 @@ pub fn reduce(
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let next_page = state.query.pagination.current_page + 1;
-                state.query.begin_running(now);
+                let request_id = state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 DispatchResult::handled_with(vec![Effect::ExecutePreview {
                     dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.session.selection_generation(),
+                    request_id,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: next_page * PREVIEW_PAGE_SIZE,
                     target_page: next_page,
@@ -180,7 +218,7 @@ pub fn reduce(
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let prev_page = state.query.pagination.current_page - 1;
-                state.query.begin_running(now);
+                let request_id = state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 state.query.pagination.reached_end = false;
                 DispatchResult::handled_with(vec![Effect::ExecutePreview {
@@ -188,6 +226,7 @@ pub fn reduce(
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.session.selection_generation(),
+                    request_id,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: prev_page * PREVIEW_PAGE_SIZE,
                     target_page: prev_page,
@@ -206,11 +245,51 @@ pub fn reduce(
 mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource};
+    use crate::ports::outbound::DbOperationError;
     use std::sync::Arc;
 
     use crate::model::browse::query_execution::PaginationState;
     use crate::update::browse::query::reduce_query;
     use crate::update::browse::query::tests::*;
+
+    fn begin_query_request(state: &mut AppState) -> u64 {
+        state.query.begin_running(Instant::now())
+    }
+
+    fn csv_rows_counted_action(
+        state: &mut AppState,
+        row_count: Option<usize>,
+        export_query: &str,
+        file_name: &str,
+    ) -> Action {
+        let request_id = begin_query_request(state);
+        Action::CsvExportRowsCounted {
+            dsn: "postgres://localhost/test".to_string(),
+            request_id,
+            row_count,
+            export_query: export_query.to_string(),
+            file_name: file_name.to_string(),
+        }
+    }
+
+    fn csv_succeeded_action(state: &mut AppState, path: &str, row_count: Option<usize>) -> Action {
+        let request_id = begin_query_request(state);
+        Action::CsvExportSucceeded {
+            dsn: "postgres://localhost/test".to_string(),
+            request_id,
+            path: path.to_string(),
+            row_count,
+        }
+    }
+
+    fn csv_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
+        let request_id = begin_query_request(state);
+        Action::CsvExportFailed {
+            dsn: "postgres://localhost/test".to_string(),
+            request_id,
+            error,
+        }
+    }
 
     fn preview_result_with_two_columns(row_count: usize) -> Arc<QueryResult> {
         let rows: Vec<Vec<String>> = (0..row_count)
@@ -310,7 +389,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.begin_running(Instant::now());
+            let _ = state.query.begin_running(Instant::now());
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -545,18 +624,10 @@ mod tests {
         #[test]
         fn rows_counted_below_threshold_emits_export_effect() {
             let mut state = create_test_state();
+            let action = csv_rows_counted_action(&mut state, Some(500), "SELECT 1", "test");
 
-            let effects = reduce_query(
-                &mut state,
-                &Action::CsvExportRowsCounted {
-                    row_count: Some(500),
-                    export_query: "SELECT 1".to_string(),
-                    file_name: "test".to_string(),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
@@ -565,18 +636,10 @@ mod tests {
         #[test]
         fn rows_counted_above_threshold_opens_confirm_dialog() {
             let mut state = create_test_state();
+            let action = csv_rows_counted_action(&mut state, Some(200_000), "SELECT 1", "test");
 
-            let effects = reduce_query(
-                &mut state,
-                &Action::CsvExportRowsCounted {
-                    row_count: Some(200_000),
-                    export_query: "SELECT 1".to_string(),
-                    file_name: "test".to_string(),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -586,18 +649,10 @@ mod tests {
         #[test]
         fn rows_counted_none_opens_confirm_dialog() {
             let mut state = create_test_state();
+            let action = csv_rows_counted_action(&mut state, None, "SELECT 1", "test");
 
-            let effects = reduce_query(
-                &mut state,
-                &Action::CsvExportRowsCounted {
-                    row_count: None,
-                    export_query: "SELECT 1".to_string(),
-                    file_name: "test".to_string(),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -607,17 +662,10 @@ mod tests {
         #[test]
         fn export_succeeded_sets_success_message() {
             let mut state = create_test_state();
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
 
-            let effects = reduce_query(
-                &mut state,
-                &Action::CsvExportSucceeded {
-                    path: "/tmp/export.csv".to_string(),
-                    row_count: Some(42),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::OpenFolder { .. }));
@@ -642,20 +690,44 @@ mod tests {
         #[test]
         fn export_failed_sets_error_message() {
             let mut state = create_test_state();
-
-            let effects = reduce_query(
+            let action = csv_failed_action(
                 &mut state,
-                &Action::CsvExportFailed(DbOperationError::QueryFailed("psql error".to_string())),
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                DbOperationError::QueryFailed("psql error".to_string()),
+            );
+
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Query failed: psql error. Review the database error details and SQL.")
             );
+        }
+
+        #[test]
+        fn stale_rows_counted_does_not_open_confirm_or_export() {
+            let mut state = create_test_state();
+            let old_request_id = begin_query_request(&mut state);
+            let _ = begin_query_request(&mut state);
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::CsvExportRowsCounted {
+                    dsn: "postgres://localhost/test".to_string(),
+                    request_id: old_request_id,
+                    row_count: Some(200_000),
+                    export_query: "SELECT 1".to_string(),
+                    file_name: "test".to_string(),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_ne!(state.input_mode(), InputMode::ConfirmDialog);
+            assert!(state.query.is_running());
         }
 
         #[test]

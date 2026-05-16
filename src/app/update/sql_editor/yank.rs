@@ -71,9 +71,9 @@ pub(super) fn reduce_yank(
                 Some(c) if !c.is_empty() => {
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: c,
-                        on_success: Some(Action::SqlModalYankSuccess),
-                        on_failure: Some(Action::CopyFailed(ClipboardError::Unavailable(
-                            "Clipboard unavailable".into(),
+                        on_success: Some(Box::new(Action::SqlModalYankSuccess)),
+                        on_failure: Some(Box::new(Action::CopyFailed(
+                            ClipboardError::Unavailable("Clipboard unavailable".into()),
                         ))),
                     }])
                 }

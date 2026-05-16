@@ -35,6 +35,10 @@ pub struct BrowseSession {
 
     // -- lifecycle-gated --
     metadata: Option<Arc<DatabaseMetadata>>,
+    metadata_request_id: u64,
+    active_metadata_request_id: Option<u64>,
+    table_detail_request_id: u64,
+    active_table_detail_request_id: Option<u64>,
 
     // -- public / independent --
     pub dsn: Option<String>,
@@ -77,7 +81,19 @@ impl BrowseSession {
         self.selected_table_key = None;
         self.table_detail = None;
         self.selection_generation += 1;
+        self.active_table_detail_request_id = None;
         pagination.reset();
+    }
+
+    #[must_use]
+    pub fn begin_table_detail_request(&mut self) -> u64 {
+        self.table_detail_request_id += 1;
+        self.active_table_detail_request_id = Some(self.table_detail_request_id);
+        self.table_detail_request_id
+    }
+
+    pub fn is_current_table_detail_request(&self, request_id: u64) -> bool {
+        self.active_table_detail_request_id == Some(request_id)
     }
 
     // ── Connection lifecycle ─────────────────────────────────────────
@@ -87,15 +103,18 @@ impl BrowseSession {
         self.metadata_state = MetadataState::Loading;
     }
 
-    pub fn begin_connecting(&mut self, dsn: &str) {
+    #[must_use]
+    pub fn begin_connecting(&mut self, dsn: &str) -> u64 {
         self.dsn = Some(dsn.to_string());
         self.mark_connecting();
+        self.begin_metadata_request()
     }
 
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.metadata = Some(metadata);
+        self.active_metadata_request_id = None;
     }
 
     // On reload failure (already Connected), keeps Connected to preserve
@@ -103,27 +122,45 @@ impl BrowseSession {
     pub fn mark_connection_failed(&mut self, error: String) {
         self.metadata_state = MetadataState::Error(error);
         self.is_reloading = false;
+        self.active_metadata_request_id = None;
         if !self.connection_state.is_connected() {
             self.connection_state = ConnectionState::Failed;
         }
     }
 
-    pub fn begin_metadata_refresh(&mut self) {
+    #[must_use]
+    pub fn begin_metadata_refresh(&mut self) -> u64 {
         self.metadata_state = MetadataState::Loading;
+        self.begin_metadata_request()
     }
 
     pub fn mark_disconnected(&mut self) {
         self.connection_state = ConnectionState::NotConnected;
         self.metadata_state = MetadataState::NotLoaded;
         self.is_reloading = false;
+        self.active_metadata_request_id = None;
+        self.active_table_detail_request_id = None;
     }
 
-    pub fn begin_reload(&mut self) {
+    #[must_use]
+    pub fn begin_reload(&mut self) -> u64 {
         self.is_reloading = true;
+        self.begin_metadata_request()
     }
 
     pub fn finish_reload(&mut self) {
         self.is_reloading = false;
+    }
+
+    #[must_use]
+    fn begin_metadata_request(&mut self) -> u64 {
+        self.metadata_request_id += 1;
+        self.active_metadata_request_id = Some(self.metadata_request_id);
+        self.metadata_request_id
+    }
+
+    pub fn is_current_metadata_request(&self, request_id: u64) -> bool {
+        self.active_metadata_request_id == Some(request_id)
     }
 
     // ── Cache operations ─────────────────────────────────────────────
@@ -156,6 +193,8 @@ impl BrowseSession {
         self.metadata_state = MetadataState::Loaded;
         self.selection_generation = 0;
         self.is_reloading = false;
+        self.active_metadata_request_id = None;
+        self.active_table_detail_request_id = None;
         match &cache.query_result {
             Some(r) => query.set_current_result(r.clone()),
             None => query.clear_current_result(),
@@ -172,6 +211,8 @@ impl BrowseSession {
         self.selection_generation = 0;
         self.connection_state = ConnectionState::default();
         self.metadata_state = MetadataState::default();
+        self.active_metadata_request_id = None;
+        self.active_table_detail_request_id = None;
         self.dsn = None;
         self.active_connection_id = None;
         self.active_connection_name = None;
@@ -424,7 +465,7 @@ mod tests {
         fn begin_connecting_sets_pair() {
             let mut session = BrowseSession::default();
 
-            session.begin_connecting("postgres://localhost/test");
+            let _ = session.begin_connecting("postgres://localhost/test");
 
             assert!(session.connection_state().is_connecting());
             assert_eq!(session.metadata_state(), &MetadataState::Loading);
@@ -494,7 +535,7 @@ mod tests {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
 
-            session.begin_metadata_refresh();
+            let _ = session.begin_metadata_refresh();
 
             assert!(session.connection_state().is_connected());
             assert_eq!(session.metadata_state(), &MetadataState::Loading);
@@ -503,8 +544,8 @@ mod tests {
         #[test]
         fn mark_disconnected_resets_connection_pair() {
             let mut session = BrowseSession::default();
-            session.begin_connecting("postgres://localhost/test");
-            session.begin_reload();
+            let _ = session.begin_connecting("postgres://localhost/test");
+            let _ = session.begin_reload();
 
             session.mark_disconnected();
 
@@ -517,7 +558,7 @@ mod tests {
         fn begin_reload_and_finish_reload() {
             let mut session = BrowseSession::default();
 
-            session.begin_reload();
+            let _ = session.begin_reload();
             assert!(session.is_reloading);
 
             session.finish_reload();
@@ -598,7 +639,7 @@ mod tests {
             let mut restored = BrowseSession::default();
             let mut query = QueryExecution::default();
             restored.restore_from_cache(&cache, &mut query);
-            restored.begin_reload();
+            let _ = restored.begin_reload();
 
             assert_eq!(restored.selected_table_key(), Some("public.users"));
             assert!(restored.table_detail().is_some());

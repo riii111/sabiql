@@ -13,7 +13,7 @@ use crate::update::action::{Action, ModalKind, TableTarget};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::command::{command_to_action, parse_command};
 
-fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> {
+fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -> Vec<Effect> {
     if result.source != QuerySource::Adhoc || result.is_error() {
         return vec![];
     }
@@ -32,17 +32,20 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
     if tag.is_schema_modifying() {
         state.sql_modal.reset_prefetch();
         state.session.set_table_detail_raw(None);
+        let request_id = state.session.begin_metadata_refresh();
 
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
-        effects.push(Effect::FetchMetadata { dsn });
+        effects.push(Effect::FetchMetadata { dsn, request_id });
     } else if !state.query.pagination.table.is_empty() {
         let page = state.query.pagination.current_page;
+        let request_id = state.query.begin_running(now);
         effects.push(Effect::ExecutePreview {
             dsn,
             schema: state.query.pagination.schema.clone(),
             table: state.query.pagination.table.clone(),
             generation: state.session.selection_generation(),
+            request_id,
             limit: PREVIEW_PAGE_SIZE,
             offset: page * PREVIEW_PAGE_SIZE,
             target_page: page,
@@ -61,10 +64,18 @@ pub fn reduce(
 ) -> DispatchResult {
     match action {
         Action::QueryCompleted {
+            dsn,
+            request_id,
             result,
             generation,
             target_page,
         } => {
+            if state.session.dsn.as_ref() != Some(dsn)
+                || !state.query.is_current_request(*request_id)
+            {
+                return DispatchResult::handled();
+            }
+
             if *generation == 0 || *generation == state.session.selection_generation() {
                 state.query.mark_idle();
                 let preserved_result_col = state.result_interaction.selection().cell();
@@ -137,16 +148,24 @@ pub fn reduce(
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                 }
 
-                DispatchResult::handled_with(try_adhoc_refresh(state, result))
+                DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
             } else {
                 DispatchResult::handled()
             }
         }
         Action::QueryFailed {
+            dsn,
+            request_id,
             error,
             generation,
             source,
         } => {
+            if state.session.dsn.as_ref() != Some(dsn)
+                || !state.query.is_current_request(*request_id)
+            {
+                return DispatchResult::handled();
+            }
+
             if *generation == 0 || *generation == state.session.selection_generation() {
                 state.query.mark_idle();
                 if *source == QuerySource::Preview {
@@ -228,7 +247,7 @@ pub fn reduce(
             generation,
         }) => {
             if let Some(dsn) = &state.session.dsn {
-                state.query.begin_running(now);
+                let request_id = state.query.begin_running(now);
 
                 state.query.pagination.reset();
                 state.query.pagination.schema.clone_from(schema);
@@ -254,6 +273,7 @@ pub fn reduce(
                     schema: schema.clone(),
                     table: table.clone(),
                     generation: *generation,
+                    request_id,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: 0,
                     target_page: 0,
@@ -266,9 +286,10 @@ pub fn reduce(
 
         Action::ExecuteAdhoc(query) => {
             if let Some(dsn) = &state.session.dsn {
-                state.query.begin_running(now);
+                let request_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
                     dsn: dsn.clone(),
+                    request_id,
                     query: query.clone(),
                     read_only: state.session.read_only,
                 }])
@@ -285,8 +306,45 @@ pub fn reduce(
 mod tests {
     use super::*;
     use crate::model::browse::query_execution::PaginationState;
+    use crate::ports::outbound::DbOperationError;
     use crate::update::browse::query::reduce_query;
     use crate::update::browse::query::tests::*;
+
+    fn begin_query_request(state: &mut AppState) -> u64 {
+        state.query.begin_running(Instant::now())
+    }
+
+    fn query_completed_action(
+        state: &mut AppState,
+        result: Arc<QueryResult>,
+        generation: u64,
+        target_page: Option<usize>,
+    ) -> Action {
+        let request_id = begin_query_request(state);
+        Action::QueryCompleted {
+            dsn: "postgres://localhost/test".to_string(),
+            request_id,
+            result,
+            generation,
+            target_page,
+        }
+    }
+
+    fn query_failed_action(
+        state: &mut AppState,
+        error: DbOperationError,
+        generation: u64,
+        source: QuerySource,
+    ) -> Action {
+        let request_id = begin_query_request(state);
+        Action::QueryFailed {
+            dsn: "postgres://localhost/test".to_string(),
+            request_id,
+            error,
+            generation,
+            source,
+        }
+    }
 
     mod command_line_submit {
         use super::*;
@@ -452,17 +510,9 @@ mod tests {
             state.session.set_selection_generation(1);
             let result = preview_result(100);
             let now = Instant::now();
+            let action = query_completed_action(&mut state, result, 1, Some(2));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 1,
-                    target_page: Some(2),
-                },
-                now,
-                &AppServices::stub(),
-            );
+            reduce_query(&mut state, &action, now, &AppServices::stub());
 
             assert_eq!(state.query.pagination.current_page, 2);
             assert!(state.query.pagination.reached_end);
@@ -474,17 +524,9 @@ mod tests {
             state.session.set_selection_generation(1);
             let result = preview_result(PREVIEW_PAGE_SIZE);
             let now = Instant::now();
+            let action = query_completed_action(&mut state, result, 1, Some(0));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 1,
-                    target_page: Some(0),
-                },
-                now,
-                &AppServices::stub(),
-            );
+            reduce_query(&mut state, &action, now, &AppServices::stub());
 
             assert_eq!(state.query.pagination.current_page, 0);
             assert!(!state.query.pagination.reached_end);
@@ -496,17 +538,9 @@ mod tests {
             state.query.pagination.current_page = 3;
             let result = adhoc_result();
             let now = Instant::now();
+            let action = query_completed_action(&mut state, result, 0, None);
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: None,
-                },
-                now,
-                &AppServices::stub(),
-            );
+            reduce_query(&mut state, &action, now, &AppServices::stub());
 
             assert_eq!(state.query.pagination.current_page, 3);
         }
@@ -520,17 +554,9 @@ mod tests {
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(2);
             let result = adhoc_result();
+            let action = query_completed_action(&mut state, result, 0, None);
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.query.result_history().len(), 1);
             assert_eq!(state.query.history_index(), None);
@@ -553,17 +579,9 @@ mod tests {
             state.result_interaction.horizontal_offset = 5;
             state.result_interaction.activate_cell(3, 0);
             let result = adhoc_error_result();
+            let action = query_completed_action(&mut state, result, 0, None);
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert!(state.query.result_history().is_empty());
             assert_eq!(state.query.history_index(), None);
@@ -582,17 +600,9 @@ mod tests {
             state.session.set_selection_generation(1);
             state.query.push_history(adhoc_result());
             state.query.enter_history(0);
+            let action = query_completed_action(&mut state, preview_result(5), 1, Some(0));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result: preview_result(5),
-                    generation: 1,
-                    target_page: Some(0),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.query.history_index(), None);
             assert!(state.query.current_result().is_some());
@@ -629,17 +639,9 @@ mod tests {
             state.result_interaction.horizontal_offset = 1;
             state.result_interaction.activate_cell(3, 2);
             state.query.set_current_result(Arc::clone(&result));
+            let action = query_completed_action(&mut state, result, 0, Some(0));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: Some(0),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(2));
@@ -654,20 +656,35 @@ mod tests {
                 .set_post_delete_selection(PostDeleteRowSelection::Clear);
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
+            let action = query_completed_action(&mut state, preview_result(1), 0, Some(0));
+
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
+            assert_eq!(state.result_interaction.selection().row(), None);
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
+        }
+
+        #[test]
+        fn stale_request_does_not_replace_current_result() {
+            let mut state = create_test_state();
+            let old_request_id = begin_query_request(&mut state);
+            let _ = begin_query_request(&mut state);
 
             reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
-                    result: preview_result(1),
+                    dsn: "postgres://localhost/test".to_string(),
+                    request_id: old_request_id,
+                    result: adhoc_result(),
                     generation: 0,
-                    target_page: Some(0),
+                    target_page: None,
                 },
                 Instant::now(),
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.result_interaction.selection().row(), None);
-            assert!(state.result_interaction.staged_delete_rows().is_empty());
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.is_running());
         }
     }
 
@@ -683,17 +700,14 @@ mod tests {
             state.result_interaction.activate_cell(5, 2);
             state.result_interaction.scroll_offset = 10;
             state.result_interaction.horizontal_offset = 3;
-
-            reduce_query(
+            let action = query_failed_action(
                 &mut state,
-                &Action::QueryFailed {
-                    error: DbOperationError::QueryFailed("error".to_string()),
-                    generation: 1,
-                    source: QuerySource::Preview,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                DbOperationError::QueryFailed("error".to_string()),
+                1,
+                QuerySource::Preview,
             );
+
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(
                 state.result_interaction.selection().mode(),
@@ -707,17 +721,14 @@ mod tests {
         fn preview_failure_sets_error_result() {
             let mut state = state_with_table("public", "users");
             state.session.set_selection_generation(1);
-
-            reduce_query(
+            let action = query_failed_action(
                 &mut state,
-                &Action::QueryFailed {
-                    error: DbOperationError::PermissionDenied("forbidden".to_string()),
-                    generation: 1,
-                    source: QuerySource::Preview,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                DbOperationError::PermissionDenied("forbidden".to_string()),
+                1,
+                QuerySource::Preview,
             );
+
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             let result = state.query.current_result().expect("result");
             assert!(result.is_error());
@@ -740,17 +751,14 @@ mod tests {
             state
                 .sql_modal
                 .finish_adhoc_error("previous adhoc error".to_string());
-
-            reduce_query(
+            let action = query_failed_action(
                 &mut state,
-                &Action::QueryFailed {
-                    error: DbOperationError::PermissionDenied("forbidden".to_string()),
-                    generation: 1,
-                    source: QuerySource::Preview,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                DbOperationError::PermissionDenied("forbidden".to_string()),
+                1,
+                QuerySource::Preview,
             );
+
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
@@ -769,18 +777,15 @@ mod tests {
         #[test]
         fn dml_with_table_selected_emits_execute_preview() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Update(3)),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Update(3)),
+                0,
+                None,
+            );
+
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(
@@ -791,18 +796,15 @@ mod tests {
         #[test]
         fn dml_without_table_selected_emits_no_effects() {
             let mut state = create_test_state();
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Insert(1)),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Insert(1)),
+                0,
+                None,
+            );
+
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -810,18 +812,15 @@ mod tests {
         #[test]
         fn ddl_emits_cache_invalidate_and_fetch_metadata() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(
                 effects
@@ -848,7 +847,7 @@ mod tests {
         #[test]
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
-            state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
                 .prefetch_queue
@@ -856,17 +855,14 @@ mod tests {
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
-
-            reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
+                0,
+                None,
             );
+
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert!(!state.sql_modal.is_prefetch_started());
             assert!(state.sql_modal.prefetch_queue.is_empty());
@@ -877,18 +873,12 @@ mod tests {
         fn tcl_emits_no_effects() {
             for tag in [CommandTag::Begin, CommandTag::Commit, CommandTag::Rollback] {
                 let mut state = state_with_table("public", "users");
+                let action =
+                    query_completed_action(&mut state, adhoc_result_with_tag(tag), 0, None);
 
-                let effects = reduce_query(
-                    &mut state,
-                    &Action::QueryCompleted {
-                        result: adhoc_result_with_tag(tag),
-                        generation: 0,
-                        target_page: None,
-                    },
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    reduce_query(&mut state, &action, Instant::now(), &AppServices::stub())
+                        .unwrap();
 
                 assert!(effects.is_empty());
             }
@@ -897,18 +887,15 @@ mod tests {
         #[test]
         fn select_emits_no_effects() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Select(5)),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Select(5)),
+                0,
+                None,
+            );
+
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -916,18 +903,10 @@ mod tests {
         #[test]
         fn adhoc_error_emits_no_effects() {
             let mut state = state_with_table("public", "users");
+            let action = query_completed_action(&mut state, adhoc_error_result(), 0, None);
 
-            let effects = reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_error_result(),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -946,18 +925,10 @@ mod tests {
                 error: None,
                 command_tag: None,
             });
+            let action = query_completed_action(&mut state, result, 0, None);
 
-            let effects = reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -985,33 +956,22 @@ mod tests {
         #[test]
         fn dml_then_preview_updates_current_result() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Update(3)),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Update(3)),
+                0,
+                None,
+            );
+
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
 
             let new_preview = preview_result(5);
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result: Arc::clone(&new_preview),
-                    generation: 0,
-                    target_page: Some(0),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let action = query_completed_action(&mut state, Arc::clone(&new_preview), 0, Some(0));
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             let stored = state.query.current_result().unwrap();
             assert_eq!(stored.source, QuerySource::Preview);
@@ -1021,18 +981,15 @@ mod tests {
         #[test]
         fn ddl_create_then_metadata_loaded_preserves_explorer_selection() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(!state.sql_modal.is_prefetch_started());
             assert!(
@@ -1042,12 +999,13 @@ mod tests {
             );
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
-            let meta_effects = reduce_metadata(
-                &mut state,
-                &Action::MetadataLoaded(metadata),
-                Instant::now(),
-            )
-            .unwrap();
+            let request_id = state.session.begin_metadata_refresh();
+            let action = Action::MetadataLoaded {
+                dsn: "postgres://localhost/test".to_string(),
+                request_id,
+                metadata,
+            };
+            let meta_effects = reduce_metadata(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.ui.explorer_selected, 1);
             assert_eq!(state.query.pagination.table, "users");
@@ -1062,18 +1020,15 @@ mod tests {
         fn ddl_drop_then_metadata_loaded_without_table_clears_selection() {
             let mut state = state_with_table("public", "users");
             state.query.set_current_result(preview_result(3));
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(
                 effects
@@ -1082,11 +1037,13 @@ mod tests {
             );
 
             let metadata = make_metadata(vec![("public", "orders")]);
-            reduce_metadata(
-                &mut state,
-                &Action::MetadataLoaded(metadata),
-                Instant::now(),
-            );
+            let request_id = state.session.begin_metadata_refresh();
+            let action = Action::MetadataLoaded {
+                dsn: "postgres://localhost/test".to_string(),
+                request_id,
+                metadata,
+            };
+            reduce_metadata(&mut state, &action, Instant::now());
 
             assert!(state.query.pagination.table.is_empty());
             assert!(state.query.current_result().is_none());
@@ -1097,18 +1054,15 @@ mod tests {
         #[test]
         fn ddl_does_not_emit_execute_preview_so_modal_status_stays_success() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            let effects =
+                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(
                 !effects
@@ -1124,17 +1078,14 @@ mod tests {
         #[test]
         fn success_snapshot_not_overwritten_by_subsequent_preview_result() {
             let mut state = state_with_table("public", "users");
-
-            reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Alter("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                adhoc_result_with_tag(CommandTag::Alter("TABLE".to_string())),
+                0,
+                None,
             );
+
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             let saved_tag = state
                 .sql_modal
@@ -1142,16 +1093,8 @@ mod tests {
                 .and_then(|s| s.command_tag.clone());
             assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result: preview_result(5),
-                    generation: 0,
-                    target_page: Some(0),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let action = query_completed_action(&mut state, preview_result(5), 0, Some(0));
+            reduce_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             let tag_after = state
                 .sql_modal

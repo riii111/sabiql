@@ -21,8 +21,8 @@ pub(super) fn reduce_connection_lifecycle(
                 && state.modal.active_mode() == InputMode::Normal
             {
                 if let Some(dsn) = state.session.dsn.clone() {
-                    state.session.begin_connecting(&dsn);
-                    DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn }])
+                    let request_id = state.session.begin_connecting(&dsn);
+                    DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, request_id }])
                 } else {
                     DispatchResult::handled()
                 }
@@ -53,10 +53,13 @@ pub(super) fn reduce_connection_lifecycle(
                 state.session.active_connection_id = Some(id.clone());
                 state.session.active_connection_name = Some(name.clone());
                 state.session.read_only = false;
-                state.session.begin_connecting(dsn);
+                let request_id = state.session.begin_connecting(dsn);
                 DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { dsn: dsn.clone() },
+                    Effect::FetchMetadata {
+                        dsn: dsn.clone(),
+                        request_id,
+                    },
                 ])
             }
         }

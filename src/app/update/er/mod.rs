@@ -89,7 +89,7 @@ mod tests {
         #[test]
         fn prefetch_started_true_still_resets_and_emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_prefetch();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
@@ -142,7 +142,7 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_prefetch();
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
                 .into_effects()
@@ -221,6 +221,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(2),
                 stale_tables: vec![],
@@ -249,6 +250,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(2),
                 stale_tables: vec!["public.users".to_string()],
@@ -282,6 +284,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(3),
                 stale_tables: vec![],
@@ -310,6 +313,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(1),
                 stale_tables: vec![],
@@ -338,6 +342,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(2),
                 stale_tables: vec![],
@@ -365,6 +370,7 @@ mod tests {
             state.er_preparation.status = ErStatus::Waiting;
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 3,
                 new_metadata: make_metadata(0),
                 stale_tables: vec![],
@@ -392,6 +398,7 @@ mod tests {
                 std::iter::once(("public.users".to_string(), "abc123".to_string())).collect();
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(5),
                 stale_tables: vec![],
@@ -448,6 +455,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -488,6 +496,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -526,6 +535,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 3,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -546,6 +556,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -569,6 +580,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::QueryFailed("sig fetch failed".to_string()),
                     new_metadata: Some(make_metadata(20)),

@@ -86,19 +86,30 @@ pub struct QueryExecution {
     pub pagination: PaginationState,
     pending_delete_refresh_target: Option<DeleteRefreshTarget>,
     post_delete_row_selection: PostDeleteRowSelection,
+    request_id: u64,
+    active_request_id: Option<u64>,
 }
 
 impl QueryExecution {
     // ── Status / timing ────────────────────────────────────────────
 
-    pub fn begin_running(&mut self, now: Instant) {
+    #[must_use]
+    pub fn begin_running(&mut self, now: Instant) -> u64 {
         self.status = QueryStatus::Running;
         self.start_time = Some(now);
+        self.request_id += 1;
+        self.active_request_id = Some(self.request_id);
+        self.request_id
     }
 
     pub fn mark_idle(&mut self) {
         self.status = QueryStatus::Idle;
         self.start_time = None;
+        self.active_request_id = None;
+    }
+
+    pub fn is_current_request(&self, request_id: u64) -> bool {
+        self.active_request_id == Some(request_id)
     }
 
     pub fn status(&self) -> QueryStatus {

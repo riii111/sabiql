@@ -55,8 +55,11 @@ pub(super) fn reduce_query_history_picker(
             state.query_history_picker.replace_entries(entries);
             DispatchResult::handled()
         }
-        Action::QueryHistoryLoadFailed(e) => {
+        Action::QueryHistoryLoadFailed(conn_id, e) => {
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
+                return DispatchResult::handled();
+            }
+            if state.session.active_connection_id.as_ref() != Some(conn_id) {
                 return DispatchResult::handled();
             }
             state.messages.set_error_at(e.to_string(), now);

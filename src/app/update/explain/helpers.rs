@@ -24,11 +24,11 @@ pub(super) fn show_explain_error_on_plan(state: &mut AppState, message: impl Int
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
 }
 
-pub(super) fn begin_explain_running(state: &mut AppState, now: Instant) {
+pub(super) fn begin_explain_running(state: &mut AppState, now: Instant) -> u64 {
     state.sql_modal.begin_adhoc_running();
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.explain.reset();
-    state.query.begin_running(now);
+    state.query.begin_running(now)
 }
 
 pub(super) fn finish_explain_success(

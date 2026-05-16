@@ -13,6 +13,7 @@ pub(super) fn reduce_smart_refresh_completed(
 ) -> DispatchResult {
     match action {
         Action::SmartErRefreshCompleted(SmartErRefreshResult {
+            dsn,
             run_id,
             new_metadata,
             stale_tables,
@@ -21,7 +22,7 @@ pub(super) fn reduce_smart_refresh_completed(
             missing_in_cache,
             new_signatures,
         }) => {
-            if *run_id != state.er_preparation.run_id {
+            if state.session.dsn.as_ref() != Some(dsn) || *run_id != state.er_preparation.run_id {
                 return DispatchResult::handled();
             }
 

@@ -560,11 +560,16 @@ mod tests {
         #[test]
         fn sets_plan_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://test".to_string());
+            let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
+                    dsn: "dsn://test".to_string(),
+                    request_id: 1,
+                    query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan".to_string(),
                     is_analyze: false,
                     execution_time_ms: 42,
@@ -586,11 +591,17 @@ mod tests {
         #[test]
         fn sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://test".to_string());
+            let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
             reduce_explain(
                 &mut state,
-                &Action::ExplainFailed(DbOperationError::QueryFailed("syntax error".to_string())),
+                &Action::ExplainFailed {
+                    dsn: "dsn://test".to_string(),
+                    request_id: 1,
+                    error: DbOperationError::QueryFailed("syntax error".to_string()),
+                },
                 Instant::now(),
             );
 
@@ -619,6 +630,9 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
+                    dsn: "dsn://test".to_string(),
+                    request_id: 1,
+                    query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
                     is_analyze: false,
                     execution_time_ms: 42,
@@ -634,6 +648,9 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
+                    dsn: "dsn://test".to_string(),
+                    request_id: 2,
+                    query: "SELECT 2".to_string(),
                     plan_text: "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
                     is_analyze: false,
                     execution_time_ms: 5,

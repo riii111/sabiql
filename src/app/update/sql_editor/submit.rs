@@ -26,11 +26,7 @@ fn multi_statement_label(sql: &str) -> &'static str {
     }
     worst_label
 }
-pub(super) fn reduce_submit(
-    state: &mut AppState,
-    action: &Action,
-    _now: Instant,
-) -> DispatchResult {
+pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::SqlModalSubmit => {
             let query = state.sql_modal.editor.content().trim().to_string();
@@ -65,7 +61,7 @@ pub(super) fn reduce_submit(
                         return DispatchResult::handled();
                     }
                     match risk.confirmation {
-                        ConfirmationType::Immediate => start_adhoc_if_connected(state, query),
+                        ConfirmationType::Immediate => start_adhoc_if_connected(state, query, now),
                         ConfirmationType::TableNameInput { target } => {
                             state
                                 .sql_modal
