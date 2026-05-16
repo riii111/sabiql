@@ -24,16 +24,15 @@ pub fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 }
 
 #[cfg(test)]
-fn reduce_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-    dispatch_er(state, action, now)
-}
-
-#[cfg(test)]
 mod tests {
     use std::time::Instant;
 
     use super::*;
     use crate::model::app_state::AppState;
+
+    fn reduce_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+        super::dispatch_er(state, action, now)
+    }
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());

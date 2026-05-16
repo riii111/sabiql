@@ -43,22 +43,12 @@ pub fn dispatch_sql_modal(
 }
 
 #[cfg(test)]
-fn reduce_sql_modal(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
-    dispatch_sql_modal(state, action, now, services)
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Instant;
 
     fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-        super::reduce_sql_modal(state, action, now, &crate::services::AppServices::stub())
+        super::dispatch_sql_modal(state, action, now, &crate::services::AppServices::stub())
     }
 
     fn sql_modal_state() -> AppState {
