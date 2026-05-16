@@ -22,5 +22,5 @@ pub use er::reduce_er;
 pub use explain::reduce_explain;
 pub use explain::reduce_explain_with_services;
 pub use helpers::{char_to_byte_index, validate_all, validate_field};
-pub use modal::reduce_modal;
+pub use modal::dispatch_modal;
 pub use sql_editor::reduce_sql_modal;
