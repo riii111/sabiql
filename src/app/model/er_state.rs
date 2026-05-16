@@ -47,6 +47,11 @@ impl ErPreparationState {
         self.failed_tables.insert(qualified_name.to_string(), error);
     }
 
+    pub fn requeue_for_retry(&mut self, qualified_name: &str) {
+        self.fetching_tables.remove(qualified_name);
+        self.pending_tables.insert(qualified_name.to_string());
+    }
+
     pub fn retry_failed(&mut self) {
         for (table, _) in self.failed_tables.drain() {
             self.pending_tables.insert(table);

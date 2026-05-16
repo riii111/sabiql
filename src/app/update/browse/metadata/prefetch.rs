@@ -233,13 +233,7 @@ pub(super) fn reduce_prefetch(
                     retry_count: prev_count + 1,
                 },
             );
-            state
-                .er_preparation
-                .on_table_failed(&qualified_name, error.user_message());
-            state
-                .er_preparation
-                .pending_tables
-                .insert(qualified_name.clone());
+            state.er_preparation.requeue_for_retry(&qualified_name);
             if !state.sql_modal.prefetch_queue.contains(&qualified_name) {
                 state.sql_modal.prefetch_queue.push_back(qualified_name);
             }

@@ -425,6 +425,7 @@ mod tests {
 
     mod table_detail_cache_failed {
         use super::*;
+        use crate::model::er_state::ErStatus;
         use crate::ports::outbound::DbOperationError;
 
         #[test]
@@ -522,11 +523,69 @@ mod tests {
             assert_eq!(state.sql_modal.prefetch_queue.back(), Some(&qualified));
             assert!(state.er_preparation.pending_tables.contains(&qualified));
             assert!(!state.er_preparation.fetching_tables.contains(&qualified));
+            assert!(!state.er_preparation.failed_tables.contains_key(&qualified));
             assert!(
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
             );
+        }
+
+        #[test]
+        fn transient_failure_then_success_clears_er_failure_state() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_prefetch();
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = true;
+            let qualified = "public.users".to_string();
+            state.sql_modal.prefetching_tables.insert(qualified.clone());
+            state
+                .er_preparation
+                .fetching_tables
+                .insert(qualified.clone());
+
+            dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                },
+                Instant::now(),
+            );
+            state.sql_modal.prefetch_queue.clear();
+            state.er_preparation.pending_tables.remove(&qualified);
+            state
+                .er_preparation
+                .fetching_tables
+                .insert(qualified.clone());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCached {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    detail: empty_table("public", "users"),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.er_preparation.failed_tables.is_empty());
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| !matches!(effect, Effect::WriteErFailureLog { .. }))
+            );
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|action| matches!(action, Action::ErGenerateFromCache))
+            )));
         }
     }
 
