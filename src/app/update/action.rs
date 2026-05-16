@@ -22,6 +22,8 @@ pub enum ConnectionSaveError {
     Validation(#[from] ConnectionNameError),
     #[error("{0}")]
     Store(#[from] ConnectionStoreError),
+    #[error("{0}")]
+    Metadata(#[from] DbOperationError),
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -206,6 +208,7 @@ pub enum ModalKind {
 
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshResult {
+    pub dsn: String,
     pub run_id: u64,
     pub new_metadata: Arc<DatabaseMetadata>,
     pub stale_tables: Vec<String>,
@@ -217,6 +220,7 @@ pub struct SmartErRefreshResult {
 
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshError {
+    pub dsn: String,
     pub run_id: u64,
     pub error: DbOperationError,
     pub new_metadata: Option<Arc<DatabaseMetadata>>,
@@ -369,30 +373,55 @@ pub enum Action {
     // Metadata loading
     LoadMetadata,
     ReloadMetadata,
-    MetadataLoaded(Arc<DatabaseMetadata>),
-    MetadataFailed(DbOperationError),
+    MetadataLoaded {
+        dsn: String,
+        run_id: u64,
+        metadata: Arc<DatabaseMetadata>,
+    },
+    MetadataFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+    },
 
     // Table detail loading
     LoadTableDetail(TableTarget),
-    TableDetailLoaded(Box<Table>, u64),
-    TableDetailFailed(DbOperationError, u64),
+    TableDetailLoaded {
+        dsn: String,
+        run_id: u64,
+        detail: Box<Table>,
+        generation: u64,
+    },
+    TableDetailFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+        generation: u64,
+    },
 
     // Completion prefetch (does NOT update state.table_detail)
     PrefetchTableDetail {
+        run_id: u64,
         schema: String,
         table: String,
     },
     TableDetailCached {
+        dsn: String,
+        run_id: u64,
         schema: String,
         table: String,
         detail: Box<Table>,
     },
     TableDetailCacheFailed {
+        dsn: String,
+        run_id: u64,
         schema: String,
         table: String,
         error: DbOperationError,
     },
     TableDetailAlreadyCached {
+        dsn: String,
+        run_id: u64,
         schema: String,
         table: String,
     },
@@ -406,7 +435,9 @@ pub enum Action {
     FkNeighborsDiscovered {
         tables: Vec<String>,
     },
-    ProcessPrefetchQueue,
+    ProcessPrefetchQueue {
+        run_id: u64,
+    },
 
     // Inspector sub-tabs
     InspectorNextTab,
@@ -438,11 +469,18 @@ pub enum Action {
     ExplainAnalyzeConfirm,
     ExplainAnalyzeCancel,
     ExplainCompleted {
+        dsn: String,
+        run_id: u64,
+        query: String,
         plan_text: String,
         is_analyze: bool,
         execution_time_ms: u64,
     },
-    ExplainFailed(DbOperationError),
+    ExplainFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+    },
     CompareEditQuery,
 
     // SQL Modal completion
@@ -462,19 +500,29 @@ pub enum Action {
     ExecuteAdhoc(String),
     ExecuteWrite(String),
     QueryCompleted {
+        dsn: String,
+        run_id: u64,
         result: Arc<QueryResult>,
         generation: u64,
         target_page: Option<usize>,
     },
     QueryFailed {
+        dsn: String,
+        run_id: u64,
         error: DbOperationError,
         generation: u64,
         source: QuerySource,
     },
     ExecuteWriteSucceeded {
+        dsn: String,
+        run_id: u64,
         affected_rows: usize,
     },
-    ExecuteWriteFailed(DbOperationError),
+    ExecuteWriteFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+    },
 
     // Result pane
     ResultNextPage,
@@ -529,27 +577,37 @@ pub enum Action {
         crate::domain::ConnectionId,
         Vec<crate::domain::query_history::QueryHistoryEntry>,
     ),
-    QueryHistoryLoadFailed(QueryHistoryError),
+    QueryHistoryLoadFailed(crate::domain::ConnectionId, QueryHistoryError),
     QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
     // CSV Export
     RequestCsvExport,
     CsvExportRowsCounted {
+        dsn: String,
+        run_id: u64,
         row_count: Option<usize>,
         export_query: String,
         file_name: String,
     },
     ExecuteCsvExport {
+        dsn: String,
+        run_id: u64,
         export_query: String,
         file_name: String,
         row_count: Option<usize>,
     },
     CsvExportSucceeded {
+        dsn: String,
+        run_id: u64,
         path: String,
         row_count: Option<usize>,
     },
-    CsvExportFailed(DbOperationError),
+    CsvExportFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+    },
 
     // JSONB Detail View
     JsonbYankAll,

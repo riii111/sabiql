@@ -294,7 +294,7 @@ fn header_status_uses_success_warning_and_error_colors() {
 
     let now = test_instant();
     let mut connected = create_test_state();
-    connected
+    let _ = connected
         .session
         .begin_connecting("postgres://localhost/test");
     connected
@@ -308,7 +308,7 @@ fn header_status_uses_success_warning_and_error_colors() {
     );
 
     let mut loading = create_test_state();
-    loading
+    let _ = loading
         .session
         .begin_connecting("postgres://localhost/test");
     let loading_buffer = render_and_get_buffer_at(&mut terminal, &mut loading, now);

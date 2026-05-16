@@ -53,17 +53,24 @@ pub async fn run(
                 (prep, missing)
             };
 
-            let prefetch_actions: Vec<Action> = missing
-                .into_iter()
-                .filter_map(|qualified_name| {
-                    qualified_name.split_once('.').map(|(schema, table)| {
-                        Action::PrefetchTableDetail {
-                            schema: schema.to_string(),
-                            table: table.to_string(),
-                        }
-                    })
+            let prefetch_actions: Vec<Action> = state
+                .sql_modal
+                .active_prefetch_run_id()
+                .map(|run_id| {
+                    missing
+                        .into_iter()
+                        .filter_map(|qualified_name| {
+                            qualified_name.split_once('.').map(|(schema, table)| {
+                                Action::PrefetchTableDetail {
+                                    run_id,
+                                    schema: schema.to_string(),
+                                    table: table.to_string(),
+                                }
+                            })
+                        })
+                        .collect()
                 })
-                .collect();
+                .unwrap_or_default();
 
             for action in prefetch_actions {
                 action_tx.try_send(action).ok();

@@ -530,8 +530,8 @@ mod tests {
 
         fn prepare_state_for_reload() -> AppState {
             let mut state = make_state();
-            state.session.begin_connecting("postgres://localhost/test");
-            state.sql_modal.begin_prefetch();
+            let _ = state.session.begin_connecting("postgres://localhost/test");
+            let _ = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
                 .prefetch_queue
@@ -681,11 +681,18 @@ mod tests {
                     .session
                     .select_table("public", "users", &mut state.query.pagination);
                 let generation = state.session.selection_generation();
+                state.session.dsn = Some("dsn://test".to_string());
+                let run_id = state.session.begin_table_detail_run();
                 state.ui.inspector_scroll_offset = 42;
 
                 reduce_metadata(
                     &mut state,
-                    &Action::TableDetailLoaded(Box::new(make_table_detail()), generation),
+                    &Action::TableDetailLoaded {
+                        dsn: "dsn://test".to_string(),
+                        run_id,
+                        detail: Box::new(make_table_detail()),
+                        generation,
+                    },
                     Instant::now(),
                 );
 

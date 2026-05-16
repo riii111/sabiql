@@ -560,11 +560,16 @@ mod tests {
         #[test]
         fn sets_plan_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://test".to_string());
+            let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 1,
+                    query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan".to_string(),
                     is_analyze: false,
                     execution_time_ms: 42,
@@ -577,6 +582,37 @@ mod tests {
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(!state.query.is_running());
         }
+
+        #[test]
+        fn mismatched_dsn_does_not_replace_plan() {
+            let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://current".to_string());
+            let _ = state.query.begin_running(Instant::now());
+            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state
+                .explain
+                .set_plan("Original".to_string(), false, 10, "SELECT old");
+
+            reduce_explain(
+                &mut state,
+                &Action::ExplainCompleted {
+                    dsn: "dsn://stale".to_string(),
+                    run_id: 1,
+                    query: "SELECT stale".to_string(),
+                    plan_text: "Stale".to_string(),
+                    is_analyze: false,
+                    execution_time_ms: 42,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.plan_text.as_deref(), Some("Original"));
+            assert_eq!(
+                state.explain.plan_query_snippet.as_deref(),
+                Some("SELECT old")
+            );
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
     }
 
     mod explain_failed {
@@ -586,11 +622,17 @@ mod tests {
         #[test]
         fn sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://test".to_string());
+            let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
             reduce_explain(
                 &mut state,
-                &Action::ExplainFailed(DbOperationError::QueryFailed("syntax error".to_string())),
+                &Action::ExplainFailed {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 1,
+                    error: DbOperationError::QueryFailed("syntax error".to_string()),
+                },
                 Instant::now(),
             );
 
@@ -601,6 +643,31 @@ mod tests {
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(!state.query.is_running());
+        }
+
+        #[test]
+        fn mismatched_dsn_does_not_replace_plan_with_error() {
+            let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://current".to_string());
+            let _ = state.query.begin_running(Instant::now());
+            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state
+                .explain
+                .set_plan("Original".to_string(), false, 10, "SELECT old");
+
+            reduce_explain(
+                &mut state,
+                &Action::ExplainFailed {
+                    dsn: "dsn://stale".to_string(),
+                    run_id: 1,
+                    error: DbOperationError::QueryFailed("syntax error".to_string()),
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.plan_text.as_deref(), Some("Original"));
+            assert_eq!(state.explain.error, None);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
         }
     }
 
@@ -619,6 +686,9 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 1,
+                    query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
                     is_analyze: false,
                     execution_time_ms: 42,
@@ -634,6 +704,9 @@ mod tests {
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 2,
+                    query: "SELECT 2".to_string(),
                     plan_text: "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
                     is_analyze: false,
                     execution_time_ms: 5,

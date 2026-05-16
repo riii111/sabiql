@@ -218,8 +218,11 @@ pub(super) fn reduce_connection_setup(
             state.session.active_connection_id = Some(id.clone());
             state.session.active_connection_name = Some(name.clone());
             state.session.read_only = false;
-            state.session.begin_connecting(dsn);
-            DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
+            let run_id = state.session.begin_connecting(dsn);
+            DispatchResult::handled_with(vec![Effect::FetchMetadata {
+                dsn: dsn.clone(),
+                run_id,
+            }])
         }
         Action::ConnectionSaveFailed(e) => {
             if !state.session.connection_state().is_connected() {

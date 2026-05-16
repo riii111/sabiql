@@ -1,7 +1,6 @@
 use std::time::Instant;
 
 use crate::model::app_state::AppState;
-use crate::model::shared::text_input::TextInputLike;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
@@ -14,22 +13,30 @@ pub(super) fn reduce_result(
 ) -> DispatchResult {
     match action {
         Action::ExplainCompleted {
+            dsn,
+            run_id,
+            query,
             plan_text,
             is_analyze,
             execution_time_ms,
         } => {
-            let query = state.sql_modal.editor.content().to_string();
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+                return DispatchResult::handled();
+            }
             finish_explain_success(
                 state,
                 plan_text.clone(),
                 *is_analyze,
                 *execution_time_ms,
-                &query,
+                query,
             );
             DispatchResult::handled()
         }
 
-        Action::ExplainFailed(error) => {
+        Action::ExplainFailed { dsn, run_id, error } => {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+                return DispatchResult::handled();
+            }
             finish_explain_error(state, error.user_message());
             DispatchResult::handled()
         }

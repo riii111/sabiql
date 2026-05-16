@@ -88,7 +88,7 @@ mod tests {
         fn query_running_returns_spinner_interval() {
             let mut state = create_test_state();
             let now = Instant::now();
-            state.query.begin_running(now);
+            let _ = state.query.begin_running(now);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -178,7 +178,7 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
-            state.query.begin_running(now);
+            let _ = state.query.begin_running(now);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -191,7 +191,7 @@ mod tests {
         fn earlier_message_timeout_takes_priority() {
             let mut state = create_test_state();
             let now = Instant::now();
-            state.query.begin_running(now);
+            let _ = state.query.begin_running(now);
             // Message expires before spinner would update
             let expires_at = now + Duration::from_millis(50);
             state.messages.expires_at = Some(expires_at);
@@ -206,7 +206,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
 
-            state.query.begin_running(now);
+            let _ = state.query.begin_running(now);
             state.messages.expires_at = Some(now + Duration::from_secs(2));
             state
                 .query
@@ -246,7 +246,7 @@ mod tests {
         #[test]
         fn running_query_returns_true() {
             let mut state = create_test_state();
-            state.query.begin_running(Instant::now());
+            let _ = state.query.begin_running(Instant::now());
 
             assert!(has_active_spinner(&state));
         }

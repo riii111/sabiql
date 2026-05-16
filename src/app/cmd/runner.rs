@@ -351,7 +351,7 @@ impl EffectRunner {
             e @ (Effect::FetchMetadata { .. }
             | Effect::FetchTableDetail { .. }
             | Effect::PrefetchTableDetail { .. }
-            | Effect::ProcessPrefetchQueue
+            | Effect::ProcessPrefetchQueue { .. }
             | Effect::DelayedProcessPrefetchQueue { .. }
             | Effect::CacheInvalidate { .. }) => {
                 cmd_browse::metadata::run(
@@ -623,8 +623,8 @@ mod tests {
             let result = runner
                 .run(
                     vec![Effect::DispatchActions(vec![
-                        Action::ProcessPrefetchQueue,
-                        Action::ProcessPrefetchQueue,
+                        Action::ProcessPrefetchQueue { run_id: 1 },
+                        Action::ProcessPrefetchQueue { run_id: 1 },
                     ])],
                     &mut renderer,
                     state,
@@ -635,8 +635,14 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.len(), 2);
-            assert!(matches!(result[0], Action::ProcessPrefetchQueue));
-            assert!(matches!(result[1], Action::ProcessPrefetchQueue));
+            assert!(matches!(
+                result[0],
+                Action::ProcessPrefetchQueue { run_id: 1 }
+            ));
+            assert!(matches!(
+                result[1],
+                Action::ProcessPrefetchQueue { run_id: 1 }
+            ));
         }
     }
 }

@@ -30,6 +30,7 @@ pub enum Effect {
     },
     FetchMetadata {
         dsn: String,
+        run_id: u64,
     },
     // Updates state.table_detail on completion
     FetchTableDetail {
@@ -37,15 +38,20 @@ pub enum Effect {
         schema: String,
         table: String,
         generation: u64,
+        run_id: u64,
     },
     // Only caches in completion_engine, does NOT update state.table_detail
     PrefetchTableDetail {
         dsn: String,
+        run_id: u64,
         schema: String,
         table: String,
     },
-    ProcessPrefetchQueue,
+    ProcessPrefetchQueue {
+        run_id: u64,
+    },
     DelayedProcessPrefetchQueue {
+        run_id: u64,
         delay_secs: u64,
     },
 
@@ -54,6 +60,7 @@ pub enum Effect {
         schema: String,
         table: String,
         generation: u64,
+        run_id: u64,
         limit: usize,
         offset: usize,
         target_page: usize,
@@ -61,22 +68,27 @@ pub enum Effect {
     },
     ExecuteAdhoc {
         dsn: String,
+        run_id: u64,
         query: String,
         read_only: bool,
     },
     ExecuteExplain {
         dsn: String,
+        run_id: u64,
         query: String,
+        source_query: String,
         is_analyze: bool,
         read_only: bool,
     },
     ExecuteWrite {
         dsn: String,
+        run_id: u64,
         query: String,
         read_only: bool,
     },
     CountRowsForExport {
         dsn: String,
+        run_id: u64,
         count_query: String,
         export_query: String,
         file_name: String,
@@ -84,6 +96,7 @@ pub enum Effect {
     },
     ExportCsv {
         dsn: String,
+        run_id: u64,
         query: String,
         file_name: String,
         row_count: Option<usize>,
@@ -121,8 +134,8 @@ pub enum Effect {
 
     CopyToClipboard {
         content: String,
-        on_success: Option<Action>,
-        on_failure: Option<Action>,
+        on_success: Option<Box<Action>>,
+        on_failure: Option<Box<Action>>,
     },
     OpenFolder {
         path: std::path::PathBuf,

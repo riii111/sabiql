@@ -25,8 +25,8 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::db_capabilities::DbCapabilities;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
-    ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, PgServiceEntryReader,
-    ServiceFileError, SettingsStore,
+    ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, DdlGenerator,
+    PgServiceEntryReader, ServiceFileError, SettingsStore, SqlDialect,
 };
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
@@ -117,9 +117,11 @@ async fn main() -> Result<()> {
         .action_tx(action_tx.clone())
         .build();
 
+    let ddl_generator: Arc<dyn DdlGenerator> = adapter.clone();
+    let sql_dialect: Arc<dyn SqlDialect> = adapter.clone();
     let services = AppServices {
-        ddl_generator: Arc::clone(&adapter) as _,
-        sql_dialect: Arc::clone(&adapter) as _,
+        ddl_generator,
+        sql_dialect,
         db_capabilities,
     };
 

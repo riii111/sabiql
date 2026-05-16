@@ -99,7 +99,7 @@ pub(crate) async fn run(
                         }
                     }
                     Err(e) => {
-                        tx.send(Action::MetadataFailed(e)).await.ok();
+                        tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
                     }
                 }
             });

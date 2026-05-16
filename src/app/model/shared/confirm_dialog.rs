@@ -9,6 +9,8 @@ pub enum ConfirmIntent {
         blocked: bool,
     },
     CsvExport {
+        dsn: String,
+        run_id: u64,
         export_query: String,
         file_name: String,
         row_count: Option<usize>,

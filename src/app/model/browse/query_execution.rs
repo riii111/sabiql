@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use crate::domain::{QueryResult, QuerySource};
 use crate::model::browse::result_history::ResultHistory;
+use crate::model::shared::async_run::AsyncRun;
 
 pub const PREVIEW_PAGE_SIZE: usize = 500;
 
@@ -86,19 +87,27 @@ pub struct QueryExecution {
     pub pagination: PaginationState,
     pending_delete_refresh_target: Option<DeleteRefreshTarget>,
     post_delete_row_selection: PostDeleteRowSelection,
+    run: AsyncRun,
 }
 
 impl QueryExecution {
     // ── Status / timing ────────────────────────────────────────────
 
-    pub fn begin_running(&mut self, now: Instant) {
+    #[must_use]
+    pub fn begin_running(&mut self, now: Instant) -> u64 {
         self.status = QueryStatus::Running;
         self.start_time = Some(now);
+        self.run.begin()
     }
 
     pub fn mark_idle(&mut self) {
         self.status = QueryStatus::Idle;
         self.start_time = None;
+        self.run.clear_active();
+    }
+
+    pub fn is_current_run(&self, run_id: u64) -> bool {
+        self.run.is_current(run_id)
     }
 
     pub fn status(&self) -> QueryStatus {

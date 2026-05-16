@@ -48,9 +48,10 @@ pub(super) fn reduce_confirm_dialog(
                     blocked: false,
                 }) => {
                     if let Some(dsn) = &state.session.dsn {
-                        state.query.begin_running(now);
+                        let run_id = state.query.begin_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecuteWrite {
                             dsn: dsn.clone(),
+                            run_id,
                             query: sql,
                             read_only: state.session.read_only,
                         }])
@@ -68,13 +69,18 @@ pub(super) fn reduce_confirm_dialog(
                     DispatchResult::handled()
                 }
                 Some(ConfirmIntent::CsvExport {
+                    dsn,
+                    run_id,
                     export_query,
                     file_name,
                     row_count,
                 }) => {
-                    if let Some(dsn) = &state.session.dsn {
+                    if state.session.dsn.as_ref() == Some(&dsn)
+                        && state.query.is_current_run(run_id)
+                    {
                         DispatchResult::handled_with(vec![Effect::ExportCsv {
-                            dsn: dsn.clone(),
+                            dsn,
+                            run_id,
                             query: export_query,
                             file_name,
                             row_count,

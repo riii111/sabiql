@@ -35,6 +35,13 @@ mod tests {
         state
     }
 
+    fn set_active_run_id(state: &mut AppState, run_id: u64) {
+        for _ in 0..run_id {
+            state.er_preparation.begin_smart_refresh();
+        }
+        state.er_preparation.mark_idle();
+    }
+
     mod er_open_diagram {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
@@ -61,7 +68,7 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert_eq!(state.er_preparation.run_id, 1);
+            assert_eq!(state.er_preparation.run_id(), 1);
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
@@ -73,13 +80,13 @@ mod tests {
         fn increments_run_id_on_each_call() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(5)));
-            state.er_preparation.run_id = 3;
+            set_active_run_id(&mut state, 3);
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert_eq!(state.er_preparation.run_id, 4);
+            assert_eq!(state.er_preparation.run_id(), 4);
             assert!(matches!(
                 &effects[0],
                 Effect::SmartErRefresh { run_id: 4, .. }
@@ -89,7 +96,7 @@ mod tests {
         #[test]
         fn prefetch_started_true_still_resets_and_emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_prefetch();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
@@ -142,7 +149,7 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_prefetch();
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
                 .into_effects()
@@ -216,11 +223,12 @@ mod tests {
         #[test]
         fn no_changes_dispatches_generate_from_cache() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(2),
                 stale_tables: vec![],
@@ -244,11 +252,12 @@ mod tests {
         #[test]
         fn stale_tables_trigger_evict_and_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(2),
                 stale_tables: vec!["public.users".to_string()],
@@ -277,11 +286,12 @@ mod tests {
         #[test]
         fn added_tables_trigger_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(3),
                 stale_tables: vec![],
@@ -305,11 +315,12 @@ mod tests {
         #[test]
         fn removed_tables_trigger_evict() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(1),
                 stale_tables: vec![],
@@ -333,11 +344,12 @@ mod tests {
         #[test]
         fn missing_in_cache_triggers_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(2),
                 stale_tables: vec![],
@@ -361,10 +373,11 @@ mod tests {
         #[test]
         fn mismatched_run_id_returns_empty_for_completed() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 5;
+            set_active_run_id(&mut state, 5);
             state.er_preparation.status = ErStatus::Waiting;
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 3,
                 new_metadata: make_metadata(0),
                 stale_tables: vec![],
@@ -384,7 +397,7 @@ mod tests {
         #[test]
         fn updates_metadata_and_signatures() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(0)));
 
@@ -392,6 +405,7 @@ mod tests {
                 std::iter::once(("public.users".to_string(), "abc123".to_string())).collect();
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
                 new_metadata: make_metadata(5),
                 stale_tables: vec![],
@@ -437,7 +451,7 @@ mod tests {
         #[test]
         fn falls_back_to_full_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(5)));
             state
@@ -448,6 +462,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -480,7 +495,7 @@ mod tests {
         #[test]
         fn falls_back_to_scoped_prefetch_when_targets_set() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(10)));
             state.er_preparation.target_tables = vec!["public.t0".to_string()];
@@ -488,6 +503,7 @@ mod tests {
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -519,13 +535,14 @@ mod tests {
         #[test]
         fn mismatched_run_id_returns_empty_for_failed() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 5;
+            set_active_run_id(&mut state, 5);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(5)));
 
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 3,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -538,14 +555,40 @@ mod tests {
         }
 
         #[test]
+        fn mismatched_dsn_returns_empty_for_failed() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            set_active_run_id(&mut state, 1);
+            state.er_preparation.status = ErStatus::Waiting;
+            state.session.set_metadata(Some(make_metadata(5)));
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://other/test".to_string(),
+                    run_id: 1,
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                    new_metadata: None,
+                }),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(state.session.metadata().unwrap().table_summaries.len(), 5);
+            assert!(state.messages.last_error.is_none());
+        }
+
+        #[test]
         fn no_metadata_sets_idle_and_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
 
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
@@ -562,13 +605,14 @@ mod tests {
         #[test]
         fn new_metadata_applied_before_fallback() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.run_id = 1;
+            set_active_run_id(&mut state, 1);
             state.er_preparation.status = ErStatus::Waiting;
             state.session.set_metadata(Some(make_metadata(3)));
 
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     error: DbOperationError::QueryFailed("sig fetch failed".to_string()),
                     new_metadata: Some(make_metadata(20)),

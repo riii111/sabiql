@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
 use crate::domain::CommandTag;
+use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
@@ -80,6 +81,7 @@ pub struct SqlModalContext {
     pub prefetching_tables: HashSet<String>,
     pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     prefetch_started: bool,
+    prefetch_run: AsyncRun,
     active_tab: SqlModalTab,
 }
 
@@ -91,21 +93,34 @@ impl SqlModalContext {
         self.prefetch_queue.clear();
         self.prefetching_tables.clear();
         self.failed_prefetch_tables.clear();
+        self.prefetch_run.clear_active();
     }
 
     // Preserves `prefetching_tables` so in-flight requests drain naturally.
-    pub fn begin_prefetch(&mut self) {
+    #[must_use]
+    pub fn begin_prefetch(&mut self) -> u64 {
         self.prefetch_started = true;
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
+        self.prefetch_run.begin()
     }
 
     pub fn invalidate_prefetch(&mut self) {
         self.prefetch_started = false;
+        self.prefetching_tables.clear();
+        self.prefetch_run.clear_active();
     }
 
     pub fn is_prefetch_started(&self) -> bool {
         self.prefetch_started
+    }
+
+    pub fn active_prefetch_run_id(&self) -> Option<u64> {
+        self.prefetch_run.active_id()
+    }
+
+    pub fn is_current_prefetch_run(&self, run_id: u64) -> bool {
+        self.prefetch_run.is_current(run_id)
     }
 
     // ── Adhoc status ────────────────────────────────────────────────
@@ -414,7 +429,7 @@ mod tests {
         #[test]
         fn reset_clears_all_state() {
             let mut ctx = SqlModalContext::default();
-            ctx.begin_prefetch();
+            let _ = ctx.begin_prefetch();
             ctx.prefetch_queue.push_back("public.users".to_string());
             ctx.prefetching_tables.insert("public.posts".to_string());
             ctx.failed_prefetch_tables.insert(

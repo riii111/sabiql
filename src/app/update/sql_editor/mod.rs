@@ -406,11 +406,14 @@ mod tests {
             );
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
-            assert!(
-                effects.is_handled_and(|e| e
-                    .iter()
-                    .any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
-            );
+            assert!(state.query.is_running());
+            let effects = effects
+                .into_effects()
+                .expect("reducer should handle action");
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExecuteAdhoc { run_id: 1, .. }]
+            ));
         }
 
         #[test]
@@ -723,11 +726,11 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ExecuteAdhoc { .. }))
-            );
+            assert!(state.query.is_running());
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExecuteAdhoc { run_id: 1, .. }]
+            ));
         }
 
         #[test]

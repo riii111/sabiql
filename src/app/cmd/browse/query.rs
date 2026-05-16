@@ -106,6 +106,7 @@ pub async fn run(
             schema,
             table,
             generation,
+            run_id,
             limit,
             offset,
             target_page,
@@ -121,6 +122,8 @@ pub async fn run(
                 {
                     Ok(result) => {
                         tx.send(Action::QueryCompleted {
+                            dsn,
+                            run_id,
                             result: Arc::new(result),
                             generation,
                             target_page: Some(target_page),
@@ -130,6 +133,8 @@ pub async fn run(
                     }
                     Err(e) => {
                         tx.send(Action::QueryFailed {
+                            dsn,
+                            run_id,
                             error: e,
                             generation,
                             source: QuerySource::Preview,
@@ -144,7 +149,9 @@ pub async fn run(
 
         Effect::ExecuteExplain {
             dsn,
+            run_id,
             query,
+            source_query,
             is_analyze,
             read_only,
         } => {
@@ -162,6 +169,9 @@ pub async fn run(
                             .collect::<Vec<_>>()
                             .join("\n");
                         tx.send(Action::ExplainCompleted {
+                            dsn,
+                            run_id,
+                            query: source_query,
                             plan_text,
                             is_analyze,
                             execution_time_ms: result.execution_time_ms,
@@ -170,7 +180,13 @@ pub async fn run(
                         .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::ExplainFailed(e)).await.ok();
+                        tx.send(Action::ExplainFailed {
+                            dsn,
+                            run_id,
+                            error: e,
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -179,6 +195,7 @@ pub async fn run(
 
         Effect::ExecuteAdhoc {
             dsn,
+            run_id,
             query,
             read_only,
         } => {
@@ -209,6 +226,8 @@ pub async fn run(
                             );
                         }
                         tx.send(Action::QueryCompleted {
+                            dsn,
+                            run_id,
                             result: Arc::new(result),
                             generation: 0,
                             target_page: None,
@@ -229,6 +248,8 @@ pub async fn run(
                             );
                         }
                         tx.send(Action::QueryFailed {
+                            dsn,
+                            run_id,
                             error: e,
                             generation: 0,
                             source: QuerySource::Adhoc,
@@ -243,6 +264,7 @@ pub async fn run(
 
         Effect::ExecuteWrite {
             dsn,
+            run_id,
             query,
             read_only,
         } => {
@@ -269,6 +291,8 @@ pub async fn run(
                             );
                         }
                         tx.send(Action::ExecuteWriteSucceeded {
+                            dsn,
+                            run_id,
                             affected_rows: result.affected_rows,
                         })
                         .await
@@ -286,7 +310,13 @@ pub async fn run(
                                 None,
                             );
                         }
-                        tx.send(Action::ExecuteWriteFailed(e)).await.ok();
+                        tx.send(Action::ExecuteWriteFailed {
+                            dsn,
+                            run_id,
+                            error: e,
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -295,6 +325,7 @@ pub async fn run(
 
         Effect::CountRowsForExport {
             dsn,
+            run_id,
             count_query,
             export_query,
             file_name,
@@ -309,6 +340,8 @@ pub async fn run(
                     .await
                     .ok();
                 tx.send(Action::CsvExportRowsCounted {
+                    dsn,
+                    run_id,
                     row_count,
                     export_query,
                     file_name,
@@ -321,6 +354,7 @@ pub async fn run(
 
         Effect::ExportCsv {
             dsn,
+            run_id,
             query,
             file_name,
             row_count,
@@ -334,6 +368,8 @@ pub async fn run(
                 match executor.export_to_csv(&dsn, &query, &path, read_only).await {
                     Ok(_) => {
                         tx.send(Action::CsvExportSucceeded {
+                            dsn,
+                            run_id,
                             path: path.display().to_string(),
                             row_count,
                         })
@@ -341,7 +377,13 @@ pub async fn run(
                         .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::CsvExportFailed(e)).await.ok();
+                        tx.send(Action::CsvExportFailed {
+                            dsn,
+                            run_id,
+                            error: e,
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -466,6 +508,7 @@ mod tests {
                         schema: "public".to_string(),
                         table: "users".to_string(),
                         generation: 1,
+                        run_id: 8,
                         limit: 100,
                         offset: 0,
                         target_page: 0,
@@ -520,6 +563,7 @@ mod tests {
                         schema: "public".to_string(),
                         table: "users".to_string(),
                         generation: 1,
+                        run_id: 8,
                         limit: 100,
                         offset: 0,
                         target_page: 0,

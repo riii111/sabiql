@@ -1,3 +1,4 @@
+pub mod async_run;
 pub mod confirm_dialog;
 pub mod db_capabilities;
 pub mod flash_timer;

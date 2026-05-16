@@ -38,8 +38,8 @@ pub fn reduce(
                     });
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: value,
-                        on_success: Some(Action::CellCopied),
-                        on_failure: Some(clipboard_unavailable()),
+                        on_success: Some(Box::new(Action::CellCopied)),
+                        on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
                     state
@@ -63,8 +63,8 @@ pub fn reduce(
                 state.flash_timers.set(FlashId::Ddl, now);
                 return DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: ddl,
-                    on_success: Some(Action::CellCopied),
-                    on_failure: Some(clipboard_unavailable()),
+                    on_success: Some(Box::new(Action::CellCopied)),
+                    on_failure: Some(Box::new(clipboard_unavailable())),
                 }]);
             }
             DispatchResult::handled()
@@ -93,8 +93,8 @@ pub fn reduce(
                     });
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: tsv,
-                        on_success: Some(Action::CellCopied),
-                        on_failure: Some(clipboard_unavailable()),
+                        on_success: Some(Box::new(Action::CellCopied)),
+                        on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
                     state

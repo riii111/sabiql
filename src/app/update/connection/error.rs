@@ -52,7 +52,7 @@ pub(super) fn reduce_connection_error(
             if let Some(content) = state.connection_error.masked_details() {
                 DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: content.to_string(),
-                    on_success: Some(Action::ConnectionErrorCopied),
+                    on_success: Some(Box::new(Action::ConnectionErrorCopied)),
                     on_failure: None,
                 }])
             } else {
@@ -75,10 +75,10 @@ pub(super) fn reduce_connection_error(
         Action::RetryServiceConnection => {
             if let Some(dsn) = state.session.dsn.clone() {
                 state.connection_error.clear();
-                state.session.begin_connecting(&dsn);
+                let run_id = state.session.begin_connecting(&dsn);
                 state.session.read_only = false;
                 state.modal.set_mode(InputMode::Normal);
-                DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn }])
+                DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
             } else {
                 DispatchResult::handled()
             }
