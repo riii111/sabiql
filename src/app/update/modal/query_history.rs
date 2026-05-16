@@ -13,6 +13,9 @@ pub(super) fn reduce_query_history_picker(
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::QueryHistoryPicker) => {
+            if state.modal.active_mode() == InputMode::QueryHistoryPicker {
+                return DispatchResult::handled();
+            }
             if state.session.active_connection_id.is_none() {
                 return DispatchResult::handled();
             }

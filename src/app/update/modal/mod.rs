@@ -49,6 +49,32 @@ mod tests {
         AppState::new("test".to_string())
     }
 
+    mod base {
+        use super::*;
+
+        #[test]
+        fn escape_closes_connection_selector() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::ConnectionSelector);
+
+            let effects = reduce_modal(&mut state, &Action::Escape, Instant::now()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn escape_passes_for_modal_with_specific_close_action() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::SqlModal);
+
+            let result = reduce_modal(&mut state, &Action::Escape, Instant::now());
+
+            assert!(result.is_pass());
+            assert_eq!(state.input_mode(), InputMode::SqlModal);
+        }
+    }
+
     mod help {
         use super::*;
 
@@ -789,6 +815,23 @@ mod tests {
                 assert_eq!(state.modal.return_destination(), InputMode::Normal);
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::LoadQueryHistory { .. }));
+            }
+
+            #[test]
+            fn open_while_already_open_is_noop() {
+                let mut state = connected_state();
+                state.modal.push_mode(InputMode::QueryHistoryPicker);
+
+                let effects = reduce_modal(
+                    &mut state,
+                    &Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
+                assert_eq!(state.modal.return_destination(), InputMode::Normal);
+                assert!(effects.is_empty());
             }
 
             #[test]

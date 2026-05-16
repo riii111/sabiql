@@ -37,11 +37,11 @@ pub(super) fn reduce_smart_refresh_failed(
 
             state.er_preparation.total_tables = total_table_count;
             state.er_preparation.last_signatures.clear();
-            state.set_error(format!(
-                "Smart refresh failed ({error}), falling back to full refresh"
-            ));
 
             if is_scoped {
+                state.set_error(format!(
+                    "Smart refresh failed ({error}), falling back to scoped prefetch"
+                ));
                 let scoped_tables = state.er_preparation.target_tables.clone();
                 DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
@@ -50,6 +50,9 @@ pub(super) fn reduce_smart_refresh_failed(
                     }]),
                 ])
             } else {
+                state.set_error(format!(
+                    "Smart refresh failed ({error}), falling back to full refresh"
+                ));
                 DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchAll]),

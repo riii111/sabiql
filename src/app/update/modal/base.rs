@@ -18,11 +18,17 @@ pub(super) fn reduce_base_lifecycle(
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::TablePicker)
-        | Action::CloseModal(ModalKind::CommandPalette)
-        | Action::Escape => {
+        | Action::CloseModal(ModalKind::CommandPalette) => {
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
+        Action::Escape => match state.modal.active_mode() {
+            InputMode::Normal | InputMode::ConnectionSelector => {
+                state.modal.set_mode(InputMode::Normal);
+                DispatchResult::handled()
+            }
+            _ => DispatchResult::pass(),
+        },
         Action::OpenModal(ModalKind::CommandPalette) => {
             state.modal.set_mode(InputMode::CommandPalette);
             // Command palette currently reuses the generic picker selection state.

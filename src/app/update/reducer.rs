@@ -2677,6 +2677,39 @@ mod tests {
                 assert_eq!(table, "users");
             }
         }
+
+        #[test]
+        fn prev_page_after_confirm_flows_through_result_to_query() {
+            let (mut state, now) = state_after_confirm_and_complete();
+            state.query.pagination.current_page = 1;
+            state.query.pagination.reached_end = true;
+
+            let effects = reduce(
+                &mut state,
+                Action::ResultPrevPage,
+                now,
+                &AppServices::stub(),
+            );
+
+            let preview_effect = effects
+                .iter()
+                .find(|e| matches!(e, Effect::ExecutePreview { .. }));
+            assert!(preview_effect.is_some());
+            if let Some(Effect::ExecutePreview {
+                offset,
+                target_page,
+                schema,
+                table,
+                ..
+            }) = preview_effect
+            {
+                assert_eq!(*offset, 0);
+                assert_eq!(*target_page, 0);
+                assert_eq!(schema, "public");
+                assert_eq!(table, "users");
+            }
+            assert!(!state.query.pagination.reached_end);
+        }
     }
 
     mod command_palette {

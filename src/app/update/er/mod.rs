@@ -464,6 +464,13 @@ mod tests {
             assert!(state.er_preparation.last_signatures.is_empty());
             assert!(state.messages.last_error.is_some());
             assert!(
+                state
+                    .messages
+                    .last_error
+                    .as_deref()
+                    .is_some_and(|message| message.contains("falling back to full refresh"))
+            );
+            assert!(
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
@@ -505,6 +512,13 @@ mod tests {
                     if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
             )));
             assert!(state.er_preparation.last_signatures.is_empty());
+            assert!(
+                state
+                    .messages
+                    .last_error
+                    .as_deref()
+                    .is_some_and(|message| message.contains("falling back to scoped prefetch"))
+            );
         }
 
         #[test]
