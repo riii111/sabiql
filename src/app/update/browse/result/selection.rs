@@ -21,7 +21,7 @@ fn ensure_cell_visible(state: &mut AppState) {
     }
 }
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::ResultActivateCell => {
             let rows = result_row_count(state);
@@ -151,7 +151,7 @@ mod tests {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.result_interaction.activate_cell(0, 0);
 
-            reduce(&mut state, &Action::StageRowForDelete, Instant::now());
+            reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now());
 
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
@@ -162,7 +162,7 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
-            reduce(&mut state, &Action::StageRowForDelete, Instant::now());
+            reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now());
 
             assert_eq!(state.result_interaction.staged_delete_rows().len(), 1);
         }
@@ -171,7 +171,7 @@ mod tests {
         fn staging_requires_active_cell() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
 
-            reduce(&mut state, &Action::StageRowForDelete, Instant::now());
+            reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now());
 
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -186,7 +186,7 @@ mod tests {
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(1);
 
-            reduce(&mut state, &Action::UnstageLastStagedRow, Instant::now());
+            reduce_selection(&mut state, &Action::UnstageLastStagedRow, Instant::now());
 
             assert_eq!(state.result_interaction.staged_delete_rows().len(), 1);
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
@@ -202,7 +202,7 @@ mod tests {
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(1);
 
-            reduce(&mut state, &Action::ClearStagedDeletes, Instant::now());
+            reduce_selection(&mut state, &Action::ClearStagedDeletes, Instant::now());
 
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -213,7 +213,7 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
-            reduce(&mut state, &Action::ResultExitToScroll, Instant::now());
+            reduce_selection(&mut state, &Action::ResultExitToScroll, Instant::now());
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
@@ -229,7 +229,7 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.session.read_only = true;
 
-            let effects = reduce(&mut state, &Action::StageRowForDelete, Instant::now())
+            let effects = reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -248,7 +248,7 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
-            let result = reduce(&mut state, &Action::ResultNextPage, Instant::now());
+            let result = reduce_selection(&mut state, &Action::ResultNextPage, Instant::now());
 
             assert!(result.is_pass());
             assert_eq!(state.result_interaction.selection().row(), Some(0));
@@ -261,7 +261,7 @@ mod tests {
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
 
-            let result = reduce(&mut state, &Action::ResultPrevPage, Instant::now());
+            let result = reduce_selection(&mut state, &Action::ResultPrevPage, Instant::now());
 
             assert!(result.is_pass());
             assert_eq!(state.result_interaction.selection().row(), Some(0));

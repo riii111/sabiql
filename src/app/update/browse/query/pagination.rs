@@ -10,7 +10,7 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(
+pub fn reduce_pagination(
     state: &mut AppState,
     action: &Action,
     now: Instant,
@@ -237,7 +237,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::model::browse::query_execution::PaginationState;
-    use crate::update::browse::query::reduce_query;
+    use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
 
     fn begin_query_run(state: &mut AppState) -> u64 {
@@ -314,7 +314,7 @@ mod tests {
             };
             let now = Instant::now();
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::ResultNextPage,
                 now,
@@ -343,7 +343,7 @@ mod tests {
             state.query.pagination.reached_end = true;
             let now = Instant::now();
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::ResultNextPage,
                 now,
@@ -360,7 +360,7 @@ mod tests {
             state.query.set_current_result(adhoc_result());
             let now = Instant::now();
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::ResultNextPage,
                 now,
@@ -380,7 +380,7 @@ mod tests {
             let _ = state.query.begin_running(Instant::now());
             let now = Instant::now();
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::ResultNextPage,
                 now,
@@ -401,7 +401,7 @@ mod tests {
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
-            reduce_query(
+            dispatch_query(
                 &mut state,
                 &Action::ResultNextPage,
                 Instant::now(),
@@ -429,7 +429,7 @@ mod tests {
             state.result_interaction.activate_cell(3, 1);
             state.result_interaction.stage_row(3);
 
-            reduce_query(
+            dispatch_query(
                 &mut state,
                 &Action::ResultNextPage,
                 Instant::now(),
@@ -460,7 +460,7 @@ mod tests {
             };
             let now = Instant::now();
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::ResultPrevPage,
                 now,
@@ -491,7 +491,7 @@ mod tests {
             state.query.pagination.current_page = 0;
             let now = Instant::now();
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::ResultPrevPage,
                 now,
@@ -512,7 +512,7 @@ mod tests {
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
-            reduce_query(
+            dispatch_query(
                 &mut state,
                 &Action::ResultPrevPage,
                 Instant::now(),
@@ -544,7 +544,7 @@ mod tests {
             state.query.pagination.table = "users".to_string();
             state.query.pagination.total_rows_estimate = Some(100);
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::RequestCsvExport,
                 Instant::now(),
@@ -571,7 +571,7 @@ mod tests {
             let mut state = create_test_state();
             state.query.set_current_result(adhoc_result());
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::RequestCsvExport,
                 Instant::now(),
@@ -598,7 +598,7 @@ mod tests {
             let mut state = create_test_state();
             state.query.clear_current_result();
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::RequestCsvExport,
                 Instant::now(),
@@ -615,7 +615,7 @@ mod tests {
             let action = csv_rows_counted_action(&mut state, Some(500), "SELECT 1", "test");
 
             let effects =
-                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
@@ -627,7 +627,7 @@ mod tests {
             let action = csv_rows_counted_action(&mut state, Some(200_000), "SELECT 1", "test");
 
             let effects =
-                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -640,7 +640,7 @@ mod tests {
             let action = csv_rows_counted_action(&mut state, None, "SELECT 1", "test");
 
             let effects =
-                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -653,7 +653,7 @@ mod tests {
             let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
 
             let effects =
-                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::OpenFolder { .. }));
@@ -684,7 +684,7 @@ mod tests {
             );
 
             let effects =
-                reduce_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -699,7 +699,7 @@ mod tests {
             let old_run_id = begin_query_run(&mut state);
             let _ = begin_query_run(&mut state);
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::CsvExportRowsCounted {
                     dsn: "postgres://localhost/test".to_string(),
@@ -728,7 +728,7 @@ mod tests {
                 QuerySource::Adhoc,
             )));
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::RequestCsvExport,
                 Instant::now(),

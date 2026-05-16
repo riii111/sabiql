@@ -16,7 +16,7 @@ use sabiql_app::model::shared::theme_id::ThemeId;
 use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use sabiql_app::update::browse::result::reduce_result;
+use sabiql_app::update::browse::result::dispatch_result;
 use sabiql_domain::{Column, ColumnAttributes, QueryResult, QuerySource};
 use sabiql_ui::theme::{
     ComponentTokens, DEFAULT_THEME, EditorTokens, LIGHT_THEME, ModalTokens, SemanticTokens,
@@ -85,13 +85,13 @@ fn jsonb_detail_state() -> (AppState, Instant) {
     state.query.pagination.table = "users".to_string();
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 3);
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::OpenModal(ModalKind::JsonbDetail),
         &AppServices::stub(),
         now,
     );
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::JsonbEnterEdit,
         &AppServices::stub(),
@@ -691,7 +691,7 @@ fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
     let has_insert_glyph_at_head = has_cell(&head_buffer, |cell| cell.symbol() == "\u{258f}");
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::TextMoveCursor {
             target: InputTarget::JsonbEdit,
@@ -715,13 +715,13 @@ fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
 fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
     let (mut state, now) = jsonb_detail_state();
     let mut terminal = create_test_terminal();
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::JsonbExitEdit,
         &AppServices::stub(),
         now,
     );
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::JsonbEnterSearch,
         &AppServices::stub(),
@@ -730,7 +730,7 @@ fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::TextInput {
             target: InputTarget::JsonbSearch,
@@ -739,7 +739,7 @@ fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
         &AppServices::stub(),
         now,
     );
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::TextInput {
             target: InputTarget::JsonbSearch,

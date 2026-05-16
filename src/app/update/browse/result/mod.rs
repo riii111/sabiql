@@ -12,16 +12,16 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_result(
+pub fn dispatch_result(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,
     now: Instant,
 ) -> DispatchResult {
-    scroll::reduce(state, action)
-        .or_else(|| selection::reduce(state, action, now))
-        .or_else(|| edit::reduce(state, action, now))
-        .or_else(|| yank::reduce(state, action, services, now))
-        .or_else(|| history::reduce(state, action))
-        .or_else(|| jsonb::reduce(state, action, now))
+    scroll::reduce_scroll(state, action)
+        .or_else(|| selection::reduce_selection(state, action, now))
+        .or_else(|| edit::reduce_edit(state, action, now))
+        .or_else(|| yank::reduce_yank(state, action, services, now))
+        .or_else(|| history::reduce_history(state, action))
+        .or_else(|| jsonb::reduce_jsonb(state, action, now))
 }

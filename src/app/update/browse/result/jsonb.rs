@@ -16,7 +16,7 @@ use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::JsonbDetail) => {
             let result = match state.query.visible_result() {
@@ -462,7 +462,7 @@ mod tests {
     }
 
     fn open_detail(state: &mut AppState) {
-        reduce(
+        reduce_jsonb(
             state,
             &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
             Instant::now(),
@@ -495,7 +495,7 @@ mod tests {
         fn opens_on_valid_jsonb_cell() {
             let mut state = state_with_jsonb_cell();
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
@@ -510,7 +510,7 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             state.result_interaction.move_cell(0);
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
@@ -535,7 +535,7 @@ mod tests {
                 command_tag: None,
             }));
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
@@ -559,7 +559,7 @@ mod tests {
                 command_tag: None,
             }));
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
@@ -573,7 +573,7 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             state.session.set_table_detail_raw(None);
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
@@ -589,14 +589,14 @@ mod tests {
         #[test]
         fn close_clears_state() {
             let mut state = state_with_jsonb_cell();
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
             );
             assert!(state.jsonb_detail.is_active());
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::CloseModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
@@ -619,7 +619,7 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
 
-            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonbEdit);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
@@ -629,7 +629,7 @@ mod tests {
         fn enter_edit_preserves_cursor_from_normal_mode() {
             let mut state = state_with_jsonb_value(r#"{"items":["admin","writer"]}"#);
             open_detail(&mut state);
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
@@ -637,7 +637,7 @@ mod tests {
                 },
                 Instant::now(),
             );
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
@@ -647,7 +647,7 @@ mod tests {
             );
             let expected = state.jsonb_detail.editor().cursor();
 
-            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
             assert_eq!(state.jsonb_detail.editor().cursor(), expected);
         }
@@ -661,7 +661,7 @@ mod tests {
                 .editor_mut()
                 .set_content_with_cursor("abc\ndef".to_string(), 1);
 
-            reduce(&mut state, &Action::JsonbAppendInsert, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbAppendInsert, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonbEdit);
             assert_eq!(state.jsonb_detail.editor().cursor_to_position(), (0, 3));
@@ -674,7 +674,7 @@ mod tests {
             state.ui.jsonb_detail_editor_visible_rows = 2;
             open_detail(&mut state);
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
@@ -682,7 +682,7 @@ mod tests {
                 },
                 Instant::now(),
             );
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
@@ -713,7 +713,7 @@ mod tests {
                 .editor_mut()
                 .set_content_with_cursor("line1\nline2\nline3\nline4".to_string(), 0);
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
@@ -736,7 +736,7 @@ mod tests {
             state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::G);
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
@@ -754,7 +754,7 @@ mod tests {
             open_detail(&mut state);
             state.session.read_only = true;
 
-            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
             assert!(state.messages.last_error.is_some());
@@ -767,7 +767,7 @@ mod tests {
             state.session.read_only = true;
             let cursor_before = state.jsonb_detail.editor().cursor();
 
-            reduce(&mut state, &Action::JsonbAppendInsert, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbAppendInsert, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
             assert_eq!(state.jsonb_detail.editor().cursor(), cursor_before);
@@ -778,9 +778,9 @@ mod tests {
         fn exit_edit_returns_to_viewing_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
-            reduce(&mut state, &Action::JsonbExitEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbExitEdit, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
@@ -791,14 +791,14 @@ mod tests {
         fn reenter_edit_with_pending_changes_preserves_existing_cursor() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
             state
                 .jsonb_detail
                 .editor_mut()
                 .set_content_with_cursor(r#"{"theme":"light","count":5}"#.to_string(), 7);
-            reduce(&mut state, &Action::JsonbExitEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbExitEdit, Instant::now());
 
-            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
             assert_eq!(state.jsonb_detail.editor().cursor(), 7);
         }
@@ -807,14 +807,14 @@ mod tests {
         fn close_after_edit_with_valid_changes_stores_draft() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
             state
                 .jsonb_detail
                 .editor_mut()
                 .set_content(r#"{"theme":"light","count":5}"#.to_string());
-            reduce(&mut state, &Action::JsonbExitEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbExitEdit, Instant::now());
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::CloseModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
@@ -829,10 +829,10 @@ mod tests {
         fn close_after_edit_without_changes_no_draft() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
-            reduce(&mut state, &Action::JsonbExitEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbExitEdit, Instant::now());
 
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::CloseModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
@@ -850,13 +850,13 @@ mod tests {
         #[test]
         fn copies_all_text_to_clipboard() {
             let mut state = state_with_jsonb_cell();
-            reduce(
+            reduce_jsonb(
                 &mut state,
                 &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
-            let effects = reduce(&mut state, &Action::JsonbYankAll, Instant::now());
+            let effects = reduce_jsonb(&mut state, &Action::JsonbYankAll, Instant::now());
 
             let effects = effects.into_effects().expect("should return effects");
             assert_eq!(effects.len(), 1);
@@ -875,7 +875,7 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
 
-            reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
             assert!(state.jsonb_detail.search().active);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Searching);
@@ -885,9 +885,9 @@ mod tests {
         fn exit_search_deactivates_search_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
-            reduce(&mut state, &Action::JsonbExitSearch, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbExitSearch, Instant::now());
 
             assert!(!state.jsonb_detail.search().active);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
@@ -897,10 +897,10 @@ mod tests {
         fn submit_deactivates_and_preserves_matches() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
             for ch in "theme".chars() {
-                reduce(
+                reduce_jsonb(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::JsonbSearch,
@@ -912,7 +912,7 @@ mod tests {
             let match_count = state.jsonb_detail.search().matches.len();
             assert!(match_count > 0, "should find at least one match");
 
-            reduce(&mut state, &Action::JsonbSearchSubmit, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbSearchSubmit, Instant::now());
 
             assert!(!state.jsonb_detail.search().active);
             let expected_cursor = state.jsonb_detail.search().matches[0];
@@ -927,12 +927,12 @@ mod tests {
         fn text_input_updates_search_matches_case_insensitively() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
             assert!(state.jsonb_detail.search().matches.is_empty());
 
             for ch in "THEME".chars() {
-                reduce(
+                reduce_jsonb(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::JsonbSearch,
@@ -952,10 +952,10 @@ mod tests {
         fn next_cycles_through_matches_and_moves_cursor() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
             for ch in "t".chars() {
-                reduce(
+                reduce_jsonb(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::JsonbSearch,
@@ -971,7 +971,7 @@ mod tests {
             );
             assert_eq!(state.jsonb_detail.search().current_match, 0);
 
-            reduce(&mut state, &Action::JsonbSearchNext, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbSearchNext, Instant::now());
 
             assert_eq!(state.jsonb_detail.search().current_match, 1);
             let expected_cursor = state.jsonb_detail.search().matches[1];
@@ -986,10 +986,10 @@ mod tests {
         fn prev_wraps_to_last_match_and_moves_cursor() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
             for ch in "t".chars() {
-                reduce(
+                reduce_jsonb(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::JsonbSearch,
@@ -1003,7 +1003,7 @@ mod tests {
                 match_count > 1,
                 "test precondition: need 2+ matches for wrap test, got {match_count}"
             );
-            reduce(&mut state, &Action::JsonbSearchPrev, Instant::now());
+            reduce_jsonb(&mut state, &Action::JsonbSearchPrev, Instant::now());
 
             assert_eq!(state.jsonb_detail.search().current_match, match_count - 1);
             let expected_cursor = state.jsonb_detail.search().matches[match_count - 1];

@@ -8,7 +8,7 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(
+pub fn reduce_focus(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,
@@ -69,7 +69,7 @@ mod tests {
     use crate::model::shared::db_capabilities::DbCapabilities;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::services::AppServices;
-    use crate::update::browse::navigation::reduce_navigation;
+    use crate::update::browse::navigation::dispatch_navigation;
 
     mod toggle_read_only {
         use super::*;
@@ -79,7 +79,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             assert!(!state.session.read_only);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ToggleReadOnly,
                 &AppServices::stub(),
@@ -95,7 +95,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.session.read_only = true;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ToggleReadOnly,
                 &AppServices::stub(),
@@ -126,7 +126,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_tab = InspectorTab::Info;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::InspectorNextTab,
                 &services_with_two_tabs(),
@@ -141,7 +141,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_tab = InspectorTab::Info;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::InspectorPrevTab,
                 &services_with_two_tabs(),

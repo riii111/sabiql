@@ -11,10 +11,10 @@ pub mod reducer;
 pub mod sql_editor;
 
 // Facade: re-export sub-reducer entry points for update/reducer.rs dispatch
-pub use browse::metadata::reduce_metadata;
-pub use browse::navigation::reduce_navigation;
-pub use browse::query::reduce_query;
-pub use browse::result::reduce_result;
+pub use browse::metadata::dispatch_metadata;
+pub use browse::navigation::dispatch_navigation;
+pub use browse::query::dispatch_query;
+pub use browse::result::dispatch_result;
 pub use connection::dispatch_connection;
 pub use dispatch_result::DispatchResult;
 pub use er::dispatch_er;

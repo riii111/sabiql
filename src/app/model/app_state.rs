@@ -231,7 +231,7 @@ mod tests {
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::update::action::Action;
-    use crate::update::reduce_metadata;
+    use crate::update::dispatch_metadata;
     use rstest::rstest;
     fn make_state() -> AppState {
         AppState::new("test".to_string())
@@ -555,7 +555,7 @@ mod tests {
         fn resets_prefetch_state() {
             let mut state = prepare_state_for_reload();
 
-            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(!state.sql_modal.is_prefetch_started());
             assert!(state.sql_modal.prefetch_queue.is_empty());
@@ -568,7 +568,7 @@ mod tests {
             let mut state = prepare_state_for_reload();
             state.er_preparation.status = ErStatus::Waiting;
 
-            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert_eq!(state.er_preparation.status, ErStatus::Idle);
         }
@@ -584,7 +584,7 @@ mod tests {
             assert!(state.messages.last_success.is_some());
             assert!(state.messages.expires_at.is_some());
 
-            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(state.messages.last_error.is_none());
             assert!(state.messages.last_success.is_none());
@@ -685,7 +685,7 @@ mod tests {
                 let run_id = state.session.begin_table_detail_run();
                 state.ui.inspector_scroll_offset = 42;
 
-                reduce_metadata(
+                dispatch_metadata(
                     &mut state,
                     &Action::TableDetailLoaded {
                         dsn: "dsn://test".to_string(),

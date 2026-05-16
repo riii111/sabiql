@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use super::{
-    dispatch_connection, dispatch_er, dispatch_explain, dispatch_modal, dispatch_sql_modal,
-    reduce_metadata, reduce_navigation, reduce_query, reduce_result,
+    dispatch_connection, dispatch_er, dispatch_explain, dispatch_metadata, dispatch_modal,
+    dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal,
 };
 use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
@@ -48,15 +48,15 @@ fn reduce_inner(
 
     if let Some(effects) = dispatch_connection(state, &action, now, services)
         .or_else(|| dispatch_modal(state, &action, now))
-        // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
-        // reset view state here and return Pass, relying on reduce_query for the page change.
-        .or_else(|| reduce_result(state, &action, services, now))
-        .or_else(|| reduce_navigation(state, &action, services, now))
+        // dispatch_result must precede dispatch_query: passthrough actions (e.g. ResultNextPage)
+        // reset view state here and return Pass, relying on dispatch_query for the page change.
+        .or_else(|| dispatch_result(state, &action, services, now))
+        .or_else(|| dispatch_navigation(state, &action, services, now))
         .or_else(|| dispatch_sql_modal(state, &action, now, services))
         .or_else(|| dispatch_explain(state, &action, now, services))
-        .or_else(|| reduce_metadata(state, &action, now))
+        .or_else(|| dispatch_metadata(state, &action, now))
         .or_else(|| dispatch_er(state, &action, now))
-        .or_else(|| reduce_query(state, &action, now, services))
+        .or_else(|| dispatch_query(state, &action, now, services))
         .into_effects()
     {
         return effects;

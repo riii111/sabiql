@@ -65,7 +65,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     Ok((row_idx, col_idx, cell_value))
 }
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::ResultEnterCellEdit => {
             if state.session.read_only {
@@ -211,7 +211,7 @@ mod tests {
                 .set_content("modified".to_string());
             state.modal.set_mode(InputMode::Normal);
 
-            reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+            reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -236,7 +236,7 @@ mod tests {
                 .cell_edit_input_mut()
                 .set_content("stale-modified".to_string());
 
-            reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+            reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -262,7 +262,7 @@ mod tests {
                 comment: None,
             }));
 
-            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -284,7 +284,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now())
+            reduce_edit(&mut state, &Action::ResultCancelCellEdit, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -307,7 +307,7 @@ mod tests {
                 .set_content("bob".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now())
+            reduce_edit(&mut state, &Action::ResultCancelCellEdit, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -350,7 +350,7 @@ mod tests {
         fn jsonb_cell_returns_dispatch_to_open_jsonb_detail() {
             let mut state = state_with_jsonb_column();
 
-            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -373,7 +373,7 @@ mod tests {
                 .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
             state.session.read_only = true;
 
-            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -403,7 +403,7 @@ mod tests {
         fn delete_removes_char_at_cursor() {
             let mut state = state_in_cell_edit("abcd", 1);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextDelete {
                     target: InputTarget::ResultCellEdit,
@@ -419,7 +419,7 @@ mod tests {
         fn delete_at_end_is_noop() {
             let mut state = state_in_cell_edit("abc", 3);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextDelete {
                     target: InputTarget::ResultCellEdit,
@@ -434,7 +434,7 @@ mod tests {
         fn move_cursor_left_decrements() {
             let mut state = state_in_cell_edit("abc", 2);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -450,7 +450,7 @@ mod tests {
         fn move_cursor_right_increments() {
             let mut state = state_in_cell_edit("abc", 1);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -466,7 +466,7 @@ mod tests {
         fn move_cursor_home_jumps_to_start() {
             let mut state = state_in_cell_edit("abc", 3);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -482,7 +482,7 @@ mod tests {
         fn move_cursor_end_jumps_to_end() {
             let mut state = state_in_cell_edit("abc", 0);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -498,7 +498,7 @@ mod tests {
         fn input_inserts_at_cursor_not_at_end() {
             let mut state = state_in_cell_edit("ac", 1);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextInput {
                     target: InputTarget::ResultCellEdit,
@@ -515,7 +515,7 @@ mod tests {
         fn backspace_removes_char_before_cursor() {
             let mut state = state_in_cell_edit("abc", 2);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextBackspace {
                     target: InputTarget::ResultCellEdit,

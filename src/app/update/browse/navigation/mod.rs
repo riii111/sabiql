@@ -57,15 +57,15 @@ pub(super) fn explorer_item_count(state: &AppState) -> usize {
     state.tables().len()
 }
 
-pub fn reduce_navigation(
+pub fn dispatch_navigation(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,
     now: Instant,
 ) -> DispatchResult {
-    focus::reduce(state, action, services, now)
-        .or_else(|| input::reduce(state, action))
-        .or_else(|| explorer::reduce(state, action))
-        .or_else(|| inspector::reduce(state, action, services))
-        .or_else(|| connection_list::reduce(state, action, now))
+    focus::reduce_focus(state, action, services, now)
+        .or_else(|| input::reduce_input(state, action))
+        .or_else(|| explorer::reduce_explorer(state, action))
+        .or_else(|| inspector::reduce_inspector(state, action, services))
+        .or_else(|| connection_list::reduce_connection_list(state, action, now))
 }

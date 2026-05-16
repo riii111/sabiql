@@ -9,15 +9,15 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_query(
+pub fn dispatch_query(
     state: &mut AppState,
     action: &Action,
     now: Instant,
     services: &AppServices,
 ) -> DispatchResult {
-    execution::reduce(state, action, now, services)
-        .or_else(|| write::reduce(state, action, now, services))
-        .or_else(|| pagination::reduce(state, action, now, services))
+    execution::reduce_execution(state, action, now, services)
+        .or_else(|| write::reduce_write(state, action, now, services))
+        .or_else(|| pagination::reduce_pagination(state, action, now, services))
 }
 
 #[cfg(test)]

@@ -65,7 +65,7 @@ fn move_result_row_and_scroll(state: &mut AppState, direction: ScrollDirection, 
     scroll_result_by(state, direction, delta);
 }
 
-pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
+pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::Scroll {
             target: ScrollTarget::Result,
@@ -293,7 +293,7 @@ mod tests {
             fn half_page_down_from_top() {
                 let mut state = state_with_result_rows(100, 25);
                 // visible = 25 - 5 = 20, half = 10
-                let effects = reduce(
+                let effects = reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -311,7 +311,7 @@ mod tests {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.scroll_offset = 50;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -329,7 +329,7 @@ mod tests {
                 // visible = 20, max_scroll = 30-20 = 10
                 state.result_interaction.scroll_offset = 5;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -346,7 +346,7 @@ mod tests {
                 let mut state = state_with_result_rows(100, 25);
                 state.result_interaction.scroll_offset = 5;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -368,7 +368,7 @@ mod tests {
                 // visible = 20, mid_viewport = 10, target = 0 + 10 = 10
                 state.result_interaction.activate_cell(0, 0);
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -384,7 +384,7 @@ mod tests {
             fn scroll_middle_is_noop_in_scroll_mode() {
                 let mut state = state_with_result_rows(100, 25);
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -406,7 +406,7 @@ mod tests {
                 state.result_interaction.activate_cell(10, 0);
                 state.result_interaction.scroll_offset = 5;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -425,7 +425,7 @@ mod tests {
                 state.result_interaction.activate_cell(30, 0);
                 state.result_interaction.scroll_offset = 25;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -444,7 +444,7 @@ mod tests {
                 state.result_interaction.activate_cell(15, 3);
                 state.result_interaction.scroll_offset = 10;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -467,7 +467,7 @@ mod tests {
                 state.result_interaction.activate_cell(10, 3);
                 state.result_interaction.scroll_offset = 5;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -487,7 +487,7 @@ mod tests {
                 state.result_interaction.activate_cell(10, 0);
                 state.result_interaction.scroll_offset = 5;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -506,7 +506,7 @@ mod tests {
                 state.result_interaction.activate_cell(40, 0);
                 state.result_interaction.scroll_offset = 30;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -526,7 +526,7 @@ mod tests {
             #[test]
             fn zero_height_scroll_mode_is_noop() {
                 let mut state = state_with_result_rows(100, 0);
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -544,7 +544,7 @@ mod tests {
                 state.result_interaction.activate_cell(95, 0);
                 state.result_interaction.scroll_offset = 75;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -563,7 +563,7 @@ mod tests {
                 state.result_interaction.activate_cell(5, 0);
                 state.result_interaction.scroll_offset = 3;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -582,7 +582,7 @@ mod tests {
                 state.result_interaction.activate_cell(5, 1);
                 state.result_interaction.scroll_offset = 3;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -601,7 +601,7 @@ mod tests {
                 let mut state = state_with_result_rows(10, 25);
                 state.result_interaction.activate_cell(3, 0);
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -620,7 +620,7 @@ mod tests {
                 state.result_interaction.activate_cell(90, 0);
                 state.result_interaction.scroll_offset = 75;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -639,7 +639,7 @@ mod tests {
                 state.result_interaction.activate_cell(10, 0);
                 state.result_interaction.scroll_offset = 5;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -658,7 +658,7 @@ mod tests {
                 state.result_interaction.activate_cell(5, 1);
                 state.result_interaction.scroll_offset = 3;
 
-                reduce(
+                reduce_scroll(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Result,
@@ -685,7 +685,7 @@ mod tests {
             state.result_interaction.scroll_offset = 50;
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            reduce(
+            reduce_scroll(
                 &mut state,
                 &Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
@@ -705,7 +705,7 @@ mod tests {
             state.result_interaction.scroll_offset = 20;
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            reduce(
+            reduce_scroll(
                 &mut state,
                 &Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
@@ -724,7 +724,7 @@ mod tests {
             state.result_interaction.scroll_offset = 30;
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            reduce(
+            reduce_scroll(
                 &mut state,
                 &Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
@@ -743,7 +743,7 @@ mod tests {
             state.result_interaction.scroll_offset = 20;
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            reduce(
+            reduce_scroll(
                 &mut state,
                 &Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
@@ -764,7 +764,7 @@ mod tests {
             state.result_interaction.scroll_offset = 80;
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            reduce(
+            reduce_scroll(
                 &mut state,
                 &Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Result,
@@ -817,7 +817,7 @@ mod tests {
             state.result_interaction.activate_cell(2, 0);
             state.result_interaction.scroll_offset = 0;
 
-            reduce(
+            reduce_scroll(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Result,

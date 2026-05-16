@@ -4,7 +4,7 @@ use crate::update::action::{Action, InputTarget, ListMotion, ListTarget};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::palette::palette_command_count;
 
-pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
+pub fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::Paste(text) => match state.modal.active_mode() {
             InputMode::TablePicker => {
@@ -169,7 +169,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
 mod tests {
     use super::*;
     use crate::services::AppServices;
-    use crate::update::browse::navigation::reduce_navigation;
+    use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
     mod paste {
@@ -180,7 +180,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Paste("hello".to_string()),
                 &AppServices::stub(),
@@ -196,7 +196,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Paste("hel\nlo\r\n".to_string()),
                 &AppServices::stub(),
@@ -212,7 +212,7 @@ mod tests {
             state.modal.set_mode(InputMode::TablePicker);
             state.ui.table_picker.set_selection(5);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Paste("x".to_string()),
                 &AppServices::stub(),
@@ -227,7 +227,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandLine);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Paste("quit".to_string()),
                 &AppServices::stub(),
@@ -242,7 +242,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandLine);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Paste("qu\nit".to_string()),
                 &AppServices::stub(),
@@ -257,7 +257,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::Normal);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Paste("text".to_string()),
                 &AppServices::stub(),
@@ -272,7 +272,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Paste("public.users".to_string()),
                 &AppServices::stub(),
@@ -289,7 +289,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Paste("public\n.users\r\n".to_string()),
                 &AppServices::stub(),
@@ -305,7 +305,7 @@ mod tests {
             state.modal.set_mode(InputMode::QueryHistoryPicker);
             state.query_history_picker.set_selection_for_test(3);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Paste("users".to_string()),
                 &AppServices::stub(),
@@ -322,7 +322,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::QueryHistoryPicker);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Paste("us\ners\r\n".to_string()),
                 &AppServices::stub(),
@@ -340,7 +340,7 @@ mod tests {
         fn enter_from_normal_and_exit_returns_to_normal() {
             let mut state = AppState::new("test".to_string());
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::EnterCommandLine,
                 &AppServices::stub(),
@@ -348,7 +348,7 @@ mod tests {
             );
             assert_eq!(state.input_mode(), InputMode::CommandLine);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ExitCommandLine,
                 &AppServices::stub(),
@@ -362,7 +362,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::EnterCommandLine,
                 &AppServices::stub(),
@@ -370,7 +370,7 @@ mod tests {
             );
             assert_eq!(state.input_mode(), InputMode::CommandLine);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ExitCommandLine,
                 &AppServices::stub(),
@@ -404,7 +404,7 @@ mod tests {
             let mut state = state_with_tables(5);
             state.modal.set_mode(InputMode::TablePicker);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::TablePicker,
@@ -423,7 +423,7 @@ mod tests {
             state.modal.set_mode(InputMode::TablePicker);
             state.ui.table_picker.set_selection(2);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::TablePicker,
@@ -442,7 +442,7 @@ mod tests {
             state.modal.set_mode(InputMode::TablePicker);
             state.ui.table_picker.set_selection(3);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::TablePicker,
@@ -460,7 +460,7 @@ mod tests {
             let mut state = state_with_tables(5);
             state.modal.set_mode(InputMode::TablePicker);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::TablePicker,
@@ -478,7 +478,7 @@ mod tests {
             let mut state = state_with_tables(5);
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::ErTablePicker,
@@ -496,7 +496,7 @@ mod tests {
             let mut state = state_with_tables(5);
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::ErTablePicker,
@@ -514,7 +514,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandPalette);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::CommandPalette,
@@ -532,7 +532,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandPalette);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::CommandPalette,

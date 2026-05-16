@@ -47,7 +47,7 @@ fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     }]
 }
 
-pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn dispatch_metadata(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::MetadataLoaded {
             dsn,
@@ -589,7 +589,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/new");
             let run_id = state.session.begin_metadata_refresh();
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::MetadataLoaded {
                     dsn: "postgres://localhost/old".to_string(),
@@ -611,7 +611,7 @@ mod tests {
             let current_generation = state.session.selection_generation();
             let _ = state.session.begin_table_detail_run();
 
-            reduce_metadata(
+            dispatch_metadata(
                 &mut state,
                 &Action::TableDetailLoaded {
                     dsn: "postgres://localhost/test".to_string(),
@@ -635,7 +635,7 @@ mod tests {
                 .prefetch_queue
                 .push_back("public.users".to_string());
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::ProcessPrefetchQueue { run_id: old_run_id },
                 Instant::now(),
@@ -667,7 +667,7 @@ mod tests {
                 },
             );
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::PrefetchTableDetail {
                     run_id,
@@ -706,7 +706,7 @@ mod tests {
                 },
             );
 
-            reduce_metadata(
+            dispatch_metadata(
                 &mut state,
                 &Action::PrefetchTableDetail {
                     run_id,
@@ -742,7 +742,7 @@ mod tests {
                 },
             );
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::PrefetchTableDetail {
                     run_id,
@@ -785,7 +785,7 @@ mod tests {
                 },
             );
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::PrefetchTableDetail {
                     run_id,
@@ -819,7 +819,7 @@ mod tests {
                 },
             );
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::PrefetchTableDetail {
                     run_id,
@@ -860,7 +860,7 @@ mod tests {
             );
 
             let now = Instant::now();
-            reduce_metadata(
+            dispatch_metadata(
                 &mut state,
                 &Action::TableDetailCacheFailed {
                     dsn: "postgres://localhost/test".to_string(),
@@ -892,7 +892,7 @@ mod tests {
             state.sql_modal.prefetching_tables.insert(qualified.clone());
 
             let now = Instant::now();
-            reduce_metadata(
+            dispatch_metadata(
                 &mut state,
                 &Action::TableDetailCacheFailed {
                     dsn: "postgres://localhost/test".to_string(),
@@ -965,7 +965,7 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders")]);
             let action = metadata_loaded_action(&mut state, metadata);
-            reduce_metadata(&mut state, &action, Instant::now());
+            dispatch_metadata(&mut state, &action, Instant::now());
 
             assert!(state.query.pagination.table.is_empty());
             assert!(state.query.current_result().is_none());
@@ -983,7 +983,7 @@ mod tests {
             // "orders" comes before "users" alphabetically, so "users" → index 1
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let action = metadata_loaded_action(&mut state, metadata);
-            let effects = reduce_metadata(&mut state, &action, Instant::now()).unwrap();
+            let effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.query.pagination.table, "users");
             assert_eq!(state.ui.explorer_selected, 1);
@@ -1005,7 +1005,7 @@ mod tests {
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let action = metadata_loaded_action(&mut state, metadata);
-            reduce_metadata(&mut state, &action, Instant::now());
+            dispatch_metadata(&mut state, &action, Instant::now());
 
             assert_eq!(state.ui.explorer_selected, 0);
         }
@@ -1019,7 +1019,7 @@ mod tests {
             // New DB happens to have a table named "users" too
             let metadata = make_metadata(vec![("public", "users")]);
             let action = metadata_loaded_action(&mut state, metadata);
-            let effects = reduce_metadata(&mut state, &action, Instant::now()).unwrap();
+            let effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
 
             // No table was selected on this connection, so no auto-preview should fire
             assert!(
@@ -1056,7 +1056,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(530)));
 
-            let effects = reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
+            let effects = dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -1072,7 +1072,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(50)));
 
-            let effects = reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
+            let effects = dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
@@ -1088,7 +1088,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(10)));
 
-            reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
+            dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
 
             assert!(state.er_preparation.fk_expanded);
         }
@@ -1106,7 +1106,7 @@ mod tests {
                 .pending_tables
                 .insert("public.users".to_string());
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::StartPrefetchScoped {
                     tables: vec!["public.posts".to_string()],
@@ -1125,7 +1125,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let tables = vec!["public.users".to_string(), "public.orders".to_string()];
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::StartPrefetchScoped {
                     tables: tables.clone(),
@@ -1197,7 +1197,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Waiting;
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::FkNeighborsDiscovered { tables: vec![] },
                 Instant::now(),
@@ -1218,7 +1218,7 @@ mod tests {
             let _ = state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::FkNeighborsDiscovered {
                     tables: vec!["public.posts".to_string(), "public.tags".to_string()],
@@ -1256,7 +1256,7 @@ mod tests {
                 },
             );
 
-            let effects = reduce_metadata(
+            let effects = dispatch_metadata(
                 &mut state,
                 &Action::PrefetchTableDetail {
                     run_id,

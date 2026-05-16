@@ -10,7 +10,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::explorer_item_count;
 
-pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
+pub fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::Select(SelectMotion::Next) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
@@ -203,7 +203,7 @@ mod tests {
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::key_sequence::Prefix;
     use crate::services::AppServices;
-    use crate::update::browse::navigation::reduce_navigation;
+    use crate::update::browse::navigation::dispatch_navigation;
     use rstest::rstest;
     use std::sync::Arc;
     use std::time::Instant;
@@ -250,7 +250,7 @@ mod tests {
         #[test]
         fn half_page_down_jumps_by_correct_delta() {
             let mut state = state_with_tables(50, 23);
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
@@ -265,7 +265,7 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selection(Some(45));
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
@@ -280,7 +280,7 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selection(Some(3));
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::HalfPageUp),
                 &AppServices::stub(),
@@ -293,7 +293,7 @@ mod tests {
         #[test]
         fn full_page_down_jumps_by_visible() {
             let mut state = state_with_tables(50, 23);
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::FullPageDown),
                 &AppServices::stub(),
@@ -308,7 +308,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.explorer_pane_height = 23;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
@@ -322,7 +322,7 @@ mod tests {
         #[test]
         fn zero_height_pane_is_noop() {
             let mut state = state_with_tables(50, 0);
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
@@ -339,7 +339,7 @@ mod tests {
             state.ui.explorer_selected = 15;
             state.ui.explorer_scroll_offset = 10;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
@@ -356,7 +356,7 @@ mod tests {
             state.ui.explorer_selected = 25;
             state.ui.explorer_scroll_offset = 20;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::HalfPageUp),
                 &AppServices::stub(),
@@ -373,7 +373,7 @@ mod tests {
             state.ui.explorer_selected = 15;
             state.ui.explorer_scroll_offset = 10;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
@@ -389,7 +389,7 @@ mod tests {
             let mut state = state_with_tables(10, 23);
             state.ui.explorer_selected = 3;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
@@ -406,7 +406,7 @@ mod tests {
             state.ui.explorer_selected = 10;
             state.ui.explorer_scroll_offset = 5;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::FullPageDown),
                 &AppServices::stub(),
@@ -423,7 +423,7 @@ mod tests {
             state.ui.explorer_selected = 30;
             state.ui.explorer_scroll_offset = 25;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::FullPageUp),
                 &AppServices::stub(),
@@ -440,7 +440,7 @@ mod tests {
             state.ui.explorer_selected = 40;
             state.ui.explorer_scroll_offset = 25;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::FullPageDown),
                 &AppServices::stub(),
@@ -457,7 +457,7 @@ mod tests {
             state.ui.explorer_selected = 10;
             state.ui.explorer_scroll_offset = 5;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::FullPageUp),
                 &AppServices::stub(),
@@ -475,7 +475,7 @@ mod tests {
         #[test]
         fn select_middle_moves_to_viewport_center() {
             let mut state = state_with_tables(50, 23);
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::ViewportMiddle),
                 &AppServices::stub(),
@@ -491,7 +491,7 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.explorer_scroll_offset = 15;
             state.ui.explorer_selected = 15;
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::ViewportMiddle),
                 &AppServices::stub(),
@@ -508,7 +508,7 @@ mod tests {
             state.ui.explorer_scroll_offset = 10;
             state.ui.explorer_selected = 20;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::ViewportTop),
                 &AppServices::stub(),
@@ -524,7 +524,7 @@ mod tests {
             state.ui.explorer_scroll_offset = 10;
             state.ui.explorer_selected = 15;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::ViewportBottom),
                 &AppServices::stub(),
@@ -537,7 +537,7 @@ mod tests {
         #[test]
         fn select_viewport_bottom_clamps_to_last_displayed_item() {
             let mut state = state_with_tables(10, 23);
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::ViewportBottom),
                 &AppServices::stub(),
@@ -553,7 +553,7 @@ mod tests {
             state.ui.explorer_scroll_offset = 40;
             state.ui.explorer_selected = 40;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::ViewportMiddle),
                 &AppServices::stub(),
@@ -569,7 +569,7 @@ mod tests {
             state.ui.explorer_scroll_offset = 40;
             state.ui.explorer_selected = 40;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Select(SelectMotion::ViewportBottom),
                 &AppServices::stub(),
@@ -590,7 +590,7 @@ mod tests {
             state.ui.explorer_scroll_offset = 30;
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Explorer,
@@ -611,7 +611,7 @@ mod tests {
             state.ui.explorer_scroll_offset = 0;
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Explorer,
@@ -632,7 +632,7 @@ mod tests {
             state.ui.explorer_scroll_offset = 25;
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Explorer,
@@ -653,7 +653,7 @@ mod tests {
             state.ui.explorer_scroll_offset = 30;
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ScrollToCursor {
                     target: ScrollToCursorTarget::Explorer,
@@ -684,7 +684,7 @@ mod tests {
                 .saturating_sub(content_width);
 
             for _ in 0..presses {
-                reduce_navigation(
+                dispatch_navigation(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Explorer,
@@ -707,7 +707,7 @@ mod tests {
                     .saturating_sub(state.ui.explorer_content_width);
 
             for _ in 0..3 {
-                reduce_navigation(
+                dispatch_navigation(
                     &mut state,
                     &Action::Scroll {
                         target: ScrollTarget::Explorer,
@@ -733,7 +733,7 @@ mod tests {
                 text_display_width(&state.tables()[0].qualified_name())
                     .saturating_sub(state.ui.explorer_content_width);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Explorer,

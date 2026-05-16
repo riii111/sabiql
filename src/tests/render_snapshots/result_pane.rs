@@ -3,7 +3,7 @@ use harness::{table_detail_loaded_state, with_current_result};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use sabiql_app::update::browse::result::reduce_result;
+use sabiql_app::update::browse::result::dispatch_result;
 use sabiql_domain::{Column, ColumnAttributes, QueryResult};
 
 fn jsonb_detail_state() -> (AppState, std::time::Instant) {
@@ -204,7 +204,7 @@ fn result_pane_jsonb_detail_mode() {
     let (mut state, now) = jsonb_detail_state();
     let mut terminal = create_test_terminal();
 
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::OpenModal(ModalKind::JsonbDetail),
         &AppServices::stub(),
@@ -222,14 +222,14 @@ fn result_pane_jsonb_edit_mode() {
     let (mut state, now) = jsonb_detail_state();
     let mut terminal = create_test_terminal();
 
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::OpenModal(ModalKind::JsonbDetail),
         &AppServices::stub(),
         now,
     );
     assert_eq!(state.input_mode(), InputMode::JsonbDetail);
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::TextMoveCursor {
             target: InputTarget::JsonbEdit,
@@ -238,7 +238,7 @@ fn result_pane_jsonb_edit_mode() {
         &AppServices::stub(),
         now,
     );
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::TextMoveCursor {
             target: InputTarget::JsonbEdit,
@@ -247,7 +247,7 @@ fn result_pane_jsonb_edit_mode() {
         &AppServices::stub(),
         now,
     );
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::JsonbEnterEdit,
         &AppServices::stub(),

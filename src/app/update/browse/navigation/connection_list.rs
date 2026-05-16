@@ -6,7 +6,11 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ConnectionsLoadedPayload, ListMotion, ListTarget};
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn reduce_connection_list(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::ListSelect {
             target: ListTarget::ConnectionList,
@@ -105,7 +109,7 @@ mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
     use crate::services::AppServices;
-    use crate::update::browse::navigation::reduce_navigation;
+    use crate::update::browse::navigation::dispatch_navigation;
 
     fn create_test_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile {
@@ -135,7 +139,7 @@ mod tests {
             setup_profiles(&mut state, 3);
             state.ui.set_connection_list_selection(Some(0));
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::ConnectionList,
@@ -154,7 +158,7 @@ mod tests {
             setup_profiles(&mut state, 2);
             state.ui.set_connection_list_selection(Some(1));
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::ConnectionList,
@@ -173,7 +177,7 @@ mod tests {
             setup_profiles(&mut state, 2);
             state.ui.set_connection_list_selection(Some(1));
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::ConnectionList,
@@ -192,7 +196,7 @@ mod tests {
             setup_profiles(&mut state, 1);
             state.ui.set_connection_list_selection(Some(0));
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ListSelect {
                     target: ListTarget::ConnectionList,
@@ -218,7 +222,7 @@ mod tests {
                 create_test_profile("Beta"),
             ];
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
@@ -241,7 +245,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profiles = vec![create_test_profile("conn1")];
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
@@ -262,7 +266,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let path = std::path::PathBuf::from("/etc/pg_service.conf");
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles: vec![],
@@ -282,7 +286,7 @@ mod tests {
         fn service_load_warning_sets_error_message() {
             let mut state = AppState::new("test".to_string());
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles: vec![],
@@ -328,7 +332,7 @@ mod tests {
             state.session.active_connection_id = Some(active_id);
             state.ui.set_connection_list_selection(Some(1));
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
                 &AppServices::stub(),
@@ -357,7 +361,7 @@ mod tests {
             state.session.active_connection_id = Some(active_id);
             state.ui.set_connection_list_selection(Some(0));
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
                 &AppServices::stub(),
@@ -372,7 +376,7 @@ mod tests {
         fn empty_connections_returns_empty_effects() {
             let mut state = AppState::new("test".to_string());
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
                 &AppServices::stub(),
@@ -397,7 +401,7 @@ mod tests {
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(1));
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
                 &AppServices::stub(),
@@ -424,7 +428,7 @@ mod tests {
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
                 &AppServices::stub(),

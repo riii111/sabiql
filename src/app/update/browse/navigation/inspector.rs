@@ -23,7 +23,11 @@ fn inspector_page_scroll_delta(
     amount.page_delta(visible)
 }
 
-pub fn reduce(state: &mut AppState, action: &Action, services: &AppServices) -> DispatchResult {
+pub fn reduce_inspector(
+    state: &mut AppState,
+    action: &Action,
+    services: &AppServices,
+) -> DispatchResult {
     match action {
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -96,7 +100,7 @@ mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, Table};
     use crate::model::shared::db_capabilities::DbCapabilities;
-    use crate::update::browse::navigation::reduce_navigation;
+    use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
     mod inspector_scroll_top_bottom {
@@ -137,7 +141,7 @@ mod tests {
             let mut state = state_with_table_detail(20);
             state.ui.inspector_scroll_offset = 10;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -159,7 +163,7 @@ mod tests {
             let visible = state.inspector_visible_rows();
             let expected_max = 20_usize.saturating_sub(visible);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -179,7 +183,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_pane_height = 10;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -199,7 +203,7 @@ mod tests {
             let mut state = state_with_table_detail(20);
             state.ui.inspector_scroll_offset = 1;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -219,7 +223,7 @@ mod tests {
             let mut state = state_with_table_detail(20);
             state.ui.inspector_scroll_offset = 12;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -238,7 +242,7 @@ mod tests {
         fn inspector_page_scroll_stays_zero_when_content_fits_viewport() {
             let mut state = state_with_table_detail(4);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -271,7 +275,7 @@ mod tests {
                 .page_delta(state.inspector_visible_rows())
                 .unwrap();
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -294,7 +298,7 @@ mod tests {
             state.ui.inspector_tab = InspectorTab::Ddl;
             state.ui.inspector_scroll_offset = 1;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,

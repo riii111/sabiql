@@ -2,7 +2,7 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action) -> DispatchResult {
+pub fn reduce_history(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::OpenResultHistory => {
             let len = state.query.result_history().len();
@@ -72,7 +72,7 @@ mod tests {
     fn open_sets_index_to_newest() {
         let mut state = state_with_history(3);
 
-        reduce(&mut state, &Action::OpenResultHistory);
+        reduce_history(&mut state, &Action::OpenResultHistory);
 
         assert_eq!(state.query.history_index(), Some(2));
     }
@@ -81,7 +81,7 @@ mod tests {
     fn open_is_noop_when_history_empty() {
         let mut state = AppState::new("test".to_string());
 
-        reduce(&mut state, &Action::OpenResultHistory);
+        reduce_history(&mut state, &Action::OpenResultHistory);
 
         assert_eq!(state.query.history_index(), None);
     }
@@ -91,7 +91,7 @@ mod tests {
         let mut state = state_with_history(3);
         state.query.enter_history(2);
 
-        reduce(&mut state, &Action::HistoryOlder);
+        reduce_history(&mut state, &Action::HistoryOlder);
 
         assert_eq!(state.query.history_index(), Some(1));
     }
@@ -101,7 +101,7 @@ mod tests {
         let mut state = state_with_history(3);
         state.query.enter_history(0);
 
-        reduce(&mut state, &Action::HistoryOlder);
+        reduce_history(&mut state, &Action::HistoryOlder);
 
         assert_eq!(state.query.history_index(), Some(0));
     }
@@ -111,7 +111,7 @@ mod tests {
         let mut state = state_with_history(3);
         state.query.enter_history(0);
 
-        reduce(&mut state, &Action::HistoryNewer);
+        reduce_history(&mut state, &Action::HistoryNewer);
 
         assert_eq!(state.query.history_index(), Some(1));
     }
@@ -121,7 +121,7 @@ mod tests {
         let mut state = state_with_history(3);
         state.query.enter_history(2);
 
-        reduce(&mut state, &Action::HistoryNewer);
+        reduce_history(&mut state, &Action::HistoryNewer);
 
         assert_eq!(state.query.history_index(), Some(2));
     }
@@ -131,7 +131,7 @@ mod tests {
         let mut state = state_with_history(3);
         state.query.enter_history(1);
 
-        reduce(&mut state, &Action::ExitResultHistory);
+        reduce_history(&mut state, &Action::ExitResultHistory);
 
         assert_eq!(state.query.history_index(), None);
     }
@@ -142,7 +142,7 @@ mod tests {
         state.result_interaction.scroll_offset = 10;
         state.result_interaction.horizontal_offset = 5;
 
-        reduce(&mut state, &Action::OpenResultHistory);
+        reduce_history(&mut state, &Action::OpenResultHistory);
 
         assert_eq!(state.result_interaction.scroll_offset, 0);
         assert_eq!(state.result_interaction.horizontal_offset, 0);

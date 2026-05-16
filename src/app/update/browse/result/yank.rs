@@ -12,7 +12,7 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(
+pub fn reduce_yank(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,
@@ -160,7 +160,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(10, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -177,7 +177,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(0, 10);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -194,7 +194,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(1, 2);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -216,7 +216,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(1, 2);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYankOperatorPending,
                 &AppServices::stub(),
@@ -243,7 +243,7 @@ mod tests {
             state.query.enter_history(0);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -261,7 +261,7 @@ mod tests {
         fn no_cell_selection_is_noop() {
             let mut state = state_with_grid(3, 3);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -302,7 +302,7 @@ mod tests {
             let mut state = state_with_row(vec!["v0", "v1", "v2"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -334,7 +334,7 @@ mod tests {
             state.query.enter_history(0);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -353,7 +353,7 @@ mod tests {
             let mut state = state_with_row(vec!["a\tb", "c\nd"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -375,7 +375,7 @@ mod tests {
             let mut state = state_with_row(vec!["a\\b"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -397,7 +397,7 @@ mod tests {
             let mut state = state_with_row(vec!["val"]);
             state.result_interaction.activate_cell(99, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -413,7 +413,7 @@ mod tests {
         fn no_row_selection_is_noop() {
             let mut state = state_with_row(vec!["val"]);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -471,7 +471,7 @@ mod tests {
         fn with_table_detail_returns_copy_effect() {
             let mut state = state_with_ddl_tab();
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::DdlYank,
                 &fake_services(),
@@ -490,7 +490,7 @@ mod tests {
             let mut state = state_with_ddl_tab();
             let now = Instant::now();
 
-            reduce(&mut state, &Action::DdlYank, &fake_services(), now);
+            reduce_yank(&mut state, &Action::DdlYank, &fake_services(), now);
 
             assert!(state.flash_timers.is_active(FlashId::Ddl, now));
         }
@@ -500,7 +500,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_tab = InspectorTab::Ddl;
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::DdlYank,
                 &fake_services(),
@@ -516,7 +516,7 @@ mod tests {
             let mut state = state_with_ddl_tab();
             state.ui.inspector_tab = InspectorTab::Info;
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::DdlYank,
                 &fake_services(),
