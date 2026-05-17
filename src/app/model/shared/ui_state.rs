@@ -249,8 +249,8 @@ impl UiState {
         self.explorer_scroll_offset = offset;
     }
 
-    // Sets selection index without adjusting scroll offset.
-    // Used when the caller manages scroll state independently (page scroll, cache restore).
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn set_explorer_selected_raw(&mut self, selected: usize) {
         self.explorer_selected = selected;
     }
@@ -269,7 +269,13 @@ impl UiState {
         self.explorer_scroll_offset = (self.explorer_scroll_offset + delta).min(max_offset);
     }
 
-    pub fn scroll_explorer_page_up(&mut self, delta: usize) {
+    pub fn scroll_explorer_page_up(&mut self, item_count: usize, delta: usize) {
+        if item_count == 0 {
+            return;
+        }
+        if self.explorer_visible_items() == 0 {
+            return;
+        }
         self.explorer_selected = self.explorer_selected.saturating_sub(delta);
         self.explorer_scroll_offset = self.explorer_scroll_offset.saturating_sub(delta);
     }
@@ -302,7 +308,8 @@ impl UiState {
         self.connection_list_pane_height = height;
     }
 
-    // Test/setup helper for selection-only states where scroll is controlled separately.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn set_connection_list_selected_raw(&mut self, selected: usize) {
         self.connection_list_selected = selected;
     }

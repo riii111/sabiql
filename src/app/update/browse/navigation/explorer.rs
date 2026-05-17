@@ -135,13 +135,7 @@ pub fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult 
 
         Action::Select(motion @ (SelectMotion::HalfPageDown | SelectMotion::FullPageDown)) => {
             let len = explorer_item_count(state);
-            if len == 0 {
-                return DispatchResult::handled();
-            }
             let visible = state.ui.explorer_visible_items();
-            if visible == 0 {
-                return DispatchResult::handled();
-            }
             let delta = match motion {
                 SelectMotion::HalfPageDown => (visible / 2).max(1),
                 _ => visible.max(1),
@@ -151,18 +145,12 @@ pub fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult 
         }
         Action::Select(motion @ (SelectMotion::HalfPageUp | SelectMotion::FullPageUp)) => {
             let len = explorer_item_count(state);
-            if len == 0 {
-                return DispatchResult::handled();
-            }
             let visible = state.ui.explorer_visible_items();
-            if visible == 0 {
-                return DispatchResult::handled();
-            }
             let delta = match motion {
                 SelectMotion::HalfPageUp => (visible / 2).max(1),
                 _ => visible.max(1),
             };
-            state.ui.scroll_explorer_page_up(delta);
+            state.ui.scroll_explorer_page_up(len, delta);
             DispatchResult::handled()
         }
 
