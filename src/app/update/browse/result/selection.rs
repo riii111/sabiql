@@ -107,11 +107,11 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let _ = state.session.begin_connecting("postgres://localhost/test");
             state.session.set_selection_generation(7);
+            state.query.pagination.reset_for_table("public", "users");
             state
                 .query
                 .pagination
                 .set_page_result(current_page, state.query.pagination.reached_end());
-            state.query.pagination.reset_for_table("public", "users");
             state.query.set_current_result(Arc::new(QueryResult {
                 query: "SELECT * FROM public.users".to_string(),
                 columns: vec!["id".to_string(), "name".to_string()],
