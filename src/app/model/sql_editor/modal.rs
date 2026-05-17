@@ -172,17 +172,22 @@ impl SqlModalContext {
     }
 
     pub fn enqueue_prefetch(&mut self, table: String) {
-        if self.prefetching_tables.contains(&table) || self.prefetch_queue.contains(&table) {
+        if self.has_prefetch_entry(&table) {
             return;
         }
         self.prefetch_queue.push_back(table);
     }
 
-    pub fn requeue_prefetch_for_missing_dsn(&mut self, table: String) {
-        if self.prefetching_tables.contains(&table) || self.prefetch_queue.contains(&table) {
+    pub fn prioritize_prefetch(&mut self, table: String) {
+        if self.has_prefetch_entry(&table) {
             return;
         }
         self.prefetch_queue.push_front(table);
+    }
+
+    fn has_prefetch_entry(&self, table: &str) -> bool {
+        self.prefetching_tables.contains(table)
+            || self.prefetch_queue.iter().any(|queued| queued == table)
     }
 
     pub fn dequeue_prefetch(&mut self) -> Option<String> {
@@ -210,9 +215,11 @@ impl SqlModalContext {
         &mut self,
         table: String,
         entry: FailedPrefetchEntry,
-    ) {
+    ) -> bool {
+        let had_pending_before_requeue = self.has_pending_prefetch();
         self.record_prefetch_failure(table.clone(), entry);
         self.enqueue_prefetch(table);
+        had_pending_before_requeue
     }
 
     pub fn active_prefetch_run_id(&self) -> Option<u64> {
@@ -541,17 +548,28 @@ mod tests {
         }
 
         #[test]
-        fn requeue_for_missing_dsn_skips_already_queued_table() {
+        fn prioritize_prefetch_skips_already_queued_table() {
             let mut ctx = SqlModalContext::default();
 
             ctx.enqueue_prefetch("public.users".to_string());
-            ctx.requeue_prefetch_for_missing_dsn("public.users".to_string());
+            ctx.prioritize_prefetch("public.users".to_string());
 
             assert_eq!(ctx.prefetch_queue().len(), 1);
             assert_eq!(
                 ctx.prefetch_queue().front().map(String::as_str),
                 Some("public.users")
             );
+        }
+
+        #[test]
+        fn prioritize_prefetch_skips_in_flight_table() {
+            let mut ctx = SqlModalContext::default();
+
+            ctx.mark_prefetching("public.users".to_string());
+            ctx.prioritize_prefetch("public.users".to_string());
+
+            assert!(ctx.prefetch_queue().is_empty());
+            assert!(ctx.is_prefetching("public.users"));
         }
 
         #[test]
