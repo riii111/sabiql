@@ -146,7 +146,9 @@ impl BrowseSession {
         self.dsn = Some(dsn.to_string());
     }
 
-    pub fn set_active_connection_identity(
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_active_connection_identity_for_test(
         &mut self,
         id: &ConnectionId,
         name: &str,

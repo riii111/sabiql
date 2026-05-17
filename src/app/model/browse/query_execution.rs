@@ -123,6 +123,8 @@ impl PaginationState {
         self.total_rows_estimate = estimate;
     }
 
+    // Use when navigation changes only the page index and must preserve the
+    // current end-of-data flag.
     pub fn set_current_page(&mut self, page: usize) {
         self.current_page = page;
     }

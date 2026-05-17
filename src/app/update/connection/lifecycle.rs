@@ -38,12 +38,12 @@ pub fn reduce_connection_lifecycle(
             {
                 if let Some(dsn) = state.session.dsn().map(str::to_string) {
                     let run_id = state.session.begin_connecting(&dsn);
-                    DispatchResult::Handled(vec![Effect::FetchMetadata { dsn, run_id }])
+                    DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
                 } else {
-                    DispatchResult::Handled(vec![])
+                    DispatchResult::handled()
                 }
             } else {
-                DispatchResult::Handled(vec![])
+                DispatchResult::handled()
             }
         }
 
@@ -60,12 +60,12 @@ pub fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, id, name, *database_type, dsn);
-                DispatchResult::Handled(vec![Effect::ClearCompletionEngineCache])
+                DispatchResult::handled_with(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata
                 reset_for_new_connection(state, id, dsn, name, *database_type);
                 let run_id = state.session.begin_connecting(dsn);
-                DispatchResult::Handled(vec![
+                DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::FetchMetadata {
                         dsn: dsn.clone(),

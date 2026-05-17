@@ -48,7 +48,7 @@ fn connection_selector_with_multiple_connections() {
 
     let (active_id, connections) = three_connections();
     state.set_connections(connections);
-    state.session.set_active_connection_identity(
+    state.session.set_active_connection_identity_for_test(
         &active_id,
         "localhost:5432/test",
         sabiql_domain::DatabaseType::PostgreSQL,
@@ -86,7 +86,7 @@ fn connection_selector_with_service_entries() {
             },
         ],
     );
-    state.session.set_active_connection_identity(
+    state.session.set_active_connection_identity_for_test(
         &active_id,
         "localhost:5432/test",
         sabiql_domain::DatabaseType::PostgreSQL,
@@ -150,7 +150,7 @@ fn connection_selector_with_active_service() {
         },
     ]);
     // Set active connection to the first service entry
-    state.session.set_active_connection_identity(
+    state.session.set_active_connection_identity_for_test(
         &ConnectionId::from_string("service:dev-local".to_string()),
         "localhost:5432/test",
         sabiql_domain::DatabaseType::PostgreSQL,

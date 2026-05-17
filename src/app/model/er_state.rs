@@ -257,6 +257,8 @@ impl ErPreparationState {
         self.failed_tables.clear();
     }
 
+    // Re-queueing a table starts a fresh attempt and clears any prior failure
+    // record for that table.
     pub fn queue_pending_table(&mut self, table: String) -> bool {
         self.fetching_tables.remove(&table);
         self.failed_tables.remove(&table);
@@ -267,7 +269,6 @@ impl ErPreparationState {
     #[doc(hidden)]
     pub fn insert_fetching_table(&mut self, table: String) {
         self.pending_tables.remove(&table);
-        self.failed_tables.remove(&table);
         self.fetching_tables.insert(table);
     }
 }
