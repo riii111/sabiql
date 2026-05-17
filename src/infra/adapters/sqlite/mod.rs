@@ -429,6 +429,18 @@ fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
     i
 }
 
+fn skip_bracket_quoted(bytes: &[u8], mut i: usize) -> usize {
+    i += 1;
+    while i < bytes.len() {
+        if bytes[i] == b']' {
+            return i + 1;
+        }
+        i += 1;
+    }
+    i
+}
+
+/// Returns the next SQL keyword and the byte offset immediately after it.
 fn next_keyword_from(sql: &str, mut i: usize) -> Option<(&str, usize)> {
     let bytes = sql.as_bytes();
     while i < bytes.len() {
@@ -447,8 +459,11 @@ fn next_keyword_from(sql: &str, mut i: usize) -> Option<(&str, usize)> {
                     i += 2;
                 }
             }
-            b'\'' | b'"' => {
+            b'\'' | b'"' | b'`' => {
                 i = skip_quoted(bytes, i, bytes[i]);
+            }
+            b'[' => {
+                i = skip_bracket_quoted(bytes, i);
             }
             b if b.is_ascii_alphabetic() => {
                 let start = i;
@@ -1048,6 +1063,36 @@ mod tests {
 
         let result = adapter
             .execute_adhoc(&dsn, "INSERT INTO returning_log(name) VALUES ('a')", false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_backtick_quoted_identifier_containing_returning_reports_affected_rows() {
+        let (_dir, dsn) =
+            make_db("CREATE TABLE `my returning`(id INTEGER PRIMARY KEY, name TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "INSERT INTO `my returning`(name) VALUES ('a')", false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_bracket_quoted_identifier_containing_returning_reports_affected_rows() {
+        let (_dir, dsn) =
+            make_db("CREATE TABLE [my returning](id INTEGER PRIMARY KEY, name TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "INSERT INTO [my returning](name) VALUES ('a')", false)
             .await
             .unwrap();
 
