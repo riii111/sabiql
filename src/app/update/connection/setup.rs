@@ -572,7 +572,7 @@ mod tests {
         #[test]
         fn is_first_run_false_when_already_connected() {
             let mut state = AppState::new("test".to_string());
-            let _ = state.session.begin_connecting("postgres://localhost/db");
+            state.session.set_dsn_for_test("postgres://localhost/db");
 
             reduce(
                 &mut state,

@@ -237,7 +237,7 @@ pub fn reduce_write(
                 );
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = state.session.dsn_owned() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteWrite {
                     dsn,
@@ -285,7 +285,7 @@ pub fn reduce_write(
                     state.result_interaction.clear_cell_edit();
                     state.modal.set_mode(InputMode::Normal);
 
-                    if let Some(dsn) = state.session.dsn_owned() {
+                    if let Some(dsn) = state.session.dsn().map(String::from) {
                         let page = state.query.pagination.current_page();
                         let run_id = state.query.begin_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecutePreview {
@@ -344,9 +344,9 @@ pub fn reduce_write(
                         PostDeleteRowSelection::Select,
                     ));
 
-                    if let Some(dsn) = state.session.dsn_owned() {
+                    if let Some(dsn) = state.session.dsn().map(String::from) {
                         let run_id = state.query.begin_running(now);
-                        state.query.pagination.allow_next_page_after_refresh();
+                        state.query.pagination.clear_reached_end();
                         DispatchResult::handled_with(vec![Effect::ExecutePreview {
                             dsn,
                             schema: state.query.pagination.schema().to_string(),
@@ -448,7 +448,7 @@ mod tests {
 
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.query.set_current_result(editable_preview_result());
             state
                 .session
@@ -601,7 +601,7 @@ mod tests {
 
         fn editable_state_with_jsonb() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .query
                 .set_current_result(editable_preview_result_with_jsonb());
@@ -728,10 +728,7 @@ mod tests {
         #[test]
         fn execute_write_success_refreshes_preview_page() {
             let mut state = editable_state();
-            state
-                .query
-                .pagination
-                .set_page_result(2, state.query.pagination.reached_end());
+            state.query.pagination.set_current_page(2);
             let action = write_succeeded_action(&mut state, 1);
 
             let effects =

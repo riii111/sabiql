@@ -334,10 +334,6 @@ impl BrowseSession {
         self.dsn.as_deref()
     }
 
-    pub fn dsn_owned(&self) -> Option<String> {
-        self.dsn.clone()
-    }
-
     pub fn dsn_matches(&self, expected: &str) -> bool {
         self.dsn() == Some(expected)
     }
@@ -402,6 +398,12 @@ impl BrowseSession {
     #[cfg(test)]
     pub(crate) fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_dsn_for_test(&mut self, dsn: impl Into<String>) {
+        self.dsn = Some(dsn.into());
     }
 }
 
@@ -491,10 +493,9 @@ mod tests {
         fn resets_pagination() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
-            pagination.set_page_result(5, pagination.reached_end());
-            pagination.set_total_rows_estimate(Some(10000));
-            pagination.set_page_result(pagination.current_page(), true);
             pagination.reset_for_table("old", "old");
+            pagination.set_total_rows_estimate(Some(10000));
+            pagination.set_page_result(5, true);
 
             let _ = session.select_table("public", "users", &mut pagination);
 
@@ -586,7 +587,7 @@ mod tests {
         #[test]
         fn mark_connecting_sets_pair_without_changing_dsn() {
             let mut session = BrowseSession::default();
-            let _ = session.begin_connecting("postgres://localhost/test");
+            session.set_dsn_for_test("postgres://localhost/test");
 
             session.mark_connecting();
 
@@ -776,14 +777,9 @@ mod tests {
             let _ = session.begin_reload();
             let mut query = QueryExecution::default();
             query.set_current_result(make_query_result());
-            query
-                .pagination
-                .set_page_result(3, query.pagination.reached_end());
-            query.pagination.set_total_rows_estimate(Some(1000));
-            query
-                .pagination
-                .set_page_result(query.pagination.current_page(), true);
             query.pagination.reset_for_table("public", "users");
+            query.pagination.set_total_rows_estimate(Some(1000));
+            query.pagination.set_page_result(3, true);
             query.enter_history(2);
 
             session.reset(&mut query);

@@ -73,7 +73,7 @@ pub(super) fn reduce_connection_error(
             DispatchResult::handled()
         }
         Action::RetryServiceConnection => {
-            if let Some(dsn) = state.session.dsn_owned() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 state.connection_error.clear();
                 let run_id = state.session.begin_connecting(&dsn);
                 state.session.disable_read_only();
@@ -132,7 +132,7 @@ mod tests {
         #[test]
         fn blocked_for_service_connection() {
             let mut state = AppState::new("test".to_string());
-            let _ = state.session.begin_connecting("service=mydb");
+            state.session.set_dsn_for_test("service=mydb");
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
@@ -143,7 +143,7 @@ mod tests {
         #[test]
         fn allowed_for_profile_connection() {
             let mut state = AppState::new("test".to_string());
-            let _ = state.session.begin_connecting("postgres://localhost/db");
+            state.session.set_dsn_for_test("postgres://localhost/db");
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());

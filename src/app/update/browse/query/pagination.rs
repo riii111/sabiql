@@ -24,7 +24,7 @@ pub fn reduce_pagination(
             let Some(result) = state.query.visible_result() else {
                 return DispatchResult::handled();
             };
-            let dsn = match state.session.dsn_owned() {
+            let dsn = match state.session.dsn().map(String::from) {
                 Some(d) => d,
                 None => return DispatchResult::handled(),
             };
@@ -177,7 +177,7 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_next() {
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = state.session.dsn_owned() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let next_page = state.query.pagination.next_page();
                 let run_id = state.query.begin_running(now);
                 state.result_interaction.reset_view();
@@ -204,11 +204,11 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_prev() {
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = state.session.dsn_owned() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let prev_page = state.query.pagination.prev_page();
                 let run_id = state.query.begin_running(now);
                 state.result_interaction.reset_view();
-                state.query.pagination.allow_next_page_after_refresh();
+                state.query.pagination.clear_reached_end();
                 DispatchResult::handled_with(vec![Effect::ExecutePreview {
                     dsn,
                     schema: state.query.pagination.schema().to_string(),
@@ -479,10 +479,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state
-                .query
-                .pagination
-                .set_page_result(0, state.query.pagination.reached_end());
+            state.query.pagination.set_current_page(0);
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -502,10 +499,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(PREVIEW_PAGE_SIZE));
-            state
-                .query
-                .pagination
-                .set_page_result(0, state.query.pagination.reached_end());
+            state.query.pagination.set_current_page(0);
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
@@ -529,7 +523,7 @@ mod tests {
 
         fn export_test_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
         }
 

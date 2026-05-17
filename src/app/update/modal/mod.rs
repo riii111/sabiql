@@ -402,7 +402,7 @@ mod tests {
             fn execute_write_sets_running_state_and_returns_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::CellEdit);
-                let _ = state.session.begin_connecting("postgres://localhost/test");
+                state.session.set_dsn_for_test("postgres://localhost/test");
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -520,7 +520,7 @@ mod tests {
             fn csv_export_returns_export_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                let _ = state.session.begin_connecting("postgres://localhost/test");
+                state.session.set_dsn_for_test("postgres://localhost/test");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
@@ -579,7 +579,7 @@ mod tests {
             fn csv_export_ignores_mismatched_run_id() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                let _ = state.session.begin_connecting("postgres://localhost/test");
+                state.session.set_dsn_for_test("postgres://localhost/test");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",

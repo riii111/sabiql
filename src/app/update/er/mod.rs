@@ -32,7 +32,7 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        let _ = state.session.begin_connecting(dsn);
+        state.session.set_dsn_for_test(dsn);
         state
     }
 

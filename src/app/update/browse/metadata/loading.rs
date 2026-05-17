@@ -120,7 +120,7 @@ pub(super) fn reduce_loading(
             DispatchResult::handled()
         }
         Action::LoadMetadata => {
-            if let Some(dsn) = state.session.dsn_owned() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_metadata_refresh();
                 DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
             } else {
@@ -128,7 +128,7 @@ pub(super) fn reduce_loading(
             }
         }
         Action::ReloadMetadata => {
-            if let Some(dsn) = state.session.dsn_owned() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();

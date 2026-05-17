@@ -342,10 +342,7 @@ mod tests {
 
             // Set state that was previously not reset by ConnectionDeleted
             state.query.enter_history(2);
-            state
-                .query
-                .pagination
-                .set_page_result(3, state.query.pagination.reached_end());
+            state.query.pagination.set_current_page(3);
             state.result_interaction.activate_cell(5, 0);
             state.result_interaction.set_scroll_offset(10);
             state.result_interaction.set_horizontal_offset(20);

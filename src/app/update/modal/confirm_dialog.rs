@@ -47,7 +47,7 @@ pub(super) fn reduce_confirm_dialog(
                     sql,
                     blocked: false,
                 }) => {
-                    if let Some(dsn) = state.session.dsn_owned() {
+                    if let Some(dsn) = state.session.dsn().map(String::from) {
                         let run_id = state.query.begin_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecuteWrite {
                             dsn,

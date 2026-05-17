@@ -23,7 +23,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
     if !tag.needs_refresh() {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn_owned() else {
+    let Some(dsn) = state.session.dsn().map(String::from) else {
         return vec![];
     };
 
@@ -173,7 +173,7 @@ pub fn reduce_execution(
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
-                    let preview_query = state.query.pagination.preview_label();
+                    let preview_query = state.query.pagination.qualified_name();
                     state.query.set_current_result(Arc::new(QueryResult::error(
                         preview_query,
                         error.result_message(),
@@ -238,7 +238,7 @@ pub fn reduce_execution(
             table,
             generation,
         }) => {
-            if let Some(dsn) = state.session.dsn_owned() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.query.begin_running(now);
 
                 let row_estimate = state
@@ -276,7 +276,7 @@ pub fn reduce_execution(
         }
 
         Action::ExecuteAdhoc(query) => {
-            if let Some(dsn) = state.session.dsn_owned() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
                     dsn,
@@ -524,10 +524,7 @@ mod tests {
         #[test]
         fn adhoc_does_not_update_pagination() {
             let mut state = create_test_state();
-            state
-                .query
-                .pagination
-                .set_page_result(3, state.query.pagination.reached_end());
+            state.query.pagination.set_current_page(3);
             let result = adhoc_result();
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 0, None);

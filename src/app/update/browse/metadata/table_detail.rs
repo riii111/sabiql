@@ -44,7 +44,7 @@ pub(super) fn reduce_table_detail(state: &mut AppState, action: &Action) -> Disp
             table,
             generation,
         }) => {
-            if let Some(dsn) = state.session.dsn_owned() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_table_detail_run();
                 DispatchResult::handled_with(vec![Effect::FetchTableDetail {
                     dsn,

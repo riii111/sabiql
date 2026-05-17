@@ -155,7 +155,7 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     let table_name = table.name.clone();
 
     let mut effects = Vec::new();
-    if let Some(dsn) = state.session.dsn_owned() {
+    if let Some(dsn) = state.session.dsn().map(String::from) {
         let run_id = state.session.begin_table_detail_run();
         effects.push(Effect::FetchTableDetail {
             dsn,
@@ -904,7 +904,7 @@ mod tests {
         use crate::model::connection::error::ConnectionErrorInfo;
 
         fn metadata_loaded_action(state: &mut AppState, metadata: DatabaseMetadata) -> Action {
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
@@ -914,7 +914,7 @@ mod tests {
         }
 
         fn metadata_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataFailed {
                 dsn: "postgres://localhost/test".to_string(),
@@ -1231,7 +1231,7 @@ mod tests {
         #[test]
         fn load_metadata_with_dsn_returns_fetch_effect() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
@@ -1258,7 +1258,7 @@ mod tests {
         #[test]
         fn reload_metadata_returns_sequence_effect() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -1282,7 +1282,7 @@ mod tests {
         #[test]
         fn reload_metadata_sets_is_reloading_flag() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             reduce(
@@ -1337,7 +1337,7 @@ mod tests {
         #[test]
         fn execute_adhoc_with_dsn_returns_effect() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -1371,7 +1371,7 @@ mod tests {
         #[test]
         fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1395,7 +1395,7 @@ mod tests {
         #[test]
         fn prefetch_started_true_emits_smart_refresh() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1415,7 +1415,7 @@ mod tests {
         #[test]
         fn no_prefetch_emits_smart_refresh() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1448,7 +1448,7 @@ mod tests {
             let mut state = create_test_state();
             state.er_preparation.mark_waiting();
             let now = Instant::now();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataFailed {
                 dsn: "postgres://localhost/test".to_string(),
@@ -1485,7 +1485,7 @@ mod tests {
         #[test]
         fn emits_cache_effect() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
@@ -1517,7 +1517,7 @@ mod tests {
         #[test]
         fn with_queue_returns_process_effect() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
@@ -1819,7 +1819,7 @@ mod tests {
             };
 
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
 
             let delete_sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';".to_string();
@@ -1896,7 +1896,7 @@ mod tests {
             };
 
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
 
             state.result_interaction.set_write_preview(WritePreview {
@@ -1957,7 +1957,7 @@ mod tests {
         #[test]
         fn try_connect_with_dsn_starts_connecting() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -1994,7 +1994,7 @@ mod tests {
         #[test]
         fn try_connect_when_already_connecting_is_noop() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
@@ -2010,7 +2010,7 @@ mod tests {
         #[test]
         fn try_connect_when_already_connected_is_noop() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -2026,7 +2026,7 @@ mod tests {
         #[test]
         fn try_connect_when_not_in_normal_mode_is_noop() {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -2045,7 +2045,7 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
@@ -2079,7 +2079,7 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
             let now = Instant::now();
 
@@ -2403,7 +2403,7 @@ mod tests {
         }
 
         fn metadata_loaded_action(state: &mut AppState) -> Action {
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
@@ -2528,7 +2528,7 @@ mod tests {
         #[test]
         fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
             state
                 .er_preparation
@@ -2550,7 +2550,7 @@ mod tests {
             use crate::model::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting();
             state.er_preparation.begin_full_prefetch(1);
@@ -2584,7 +2584,7 @@ mod tests {
             use crate::model::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting();
             state.er_preparation.begin_full_prefetch(2);
@@ -2626,7 +2626,7 @@ mod tests {
 
         fn state_after_confirm_and_complete() -> (AppState, Instant) {
             let mut state = create_test_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             let now = Instant::now();
 
             // Load metadata with a table
@@ -2751,11 +2751,7 @@ mod tests {
         #[test]
         fn prev_page_after_confirm_flows_through_result_to_query() {
             let (mut state, now) = state_after_confirm_and_complete();
-            state
-                .query
-                .pagination
-                .set_page_result(1, state.query.pagination.reached_end());
-            state.query.pagination.allow_next_page_after_refresh();
+            state.query.pagination.set_page_result(1, true);
 
             let effects = reduce(
                 &mut state,
@@ -2843,7 +2839,7 @@ mod tests {
             let entry_index = palette_index_of(|a| matches!(a, Action::ReloadMetadata));
 
             let mut state = state_in_palette_mode();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 

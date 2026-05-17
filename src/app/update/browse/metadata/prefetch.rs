@@ -143,7 +143,7 @@ pub(super) fn reduce_prefetch(
                 }
             }
 
-            let Some(dsn) = state.session.dsn_owned() else {
+            let Some(dsn) = state.session.dsn().map(String::from) else {
                 state.sql_modal.prefetch_queue.push_front(qualified_name);
                 return DispatchResult::handled();
             };

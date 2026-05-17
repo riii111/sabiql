@@ -30,7 +30,7 @@ pub(super) fn reduce_analyze(
             if content.is_empty() {
                 return DispatchResult::handled();
             }
-            let Some(dsn) = state.session.dsn_owned() else {
+            let Some(dsn) = state.session.dsn().map(String::from) else {
                 return DispatchResult::handled();
             };
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
@@ -102,7 +102,7 @@ pub(super) fn reduce_analyze(
                 _ => None,
             };
             if let Some(query) = query
-                && let Some(dsn) = state.session.dsn_owned()
+                && let Some(dsn) = state.session.dsn().map(String::from)
             {
                 let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
                 else {

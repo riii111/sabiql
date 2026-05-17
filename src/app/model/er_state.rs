@@ -88,10 +88,6 @@ impl ErPreparationState {
         &self.target_tables
     }
 
-    pub fn target_tables_owned(&self) -> Vec<String> {
-        self.target_tables.clone()
-    }
-
     pub fn seed_tables(&self) -> &[String] {
         &self.seed_tables
     }

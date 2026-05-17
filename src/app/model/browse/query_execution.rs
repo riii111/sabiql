@@ -56,7 +56,7 @@ impl PaginationState {
         !self.table.is_empty()
     }
 
-    pub fn preview_label(&self) -> String {
+    pub fn qualified_name(&self) -> String {
         if self.schema.is_empty() {
             self.table.clone()
         } else {
@@ -115,12 +115,16 @@ impl PaginationState {
         self.total_rows_estimate = estimate;
     }
 
-    pub fn allow_next_page_after_refresh(&mut self) {
+    pub fn clear_reached_end(&mut self) {
         self.reached_end = false;
     }
 
     pub fn set_total_rows_estimate(&mut self, estimate: Option<i64>) {
         self.total_rows_estimate = estimate;
+    }
+
+    pub fn set_current_page(&mut self, page: usize) {
+        self.current_page = page;
     }
 
     pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
@@ -799,7 +803,7 @@ mod tests {
                 ..Default::default()
             };
 
-            p.allow_next_page_after_refresh();
+            p.clear_reached_end();
 
             assert_eq!(p.current_page(), 3);
             assert!(!p.reached_end());
