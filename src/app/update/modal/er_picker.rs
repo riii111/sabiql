@@ -74,8 +74,9 @@ pub(super) fn reduce_er_picker(
                 state.set_error("No tables selected".to_string());
                 return DispatchResult::handled();
             }
-            state.er_preparation.target_tables =
-                state.ui.er_selected_tables.iter().cloned().collect();
+            state
+                .er_preparation
+                .set_targets(state.ui.er_selected_tables.iter().cloned().collect());
             state.modal.set_mode(InputMode::Normal);
             state.ui.er_picker.clear_filter();
             state.ui.er_selected_tables.clear();

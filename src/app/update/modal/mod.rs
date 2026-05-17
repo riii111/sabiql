@@ -402,7 +402,7 @@ mod tests {
             fn execute_write_sets_running_state_and_returns_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::CellEdit);
-                state.session.dsn = Some("postgres://localhost/test".to_string());
+                let _ = state.session.begin_connecting("postgres://localhost/test");
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -428,7 +428,7 @@ mod tests {
             fn execute_write_no_dsn_sets_error() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = None;
+                state.session.clear_connection();
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -520,7 +520,7 @@ mod tests {
             fn csv_export_returns_export_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = Some("postgres://localhost/test".to_string());
+                let _ = state.session.begin_connecting("postgres://localhost/test");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
@@ -549,7 +549,9 @@ mod tests {
             fn csv_export_ignores_mismatched_dsn() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = Some("postgres://localhost/current".to_string());
+                let _ = state
+                    .session
+                    .begin_connecting("postgres://localhost/current");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
@@ -577,7 +579,7 @@ mod tests {
             fn csv_export_ignores_mismatched_run_id() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = Some("postgres://localhost/test".to_string());
+                let _ = state.session.begin_connecting("postgres://localhost/test");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
@@ -604,7 +606,7 @@ mod tests {
             #[test]
             fn disable_read_only_confirm_sets_read_only_false() {
                 let mut state = create_test_state();
-                state.session.read_only = true;
+                state.session.enable_read_only();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
                 state
                     .confirm_dialog
@@ -617,7 +619,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(!state.session.read_only);
+                assert!(!state.session.is_read_only());
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert!(effects.is_empty());
             }
@@ -825,7 +827,12 @@ mod tests {
 
         fn connected_state() -> AppState {
             let mut state = create_test_state();
-            state.session.active_connection_id = Some(ConnectionId::from_string("test-conn"));
+            state.session.set_active_connection(
+                &ConnectionId::from_string("test-conn"),
+                "test",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.runtime.project_name = "test-project".to_string();
             state
         }
@@ -841,7 +848,7 @@ mod tests {
             #[test]
             fn open_when_not_connected_is_noop() {
                 let mut state = create_test_state();
-                state.session.active_connection_id = None;
+                state.session.clear_connection();
 
                 let effects = super::dispatch_modal(
                     &mut state,

@@ -27,27 +27,27 @@ use crate::model::shared::inspector_tab::InspectorTab;
 #[derive(Debug, Clone)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
-    pub(crate) connection_state: ConnectionState,
-    pub(crate) metadata_state: MetadataState,
+    connection_state: ConnectionState,
+    metadata_state: MetadataState,
 
     // -- co-dependent: table selection --
-    pub(crate) selected_table_key: Option<String>,
-    pub(crate) table_detail: Option<Table>,
-    pub(crate) selection_generation: u64,
+    selected_table_key: Option<String>,
+    table_detail: Option<Table>,
+    selection_generation: u64,
 
     // -- lifecycle-gated --
-    pub(crate) metadata: Option<Arc<DatabaseMetadata>>,
-    pub(crate) metadata_run: AsyncRun,
-    pub(crate) table_detail_run: AsyncRun,
+    metadata: Option<Arc<DatabaseMetadata>>,
+    metadata_run: AsyncRun,
+    table_detail_run: AsyncRun,
 
     // -- co-dependent: connection identity / lifecycle --
-    pub(crate) dsn: Option<String>,
-    pub(crate) active_connection_id: Option<ConnectionId>,
-    pub(crate) active_connection_name: Option<String>,
-    pub(crate) active_database_type: Option<DatabaseType>,
-    pub(crate) active_db_capabilities: DbCapabilities,
-    pub(crate) read_only: bool,
-    pub(crate) is_reloading: bool,
+    dsn: Option<String>,
+    active_connection_id: Option<ConnectionId>,
+    active_connection_name: Option<String>,
+    active_database_type: Option<DatabaseType>,
+    active_db_capabilities: DbCapabilities,
+    read_only: bool,
+    is_reloading: bool,
 }
 
 impl Default for BrowseSession {
@@ -142,6 +142,31 @@ impl BrowseSession {
         self.active_database_type = Some(database_type);
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
+    }
+
+    pub fn set_active_connection_identity(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+    ) {
+        self.active_connection_id = Some(id.clone());
+        self.active_connection_name = Some(name.to_string());
+        self.active_database_type = Some(database_type);
+        self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
+    }
+
+    pub fn set_active_database_type(&mut self, database_type: DatabaseType) {
+        self.active_database_type = Some(database_type);
+        self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
+    }
+
+    pub fn clear_connection(&mut self) {
+        self.dsn = None;
+        self.active_connection_id = None;
+        self.active_connection_name = None;
+        self.active_database_type = None;
+        self.active_db_capabilities = DbCapabilities::disconnected();
     }
 
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
@@ -266,11 +291,7 @@ impl BrowseSession {
         self.metadata_state = MetadataState::default();
         self.metadata_run.clear_active();
         self.table_detail_run.clear_active();
-        self.dsn = None;
-        self.active_connection_id = None;
-        self.active_connection_name = None;
-        self.active_database_type = None;
-        self.active_db_capabilities = DbCapabilities::disconnected();
+        self.clear_connection();
         self.read_only = false;
         self.is_reloading = false;
         query.pagination.reset();
@@ -311,6 +332,14 @@ impl BrowseSession {
 
     pub fn dsn(&self) -> Option<&str> {
         self.dsn.as_deref()
+    }
+
+    pub fn dsn_owned(&self) -> Option<String> {
+        self.dsn.clone()
+    }
+
+    pub fn dsn_matches(&self, expected: &str) -> bool {
+        self.dsn() == Some(expected)
     }
 
     pub fn active_connection_id(&self) -> Option<&ConnectionId> {
@@ -373,39 +402,6 @@ impl BrowseSession {
     #[cfg(test)]
     pub(crate) fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_dsn_for_test(&mut self, dsn: impl Into<String>) {
-        self.dsn = Some(dsn.into());
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn clear_dsn_for_test(&mut self) {
-        self.dsn = None;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_active_connection_id_for_test(&mut self, id: Option<ConnectionId>) {
-        self.active_connection_id = id;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_active_connection_name_for_test(&mut self, name: Option<String>) {
-        self.active_connection_name = name;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_active_database_type_for_test(&mut self, database_type: Option<DatabaseType>) {
-        self.active_database_type = database_type;
-        self.active_db_capabilities = database_type
-            .map(DbCapabilities::for_database_type)
-            .unwrap_or_else(DbCapabilities::disconnected);
     }
 }
 
@@ -495,10 +491,10 @@ mod tests {
         fn resets_pagination() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
-            pagination.set_page_for_test(5);
-            pagination.set_total_rows_estimate_for_test(Some(10000));
-            pagination.mark_reached_end_for_test();
-            pagination.set_table_for_test("old", "old");
+            pagination.set_page_result(5, pagination.reached_end());
+            pagination.set_total_rows_estimate(Some(10000));
+            pagination.set_page_result(pagination.current_page(), true);
+            pagination.reset_for_table("old", "old");
 
             let _ = session.select_table("public", "users", &mut pagination);
 
@@ -590,7 +586,7 @@ mod tests {
         #[test]
         fn mark_connecting_sets_pair_without_changing_dsn() {
             let mut session = BrowseSession::default();
-            session.set_dsn_for_test("postgres://localhost/test");
+            let _ = session.begin_connecting("postgres://localhost/test");
 
             session.mark_connecting();
 
@@ -770,20 +766,24 @@ mod tests {
         fn clears_session_and_query_state() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            session.set_dsn_for_test("postgres://host/db");
-            session.set_active_connection_id_for_test(Some(ConnectionId::new()));
-            session.set_active_connection_name_for_test(Some("mydb".to_string()));
-            session.set_active_database_type_for_test(Some(DatabaseType::PostgreSQL));
+            session.set_active_connection(
+                &ConnectionId::new(),
+                "mydb",
+                DatabaseType::PostgreSQL,
+                "postgres://host/db",
+            );
             session.enable_read_only();
             let _ = session.begin_reload();
             let mut query = QueryExecution::default();
             query.set_current_result(make_query_result());
-            query.pagination.set_page_for_test(3);
             query
                 .pagination
-                .set_total_rows_estimate_for_test(Some(1000));
-            query.pagination.mark_reached_end_for_test();
-            query.pagination.set_table_for_test("public", "users");
+                .set_page_result(3, query.pagination.reached_end());
+            query.pagination.set_total_rows_estimate(Some(1000));
+            query
+                .pagination
+                .set_page_result(query.pagination.current_page(), true);
+            query.pagination.reset_for_table("public", "users");
             query.enter_history(2);
 
             session.reset(&mut query);

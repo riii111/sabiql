@@ -28,7 +28,7 @@ pub(super) fn reduce_request(
             if content.is_empty() {
                 return DispatchResult::handled();
             }
-            let Some(dsn) = state.session.dsn.clone() else {
+            let Some(dsn) = state.session.dsn_owned() else {
                 return DispatchResult::handled();
             };
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {

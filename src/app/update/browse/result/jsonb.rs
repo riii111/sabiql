@@ -30,8 +30,8 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
 
             let table_detail = match state.session.table_detail() {
                 Some(td)
-                    if td.schema == state.query.pagination.schema
-                        && td.name == state.query.pagination.table =>
+                    if td.schema == state.query.pagination.schema()
+                        && td.name == state.query.pagination.table() =>
                 {
                     td
                 }
@@ -98,7 +98,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
         }
 
         Action::JsonbEnterEdit => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -110,7 +110,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
         }
 
         Action::JsonbAppendInsert => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -454,8 +454,7 @@ mod tests {
             error: None,
             command_tag: None,
         }));
-        state.query.pagination.schema = "public".to_string();
-        state.query.pagination.table = "users".to_string();
+        state.query.pagination.reset_for_table("public", "users");
         state.session.set_table_detail_raw(Some(jsonb_table()));
         state.result_interaction.activate_cell(0, 1);
         state
@@ -752,7 +751,7 @@ mod tests {
         fn enter_edit_blocked_in_read_only_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
 
@@ -764,7 +763,7 @@ mod tests {
         fn append_insert_blocked_in_read_only_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
-            state.session.read_only = true;
+            state.session.enable_read_only();
             let cursor_before = state.jsonb_detail.editor().cursor();
 
             reduce_jsonb(&mut state, &Action::JsonbAppendInsert, Instant::now());

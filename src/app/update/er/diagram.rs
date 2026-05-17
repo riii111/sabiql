@@ -38,7 +38,7 @@ pub(super) fn reduce_diagram_lifecycle(
                 return DispatchResult::handled();
             }
 
-            let Some(dsn) = state.session.dsn.clone() else {
+            let Some(dsn) = state.session.dsn_owned() else {
                 state.set_error("No active connection".to_string());
                 return DispatchResult::handled();
             };
@@ -67,7 +67,7 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::GenerateErDiagramFromCache {
                 total_tables,
                 project_name: state.runtime.project_name.clone(),
-                target_tables: state.er_preparation.target_tables.clone(),
+                target_tables: state.er_preparation.target_tables_owned(),
             }])
         }
         _ => DispatchResult::pass(),

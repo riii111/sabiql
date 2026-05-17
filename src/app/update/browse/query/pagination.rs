@@ -24,15 +24,15 @@ pub fn reduce_pagination(
             let Some(result) = state.query.visible_result() else {
                 return DispatchResult::handled();
             };
-            let dsn = match &state.session.dsn {
-                Some(d) => d.clone(),
+            let dsn = match state.session.dsn_owned() {
+                Some(d) => d,
                 None => return DispatchResult::handled(),
             };
 
             let export_query = result.query.clone();
             let file_name = match result.source {
                 QuerySource::Preview => {
-                    let table = &state.query.pagination.table;
+                    let table = state.query.pagination.table();
                     table
                         .chars()
                         .map(|c| {
@@ -57,7 +57,7 @@ pub fn reduce_pagination(
                 count_query,
                 export_query,
                 file_name,
-                read_only: state.session.read_only,
+                read_only: state.session.is_read_only(),
             }])
         }
 
@@ -68,7 +68,7 @@ pub fn reduce_pagination(
             export_query,
             file_name,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -104,7 +104,7 @@ pub fn reduce_pagination(
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             }
         }
@@ -116,7 +116,7 @@ pub fn reduce_pagination(
             file_name,
             row_count,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -126,7 +126,7 @@ pub fn reduce_pagination(
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
-                read_only: state.session.read_only,
+                read_only: state.session.is_read_only(),
             }])
         }
 
@@ -136,7 +136,7 @@ pub fn reduce_pagination(
             path,
             row_count,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -153,7 +153,7 @@ pub fn reduce_pagination(
         }
 
         Action::CsvExportFailed { dsn, run_id, error } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -177,20 +177,20 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_next() {
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = state.session.dsn.clone() {
-                let next_page = state.query.pagination.current_page + 1;
+            if let Some(dsn) = state.session.dsn_owned() {
+                let next_page = state.query.pagination.next_page();
                 let run_id = state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 DispatchResult::handled_with(vec![Effect::ExecutePreview {
                     dsn,
-                    schema: state.query.pagination.schema.clone(),
-                    table: state.query.pagination.table.clone(),
+                    schema: state.query.pagination.schema().to_string(),
+                    table: state.query.pagination.table().to_string(),
                     generation: state.session.selection_generation(),
                     run_id,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: next_page * PREVIEW_PAGE_SIZE,
                     target_page: next_page,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 DispatchResult::handled()
@@ -204,21 +204,21 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_prev() {
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = state.session.dsn.clone() {
-                let prev_page = state.query.pagination.current_page - 1;
+            if let Some(dsn) = state.session.dsn_owned() {
+                let prev_page = state.query.pagination.prev_page();
                 let run_id = state.query.begin_running(now);
                 state.result_interaction.reset_view();
-                state.query.pagination.reached_end = false;
+                state.query.pagination.allow_next_page_after_refresh();
                 DispatchResult::handled_with(vec![Effect::ExecutePreview {
                     dsn,
-                    schema: state.query.pagination.schema.clone(),
-                    table: state.query.pagination.table.clone(),
+                    schema: state.query.pagination.schema().to_string(),
+                    table: state.query.pagination.table().to_string(),
                     generation: state.session.selection_generation(),
                     run_id,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: prev_page * PREVIEW_PAGE_SIZE,
                     target_page: prev_page,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 DispatchResult::handled()
@@ -236,7 +236,6 @@ mod tests {
     use crate::ports::outbound::DbOperationError;
     use std::sync::Arc;
 
-    use crate::model::browse::query_execution::PaginationState;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
 
@@ -305,13 +304,10 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination = PaginationState {
-                current_page: 0,
-                total_rows_estimate: Some(1500),
-                reached_end: false,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            state
+                .query
+                .pagination
+                .reset_for_table_with_estimate("public", "users", Some(1500));
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -340,7 +336,7 @@ mod tests {
         fn noop_when_reached_end() {
             let mut state = create_test_state();
             state.query.set_current_result(preview_result(100));
-            state.query.pagination.reached_end = true;
+            state.query.pagination.set_page_result(0, true);
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -397,7 +393,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(100));
-            state.query.pagination.reached_end = true;
+            state.query.pagination.set_page_result(0, true);
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
@@ -419,13 +415,10 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination = PaginationState {
-                current_page: 0,
-                total_rows_estimate: Some(1500),
-                reached_end: false,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            state
+                .query
+                .pagination
+                .reset_for_table_with_estimate("public", "users", Some(1500));
             state.result_interaction.activate_cell(3, 1);
             state.result_interaction.stage_row(3);
 
@@ -451,13 +444,11 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination = PaginationState {
-                current_page: 2,
-                total_rows_estimate: Some(1500),
-                reached_end: false,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            state
+                .query
+                .pagination
+                .reset_for_table_with_estimate("public", "users", Some(1500));
+            state.query.pagination.set_page_result(2, false);
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -488,7 +479,10 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination.current_page = 0;
+            state
+                .query
+                .pagination
+                .set_page_result(0, state.query.pagination.reached_end());
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -508,7 +502,10 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(PREVIEW_PAGE_SIZE));
-            state.query.pagination.current_page = 0;
+            state
+                .query
+                .pagination
+                .set_page_result(0, state.query.pagination.reached_end());
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
@@ -532,7 +529,7 @@ mod tests {
 
         fn export_test_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let _ = state.session.begin_connecting("postgres://localhost/test");
             state
         }
 
@@ -540,9 +537,8 @@ mod tests {
         fn request_with_preview_result_emits_count_effect() {
             let mut state = export_test_state();
             state.query.set_current_result(preview_result(10));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
-            state.query.pagination.total_rows_estimate = Some(100);
+            state.query.pagination.reset_for_table("public", "users");
+            state.query.pagination.set_total_rows_estimate(Some(100));
 
             let effects = dispatch_query(
                 &mut state,

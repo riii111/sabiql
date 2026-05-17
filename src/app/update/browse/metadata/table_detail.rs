@@ -11,7 +11,7 @@ pub(super) fn reduce_table_detail(state: &mut AppState, action: &Action) -> Disp
             detail,
             generation,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
+            if !state.session.dsn_matches(dsn)
                 || !state.session.is_current_table_detail_run(*run_id)
             {
                 return DispatchResult::handled();
@@ -28,7 +28,7 @@ pub(super) fn reduce_table_detail(state: &mut AppState, action: &Action) -> Disp
             error,
             generation,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
+            if !state.session.dsn_matches(dsn)
                 || !state.session.is_current_table_detail_run(*run_id)
             {
                 return DispatchResult::handled();
@@ -44,7 +44,7 @@ pub(super) fn reduce_table_detail(state: &mut AppState, action: &Action) -> Disp
             table,
             generation,
         }) => {
-            if let Some(dsn) = state.session.dsn.clone() {
+            if let Some(dsn) = state.session.dsn_owned() {
                 let run_id = state.session.begin_table_detail_run();
                 DispatchResult::handled_with(vec![Effect::FetchTableDetail {
                     dsn,

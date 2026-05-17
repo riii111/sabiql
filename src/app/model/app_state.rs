@@ -689,7 +689,7 @@ mod tests {
                     .session
                     .select_table("public", "users", &mut state.query.pagination);
                 let generation = state.session.selection_generation();
-                state.session.set_dsn_for_test("dsn://test");
+                let _ = state.session.begin_connecting("dsn://test");
                 let run_id = state.session.begin_table_detail_run();
                 state.ui.set_inspector_scroll_offset(42);
 

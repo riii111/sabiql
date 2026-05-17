@@ -30,10 +30,9 @@ pub(super) fn reduce_analyze(
             if content.is_empty() {
                 return DispatchResult::handled();
             }
-            let Some(dsn) = &state.session.dsn else {
+            let Some(dsn) = state.session.dsn_owned() else {
                 return DispatchResult::handled();
             };
-            let dsn = dsn.clone();
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return DispatchResult::handled();
             }
@@ -49,7 +48,7 @@ pub(super) fn reduce_analyze(
 
             let is_dml = !matches!(kind, StatementKind::Select | StatementKind::Transaction);
 
-            if state.session.read_only && is_dml {
+            if state.session.is_read_only() && is_dml {
                 show_explain_error_on_plan(
                     state,
                     "Read-only mode: EXPLAIN ANALYZE is blocked for DML statements.",
@@ -79,7 +78,7 @@ pub(super) fn reduce_analyze(
                         query: explain_query,
                         source_query: content,
                         is_analyze: true,
-                        read_only: state.session.read_only,
+                        read_only: state.session.is_read_only(),
                     }]);
                 }
             }
@@ -103,7 +102,7 @@ pub(super) fn reduce_analyze(
                 _ => None,
             };
             if let Some(query) = query
-                && let Some(dsn) = state.session.dsn.clone()
+                && let Some(dsn) = state.session.dsn_owned()
             {
                 let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
                 else {
@@ -117,7 +116,7 @@ pub(super) fn reduce_analyze(
                     query: explain_query,
                     source_query: query,
                     is_analyze: true,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }]);
             }
             DispatchResult::handled()

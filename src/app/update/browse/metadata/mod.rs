@@ -12,28 +12,23 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
-    if state.er_preparation.status != ErStatus::Waiting || !state.er_preparation.is_complete() {
+    if state.er_preparation.status() != ErStatus::Waiting || !state.er_preparation.is_complete() {
         return vec![];
     }
 
-    if !state.er_preparation.fk_expanded {
+    if !state.er_preparation.fk_expanded() {
         return vec![Effect::DispatchActions(vec![
             Action::ExpandPrefetchWithFkNeighbors,
         ])];
     }
 
     if !state.er_preparation.has_failures() {
-        state.er_preparation.status = ErStatus::Idle;
+        state.er_preparation.mark_idle();
         return vec![Effect::DispatchActions(vec![Action::ErGenerateFromCache])];
     }
 
-    state.er_preparation.status = ErStatus::Idle;
-    let failed_data: Vec<(String, String)> = state
-        .er_preparation
-        .failed_tables
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+    state.er_preparation.mark_idle();
+    let failed_data: Vec<(String, String)> = state.er_preparation.failed_table_errors();
     state.set_error(format!(
         "ER failed: {} table(s) failed. 'e' to retry.",
         failed_data.len()
@@ -62,7 +57,7 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.dsn = Some(dsn.to_string());
+        let _ = state.session.begin_connecting(dsn);
         state
     }
 
@@ -245,10 +240,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
-            state
-                .er_preparation
-                .pending_tables
-                .insert(qualified.clone());
+            state.er_preparation.insert_pending_table(qualified.clone());
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -264,8 +256,8 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.sql_modal.prefetch_queue.front(), Some(&qualified));
             assert!(!state.sql_modal.prefetching_tables.contains(&qualified));
-            assert!(!state.er_preparation.fetching_tables.contains(&qualified));
-            assert!(state.er_preparation.pending_tables.contains(&qualified));
+            assert!(!state.er_preparation.fetching_tables().contains(&qualified));
+            assert!(state.er_preparation.pending_tables().contains(&qualified));
         }
 
         #[test]
@@ -273,10 +265,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
-            state
-                .er_preparation
-                .pending_tables
-                .insert(qualified.clone());
+            state.er_preparation.insert_pending_table(qualified.clone());
             state.sql_modal.failed_prefetch_tables.insert(
                 qualified.clone(),
                 FailedPrefetchEntry {
@@ -297,22 +286,24 @@ mod tests {
             );
 
             assert!(!state.sql_modal.prefetch_queue.contains(&qualified));
-            assert!(state.er_preparation.failed_tables.contains_key(&qualified));
-            assert!(!state.er_preparation.pending_tables.contains(&qualified));
+            assert!(
+                state
+                    .er_preparation
+                    .failed_tables()
+                    .contains_key(&qualified)
+            );
+            assert!(!state.er_preparation.pending_tables().contains(&qualified));
         }
 
         #[test]
         fn retry_limit_exceeded_as_last_table_triggers_er_completion() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             // Only table remaining; retry limit exceeded
-            state
-                .er_preparation
-                .pending_tables
-                .insert(qualified.clone());
+            state.er_preparation.insert_pending_table(qualified.clone());
             state.sql_modal.failed_prefetch_tables.insert(
                 qualified,
                 FailedPrefetchEntry {
@@ -333,7 +324,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(
                 effects
                     .iter()
@@ -345,16 +336,13 @@ mod tests {
         fn retry_limit_exceeded_with_queue_remaining_redrives_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_fk_expanded();
             let failed = "public.users".to_string();
             let remaining = "public.posts".to_string();
             // users exhausted retries; posts still awaiting in queue
-            state.er_preparation.pending_tables.insert(failed.clone());
-            state
-                .er_preparation
-                .pending_tables
-                .insert(remaining.clone());
+            state.er_preparation.insert_pending_table(failed.clone());
+            state.er_preparation.insert_pending_table(remaining.clone());
             state.sql_modal.prefetch_queue.push_back(remaining);
             state.sql_modal.failed_prefetch_tables.insert(
                 failed,
@@ -381,7 +369,7 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
             );
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
         }
 
         #[test]
@@ -422,7 +410,6 @@ mod tests {
 
     mod table_detail_cache_failed {
         use super::*;
-        use crate::model::er_state::ErStatus;
         use crate::ports::outbound::DbOperationError;
 
         #[test]
@@ -501,8 +488,7 @@ mod tests {
             state.sql_modal.prefetching_tables.insert(qualified.clone());
             state
                 .er_preparation
-                .fetching_tables
-                .insert(qualified.clone());
+                .insert_fetching_table(qualified.clone());
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -518,9 +504,14 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.sql_modal.prefetch_queue.back(), Some(&qualified));
-            assert!(state.er_preparation.pending_tables.contains(&qualified));
-            assert!(!state.er_preparation.fetching_tables.contains(&qualified));
-            assert!(!state.er_preparation.failed_tables.contains_key(&qualified));
+            assert!(state.er_preparation.pending_tables().contains(&qualified));
+            assert!(!state.er_preparation.fetching_tables().contains(&qualified));
+            assert!(
+                !state
+                    .er_preparation
+                    .failed_tables()
+                    .contains_key(&qualified)
+            );
             assert!(
                 effects
                     .iter()
@@ -541,7 +532,7 @@ mod tests {
             let queued = "public.posts".to_string();
             state.sql_modal.prefetching_tables.insert(failed.clone());
             state.sql_modal.prefetch_queue.push_back(queued);
-            state.er_preparation.fetching_tables.insert(failed);
+            state.er_preparation.insert_fetching_table(failed);
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -572,14 +563,13 @@ mod tests {
         fn transient_failure_then_success_clears_er_failure_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             state.sql_modal.prefetching_tables.insert(qualified.clone());
             state
                 .er_preparation
-                .fetching_tables
-                .insert(qualified.clone());
+                .insert_fetching_table(qualified.clone());
 
             dispatch_metadata(
                 &mut state,
@@ -593,11 +583,10 @@ mod tests {
                 Instant::now(),
             );
             state.sql_modal.prefetch_queue.clear();
-            state.er_preparation.pending_tables.remove(&qualified);
+            state.er_preparation.remove_pending_table(&qualified);
             state
                 .er_preparation
-                .fetching_tables
-                .insert(qualified.clone());
+                .insert_fetching_table(qualified.clone());
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -612,7 +601,7 @@ mod tests {
             )
             .unwrap();
 
-            assert!(state.er_preparation.failed_tables.is_empty());
+            assert!(state.er_preparation.failed_tables().is_empty());
             assert!(
                 effects
                     .iter()
@@ -680,7 +669,7 @@ mod tests {
             let action = metadata_loaded_action(&mut state, metadata);
             dispatch_metadata(&mut state, &action, Instant::now());
 
-            assert!(state.query.pagination.table.is_empty());
+            assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert!(state.session.selected_table_key().is_none());
@@ -690,15 +679,14 @@ mod tests {
         #[test]
         fn table_still_exists_preserves_pagination_and_emits_refresh_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.reset_for_table("public", "users");
 
             // "orders" comes before "users" alphabetically, so "users" → index 1
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
             let action = metadata_loaded_action(&mut state, metadata);
             let effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
 
-            assert_eq!(state.query.pagination.table, "users");
+            assert_eq!(state.query.pagination.table(), "users");
             assert_eq!(state.ui.explorer_selected, 1);
             assert!(
                 effects
@@ -803,7 +791,7 @@ mod tests {
 
             dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
 
-            assert!(state.er_preparation.fk_expanded);
+            assert!(state.er_preparation.fk_expanded());
         }
     }
 
@@ -816,8 +804,7 @@ mod tests {
             let _ = state.sql_modal.begin_prefetch();
             state
                 .er_preparation
-                .pending_tables
-                .insert("public.users".to_string());
+                .insert_pending_table("public.users".to_string());
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -829,7 +816,12 @@ mod tests {
             .unwrap();
 
             // In-progress prefetch must not be silently reset
-            assert!(state.er_preparation.pending_tables.contains("public.users"));
+            assert!(
+                state
+                    .er_preparation
+                    .pending_tables()
+                    .contains("public.users")
+            );
             assert!(effects.is_empty());
         }
 
@@ -848,15 +840,20 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
-            assert!(state.er_preparation.pending_tables.contains("public.users"));
             assert!(
                 state
                     .er_preparation
-                    .pending_tables
+                    .pending_tables()
+                    .contains("public.users")
+            );
+            assert!(
+                state
+                    .er_preparation
+                    .pending_tables()
                     .contains("public.orders")
             );
-            assert!(!state.er_preparation.fk_expanded);
-            assert_eq!(state.er_preparation.seed_tables, tables);
+            assert!(!state.er_preparation.fk_expanded());
+            assert_eq!(state.er_preparation.seed_tables(), tables);
             assert!(
                 effects
                     .iter()
@@ -867,13 +864,12 @@ mod tests {
 
     mod completion_check {
         use super::*;
-        use crate::model::er_state::ErStatus;
 
         #[test]
         fn complete_not_fk_expanded_dispatches_expand() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.fk_expanded = false;
+            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_fk_unexpanded();
             // pending and fetching are empty → is_complete() = true
 
             let effects = check_er_completion(&mut state);
@@ -888,8 +884,8 @@ mod tests {
         #[test]
         fn complete_fk_expanded_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_fk_expanded();
 
             let effects = check_er_completion(&mut state);
 
@@ -910,7 +906,7 @@ mod tests {
         fn empty_neighbors_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.mark_waiting();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -919,7 +915,7 @@ mod tests {
             )
             .unwrap();
 
-            assert!(state.er_preparation.fk_expanded);
+            assert!(state.er_preparation.fk_expanded());
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
@@ -931,7 +927,7 @@ mod tests {
         fn non_empty_neighbors_adds_to_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.mark_waiting();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -942,9 +938,19 @@ mod tests {
             )
             .unwrap();
 
-            assert!(state.er_preparation.fk_expanded);
-            assert!(state.er_preparation.pending_tables.contains("public.posts"));
-            assert!(state.er_preparation.pending_tables.contains("public.tags"));
+            assert!(state.er_preparation.fk_expanded());
+            assert!(
+                state
+                    .er_preparation
+                    .pending_tables()
+                    .contains("public.posts")
+            );
+            assert!(
+                state
+                    .er_preparation
+                    .pending_tables()
+                    .contains("public.tags")
+            );
             assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
             assert!(
                 effects
@@ -956,7 +962,7 @@ mod tests {
         #[test]
         fn stale_neighbors_without_active_run_do_not_mutate_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.mark_waiting();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -967,8 +973,8 @@ mod tests {
             )
             .unwrap();
 
-            assert!(!state.er_preparation.fk_expanded);
-            assert!(state.er_preparation.pending_tables.is_empty());
+            assert!(!state.er_preparation.fk_expanded());
+            assert!(state.er_preparation.pending_tables().is_empty());
             assert!(state.sql_modal.prefetch_queue.is_empty());
             assert!(effects.is_empty());
         }
@@ -977,11 +983,10 @@ mod tests {
         fn duplicate_neighbors_are_not_requeued() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.mark_waiting();
             state
                 .er_preparation
-                .pending_tables
-                .insert("public.posts".to_string());
+                .insert_pending_table("public.posts".to_string());
             state
                 .sql_modal
                 .prefetch_queue
@@ -1032,10 +1037,10 @@ mod tests {
             // All Phase 2 tables fail → completion must still fire
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.status = ErStatus::Waiting;
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_fk_expanded();
             let neighbor = "public.posts".to_string();
-            state.er_preparation.pending_tables.insert(neighbor.clone());
+            state.er_preparation.insert_pending_table(neighbor.clone());
             state.sql_modal.failed_prefetch_tables.insert(
                 neighbor,
                 FailedPrefetchEntry {
@@ -1056,7 +1061,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(
                 effects
                     .iter()

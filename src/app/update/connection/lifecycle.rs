@@ -112,9 +112,12 @@ mod tests {
         let current_id = ConnectionId::new();
         let new_id = ConnectionId::new();
 
-        state
-            .session
-            .set_active_connection_id_for_test(Some(current_id.clone()));
+        state.session.set_active_connection(
+            &current_id,
+            "current",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/current",
+        );
         state.ui.set_explorer_selected_raw(5);
         state.ui.set_inspector_tab(InspectorTab::Indexes);
 
@@ -257,10 +260,12 @@ mod tests {
     #[test]
     fn sqlite_try_connect_fetches_metadata() {
         let mut state = AppState::new("test".to_string());
-        state.session.set_dsn_for_test("sqlite:///tmp/app.db");
-        state
-            .session
-            .set_active_database_type_for_test(Some(DatabaseType::SQLite));
+        state.session.set_active_connection(
+            &ConnectionId::from_string("sqlite-test"),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/app.db",
+        );
         state
             .session
             .set_connection_state(ConnectionState::NotConnected);

@@ -24,11 +24,11 @@ pub enum QueryStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct PaginationState {
-    pub(crate) current_page: usize,
-    pub(crate) total_rows_estimate: Option<i64>,
-    pub(crate) reached_end: bool,
-    pub(crate) schema: String,
-    pub(crate) table: String,
+    current_page: usize,
+    total_rows_estimate: Option<i64>,
+    reached_end: bool,
+    schema: String,
+    table: String,
 }
 
 impl PaginationState {
@@ -56,8 +56,24 @@ impl PaginationState {
         !self.table.is_empty()
     }
 
+    pub fn preview_label(&self) -> String {
+        if self.schema.is_empty() {
+            self.table.clone()
+        } else {
+            format!("{}.{}", self.schema, self.table)
+        }
+    }
+
     pub fn offset(&self) -> usize {
         self.current_page * PREVIEW_PAGE_SIZE
+    }
+
+    pub fn next_page(&self) -> usize {
+        self.current_page + 1
+    }
+
+    pub fn prev_page(&self) -> usize {
+        self.current_page.saturating_sub(1)
     }
 
     pub fn total_pages_estimate(&self) -> Option<usize> {
@@ -83,16 +99,16 @@ impl PaginationState {
         self.table.clear();
     }
 
-    pub fn reset_for_table(&mut self, schema: &str, table: &str) {
+    pub fn reset_for_table(&mut self, schema: impl AsRef<str>, table: impl AsRef<str>) {
         self.reset();
-        self.schema = schema.to_string();
-        self.table = table.to_string();
+        self.schema = schema.as_ref().to_string();
+        self.table = table.as_ref().to_string();
     }
 
     pub fn reset_for_table_with_estimate(
         &mut self,
-        schema: &str,
-        table: &str,
+        schema: impl AsRef<str>,
+        table: impl AsRef<str>,
         estimate: Option<i64>,
     ) {
         self.reset_for_table(schema, table);
@@ -103,34 +119,13 @@ impl PaginationState {
         self.reached_end = false;
     }
 
-    pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
-        self.current_page = page;
-        self.reached_end = reached_end;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_table_for_test(&mut self, schema: &str, table: &str) {
-        self.schema = schema.to_string();
-        self.table = table.to_string();
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_page_for_test(&mut self, page: usize) {
-        self.current_page = page;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_total_rows_estimate_for_test(&mut self, estimate: Option<i64>) {
+    pub fn set_total_rows_estimate(&mut self, estimate: Option<i64>) {
         self.total_rows_estimate = estimate;
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn mark_reached_end_for_test(&mut self) {
-        self.reached_end = true;
+    pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
+        self.current_page = page;
+        self.reached_end = reached_end;
     }
 }
 

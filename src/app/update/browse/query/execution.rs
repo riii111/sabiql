@@ -23,7 +23,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
     if !tag.needs_refresh() {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn.clone() else {
+    let Some(dsn) = state.session.dsn_owned() else {
         return vec![];
     };
 
@@ -37,19 +37,19 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
         effects.push(Effect::FetchMetadata { dsn, run_id });
-    } else if !state.query.pagination.table.is_empty() {
-        let page = state.query.pagination.current_page;
+    } else if !state.query.pagination.table().is_empty() {
+        let page = state.query.pagination.current_page();
         let run_id = state.query.begin_running(now);
         effects.push(Effect::ExecutePreview {
             dsn,
-            schema: state.query.pagination.schema.clone(),
-            table: state.query.pagination.table.clone(),
+            schema: state.query.pagination.schema().to_string(),
+            table: state.query.pagination.table().to_string(),
             generation: state.session.selection_generation(),
             run_id,
             limit: PREVIEW_PAGE_SIZE,
             offset: page * PREVIEW_PAGE_SIZE,
             target_page: page,
-            read_only: state.session.read_only,
+            read_only: state.session.is_read_only(),
         });
     }
 
@@ -70,14 +70,14 @@ pub fn reduce_execution(
             generation,
             target_page,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
             if *generation == 0 || *generation == state.session.selection_generation() {
                 state.query.mark_idle();
                 let preserved_result_col = state.result_interaction.selection().cell();
-                let preserved_horizontal_offset = state.result_interaction.horizontal_offset;
+                let preserved_horizontal_offset = state.result_interaction.horizontal_offset();
 
                 let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
                 if !is_adhoc_error {
@@ -107,10 +107,10 @@ pub fn reduce_execution(
                 }
 
                 if let Some(page) = target_page {
-                    state.query.pagination.current_page = *page;
-                    if result.rows.len() < PREVIEW_PAGE_SIZE {
-                        state.query.pagination.reached_end = true;
-                    }
+                    state
+                        .query
+                        .pagination
+                        .set_page_result(*page, result.rows.len() < PREVIEW_PAGE_SIZE);
                 }
 
                 if !result.is_error() || result.source != QuerySource::Adhoc {
@@ -130,13 +130,16 @@ pub fn reduce_execution(
                                 let col = preserved_result_col
                                     .unwrap_or(preserved_horizontal_offset)
                                     .min(max_col);
-                                state.result_interaction.horizontal_offset =
-                                    preserved_horizontal_offset.min(max_col).min(col);
+                                state.result_interaction.set_horizontal_offset(
+                                    preserved_horizontal_offset.min(max_col).min(col),
+                                );
                                 state.result_interaction.activate_cell(clamped, col);
 
                                 let visible = state.result_visible_rows();
                                 if visible > 0 && clamped >= visible {
-                                    state.result_interaction.scroll_offset = clamped - visible + 1;
+                                    state
+                                        .result_interaction
+                                        .set_scroll_offset(clamped - visible + 1);
                                 }
                             }
                         }
@@ -158,7 +161,7 @@ pub fn reduce_execution(
             generation,
             source,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -170,14 +173,7 @@ pub fn reduce_execution(
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
-                    let preview_query = if state.query.pagination.schema.is_empty() {
-                        state.query.pagination.table.clone()
-                    } else {
-                        format!(
-                            "{}.{}",
-                            state.query.pagination.schema, state.query.pagination.table
-                        )
-                    };
+                    let preview_query = state.query.pagination.preview_label();
                     state.query.set_current_result(Arc::new(QueryResult::error(
                         preview_query,
                         error.result_message(),
@@ -242,12 +238,8 @@ pub fn reduce_execution(
             table,
             generation,
         }) => {
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn_owned() {
                 let run_id = state.query.begin_running(now);
-
-                state.query.pagination.reset();
-                state.query.pagination.schema.clone_from(schema);
-                state.query.pagination.table.clone_from(table);
 
                 let row_estimate = state
                     .session
@@ -262,10 +254,13 @@ pub fn reduce_execution(
                             }
                         })
                     });
-                state.query.pagination.total_rows_estimate = row_estimate;
+                state
+                    .query
+                    .pagination
+                    .reset_for_table_with_estimate(schema, table, row_estimate);
 
                 DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                    dsn: dsn.clone(),
+                    dsn,
                     schema: schema.clone(),
                     table: table.clone(),
                     generation: *generation,
@@ -273,7 +268,7 @@ pub fn reduce_execution(
                     limit: PREVIEW_PAGE_SIZE,
                     offset: 0,
                     target_page: 0,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 DispatchResult::handled()
@@ -281,13 +276,13 @@ pub fn reduce_execution(
         }
 
         Action::ExecuteAdhoc(query) => {
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn_owned() {
                 let run_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
-                    dsn: dsn.clone(),
+                    dsn,
                     run_id,
                     query: query.clone(),
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 DispatchResult::handled()
@@ -301,7 +296,6 @@ pub fn reduce_execution(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::browse::query_execution::PaginationState;
     use crate::ports::outbound::DbOperationError;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
@@ -470,13 +464,12 @@ mod tests {
         #[test]
         fn resets_pagination() {
             let mut state = create_test_state();
-            state.query.pagination = PaginationState {
-                current_page: 5,
-                total_rows_estimate: Some(10000),
-                reached_end: true,
-                schema: "old_schema".to_string(),
-                table: "old_table".to_string(),
-            };
+            state.query.pagination.reset_for_table_with_estimate(
+                "old_schema",
+                "old_table",
+                Some(10000),
+            );
+            state.query.pagination.set_page_result(5, true);
             let now = Instant::now();
 
             dispatch_query(
@@ -490,10 +483,10 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.query.pagination.current_page, 0);
-            assert!(!state.query.pagination.reached_end);
-            assert_eq!(state.query.pagination.schema, "public");
-            assert_eq!(state.query.pagination.table, "users");
+            assert_eq!(state.query.pagination.current_page(), 0);
+            assert!(!state.query.pagination.reached_end());
+            assert_eq!(state.query.pagination.schema(), "public");
+            assert_eq!(state.query.pagination.table(), "users");
         }
     }
 
@@ -510,8 +503,8 @@ mod tests {
 
             dispatch_query(&mut state, &action, now, &AppServices::stub());
 
-            assert_eq!(state.query.pagination.current_page, 2);
-            assert!(state.query.pagination.reached_end);
+            assert_eq!(state.query.pagination.current_page(), 2);
+            assert!(state.query.pagination.reached_end());
         }
 
         #[test]
@@ -524,28 +517,31 @@ mod tests {
 
             dispatch_query(&mut state, &action, now, &AppServices::stub());
 
-            assert_eq!(state.query.pagination.current_page, 0);
-            assert!(!state.query.pagination.reached_end);
+            assert_eq!(state.query.pagination.current_page(), 0);
+            assert!(!state.query.pagination.reached_end());
         }
 
         #[test]
         fn adhoc_does_not_update_pagination() {
             let mut state = create_test_state();
-            state.query.pagination.current_page = 3;
+            state
+                .query
+                .pagination
+                .set_page_result(3, state.query.pagination.reached_end());
             let result = adhoc_result();
             let now = Instant::now();
             let action = query_completed_action(&mut state, result, 0, None);
 
             dispatch_query(&mut state, &action, now, &AppServices::stub());
 
-            assert_eq!(state.query.pagination.current_page, 3);
+            assert_eq!(state.query.pagination.current_page(), 3);
         }
 
         #[test]
         fn adhoc_success_writes_current_result_without_touching_history_index() {
             let mut state = create_test_state();
-            state.result_interaction.scroll_offset = 50;
-            state.result_interaction.horizontal_offset = 10;
+            state.result_interaction.set_scroll_offset(50);
+            state.result_interaction.set_horizontal_offset(10);
             state.result_interaction.activate_cell(5, 0);
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(2);
@@ -561,8 +557,8 @@ mod tests {
                 state.query.current_result().unwrap().source,
                 QuerySource::Adhoc,
             );
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-            assert_eq!(state.result_interaction.horizontal_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset(), 0);
+            assert_eq!(state.result_interaction.horizontal_offset(), 0);
             assert_eq!(state.result_interaction.selection().row(), None);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -571,8 +567,8 @@ mod tests {
         fn adhoc_error_preserves_current_result_and_view_state() {
             let mut state = create_test_state();
             state.query.set_current_result(preview_result(5));
-            state.result_interaction.scroll_offset = 20;
-            state.result_interaction.horizontal_offset = 5;
+            state.result_interaction.set_scroll_offset(20);
+            state.result_interaction.set_horizontal_offset(5);
             state.result_interaction.activate_cell(3, 0);
             let result = adhoc_error_result();
             let action = query_completed_action(&mut state, result, 0, None);
@@ -585,8 +581,8 @@ mod tests {
                 state.query.current_result().unwrap().source,
                 QuerySource::Preview,
             );
-            assert_eq!(state.result_interaction.scroll_offset, 20);
-            assert_eq!(state.result_interaction.horizontal_offset, 5);
+            assert_eq!(state.result_interaction.scroll_offset(), 20);
+            assert_eq!(state.result_interaction.horizontal_offset(), 5);
             assert_eq!(state.result_interaction.selection().row(), Some(3));
         }
 
@@ -632,7 +628,7 @@ mod tests {
             state
                 .query
                 .set_post_delete_selection(PostDeleteRowSelection::Select(1));
-            state.result_interaction.horizontal_offset = 1;
+            state.result_interaction.set_horizontal_offset(1);
             state.result_interaction.activate_cell(3, 2);
             state.query.set_current_result(Arc::clone(&result));
             let action = query_completed_action(&mut state, result, 0, Some(0));
@@ -641,7 +637,7 @@ mod tests {
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(2));
-            assert_eq!(state.result_interaction.horizontal_offset, 1);
+            assert_eq!(state.result_interaction.horizontal_offset(), 1);
         }
 
         #[test]
@@ -694,8 +690,8 @@ mod tests {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
             state.result_interaction.activate_cell(5, 2);
-            state.result_interaction.scroll_offset = 10;
-            state.result_interaction.horizontal_offset = 3;
+            state.result_interaction.set_scroll_offset(10);
+            state.result_interaction.set_horizontal_offset(3);
             let action = query_failed_action(
                 &mut state,
                 DbOperationError::QueryFailed("error".to_string()),
@@ -709,8 +705,8 @@ mod tests {
                 state.result_interaction.selection().mode(),
                 ResultNavMode::Scroll
             );
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-            assert_eq!(state.result_interaction.horizontal_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset(), 0);
+            assert_eq!(state.result_interaction.horizontal_offset(), 0);
         }
 
         #[test]
@@ -1004,7 +1000,7 @@ mod tests {
             let meta_effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.ui.explorer_selected, 1);
-            assert_eq!(state.query.pagination.table, "users");
+            assert_eq!(state.query.pagination.table(), "users");
             assert!(
                 meta_effects
                     .iter()
@@ -1041,7 +1037,7 @@ mod tests {
             };
             dispatch_metadata(&mut state, &action, Instant::now());
 
-            assert!(state.query.pagination.table.is_empty());
+            assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert_eq!(state.ui.explorer_selected, 0);
