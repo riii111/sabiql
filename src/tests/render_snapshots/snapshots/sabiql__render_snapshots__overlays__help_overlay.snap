@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 365
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -8,47 +9,47 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │  public.posts                         ││(select a table)                                                                                                          │
 │  public.comments                      ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │▸ Global Keys                                                                                                   ▲│                        │
-│                        │  q                   Quit application                                                                          ┃│                        │
-│                        │  ?                   Toggle help                                                                               ┃│                        │
-│                        │  Ctrl+P              Open Table Picker                                                                         ┃│                        │
-│                        │  Ctrl+K              Open Command Palette                                                                      ┃│                        │
-│                        │  :                   Enter command line                                                                        ┃│                        │
-│                        │  f                   Toggle Focus                                                                              ┃│                        │
-│                        │  1/2/3               Switch pane focus                                                                         ┃│                        │
-│                        │  Tab/⇧Tab            Inspector prev/next tab                                                                   ││                        │
-│                        │  r                   Reload metadata                                                                           ││                        │
-│                        │  s                   Open SQL Editor                                                                           ││                        │
-│                        │  e                   Open ER Diagram                                                                           ││                        │
-│                        │  c                   Open Connection Selector                                                                  ││                        │
-│                        │  Ctrl+E              Export result to CSV                                                                      ││                        │
-│                        │  Ctrl+R              Toggle Read-Only                                                                          ││                        │
-│                        │  Ctrl+O              Open Query History                                                                        ││                        │
+│                        │Filter:                                                                                                         ▲│                        │
+│                        │                                                                                                                ┃│                        │
+│                        │▸ Current: Explorer Pane                                                                                        ┃│                        │
+│                        │  Ctrl+P                               Open Table Picker                                                        ┃│                        │
+│                        │  c                                    Open Connection Selector                                                 ┃│                        │
+│                        │  s                                    Open SQL Editor                                                          ┃│                        │
+│                        │                                                                                                                ┃│                        │
+│                        │▸ Common                                                                                                        ┃│                        │
+│                        │  ?                                    Toggle help                                                              ┃│                        │
+│                        │  q                                    Quit application                                                         ┃│                        │
+│                        │  Ctrl+K                               Open Settings                                                            ┃│                        │
+│                        │  F1                                   Open Command Palette                                                     ││                        │
+│                        │  :                                    Enter command line                                                       ││                        │
+│                        │  f                                    Toggle Focus mode                                                        ││                        │
+│                        │  Ctrl+R                               Enable Read-Only mode                                                    ││                        │
 │                        │                                                                                                                ││                        │
 │                        │▸ Navigation                                                                                                    ││                        │
-│                        │  j / ↓               Move down / scroll                                                                        ││────────────────────────┘
-│                        │  k / ↑               Move up / scroll                                                                          ││────────────────────────┐
-│                        │  g / Home            First item / top                                                                          ││                        │
-│                        │  G / End             Last item / bottom                                                                        ││                        │
-│                        │  H                   First visible item                                                                        ││                        │
-│                        │  M                   Middle of visible items                                                                   ││                        │
-│                        │  L                   Last visible item                                                                         ││                        │
-│                        │  zz / zt / zb        Scroll cursor to center/top/bottom                                                        ││                        │
-│                        │  Ctrl+D / Ctrl+U     Scroll half page down/up                                                                  ││                        │
-│                        │  Ctrl+F/B / PgDn/Up  Scroll full page down/up                                                                  ││                        │
-│                        │  h / l               Scroll left/right                                                                         ││                        │
-│                        │  ]                   Next page (Preview)                                                                       ││                        │
-│                        │  [                   Previous page (Preview)                                                                   ││                        │
+│                        │  j / ↓ / k / ↑                        Move down / up / scroll                                                  ││                        │
+│                        │  g / Home / G / End                   Jump to top / bottom                                                     ││────────────────────────┘
+│                        │  H                                    First visible item                                                       ││────────────────────────┐
+│                        │  M                                    Middle of visible items                                                  ││                        │
+│                        │  L                                    Last visible item                                                        ││                        │
+│                        │  zz / zt / zb                         Scroll cursor to center/top/bottom                                       ││                        │
+│                        │  Ctrl+D / Ctrl+U                      Scroll half page down/up                                                 ││                        │
+│                        │  Ctrl+F/B / PgDn/Up                   Scroll full page down/up                                                 ││                        │
+│                        │  h / l                                Scroll left/right                                                        ││                        │
+│                        │  ] / [                                Next / previous page                                                     ││                        │
 │                        │                                                                                                                ││                        │
-│                        │▸ Result History                                                                                                ││                        │
-│                        │  Ctrl+H              Toggle Result History                                                                     ││                        │
-│                        │  ] / [               Navigate history newer/older                                                              ││                        │
-│                        │  Ctrl+H              Exit history (back to latest)                                                             ││                        │
+│                        │▸ Open / Switch                                                                                                 ││                        │
+│                        │  Ctrl+P                               Open Table Picker                                                        ││                        │
+│                        │  s                                    Open SQL Editor                                                          ││                        │
+│                        │  e                                    Open ER Diagram                                                          ││                        │
+│                        │  c                                    Open Connection Selector                                                 ││                        │
+│                        │  Ctrl+O                               Open Query History                                                       ││                        │
+│                        │  1/2/3                                Switch pane focus                                                        ││                        │
+│                        │  Tab/⇧Tab                             Inspector prev/next tab                                                  ││                        │
 │                        │                                                                                                                ││                        │
-│                        │▸ Result Pane                                                                                                   ││                        │
-│                        │  Enter               Enter cell selection at the current viewport anchor                                       ▼│                        │
-│                        ╰ ?/Esc Close ────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                        │▸ Data Actions                                                                                                  ││                        │
+│                        │  r                                    Reload metadata                                                          ▼│                        │
+│                        ╰ type: Filter │ Backspace: Edit │ Esc: Close │ ?: Close ─────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-h/l / ←→:H-Scroll  ?/Esc:Close
+←→:H-Scroll  ?:Close

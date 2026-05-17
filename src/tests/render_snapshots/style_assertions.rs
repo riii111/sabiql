@@ -2,23 +2,37 @@ use std::time::Duration;
 use std::time::Instant;
 
 use super::*;
-use app::model::app_state::AppState;
-use app::model::shared::input_mode::InputMode;
-use app::services::AppServices;
-use app::update::action::{Action, CursorMove, InputTarget, ModalKind};
-use app::update::browse::result::reduce_result;
-use domain::{Column, ColumnAttributes, QueryResult, QuerySource};
 use harness::{
     TEST_HEIGHT, TEST_WIDTH, connected_state, create_test_terminal_sized, render_and_get_buffer,
     render_and_get_buffer_at_with_theme, render_and_get_cursor_position, table_detail_loaded_state,
     with_current_result,
 };
+use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier};
-use ui::theme::{
-    ComponentTokens, DEFAULT_THEME, EditorTokens, ModalTokens, SemanticTokens, SurfaceTokens,
-    TEST_CONTRAST_THEME, ThemePalette,
+use sabiql_app::model::app_state::AppState;
+use sabiql_app::model::shared::input_mode::InputMode;
+use sabiql_app::model::shared::theme_id::ThemeId;
+use sabiql_app::model::sql_editor::modal::SqlModalStatus;
+use sabiql_app::services::AppServices;
+use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
+use sabiql_app::update::browse::result::dispatch_result;
+use sabiql_domain::{Column, ColumnAttributes, QueryResult, QuerySource};
+use sabiql_ui::theme::{
+    ComponentTokens, DEFAULT_THEME, EditorTokens, LIGHT_THEME, ModalTokens, SemanticTokens,
+    SurfaceTokens, TEST_CONTRAST_THEME, ThemePalette,
 };
+
+fn has_cell(buffer: &Buffer, predicate: impl Fn(&Cell) -> bool) -> bool {
+    for y in 0..TEST_HEIGHT {
+        for x in 0..TEST_WIDTH {
+            if buffer.cell((x, y)).is_some_and(&predicate) {
+                return true;
+            }
+        }
+    }
+    false
+}
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
 fn help_modal_origin() -> (u16, u16) {
@@ -70,13 +84,13 @@ fn jsonb_detail_state() -> (AppState, Instant) {
     state.query.pagination.set_table_for_test("public", "users");
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::OpenModal(ModalKind::JsonbDetail),
         &AppServices::stub(),
         now,
     );
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::JsonbEnterEdit,
         &AppServices::stub(),
@@ -104,15 +118,11 @@ fn pending_draft_cell_uses_orange_fg() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let draft_cell = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .find(|&(x, y)| {
-            buffer
-                .cell((x, y))
-                .is_some_and(|c| c.fg == DEFAULT_THEME.semantic.status.pending)
-        });
+    let draft_cell = has_cell(&buffer, |cell| {
+        cell.fg == DEFAULT_THEME.semantic.status.pending
+    });
     assert!(
-        draft_cell.is_some(),
+        draft_cell,
         "Expected at least one cell with CELL_DRAFT_PENDING_FG (orange) in the buffer"
     );
 }
@@ -136,15 +146,11 @@ fn active_cell_edit_uses_yellow_fg() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let edit_cell = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .find(|&(x, y)| {
-            buffer
-                .cell((x, y))
-                .is_some_and(|c| c.fg == DEFAULT_THEME.component.table.cell_edit_fg)
-        });
+    let edit_cell = has_cell(&buffer, |cell| {
+        cell.fg == DEFAULT_THEME.component.table.cell_edit_fg
+    });
     assert!(
-        edit_cell.is_some(),
+        edit_cell,
         "Expected at least one cell with CELL_EDIT_FG (yellow) in the buffer"
     );
 }
@@ -161,15 +167,11 @@ fn staged_delete_row_uses_dark_red_bg() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let staged_cell = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .find(|&(x, y)| {
-            buffer
-                .cell((x, y))
-                .is_some_and(|c| c.bg == DEFAULT_THEME.component.table.staged_delete_bg)
-        });
+    let staged_cell = has_cell(&buffer, |cell| {
+        cell.bg == DEFAULT_THEME.component.table.staged_delete_bg
+    });
     assert!(
-        staged_cell.is_some(),
+        staged_cell,
         "Expected at least one cell with STAGED_DELETE_BG (dark red) in the buffer"
     );
 }
@@ -207,12 +209,9 @@ fn result_highlight_respects_injected_now() {
     let before = now + Duration::from_millis(100);
     let buf_before = render_and_get_buffer_at(&mut terminal, &mut state, before);
 
-    let has_green_border = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            let cell = buf_before.cell((x, y)).unwrap();
-            cell.fg == DEFAULT_THEME.semantic.surface.highlight_border && cell.symbol() == "─"
-        });
+    let has_green_border = has_cell(&buf_before, |cell| {
+        cell.fg == DEFAULT_THEME.semantic.surface.highlight_border && cell.symbol() == "─"
+    });
     assert!(
         has_green_border,
         "Expected Green border cells when now < highlight_until"
@@ -222,12 +221,9 @@ fn result_highlight_respects_injected_now() {
     let after = highlight_until + Duration::from_millis(1);
     let buf_after = render_and_get_buffer_at(&mut terminal, &mut state, after);
 
-    let has_green_border_after = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            let cell = buf_after.cell((x, y)).unwrap();
-            cell.fg == DEFAULT_THEME.semantic.surface.highlight_border && cell.symbol() == "─"
-        });
+    let has_green_border_after = has_cell(&buf_after, |cell| {
+        cell.fg == DEFAULT_THEME.semantic.surface.highlight_border && cell.symbol() == "─"
+    });
     assert!(
         !has_green_border_after,
         "Expected no Green border cells when now >= highlight_until"
@@ -297,7 +293,7 @@ fn header_status_uses_success_warning_and_error_colors() {
 
     let now = test_instant();
     let mut connected = create_test_state();
-    connected
+    let _ = connected
         .session
         .begin_connecting("postgres://localhost/test");
     connected
@@ -311,7 +307,7 @@ fn header_status_uses_success_warning_and_error_colors() {
     );
 
     let mut loading = create_test_state();
-    loading
+    let _ = loading
         .session
         .begin_connecting("postgres://localhost/test");
     let loading_buffer = render_and_get_buffer_at(&mut terminal, &mut loading, now);
@@ -336,43 +332,30 @@ fn help_overlay_uses_section_header_and_scrollbar_colors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.set_help_scroll_offset(1);
+    state.ui.help.set_scroll_offset(14);
 
     let buffer = render_and_get_buffer_at(&mut terminal, &mut state, now);
 
-    let has_section_header = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "▸" && cell.fg == DEFAULT_THEME.component.navigation.section_header
-            })
-        });
+    let has_section_header = has_cell(&buffer, |cell| {
+        cell.symbol() == "▸" && cell.fg == DEFAULT_THEME.component.navigation.section_header
+    });
     assert!(
         has_section_header,
         "Expected help overlay section markers to use section_header color"
     );
 
-    let has_active_scrollbar = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                matches!(cell.symbol(), "▲" | "▼" | "┃")
-                    && cell.fg == DEFAULT_THEME.component.navigation.scrollbar_active
-            })
-        });
+    let has_active_scrollbar = has_cell(&buffer, |cell| {
+        matches!(cell.symbol(), "▲" | "▼" | "┃")
+            && cell.fg == DEFAULT_THEME.component.navigation.scrollbar_active
+    });
     assert!(
         has_active_scrollbar,
         "Expected help overlay active scrollbar parts to use scrollbar_active color"
     );
 
-    let has_inactive_scrollbar = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "│"
-                    && cell.fg == DEFAULT_THEME.component.navigation.scrollbar_inactive
-            })
-        });
+    let has_inactive_scrollbar = has_cell(&buffer, |cell| {
+        cell.symbol() == "│" && cell.fg == DEFAULT_THEME.component.navigation.scrollbar_inactive
+    });
     assert!(
         has_inactive_scrollbar,
         "Expected help overlay scrollbar track to use scrollbar_inactive color"
@@ -385,32 +368,23 @@ fn test_contrast_theme_applies_help_overlay_navigation_colors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.set_help_scroll_offset(1);
+    state.ui.help.set_scroll_offset(14);
 
     let buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
 
-    let has_section_header = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "▸"
-                    && cell.fg == TEST_CONTRAST_THEME.component.navigation.section_header
-            })
-        });
+    let has_section_header = has_cell(&buffer, |cell| {
+        cell.symbol() == "▸" && cell.fg == TEST_CONTRAST_THEME.component.navigation.section_header
+    });
     assert!(
         has_section_header,
         "Expected help overlay to resolve section_header from TEST_CONTRAST_THEME"
     );
 
-    let has_active_scrollbar = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                matches!(cell.symbol(), "▲" | "▼" | "┃")
-                    && cell.fg == TEST_CONTRAST_THEME.component.navigation.scrollbar_active
-            })
-        });
+    let has_active_scrollbar = has_cell(&buffer, |cell| {
+        matches!(cell.symbol(), "▲" | "▼" | "┃")
+            && cell.fg == TEST_CONTRAST_THEME.component.navigation.scrollbar_active
+    });
     assert!(
         has_active_scrollbar,
         "Expected help overlay to resolve active scrollbar color from TEST_CONTRAST_THEME"
@@ -472,27 +446,15 @@ fn sql_modal_string_comment_and_operator_use_syntax_colors() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let has_string = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "'" && cell.fg == DEFAULT_THEME.component.syntax.sql_string
-            })
-        });
-    let has_operator = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == ":" && cell.fg == DEFAULT_THEME.component.syntax.sql_operator
-            })
-        });
-    let has_comment = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "-" && cell.fg == DEFAULT_THEME.component.syntax.sql_comment
-            })
-        });
+    let has_string = has_cell(&buffer, |cell| {
+        cell.symbol() == "'" && cell.fg == DEFAULT_THEME.component.syntax.sql_string
+    });
+    let has_operator = has_cell(&buffer, |cell| {
+        cell.symbol() == ":" && cell.fg == DEFAULT_THEME.component.syntax.sql_operator
+    });
+    let has_comment = has_cell(&buffer, |cell| {
+        cell.symbol() == "-" && cell.fg == DEFAULT_THEME.component.syntax.sql_comment
+    });
 
     assert!(has_string, "Expected a green SQL string cell");
     assert!(has_operator, "Expected a cyan SQL operator cell");
@@ -518,41 +480,21 @@ fn test_contrast_theme_applies_sql_syntax_colors() {
         &TEST_CONTRAST_THEME,
     );
 
-    let has_keyword = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "S" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_keyword
-            })
-        });
-    let has_string = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "'" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_string
-            })
-        });
-    let has_comment = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "-" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_comment
-            })
-        });
-    let has_number = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "4" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_number
-            })
-        });
-    let has_operator = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "+" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_operator
-            })
-        });
+    let has_keyword = has_cell(&buffer, |cell| {
+        cell.symbol() == "S" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_keyword
+    });
+    let has_string = has_cell(&buffer, |cell| {
+        cell.symbol() == "'" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_string
+    });
+    let has_comment = has_cell(&buffer, |cell| {
+        cell.symbol() == "-" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_comment
+    });
+    let has_number = has_cell(&buffer, |cell| {
+        cell.symbol() == "4" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_number
+    });
+    let has_operator = has_cell(&buffer, |cell| {
+        cell.symbol() == "+" && cell.fg == TEST_CONTRAST_THEME.component.syntax.sql_operator
+    });
 
     assert!(
         has_keyword,
@@ -589,25 +531,15 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
     state.sql_modal.enter_normal();
 
     let normal_buffer = render_and_get_buffer(&mut terminal, &mut state);
-    let has_block_cursor = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            normal_buffer.cell((x, y)).is_some_and(|cell| {
-                cell.bg == DEFAULT_THEME.semantic.cursor.bg
-                    && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
-            })
-        });
+    let has_block_cursor = has_cell(&normal_buffer, |cell| {
+        cell.bg == DEFAULT_THEME.semantic.cursor.bg
+            && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
+    });
 
     state.sql_modal.enter_editing();
 
     let insert_buffer = render_and_get_buffer(&mut terminal, &mut state);
-    let has_insert_glyph = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            insert_buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == "\u{258f}")
-        });
+    let has_insert_glyph = has_cell(&insert_buffer, |cell| cell.symbol() == "\u{258f}");
 
     assert!(
         has_block_cursor,
@@ -767,16 +699,10 @@ fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
     let mut terminal = create_test_terminal();
 
     let head_buffer = render_and_get_buffer(&mut terminal, &mut state);
-    let has_insert_glyph_at_head = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            head_buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == "\u{258f}")
-        });
+    let has_insert_glyph_at_head = has_cell(&head_buffer, |cell| cell.symbol() == "\u{258f}");
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::TextMoveCursor {
             target: InputTarget::JsonbEdit,
@@ -787,13 +713,7 @@ fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
     );
 
     let moved_buffer = render_and_get_buffer(&mut terminal, &mut state);
-    let has_insert_glyph_after_move = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            moved_buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.symbol() == "\u{258f}")
-        });
+    let has_insert_glyph_after_move = has_cell(&moved_buffer, |cell| cell.symbol() == "\u{258f}");
     let moved = render_and_get_cursor_position(&mut terminal, &mut state);
 
     assert!(!has_insert_glyph_at_head);
@@ -806,13 +726,13 @@ fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
 fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
     let (mut state, now) = jsonb_detail_state();
     let mut terminal = create_test_terminal();
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::JsonbExitEdit,
         &AppServices::stub(),
         now,
     );
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::JsonbEnterSearch,
         &AppServices::stub(),
@@ -821,7 +741,7 @@ fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::TextInput {
             target: InputTarget::JsonbSearch,
@@ -830,7 +750,7 @@ fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
         &AppServices::stub(),
         now,
     );
-    reduce_result(
+    dispatch_result(
         &mut state,
         &Action::TextInput {
             target: InputTarget::JsonbSearch,
@@ -860,14 +780,10 @@ fn sql_modal_unterminated_string_keeps_string_highlight() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let has_string = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                (cell.symbol() == "'" || cell.symbol() == "u")
-                    && cell.fg == DEFAULT_THEME.component.syntax.sql_string
-            })
-        });
+    let has_string = has_cell(&buffer, |cell| {
+        (cell.symbol() == "'" || cell.symbol() == "u")
+            && cell.fg == DEFAULT_THEME.component.syntax.sql_string
+    });
 
     assert!(
         has_string,
@@ -889,14 +805,10 @@ fn sql_modal_unterminated_block_comment_keeps_comment_highlight() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let has_comment = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer.cell((x, y)).is_some_and(|cell| {
-                (cell.symbol() == "/" || cell.symbol() == "*")
-                    && cell.fg == DEFAULT_THEME.component.syntax.sql_comment
-            })
-        });
+    let has_comment = has_cell(&buffer, |cell| {
+        (cell.symbol() == "/" || cell.symbol() == "*")
+            && cell.fg == DEFAULT_THEME.component.syntax.sql_comment
+    });
 
     assert!(
         has_comment,
@@ -932,13 +844,9 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
 
     state.ui.set_focused_pane(FocusedPane::Explorer);
     let shell_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
-    let has_custom_focus_border = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            shell_buffer.cell((x, y)).is_some_and(|cell| {
-                cell.symbol() == "─" && cell.fg == theme.semantic.surface.focus_border
-            })
-        });
+    let has_custom_focus_border = has_cell(&shell_buffer, |cell| {
+        cell.symbol() == "─" && cell.fg == theme.semantic.surface.focus_border
+    });
     assert!(
         has_custom_focus_border,
         "Expected shell border to use injected focus border color"
@@ -949,13 +857,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     let (mx, my) = help_modal_origin();
     let modal_corner = help_buffer.cell((mx, my)).unwrap();
     assert_eq!(modal_corner.fg, theme.component.modal.border);
-    let has_custom_help_hint = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            help_buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.fg == theme.component.modal.hint)
-        });
+    let has_custom_help_hint = has_cell(&help_buffer, |cell| cell.fg == theme.component.modal.hint);
     assert!(
         has_custom_help_hint,
         "Expected shared modal hint to use injected hint color"
@@ -963,13 +865,9 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
 
     state.modal.set_mode(InputMode::CommandPalette);
     let picker_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
-    let has_custom_picker_selection = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            picker_buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.bg == theme.component.editor.completion_selected_bg)
-        });
+    let has_custom_picker_selection = has_cell(&picker_buffer, |cell| {
+        cell.bg == theme.component.editor.completion_selected_bg
+    });
     assert!(
         has_custom_picker_selection,
         "Expected picker selection to use injected selected background"
@@ -978,17 +876,56 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.enter_normal();
     let sql_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
-    let has_custom_sql_hint = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            sql_buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.fg == theme.component.modal.hint)
-        });
+    let has_custom_sql_hint = has_cell(&sql_buffer, |cell| cell.fg == theme.component.modal.hint);
     assert!(
         has_custom_sql_hint,
         "Expected SQL modal hint to use injected hint color"
     );
+}
+
+mod settings_theme {
+    use super::*;
+
+    #[test]
+    fn preview_uses_selected_theme_while_chrome_keeps_current() {
+        let (mut state, _now) = connected_state();
+        let mut terminal = create_test_terminal();
+
+        state.settings.open(ThemeId::Default);
+        state.settings.select_next();
+        state.modal.set_mode(InputMode::Settings);
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+        let has_default_selection = has_cell(&buffer, |cell| {
+            cell.symbol() == "L" && cell.bg == DEFAULT_THEME.component.editor.completion_selected_bg
+        });
+        let has_light_preview_selection = has_cell(&buffer, |cell| {
+            cell.symbol() == "S" && cell.bg == LIGHT_THEME.component.editor.completion_selected_bg
+        });
+        let has_light_preview_focus_border = has_cell(&buffer, |cell| {
+            cell.symbol() == "─" && cell.fg == LIGHT_THEME.semantic.surface.focus_border
+        });
+        let has_chrome_border = has_cell(&buffer, |cell| {
+            cell.symbol() == "─" && cell.fg == DEFAULT_THEME.component.modal.border
+        });
+
+        assert!(
+            has_default_selection,
+            "Expected settings list selection to keep current theme colors"
+        );
+        assert!(
+            has_light_preview_selection,
+            "Expected settings preview selected row to use selected theme colors"
+        );
+        assert!(
+            has_light_preview_focus_border,
+            "Expected settings preview focus border to use selected theme colors"
+        );
+        assert!(
+            has_chrome_border,
+            "Expected settings modal chrome to keep current theme colors"
+        );
+    }
 }
 
 #[test]
@@ -1003,20 +940,12 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
 
     let staged_buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
-    let has_staged_delete_bg = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            staged_buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.bg == TEST_CONTRAST_THEME.component.table.staged_delete_bg)
-        });
-    let has_active_cell_bg = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            staged_buffer.cell((x, y)).is_some_and(|cell| {
-                cell.bg == TEST_CONTRAST_THEME.component.table.result_cell_active_bg
-            })
-        });
+    let has_staged_delete_bg = has_cell(&staged_buffer, |cell| {
+        cell.bg == TEST_CONTRAST_THEME.component.table.staged_delete_bg
+    });
+    let has_active_cell_bg = has_cell(&staged_buffer, |cell| {
+        cell.bg == TEST_CONTRAST_THEME.component.table.result_cell_active_bg
+    });
 
     assert!(
         has_staged_delete_bg,
@@ -1037,13 +966,9 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
 
     let draft_buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
-    let has_pending_draft_fg = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            draft_buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.fg == TEST_CONTRAST_THEME.semantic.status.pending)
-        });
+    let has_pending_draft_fg = has_cell(&draft_buffer, |cell| {
+        cell.fg == TEST_CONTRAST_THEME.semantic.status.pending
+    });
 
     assert!(
         has_pending_draft_fg,
@@ -1138,13 +1063,9 @@ fn sql_completion_popup_uses_injected_theme_styles() {
         cursor_screen_y + 1
     };
 
-    let has_selected_completion = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .any(|(x, y)| {
-            buffer
-                .cell((x, y))
-                .is_some_and(|cell| cell.bg == theme.component.editor.completion_selected_bg)
-        });
+    let has_selected_completion = has_cell(&buffer, |cell| {
+        cell.bg == theme.component.editor.completion_selected_bg
+    });
     let top_left = buffer.cell((popup_x, popup_y)).unwrap();
     let top_right = buffer.cell((popup_x + popup_width - 1, popup_y)).unwrap();
     let has_completion_border = top_left.symbol() == "┌"
@@ -1160,4 +1081,39 @@ fn sql_completion_popup_uses_injected_theme_styles() {
         has_selected_completion,
         "Expected completion popup selection to use injected selected background"
     );
+}
+
+#[test]
+fn light_theme_applies_shell_and_sql_colors() {
+    let (mut state, now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.set_focused_pane(FocusedPane::Explorer);
+    let shell_buffer =
+        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &LIGHT_THEME);
+    let has_light_focus_border = has_cell(&shell_buffer, |cell| {
+        cell.symbol() == "─" && cell.fg == LIGHT_THEME.semantic.surface.focus_border
+    });
+    assert!(
+        has_light_focus_border,
+        "Expected shell to use light focus border color"
+    );
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("SELECT 42".to_string());
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    let sql_buffer =
+        render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &LIGHT_THEME);
+    let has_light_keyword = has_cell(&sql_buffer, |cell| {
+        cell.symbol() == "S" && cell.fg == LIGHT_THEME.component.syntax.sql_keyword
+    });
+    let has_light_number = has_cell(&sql_buffer, |cell| {
+        cell.symbol() == "4" && cell.fg == LIGHT_THEME.component.syntax.sql_number
+    });
+
+    assert!(has_light_keyword, "Expected SQL keyword to use light theme");
+    assert!(has_light_number, "Expected SQL number to use light theme");
 }

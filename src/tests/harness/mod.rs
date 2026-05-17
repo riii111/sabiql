@@ -9,13 +9,13 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Position;
 
-use app::model::app_state::AppState;
-use app::model::connection::setup::ConnectionField;
-use app::model::shared::text_input::TextInputState;
-use app::services::AppServices;
-use domain::DatabaseType;
-use ui::shell::layout::MainLayout;
-use ui::theme::{ThemePalette, palette_for};
+use sabiql_app::model::app_state::AppState;
+use sabiql_app::model::connection::setup::ConnectionField;
+use sabiql_app::model::shared::text_input::TextInputState;
+use sabiql_app::services::AppServices;
+use sabiql_domain::DatabaseType;
+use sabiql_ui::shell::layout::MainLayout;
+use sabiql_ui::theme::{ThemePalette, palette_for};
 
 pub const TEST_WIDTH: u16 = 165;
 pub const TEST_HEIGHT: u16 = 51;

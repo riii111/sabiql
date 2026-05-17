@@ -2,9 +2,9 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Default)]
 pub struct MessageState {
-    last_error: Option<String>,
-    last_success: Option<String>,
-    expires_at: Option<Instant>,
+    pub(crate) last_error: Option<String>,
+    pub(crate) last_success: Option<String>,
+    pub(crate) expires_at: Option<Instant>,
 }
 
 impl MessageState {

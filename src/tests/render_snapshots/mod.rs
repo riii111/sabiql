@@ -6,21 +6,22 @@ use harness::{
     render_to_string, test_instant,
 };
 
-use app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
-use app::model::connection::setup::ConnectionField;
-use app::model::shared::focused_pane::FocusedPane;
-use app::model::shared::input_mode::InputMode;
-use app::model::shared::text_input::TextInputState;
-use app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
-use app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalTab};
-use app::policy::json::json_diff::compute_json_diff;
-use app::policy::write::write_guardrails::{
+use std::sync::Arc;
+
+use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+use sabiql_app::model::connection::setup::ConnectionField;
+use sabiql_app::model::shared::focused_pane::FocusedPane;
+use sabiql_app::model::shared::input_mode::InputMode;
+use sabiql_app::model::shared::text_input::TextInputState;
+use sabiql_app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+use sabiql_app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalTab};
+use sabiql_app::policy::json::json_diff::compute_json_diff;
+use sabiql_app::policy::write::write_guardrails::{
     AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
     WritePreview,
 };
-use app::policy::write::write_update::normalize_for_diff;
-use domain::{CommandTag, DatabaseType, QuerySource};
-use std::sync::Arc;
+use sabiql_app::policy::write::write_update::normalize_for_diff;
+use sabiql_domain::{CommandTag, DatabaseType, QuerySource};
 
 mod confirm_dialogs;
 mod connection_flow;

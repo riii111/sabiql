@@ -24,12 +24,12 @@ pub(crate) async fn run(
             tokio::task::spawn_blocking(move || match clipboard.copy_text(&content) {
                 Ok(()) => {
                     if let Some(action) = on_success {
-                        tx.blocking_send(action).ok();
+                        tx.blocking_send(*action).ok();
                     }
                 }
                 Err(e) => {
                     if let Some(action) = on_failure {
-                        tx.blocking_send(action).ok();
+                        tx.blocking_send(*action).ok();
                     } else {
                         tx.blocking_send(Action::CopyFailed(e)).ok();
                     }
@@ -107,7 +107,7 @@ mod tests {
             run(
                 Effect::CopyToClipboard {
                     content: "hello".to_string(),
-                    on_success: Some(Action::Render),
+                    on_success: Some(Box::new(Action::Render)),
                     on_failure: None,
                 },
                 &tx,
@@ -136,7 +136,7 @@ mod tests {
                 Effect::CopyToClipboard {
                     content: "hello".to_string(),
                     on_success: None,
-                    on_failure: Some(Action::Render),
+                    on_failure: Some(Box::new(Action::Render)),
                 },
                 &tx,
                 &clipboard,

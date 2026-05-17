@@ -6,17 +6,24 @@ mod inspector;
 
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
+
+fn active_capabilities<'a>(state: &'a AppState, services: &'a AppServices) -> &'a DbCapabilities {
+    if state.session.active_database_type().is_some() {
+        state.session.active_db_capabilities()
+    } else {
+        &services.db_capabilities
+    }
+}
 
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
-    let active_tab = state
-        .session
-        .active_db_capabilities()
-        .normalize_inspector_tab(state.ui.inspector_tab());
+    let active_tab =
+        active_capabilities(state, services).normalize_inspector_tab(state.ui.inspector_tab);
     state
         .session
         .table_detail()
@@ -46,10 +53,8 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
 }
 
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
-    let visible = match state
-        .session
-        .active_db_capabilities()
-        .normalize_inspector_tab(state.ui.inspector_tab())
+    let visible = match active_capabilities(state, services)
+        .normalize_inspector_tab(state.ui.inspector_tab)
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
         _ => state.inspector_visible_rows(),
@@ -61,15 +66,15 @@ pub(super) fn explorer_item_count(state: &AppState) -> usize {
     state.tables().len()
 }
 
-pub fn reduce_navigation(
+pub fn dispatch_navigation(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,
     now: Instant,
-) -> Option<Vec<Effect>> {
-    focus::reduce(state, action)
-        .or_else(|| input::reduce(state, action))
-        .or_else(|| explorer::reduce(state, action))
-        .or_else(|| inspector::reduce(state, action, services))
-        .or_else(|| connection_list::reduce(state, action, now))
+) -> DispatchResult {
+    focus::reduce_focus(state, action, services, now)
+        .or_else(|| input::reduce_input(state, action))
+        .or_else(|| explorer::reduce_explorer(state, action))
+        .or_else(|| inspector::reduce_inspector(state, action, services))
+        .or_else(|| connection_list::reduce_connection_list(state, action, now))
 }

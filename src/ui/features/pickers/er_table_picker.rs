@@ -10,7 +10,7 @@ use crate::primitives::atoms::text_cursor_spans;
 use crate::theme::ThemePalette;
 
 use crate::features::pickers::table_picker::filter_visible_width;
-use crate::primitives::molecules::render_modal;
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 
 pub struct ErTablePicker;
 
@@ -68,8 +68,14 @@ impl ErTablePicker {
             Constraint::Percentage(60),
             Constraint::Percentage(70),
             " ER Diagram ",
-            &format!(
-                " {selected_count}/{total_count} selected │ Space Select │ ^A All │ Enter Generate │ Esc Cancel "
+            FooterHintBar::with_prefix(
+                format!("{selected_count}/{total_count} selected"),
+                [
+                    ("Space", "Select"),
+                    ("^A", "All"),
+                    ("Enter", "Generate"),
+                    ("Esc", "Cancel"),
+                ],
             ),
             theme,
         );

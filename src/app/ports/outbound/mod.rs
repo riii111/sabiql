@@ -20,6 +20,7 @@ pub mod query_executor;
 pub mod query_history;
 pub mod renderer;
 pub mod service_file;
+pub mod settings_store;
 pub mod sql_dialect;
 
 pub use clipboard::{ClipboardError, ClipboardWriter};
@@ -38,4 +39,5 @@ pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};
 pub use renderer::{RenderError, RenderOutput, RenderResult, Renderer};
 pub use service_file::{PgServiceEntryReader, ServiceFileError};
+pub use settings_store::{AppSettings, SettingsStore, SettingsStoreError};
 pub use sql_dialect::SqlDialect;

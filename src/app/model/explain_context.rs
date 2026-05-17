@@ -30,21 +30,21 @@ const MAX_EXPLAIN_HISTORY: usize = 10;
 
 #[derive(Debug, Clone, Default)]
 pub struct ExplainContext {
-    plan_text: Option<String>,
-    plan_query_snippet: Option<String>,
-    error: Option<String>,
-    is_analyze: bool,
-    execution_time_ms: u64,
-    scroll_offset: usize,
+    pub(crate) plan_text: Option<String>,
+    pub(crate) plan_query_snippet: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) is_analyze: bool,
+    pub(crate) execution_time_ms: u64,
+    pub(crate) scroll_offset: usize,
 
-    left: Option<CompareSlot>,
-    right: Option<CompareSlot>,
-    compare_scroll_offset: usize,
+    pub(crate) left: Option<CompareSlot>,
+    pub(crate) right: Option<CompareSlot>,
+    pub(crate) compare_scroll_offset: usize,
 
-    history: VecDeque<CompareSlot>,
+    pub(crate) history: VecDeque<CompareSlot>,
 
-    compare_viewport_height: Option<u16>,
-    confirm_scroll_offset: usize,
+    pub(crate) compare_viewport_height: Option<u16>,
+    pub(crate) confirm_scroll_offset: usize,
 }
 
 impl ExplainContext {

@@ -8,11 +8,12 @@ use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::completion::CompletionCandidate;
 use crate::policy::write::write_guardrails::WritePreview;
-use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::connection_store::ConnectionStoreError;
 use crate::ports::outbound::folder_opener::FolderOpenError;
 use crate::ports::outbound::query_history::QueryHistoryError;
+use crate::ports::outbound::settings_store::SettingsStoreError;
+use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Table};
@@ -23,6 +24,8 @@ pub enum ConnectionSaveError {
     Validation(#[from] ConnectionProfileError),
     #[error("{0}")]
     Store(#[from] ConnectionStoreError),
+    #[error("{0}")]
+    Metadata(#[from] DbOperationError),
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -149,9 +152,11 @@ pub enum InputTarget {
     CommandLine,
     Filter,
     ErFilter,
+    SettingsErBrowser,
     QueryHistoryFilter,
     JsonbEdit,
     JsonbSearch,
+    HelpFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,6 +198,7 @@ pub enum ListMotion {
 pub enum ModalKind {
     TablePicker,
     CommandPalette,
+    Settings,
     Help,
     SqlModal,
     ErTablePicker,
@@ -204,6 +210,7 @@ pub enum ModalKind {
 
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshResult {
+    pub dsn: String,
     pub run_id: u64,
     pub new_metadata: Arc<DatabaseMetadata>,
     pub stale_tables: Vec<String>,
@@ -215,6 +222,7 @@ pub struct SmartErRefreshResult {
 
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshError {
+    pub dsn: String,
     pub run_id: u64,
     pub error: DbOperationError,
     pub new_metadata: Option<Arc<DatabaseMetadata>>,
@@ -251,17 +259,24 @@ pub struct ConnectionTarget {
     pub database_type: DatabaseType,
 }
 
-// Do not derive PartialEq here: payload variants carry domain snapshots and
-// errors that are not all value-comparable.
+// Full Action equality is intentionally unavailable: some payloads carry
+// snapshots or errors that are not value-comparable.
+//
+// Classification rule:
+// Order shared controls first, then product objects by dependency:
+// setup -> DB structure -> SQL -> query results -> result derivatives.
+// Product groups follow the object in the action sentence, not UI/reducer names
+// (e.g., MetadataLoaded -> Database structure, QueryCompleted -> Query results).
 #[derive(Debug, Clone)]
 pub enum Action {
+    // App shell
     None,
     Quit,
     Render,
     Resize(u16, u16),
     SetFocusedPane(FocusedPane),
 
-    // Parametric variants (consolidation targets)
+    // Input primitives
     Scroll {
         target: ScrollTarget,
         direction: ScrollDirection,
@@ -290,17 +305,29 @@ pub enum Action {
         target: ListTarget,
         motion: ListMotion,
     },
+    Paste(String),
+    BeginKeySequence(Prefix),
+    CancelKeySequence,
 
-    // Modal lifecycle
+    // Modal shell
     OpenModal(ModalKind),
     CloseModal(ModalKind),
     ToggleModal(ModalKind),
+    Escape,
+    ConfirmSelection,
+    ConfirmDialogConfirm,
+    ConfirmDialogCancel,
 
-    // Connection lifecycle
+    // Command line
+    EnterCommandLine,
+    ExitCommandLine,
+    CommandLineSubmit,
+
+    // Connections
     TryConnect,
     SwitchConnection(ConnectionTarget),
-
-    // Connection Setup
+    ConnectionsLoaded(ConnectionsLoadedPayload),
+    ConfirmConnectionSelection,
     StartEditConnection(ConnectionId),
     ConnectionSetupNextField,
     ConnectionSetupPrevField,
@@ -315,8 +342,6 @@ pub enum Action {
     ConnectionSaveFailed(ConnectionSaveError),
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(ConnectionStoreError),
-
-    // Connection Error
     ShowConnectionError(ConnectionErrorInfo),
     CloseConnectionError,
     ToggleConnectionErrorDetails,
@@ -324,67 +349,75 @@ pub enum Action {
     ConnectionErrorCopied,
     ReenterConnectionSetup,
     RetryServiceConnection,
-
-    // Confirm Dialog
-    ConfirmDialogConfirm,
-    ConfirmDialogCancel,
-
-    // Connection deletion
     RequestDeleteSelectedConnection,
     DeleteConnection(ConnectionId),
     ConnectionDeleted(ConnectionId),
     ConnectionDeleteFailed(ConnectionStoreError),
-
-    // Connection edit (from list)
     RequestEditSelectedConnection,
 
-    // Command line actions
-    EnterCommandLine,
-    ExitCommandLine,
-    CommandLineSubmit,
+    // Settings
+    SettingsSelectNext,
+    SettingsSelectPrevious,
+    SettingsNextSection,
+    SettingsPreviousSection,
+    SettingsStartCustomBrowserEdit,
+    SettingsStopCustomBrowserEdit,
+    SettingsApply,
+    SettingsCancel,
+    SettingsSaved(AppSettings),
+    SettingsSaveFailed(SettingsStoreError),
 
-    // Connection list navigation
-    ConnectionsLoaded(ConnectionsLoadedPayload),
-    ConfirmConnectionSelection,
-
-    // Selection
-    ConfirmSelection,
-
-    // Escape (context-dependent close)
-    Escape,
-
-    // Metadata loading
+    // Database structure
     LoadMetadata,
     ReloadMetadata,
-    MetadataLoaded(Arc<DatabaseMetadata>),
-    MetadataFailed(DbOperationError),
-
-    // Table detail loading
+    MetadataLoaded {
+        dsn: String,
+        run_id: u64,
+        metadata: Arc<DatabaseMetadata>,
+    },
+    MetadataFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+    },
     LoadTableDetail(TableTarget),
-    TableDetailLoaded(Box<Table>, u64),
-    TableDetailFailed(DbOperationError, u64),
-
-    // Completion prefetch (does NOT update state.table_detail)
+    TableDetailLoaded {
+        dsn: String,
+        run_id: u64,
+        detail: Box<Table>,
+        generation: u64,
+    },
+    TableDetailFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+        generation: u64,
+    },
     PrefetchTableDetail {
+        run_id: u64,
         schema: String,
         table: String,
     },
     TableDetailCached {
+        dsn: String,
+        run_id: u64,
         schema: String,
         table: String,
         detail: Box<Table>,
     },
     TableDetailCacheFailed {
+        dsn: String,
+        run_id: u64,
         schema: String,
         table: String,
         error: DbOperationError,
     },
     TableDetailAlreadyCached {
+        dsn: String,
+        run_id: u64,
         schema: String,
         table: String,
     },
-
-    // Prefetch all tables for completion
     StartPrefetchAll,
     StartPrefetchScoped {
         tables: Vec<String>,
@@ -393,16 +426,13 @@ pub enum Action {
     FkNeighborsDiscovered {
         tables: Vec<String>,
     },
-    ProcessPrefetchQueue,
-
-    // Inspector sub-tabs
+    ProcessPrefetchQueue {
+        run_id: u64,
+    },
     InspectorNextTab,
     InspectorPrevTab,
 
-    // Clipboard paste (bracketed paste)
-    Paste(String),
-
-    // SQL Modal
+    // SQL editing
     SqlModalAppendInsert,
     SqlModalEnterInsert,
     SqlModalEnterNormal,
@@ -414,25 +444,8 @@ pub enum Action {
     SqlModalClear,
     SqlModalCancelConfirm,
     SqlModalHighRiskConfirmExecute,
-
-    // SQL Modal tabs
     SqlModalNextTab,
     SqlModalPrevTab,
-
-    // EXPLAIN
-    ExplainRequest,
-    ExplainAnalyzeRequest,
-    ExplainAnalyzeConfirm,
-    ExplainAnalyzeCancel,
-    ExplainCompleted {
-        plan_text: String,
-        is_analyze: bool,
-        execution_time_ms: u64,
-    },
-    ExplainFailed(DbOperationError),
-    CompareEditQuery,
-
-    // SQL Modal completion
     CompletionTrigger,
     CompletionUpdated {
         candidates: Vec<CompletionCandidate>,
@@ -444,30 +457,56 @@ pub enum Action {
     CompletionNext,
     CompletionPrev,
 
-    // Query execution
+    // Explain plans
+    ExplainRequest,
+    ExplainAnalyzeRequest,
+    ExplainAnalyzeConfirm,
+    ExplainAnalyzeCancel,
+    ExplainCompleted {
+        dsn: String,
+        run_id: u64,
+        query: String,
+        plan_text: String,
+        is_analyze: bool,
+        execution_time_ms: u64,
+    },
+    ExplainFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+    },
+    CompareEditQuery,
+
+    // Query results
     ExecutePreview(TableTarget),
     ExecuteAdhoc(String),
     ExecuteWrite(String),
     QueryCompleted {
+        dsn: String,
+        run_id: u64,
         result: Arc<QueryResult>,
         generation: u64,
         target_page: Option<usize>,
     },
     QueryFailed {
+        dsn: String,
+        run_id: u64,
         error: DbOperationError,
         generation: u64,
         source: QuerySource,
     },
     ExecuteWriteSucceeded {
+        dsn: String,
+        run_id: u64,
         affected_rows: usize,
     },
-    ExecuteWriteFailed(DbOperationError),
-
-    // Result pane
+    ExecuteWriteFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+    },
     ResultNextPage,
     ResultPrevPage,
-
-    // Result pane selection
     ResultActivateCell,
     ResultExitToScroll,
     ResultCellLeft,
@@ -489,56 +528,53 @@ pub enum Action {
     CellCopied,
     CopyFailed(ClipboardError),
     OpenFolderFailed(FolderOpenError),
+    ToggleFocus,
+    ToggleReadOnly,
 
-    // Result history navigation
+    // Result history
     OpenResultHistory,
     HistoryOlder,
     HistoryNewer,
     ExitResultHistory,
 
-    // Multi-key sequence FSM (zz, zt, zb)
-    BeginKeySequence(Prefix),
-    CancelKeySequence,
-
-    // Focus mode
-    ToggleFocus,
-
-    // Read-only mode
-    ToggleReadOnly,
-
-    // ER Table Picker
-    ErToggleSelection,
-    ErSelectAll,
-    ErConfirmSelection,
-
-    // Query History Picker
+    // Query history
     QueryHistoryLoaded(
         crate::domain::ConnectionId,
         Vec<crate::domain::query_history::QueryHistoryEntry>,
     ),
-    QueryHistoryLoadFailed(QueryHistoryError),
+    QueryHistoryLoadFailed(crate::domain::ConnectionId, QueryHistoryError),
     QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
-    // CSV Export
+    // CSV export
     RequestCsvExport,
     CsvExportRowsCounted {
+        dsn: String,
+        run_id: u64,
         row_count: Option<usize>,
         export_query: String,
         file_name: String,
     },
     ExecuteCsvExport {
+        dsn: String,
+        run_id: u64,
         export_query: String,
         file_name: String,
         row_count: Option<usize>,
     },
     CsvExportSucceeded {
+        dsn: String,
+        run_id: u64,
         path: String,
         row_count: Option<usize>,
     },
-    CsvExportFailed(DbOperationError),
+    CsvExportFailed {
+        dsn: String,
+        run_id: u64,
+        error: DbOperationError,
+    },
 
-    // JSONB Detail View
+    // JSONB detail
     JsonbYankAll,
     JsonbEnterEdit,
     JsonbAppendInsert,
@@ -549,7 +585,10 @@ pub enum Action {
     JsonbSearchPrev,
     JsonbSearchSubmit,
 
-    // ER Diagram (full or partial, depending on selected tables)
+    // ER diagrams
+    ErToggleSelection,
+    ErSelectAll,
+    ErConfirmSelection,
     ErOpenDiagram,
     ErGenerateFromCache,
     SmartErRefreshCompleted(SmartErRefreshResult),

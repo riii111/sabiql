@@ -6,6 +6,7 @@ pub mod effect;
 pub mod er;
 pub mod render_schedule;
 pub mod runner;
+pub mod settings;
 pub mod sql_editor;
 pub mod utility;
 

@@ -1,17 +1,19 @@
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::services::AppServices;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::update::dispatch_result::DispatchResult;
 
-use super::inspector_max_scroll;
+use super::{active_capabilities, inspector_max_scroll};
 
-fn inspector_page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
-    let visible = match state
-        .session
-        .active_db_capabilities()
-        .normalize_inspector_tab(state.ui.inspector_tab())
+fn inspector_page_scroll_delta(
+    state: &AppState,
+    services: &AppServices,
+    amount: ScrollAmount,
+) -> Option<usize> {
+    let visible = match active_capabilities(state, services)
+        .normalize_inspector_tab(state.ui.inspector_tab)
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
         _ => state.inspector_visible_rows(),
@@ -20,11 +22,11 @@ fn inspector_page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option
     amount.page_delta(visible)
 }
 
-pub fn reduce(
+pub fn reduce_inspector(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     match action {
         Action::Scroll {
             target: ScrollTarget::Inspector,
@@ -32,80 +34,63 @@ pub fn reduce(
             amount: ScrollAmount::Line,
         } => {
             let max = inspector_max_scroll(state, services);
-            state
-                .ui
-                .set_inspector_scroll_offset(direction.clamp_vertical_offset(
-                    state.ui.inspector_scroll_offset(),
-                    max,
-                    1,
-                ));
-            Some(vec![])
+            state.ui.inspector_scroll_offset =
+                direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, 1);
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
             direction: ScrollDirection::Up,
             amount: ScrollAmount::ToStart,
         } => {
-            state.ui.set_inspector_scroll_offset(0);
-            Some(vec![])
+            state.ui.inspector_scroll_offset = 0;
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
             direction: ScrollDirection::Down,
             amount: ScrollAmount::ToEnd,
         } => {
-            state
-                .ui
-                .set_inspector_scroll_offset(inspector_max_scroll(state, services));
-            Some(vec![])
+            state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
             direction,
             amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
-            if let Some(delta) = inspector_page_scroll_delta(state, *amount) {
+            if let Some(delta) = inspector_page_scroll_delta(state, services, *amount) {
                 let max = inspector_max_scroll(state, services);
-                state
-                    .ui
-                    .set_inspector_scroll_offset(direction.clamp_vertical_offset(
-                        state.ui.inspector_scroll_offset(),
-                        max,
-                        delta,
-                    ));
+                state.ui.inspector_scroll_offset =
+                    direction.clamp_vertical_offset(state.ui.inspector_scroll_offset, max, delta);
             }
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
             direction: ScrollDirection::Left,
             amount: ScrollAmount::Line,
         } => {
-            state
-                .ui
-                .set_inspector_horizontal_offset(calculate_prev_column_offset(
-                    state.ui.inspector_horizontal_offset(),
-                ));
-            Some(vec![])
+            state.ui.inspector_horizontal_offset =
+                calculate_prev_column_offset(state.ui.inspector_horizontal_offset);
+            DispatchResult::handled()
         }
         Action::Scroll {
             target: ScrollTarget::Inspector,
             direction: ScrollDirection::Right,
             amount: ScrollAmount::Line,
         } => {
-            let plan = state.ui.inspector_viewport_plan();
+            let plan = &state.ui.inspector_viewport_plan;
             let all_widths_len = plan.max_offset + plan.column_count;
-            state
-                .ui
-                .set_inspector_horizontal_offset(calculate_next_column_offset(
-                    all_widths_len,
-                    state.ui.inspector_horizontal_offset(),
-                    plan.column_count,
-                ));
-            Some(vec![])
+            state.ui.inspector_horizontal_offset = calculate_next_column_offset(
+                all_widths_len,
+                state.ui.inspector_horizontal_offset,
+                plan.column_count,
+            );
+            DispatchResult::handled()
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -113,7 +98,8 @@ pub fn reduce(
 mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
-    use crate::update::browse::navigation::reduce_navigation;
+    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
     mod inspector_scroll_top_bottom {
@@ -121,14 +107,8 @@ mod tests {
 
         fn state_with_table_detail(columns: usize) -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.set_inspector_pane_height(10);
-            state.ui.set_inspector_tab(InspectorTab::Columns);
-            state.session.set_active_connection(
-                &ConnectionId::new(),
-                "postgres",
-                DatabaseType::PostgreSQL,
-                "postgres://test",
-            );
+            state.ui.inspector_pane_height = 10;
+            state.ui.inspector_tab = InspectorTab::Columns;
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
                     name: format!("col_{i}"),
@@ -158,9 +138,9 @@ mod tests {
         #[test]
         fn inspector_scroll_top_resets_to_zero() {
             let mut state = state_with_table_detail(20);
-            state.ui.set_inspector_scroll_offset(10);
+            state.ui.inspector_scroll_offset = 10;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -171,18 +151,18 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
-            assert_eq!(state.ui.inspector_scroll_offset(), 0);
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
         }
 
         #[test]
         fn inspector_scroll_bottom_goes_to_max() {
             let mut state = state_with_table_detail(20);
-            state.ui.set_inspector_scroll_offset(0);
+            state.ui.inspector_scroll_offset = 0;
             let visible = state.inspector_visible_rows();
             let expected_max = 20_usize.saturating_sub(visible);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -193,16 +173,16 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
-            assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset, expected_max);
         }
 
         #[test]
         fn inspector_scroll_bottom_no_detail_stays_zero() {
             let mut state = AppState::new("test".to_string());
-            state.ui.set_inspector_pane_height(10);
+            state.ui.inspector_pane_height = 10;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -213,16 +193,16 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
-            assert_eq!(state.ui.inspector_scroll_offset(), 0);
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
         }
 
         #[test]
         fn inspector_half_page_scroll_advances_by_half_visible_rows() {
             let mut state = state_with_table_detail(20);
-            state.ui.set_inspector_scroll_offset(1);
+            state.ui.inspector_scroll_offset = 1;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -233,16 +213,16 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
-            assert_eq!(state.ui.inspector_scroll_offset(), 3);
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset, 3);
         }
 
         #[test]
         fn inspector_full_page_scroll_clamps_to_max() {
             let mut state = state_with_table_detail(20);
-            state.ui.set_inspector_scroll_offset(12);
+            state.ui.inspector_scroll_offset = 12;
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -253,15 +233,15 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
-            assert_eq!(state.ui.inspector_scroll_offset(), 15);
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset, 15);
         }
 
         #[test]
         fn inspector_page_scroll_stays_zero_when_content_fits_viewport() {
             let mut state = state_with_table_detail(4);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -272,8 +252,15 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
-            assert_eq!(state.ui.inspector_scroll_offset(), 0);
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
+        }
+
+        fn services_without_ddl() -> AppServices {
+            let mut services = AppServices::stub();
+            services.db_capabilities =
+                DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
+            services
         }
 
         fn use_sqlite_tabs(state: &mut AppState) {
@@ -293,7 +280,7 @@ mod tests {
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -304,7 +291,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
@@ -316,7 +303,7 @@ mod tests {
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
 
-            let effects = reduce_navigation(
+            let effects = dispatch_navigation(
                 &mut state,
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
@@ -327,8 +314,57 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(effects.is_some());
+            assert!(effects.is_handled());
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
+        }
+
+        #[test]
+        fn inspector_half_page_scroll_normalizes_unsupported_ddl_tab() {
+            let mut state = state_with_table_detail(20);
+            let services = services_without_ddl();
+            state.ui.inspector_pane_height = 7;
+            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.ui.inspector_scroll_offset = 1;
+            let expected_delta = ScrollAmount::HalfPage
+                .page_delta(state.inspector_visible_rows())
+                .unwrap();
+
+            let effects = dispatch_navigation(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::HalfPage,
+                },
+                &services,
+                Instant::now(),
+            );
+
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset, 1 + expected_delta);
+        }
+
+        #[test]
+        fn inspector_full_page_scroll_normalizes_unsupported_ddl_tab() {
+            let mut state = state_with_table_detail(20);
+            let services = services_without_ddl();
+            state.ui.inspector_pane_height = 7;
+            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.ui.inspector_scroll_offset = 1;
+
+            let effects = dispatch_navigation(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage,
+                },
+                &services,
+                Instant::now(),
+            );
+
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset, 3);
         }
     }
 }

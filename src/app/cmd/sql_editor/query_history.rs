@@ -28,7 +28,9 @@ pub fn run(
                             .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::QueryHistoryLoadFailed(e)).await.ok();
+                        tx.send(Action::QueryHistoryLoadFailed(conn_id, e))
+                            .await
+                            .ok();
                     }
                 }
             });

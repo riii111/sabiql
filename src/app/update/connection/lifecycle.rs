@@ -2,7 +2,10 @@ use crate::cmd::effect::Effect;
 use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
+
+use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{restore_cache, save_current_cache};
 
@@ -22,20 +25,25 @@ fn reset_for_new_connection(
     state.session.disable_read_only();
 }
 
-pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
+pub fn reduce_connection_lifecycle(
+    state: &mut AppState,
+    action: &Action,
+    _now: std::time::Instant,
+    _services: &AppServices,
+) -> DispatchResult {
     match action {
         Action::TryConnect => {
             if state.session.connection_state().is_not_connected()
                 && state.modal.active_mode() == InputMode::Normal
             {
                 if let Some(dsn) = state.session.dsn().map(str::to_string) {
-                    state.session.begin_connecting(&dsn);
-                    Some(vec![Effect::FetchMetadata { dsn }])
+                    let run_id = state.session.begin_connecting(&dsn);
+                    DispatchResult::Handled(vec![Effect::FetchMetadata { dsn, run_id }])
                 } else {
-                    Some(vec![])
+                    DispatchResult::Handled(vec![])
                 }
             } else {
-                Some(vec![])
+                DispatchResult::Handled(vec![])
             }
         }
 
@@ -52,19 +60,22 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, id, name, *database_type, dsn);
-                Some(vec![Effect::ClearCompletionEngineCache])
+                DispatchResult::Handled(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata
                 reset_for_new_connection(state, id, dsn, name, *database_type);
-                state.session.begin_connecting(dsn);
-                Some(vec![
+                let run_id = state.session.begin_connecting(dsn);
+                DispatchResult::Handled(vec![
                     Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { dsn: dsn.clone() },
+                    Effect::FetchMetadata {
+                        dsn: dsn.clone(),
+                        run_id,
+                    },
                 ])
             }
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -75,6 +86,16 @@ mod tests {
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::state::ConnectionState;
     use crate::model::shared::inspector_tab::InspectorTab;
+
+    fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
+        reduce_connection_lifecycle(
+            state,
+            action,
+            std::time::Instant::now(),
+            &AppServices::stub(),
+        )
+        .into_effects()
+    }
 
     fn create_switch_action(id: &ConnectionId, name: &str) -> Action {
         Action::SwitchConnection(ConnectionTarget {

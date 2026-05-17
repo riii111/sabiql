@@ -6,7 +6,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::primitives::atoms::text_cursor_spans;
-use crate::primitives::molecules::render_modal;
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
 pub(super) fn filter_visible_width(raw_width: usize, cursor: usize, char_count: usize) -> usize {
@@ -36,7 +36,7 @@ impl TablePicker {
             Constraint::Percentage(60),
             Constraint::Percentage(70),
             " Table Picker ",
-            &format!(" {filtered_count} tables │ Enter Select "),
+            FooterHintBar::with_prefix(format!("{filtered_count} tables"), [("Enter", "Select")]),
             theme,
         );
 

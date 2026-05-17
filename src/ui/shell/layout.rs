@@ -18,6 +18,7 @@ use crate::features::connections::selector::ConnectionSelector;
 use crate::features::connections::setup::ConnectionSetup;
 use crate::features::overlays::confirm_dialog::{ConfirmDialog, ConfirmPreviewMetrics};
 use crate::features::overlays::help::HelpOverlay;
+use crate::features::overlays::settings::SettingsOverlay;
 use crate::features::pickers::command_palette::CommandPalette;
 use crate::features::pickers::er_table_picker::{ErTablePicker, ErTablePickerRenderMetrics};
 use crate::features::pickers::query_history_picker::{
@@ -162,6 +163,7 @@ impl MainLayout {
 
         match state.input_mode() {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
+            InputMode::Settings => SettingsOverlay::render(frame, state, theme),
             InputMode::Help => HelpOverlay::render(frame, state, theme),
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, theme),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now, theme),

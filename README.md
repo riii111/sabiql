@@ -19,8 +19,7 @@ Destructive operations are guarded. Inline edits and row deletions always show a
 Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featured alternative to GUI tools like DBeaver or DataGrip, without ever leaving the terminal.
 
 ## Features
-![hero-800](https://github.com/user-attachments/assets/b6b853a0-d7b4-486d-955c-aee74e7a2671)
-
+![hero_1000_20fps](https://github.com/user-attachments/assets/06e1900d-b044-4f29-a2a8-7d7bab5bd3a1)
 
 ### Core
 
@@ -44,7 +43,8 @@ Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featur
 
 - **Fuzzy Search** (`/`) — Incremental table filtering
 - **Focus Mode** (`f`) — Expand any pane to full screen
-- **Command Palette** (`Ctrl+K`) — Searchable command list
+- **Settings** (`Ctrl+K`) — Theme and ER diagram preferences
+- **Command Palette** (`F1`, `:palette`) — Searchable command list
 
 ## Installation
 
@@ -75,7 +75,14 @@ curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
 sabiql
 ```
 
-On first run, enter your connection details — saved to `~/.config/sabiql/connections.toml`. Press `?` for help.
+On first run, enter your connection details. They are saved to your platform config directory:
+
+- macOS: `~/Library/Application Support/sabiql/connections.toml`
+- Linux: `~/.config/sabiql/connections.toml`
+
+Press `?` for help.
+
+Open Settings with `Ctrl+K` to switch themes and configure the ER diagram browser command.
 
 ## Requirements
 
@@ -98,12 +105,6 @@ Without direnv, enter the shell explicitly:
 nix develop
 ```
 
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `SABIQL_BROWSER` | Browser for ER diagrams (e.g., `Arc`, `Firefox`). macOS uses `open -a`; falls back to OS default. |
-
 ## Roadmap
 
 - [x] Connection management UI
@@ -114,11 +115,11 @@ nix develop
 - [x] CSV export & clipboard yank
 - [x] EXPLAIN workflow (plan tree view & comparison)
 - [x] JSON/JSONB support (tree view, editing, validation)
+- [x] Theme switching (Sabiql Dark / Light)
 - [ ] Neovim integration (`sabiql.nvim`)
 - [ ] SQLite support
 - [ ] Zero-config connection (env vars, `.pgpass`, URI auto-detect)
 - [ ] Google Cloud SQL / AlloyDB support
-- [ ] Theme switching (foreground palette only)
 - [ ] MySQL support
 
 Have a feature request? [Open an issue](https://github.com/riii111/sabiql/issues/new) feedback is welcome!

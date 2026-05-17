@@ -44,7 +44,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
-│                                ╰ 0/3 selected │ Space Select │ ^A All │ Enter Generate │ Esc Cancel ─────────────────────────────╯                                │
+│                                ╰ 0/3 selected │ Space: Select │ ^A: All │ Enter: Generate │ Esc: Cancel ─────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

@@ -4,20 +4,20 @@ mod write;
 
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_query(
+pub fn dispatch_query(
     state: &mut AppState,
     action: &Action,
     now: Instant,
     services: &AppServices,
-) -> Option<Vec<Effect>> {
-    execution::reduce(state, action, now)
-        .or_else(|| write::reduce(state, action, now, services))
-        .or_else(|| pagination::reduce(state, action, now))
+) -> DispatchResult {
+    execution::reduce_execution(state, action, now, services)
+        .or_else(|| write::reduce_write(state, action, now, services))
+        .or_else(|| pagination::reduce_pagination(state, action, now, services))
 }
 
 #[cfg(test)]
@@ -33,7 +33,7 @@ pub(super) mod tests {
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
-        state.session.set_dsn_for_test("postgres://localhost/test");
+        state.session.dsn = Some("postgres://localhost/test".to_string());
         state
     }
 
@@ -181,7 +181,8 @@ pub(super) mod tests {
 
     pub fn state_with_table(schema: &str, table: &str) -> AppState {
         let mut state = create_test_state();
-        state.query.pagination.set_table_for_test(schema, table);
+        state.query.pagination.schema = schema.to_string();
+        state.query.pagination.table = table.to_string();
         state
     }
 }

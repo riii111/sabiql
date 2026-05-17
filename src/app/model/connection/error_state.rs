@@ -4,10 +4,10 @@ use super::error::ConnectionErrorInfo;
 
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionErrorState {
-    error_info: Option<ConnectionErrorInfo>,
-    details_expanded: bool,
-    scroll_offset: usize,
-    copied_feedback_expires: Option<Instant>,
+    pub(crate) error_info: Option<ConnectionErrorInfo>,
+    pub(crate) details_expanded: bool,
+    pub(crate) scroll_offset: usize,
+    pub(crate) copied_feedback_expires: Option<Instant>,
 }
 
 impl ConnectionErrorState {

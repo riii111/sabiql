@@ -74,8 +74,8 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
 
 pub const HELP_ROWS: &[ModeRow] = &[
     ModeRow {
-        key_short: "^N/^P/j/k/↑↓",
-        key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
+        key_short: "^N/^P/↑↓",
+        key: "Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
         bindings: &[
@@ -85,11 +85,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[
-                    KeyCombo::plain(Key::Char('j')),
-                    KeyCombo::plain(Key::Down),
-                    KeyCombo::ctrl(Key::Char('n')),
-                ],
+                combos: &[KeyCombo::plain(Key::Down), KeyCombo::ctrl(Key::Char('n'))],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -97,17 +93,13 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[
-                    KeyCombo::plain(Key::Char('k')),
-                    KeyCombo::plain(Key::Up),
-                    KeyCombo::ctrl(Key::Char('p')),
-                ],
+                combos: &[KeyCombo::plain(Key::Up), KeyCombo::ctrl(Key::Char('p'))],
             },
         ],
     },
     ModeRow {
-        key_short: "g/G/Home/End",
-        key: "g / Home / G / End",
+        key_short: "Home/End",
+        key: "Home / End",
         desc_short: "Top/Btm",
         description: "Jump to top / bottom",
         bindings: &[
@@ -117,7 +109,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::ToStart,
                 },
-                combos: &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
+                combos: &[KeyCombo::plain(Key::Home)],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -125,7 +117,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::ToEnd,
                 },
-                combos: &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
+                combos: &[KeyCombo::plain(Key::End)],
             },
         ],
     },
@@ -181,8 +173,8 @@ pub const HELP_ROWS: &[ModeRow] = &[
         ],
     },
     ModeRow {
-        key_short: "h/l / ←→",
-        key: "h / l / ← / →",
+        key_short: "←→",
+        key: "← / →",
         desc_short: "H-Scroll",
         description: "Scroll left / right",
         bindings: &[
@@ -192,7 +184,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Left,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
+                combos: &[KeyCombo::plain(Key::Left)],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -200,18 +192,47 @@ pub const HELP_ROWS: &[ModeRow] = &[
                     direction: ScrollDirection::Right,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
+                combos: &[KeyCombo::plain(Key::Right)],
             },
         ],
     },
     ModeRow {
-        key_short: "?/Esc",
-        key: "? / Esc",
+        key_short: "type",
+        key: "type",
+        desc_short: "Filter",
+        description: "Filter help",
+        bindings: &[],
+    },
+    ModeRow {
+        key_short: "Backspace",
+        key: "Backspace",
+        desc_short: "Edit",
+        description: "Edit filter",
+        bindings: &[ExecBinding {
+            action: Action::TextBackspace {
+                target: InputTarget::HelpFilter,
+            },
+            combos: &[KeyCombo::plain(Key::Backspace)],
+        }],
+    },
+    ModeRow {
+        key_short: "Esc",
+        key: "Esc",
         desc_short: "Close",
         description: "Close help",
         bindings: &[ExecBinding {
             action: Action::CloseModal(ModalKind::Help),
-            combos: &[KeyCombo::plain(Key::Char('?')), KeyCombo::plain(Key::Esc)],
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    },
+    ModeRow {
+        key_short: "?",
+        key: "?",
+        desc_short: "Close",
+        description: "Close help",
+        bindings: &[ExecBinding {
+            action: Action::CloseModal(ModalKind::Help),
+            combos: &[KeyCombo::plain(Key::Char('?'))],
         }],
     },
 ];
@@ -561,6 +582,75 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
         description: "Close",
         bindings: &[ExecBinding {
             action: Action::CloseModal(ModalKind::CommandPalette),
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    },
+];
+
+// =============================================================================
+// Settings
+// =============================================================================
+
+pub const SETTINGS_ROWS: &[ModeRow] = &[
+    ModeRow {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Apply",
+        description: "Apply setting",
+        bindings: &[ExecBinding {
+            action: Action::SettingsApply,
+            combos: &[KeyCombo::plain(Key::Enter)],
+        }],
+    },
+    ModeRow {
+        key_short: "j/k/↑↓",
+        key: "j / k / ↑ / ↓",
+        desc_short: "Select",
+        description: "Select setting",
+        bindings: &[
+            ExecBinding {
+                action: Action::SettingsSelectNext,
+                combos: &[KeyCombo::plain(Key::Down), KeyCombo::plain(Key::Char('j'))],
+            },
+            ExecBinding {
+                action: Action::SettingsSelectPrevious,
+                combos: &[KeyCombo::plain(Key::Up), KeyCombo::plain(Key::Char('k'))],
+            },
+        ],
+    },
+    ModeRow {
+        key_short: "i",
+        key: "i",
+        desc_short: "Edit",
+        description: "Edit custom browser",
+        bindings: &[ExecBinding {
+            action: Action::SettingsStartCustomBrowserEdit,
+            combos: &[KeyCombo::plain(Key::Char('i'))],
+        }],
+    },
+    ModeRow {
+        key_short: "Tab/⇧Tab",
+        key: "Tab / Shift+Tab",
+        desc_short: "Section",
+        description: "Switch settings section",
+        bindings: &[
+            ExecBinding {
+                action: Action::SettingsNextSection,
+                combos: &[KeyCombo::plain(Key::Tab)],
+            },
+            ExecBinding {
+                action: Action::SettingsPreviousSection,
+                combos: &[KeyCombo::shift(Key::BackTab)],
+            },
+        ],
+    },
+    ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Cancel",
+        description: "Cancel",
+        bindings: &[ExecBinding {
+            action: Action::SettingsCancel,
             combos: &[KeyCombo::plain(Key::Esc)],
         }],
     },

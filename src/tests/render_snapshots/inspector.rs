@@ -1,6 +1,6 @@
 use super::*;
-use app::model::shared::inspector_tab::InspectorTab;
 use harness::table_detail_loaded_state;
+use sabiql_app::model::shared::inspector_tab::InspectorTab;
 
 #[test]
 fn inspector_indexes_tab_with_data() {

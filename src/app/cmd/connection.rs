@@ -88,7 +88,7 @@ pub(crate) async fn run(
                         }
                     }
                     Err(e) => {
-                        tx.send(Action::MetadataFailed(e)).await.ok();
+                        tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
                     }
                 }
             });
@@ -458,6 +458,7 @@ mod tests {
                 .clipboard(Arc::new(NoopClipboardWriter))
                 .folder_opener(Arc::new(NoopFolderOpener))
                 .query_history_store(Arc::new(NoopQueryHistoryStore))
+                .settings_store(Arc::new(NoopSettingsStore))
                 .metadata_cache(cache)
                 .action_tx(tx)
                 .build();

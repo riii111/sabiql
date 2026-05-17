@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeState {
-    project_name: String,
-    service_file_path: Option<PathBuf>,
+    pub(crate) project_name: String,
+    pub(crate) service_file_path: Option<PathBuf>,
 }
 
 impl RuntimeState {
@@ -27,6 +27,7 @@ impl RuntimeState {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn set_project_name_for_test(&mut self, project_name: String) {
         self.project_name = project_name;
     }

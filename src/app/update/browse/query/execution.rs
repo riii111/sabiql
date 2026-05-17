@@ -5,14 +5,15 @@ use crate::cmd::effect::Effect;
 use crate::domain::{QueryResult, QuerySource};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
-#[cfg(test)]
 use crate::services::AppServices;
 use crate::update::action::{Action, ModalKind, TableTarget};
+use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::command::{command_to_action, parse_command};
 
-fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> {
+fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -> Vec<Effect> {
     if result.source != QuerySource::Adhoc || result.is_error() {
         return vec![];
     }
@@ -22,7 +23,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
     if !tag.needs_refresh() {
         return vec![];
     }
-    let Some(dsn) = state.session.dsn().map(str::to_string) else {
+    let Some(dsn) = state.session.dsn.clone() else {
         return vec![];
     };
 
@@ -31,38 +32,52 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
     if tag.is_schema_modifying() {
         state.sql_modal.reset_prefetch();
         state.session.set_table_detail_raw(None);
+        let run_id = state.session.begin_metadata_refresh();
 
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
-        effects.push(Effect::FetchMetadata { dsn });
-    } else if state.query.pagination.has_table() {
-        let page = state.query.pagination.current_page();
+        effects.push(Effect::FetchMetadata { dsn, run_id });
+    } else if !state.query.pagination.table.is_empty() {
+        let page = state.query.pagination.current_page;
+        let run_id = state.query.begin_running(now);
         effects.push(Effect::ExecutePreview {
             dsn,
-            schema: state.query.pagination.schema().to_string(),
-            table: state.query.pagination.table().to_string(),
+            schema: state.query.pagination.schema.clone(),
+            table: state.query.pagination.table.clone(),
             generation: state.session.selection_generation(),
+            run_id,
             limit: PREVIEW_PAGE_SIZE,
             offset: page * PREVIEW_PAGE_SIZE,
             target_page: page,
-            read_only: state.session.is_read_only(),
+            read_only: state.session.read_only,
         });
     }
 
     effects
 }
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce_execution(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+    _services: &AppServices,
+) -> DispatchResult {
     match action {
         Action::QueryCompleted {
+            dsn,
+            run_id,
             result,
             generation,
             target_page,
         } => {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+                return DispatchResult::handled();
+            }
+
             if *generation == 0 || *generation == state.session.selection_generation() {
                 state.query.mark_idle();
                 let preserved_result_col = state.result_interaction.selection().cell();
-                let preserved_horizontal_offset = state.result_interaction.horizontal_offset();
+                let preserved_horizontal_offset = state.result_interaction.horizontal_offset;
 
                 let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
                 if !is_adhoc_error {
@@ -92,10 +107,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 }
 
                 if let Some(page) = target_page {
-                    state
-                        .query
-                        .pagination
-                        .set_page_result(*page, result.rows.len() < PREVIEW_PAGE_SIZE);
+                    state.query.pagination.current_page = *page;
+                    if result.rows.len() < PREVIEW_PAGE_SIZE {
+                        state.query.pagination.reached_end = true;
+                    }
                 }
 
                 if !result.is_error() || result.source != QuerySource::Adhoc {
@@ -115,16 +130,13 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                                 let col = preserved_result_col
                                     .unwrap_or(preserved_horizontal_offset)
                                     .min(max_col);
-                                state.result_interaction.set_horizontal_offset(
-                                    preserved_horizontal_offset.min(max_col).min(col),
-                                );
+                                state.result_interaction.horizontal_offset =
+                                    preserved_horizontal_offset.min(max_col).min(col);
                                 state.result_interaction.activate_cell(clamped, col);
 
                                 let visible = state.result_visible_rows();
                                 if visible > 0 && clamped >= visible {
-                                    state
-                                        .result_interaction
-                                        .set_scroll_offset(clamped - visible + 1);
+                                    state.result_interaction.scroll_offset = clamped - visible + 1;
                                 }
                             }
                         }
@@ -134,16 +146,22 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                 }
 
-                Some(try_adhoc_refresh(state, result))
+                DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
             } else {
-                Some(vec![])
+                DispatchResult::handled()
             }
         }
         Action::QueryFailed {
+            dsn,
+            run_id,
             error,
             generation,
             source,
         } => {
+            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+                return DispatchResult::handled();
+            }
+
             if *generation == 0 || *generation == state.session.selection_generation() {
                 state.query.mark_idle();
                 if *source == QuerySource::Preview {
@@ -152,13 +170,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
-                    let preview_query = if state.query.pagination.schema().is_empty() {
-                        state.query.pagination.table().to_string()
+                    let preview_query = if state.query.pagination.schema.is_empty() {
+                        state.query.pagination.table.clone()
                     } else {
                         format!(
                             "{}.{}",
-                            state.query.pagination.schema(),
-                            state.query.pagination.table()
+                            state.query.pagination.schema, state.query.pagination.table
                         )
                     };
                     state.query.set_current_result(Arc::new(QueryResult::error(
@@ -173,7 +190,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
-            Some(vec![])
+            DispatchResult::handled()
         }
 
         Action::CommandLineSubmit => {
@@ -182,13 +199,14 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.modal.pop_mode();
             state.command_line_input.clear();
 
-            Some(match follow_up {
+            DispatchResult::handled_with(match follow_up {
                 Action::Quit => {
                     state.should_quit = true;
                     vec![]
                 }
                 Action::ToggleModal(ModalKind::Help) => {
-                    state.modal.set_mode(InputMode::Help);
+                    state.ui.help.open(HelpOrigin::CommandLine);
+                    state.modal.push_mode(InputMode::Help);
                     vec![]
                 }
                 Action::OpenModal(ModalKind::SqlModal) => {
@@ -200,6 +218,16 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     // Defer to modal reducer so metadata readiness checks stay in one place.
                     vec![Effect::DispatchActions(vec![Action::OpenModal(
                         ModalKind::ErTablePicker,
+                    )])]
+                }
+                Action::OpenModal(ModalKind::Settings) => {
+                    vec![Effect::DispatchActions(vec![Action::OpenModal(
+                        ModalKind::Settings,
+                    )])]
+                }
+                Action::OpenModal(ModalKind::CommandPalette) => {
+                    vec![Effect::DispatchActions(vec![Action::OpenModal(
+                        ModalKind::CommandPalette,
                     )])]
                 }
                 Action::SubmitCellEditWrite => {
@@ -214,8 +242,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             table,
             generation,
         }) => {
-            if let Some(dsn) = state.session.dsn() {
-                state.query.begin_running(now);
+            if let Some(dsn) = &state.session.dsn {
+                let run_id = state.query.begin_running(now);
+
+                state.query.pagination.reset();
+                state.query.pagination.schema.clone_from(schema);
+                state.query.pagination.table.clone_from(table);
 
                 let row_estimate = state
                     .session
@@ -230,48 +262,85 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                             }
                         })
                     });
-                state
-                    .query
-                    .pagination
-                    .reset_for_table_with_estimate(schema, table, row_estimate);
+                state.query.pagination.total_rows_estimate = row_estimate;
 
-                Some(vec![Effect::ExecutePreview {
-                    dsn: dsn.to_string(),
+                DispatchResult::handled_with(vec![Effect::ExecutePreview {
+                    dsn: dsn.clone(),
                     schema: schema.clone(),
                     table: table.clone(),
                     generation: *generation,
+                    run_id,
                     limit: PREVIEW_PAGE_SIZE,
                     offset: 0,
                     target_page: 0,
-                    read_only: state.session.is_read_only(),
+                    read_only: state.session.read_only,
                 }])
             } else {
-                Some(vec![])
+                DispatchResult::handled()
             }
         }
 
         Action::ExecuteAdhoc(query) => {
-            if let Some(dsn) = state.session.dsn() {
-                state.query.begin_running(now);
-                Some(vec![Effect::ExecuteAdhoc {
-                    dsn: dsn.to_string(),
+            if let Some(dsn) = &state.session.dsn {
+                let run_id = state.query.begin_running(now);
+                DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
+                    dsn: dsn.clone(),
+                    run_id,
                     query: query.clone(),
-                    read_only: state.session.is_read_only(),
+                    read_only: state.session.read_only,
                 }])
             } else {
-                Some(vec![])
+                DispatchResult::handled()
             }
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::browse::query::reduce_query;
+    use crate::model::browse::query_execution::PaginationState;
+    use crate::ports::outbound::DbOperationError;
+    use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
+
+    fn begin_query_run(state: &mut AppState) -> u64 {
+        state.query.begin_running(Instant::now())
+    }
+
+    fn query_completed_action(
+        state: &mut AppState,
+        result: Arc<QueryResult>,
+        generation: u64,
+        target_page: Option<usize>,
+    ) -> Action {
+        let run_id = begin_query_run(state);
+        Action::QueryCompleted {
+            dsn: "postgres://localhost/test".to_string(),
+            run_id,
+            result,
+            generation,
+            target_page,
+        }
+    }
+
+    fn query_failed_action(
+        state: &mut AppState,
+        error: DbOperationError,
+        generation: u64,
+        source: QuerySource,
+    ) -> Action {
+        let run_id = begin_query_run(state);
+        Action::QueryFailed {
+            dsn: "postgres://localhost/test".to_string(),
+            run_id,
+            error,
+            generation,
+            source,
+        }
+    }
 
     mod command_line_submit {
         use super::*;
@@ -282,7 +351,7 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("q".to_string());
 
-            reduce_query(
+            dispatch_query(
                 &mut state,
                 &Action::CommandLineSubmit,
                 Instant::now(),
@@ -302,7 +371,7 @@ mod tests {
                 .command_line_input
                 .set_content("unknown_cmd".to_string());
 
-            reduce_query(
+            dispatch_query(
                 &mut state,
                 &Action::CommandLineSubmit,
                 Instant::now(),
@@ -319,7 +388,7 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("erd".to_string());
 
-            let effects = reduce_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::CommandLineSubmit,
                 Instant::now(),
@@ -340,6 +409,59 @@ mod tests {
                 other => panic!("expected DispatchActions, got {other:?}"),
             }
         }
+
+        #[test]
+        fn submit_settings_dispatches_open_settings() {
+            let mut state = create_test_state();
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input.set_content("settings".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.command_line_input.content().is_empty());
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::DispatchActions(actions) => {
+                    assert!(matches!(actions[0], Action::OpenModal(ModalKind::Settings)));
+                }
+                other => panic!("expected DispatchActions, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn submit_palette_dispatches_open_command_palette() {
+            let mut state = create_test_state();
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input.set_content("palette".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.command_line_input.content().is_empty());
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::DispatchActions(actions) => {
+                    assert!(matches!(
+                        actions[0],
+                        Action::OpenModal(ModalKind::CommandPalette)
+                    ));
+                }
+                other => panic!("expected DispatchActions, got {other:?}"),
+            }
+        }
     }
 
     mod execute_preview {
@@ -348,19 +470,16 @@ mod tests {
         #[test]
         fn resets_pagination() {
             let mut state = create_test_state();
-            state.query.pagination.set_page_for_test(5);
-            state
-                .query
-                .pagination
-                .set_total_rows_estimate_for_test(Some(10000));
-            state.query.pagination.mark_reached_end_for_test();
-            state
-                .query
-                .pagination
-                .set_table_for_test("old_schema", "old_table");
+            state.query.pagination = PaginationState {
+                current_page: 5,
+                total_rows_estimate: Some(10000),
+                reached_end: true,
+                schema: "old_schema".to_string(),
+                table: "old_table".to_string(),
+            };
             let now = Instant::now();
 
-            reduce_query(
+            dispatch_query(
                 &mut state,
                 &Action::ExecutePreview(TableTarget {
                     schema: "public".to_string(),
@@ -371,10 +490,10 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.query.pagination.current_page(), 0);
-            assert!(!state.query.pagination.reached_end());
-            assert_eq!(state.query.pagination.schema(), "public");
-            assert_eq!(state.query.pagination.table(), "users");
+            assert_eq!(state.query.pagination.current_page, 0);
+            assert!(!state.query.pagination.reached_end);
+            assert_eq!(state.query.pagination.schema, "public");
+            assert_eq!(state.query.pagination.table, "users");
         }
     }
 
@@ -387,20 +506,12 @@ mod tests {
             state.session.set_selection_generation(1);
             let result = preview_result(100);
             let now = Instant::now();
+            let action = query_completed_action(&mut state, result, 1, Some(2));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 1,
-                    target_page: Some(2),
-                },
-                now,
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &action, now, &AppServices::stub());
 
-            assert_eq!(state.query.pagination.current_page(), 2);
-            assert!(state.query.pagination.reached_end());
+            assert_eq!(state.query.pagination.current_page, 2);
+            assert!(state.query.pagination.reached_end);
         }
 
         #[test]
@@ -409,63 +520,39 @@ mod tests {
             state.session.set_selection_generation(1);
             let result = preview_result(PREVIEW_PAGE_SIZE);
             let now = Instant::now();
+            let action = query_completed_action(&mut state, result, 1, Some(0));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 1,
-                    target_page: Some(0),
-                },
-                now,
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &action, now, &AppServices::stub());
 
-            assert_eq!(state.query.pagination.current_page(), 0);
-            assert!(!state.query.pagination.reached_end());
+            assert_eq!(state.query.pagination.current_page, 0);
+            assert!(!state.query.pagination.reached_end);
         }
 
         #[test]
         fn adhoc_does_not_update_pagination() {
             let mut state = create_test_state();
-            state.query.pagination.set_page_for_test(3);
+            state.query.pagination.current_page = 3;
             let result = adhoc_result();
             let now = Instant::now();
+            let action = query_completed_action(&mut state, result, 0, None);
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: None,
-                },
-                now,
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &action, now, &AppServices::stub());
 
-            assert_eq!(state.query.pagination.current_page(), 3);
+            assert_eq!(state.query.pagination.current_page, 3);
         }
 
         #[test]
         fn adhoc_success_writes_current_result_without_touching_history_index() {
             let mut state = create_test_state();
-            state.result_interaction.set_scroll_offset(50);
-            state.result_interaction.set_horizontal_offset(10);
+            state.result_interaction.scroll_offset = 50;
+            state.result_interaction.horizontal_offset = 10;
             state.result_interaction.activate_cell(5, 0);
             state.result_interaction.stage_row(0);
             state.result_interaction.stage_row(2);
             let result = adhoc_result();
+            let action = query_completed_action(&mut state, result, 0, None);
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.query.result_history().len(), 1);
             assert_eq!(state.query.history_index(), None);
@@ -474,8 +561,8 @@ mod tests {
                 state.query.current_result().unwrap().source,
                 QuerySource::Adhoc,
             );
-            assert_eq!(state.result_interaction.scroll_offset(), 0);
-            assert_eq!(state.result_interaction.horizontal_offset(), 0);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+            assert_eq!(state.result_interaction.horizontal_offset, 0);
             assert_eq!(state.result_interaction.selection().row(), None);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
@@ -484,21 +571,13 @@ mod tests {
         fn adhoc_error_preserves_current_result_and_view_state() {
             let mut state = create_test_state();
             state.query.set_current_result(preview_result(5));
-            state.result_interaction.set_scroll_offset(20);
-            state.result_interaction.set_horizontal_offset(5);
+            state.result_interaction.scroll_offset = 20;
+            state.result_interaction.horizontal_offset = 5;
             state.result_interaction.activate_cell(3, 0);
             let result = adhoc_error_result();
+            let action = query_completed_action(&mut state, result, 0, None);
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert!(state.query.result_history().is_empty());
             assert_eq!(state.query.history_index(), None);
@@ -506,8 +585,8 @@ mod tests {
                 state.query.current_result().unwrap().source,
                 QuerySource::Preview,
             );
-            assert_eq!(state.result_interaction.scroll_offset(), 20);
-            assert_eq!(state.result_interaction.horizontal_offset(), 5);
+            assert_eq!(state.result_interaction.scroll_offset, 20);
+            assert_eq!(state.result_interaction.horizontal_offset, 5);
             assert_eq!(state.result_interaction.selection().row(), Some(3));
         }
 
@@ -517,17 +596,9 @@ mod tests {
             state.session.set_selection_generation(1);
             state.query.push_history(adhoc_result());
             state.query.enter_history(0);
+            let action = query_completed_action(&mut state, preview_result(5), 1, Some(0));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result: preview_result(5),
-                    generation: 1,
-                    target_page: Some(0),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.query.history_index(), None);
             assert!(state.query.current_result().is_some());
@@ -561,24 +632,16 @@ mod tests {
             state
                 .query
                 .set_post_delete_selection(PostDeleteRowSelection::Select(1));
-            state.result_interaction.set_horizontal_offset(1);
+            state.result_interaction.horizontal_offset = 1;
             state.result_interaction.activate_cell(3, 2);
             state.query.set_current_result(Arc::clone(&result));
+            let action = query_completed_action(&mut state, result, 0, Some(0));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: Some(0),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.selection().cell(), Some(2));
-            assert_eq!(state.result_interaction.horizontal_offset(), 1);
+            assert_eq!(state.result_interaction.horizontal_offset, 1);
         }
 
         #[test]
@@ -589,20 +652,35 @@ mod tests {
                 .set_post_delete_selection(PostDeleteRowSelection::Clear);
             state.result_interaction.activate_cell(0, 0);
             state.result_interaction.stage_row(0);
+            let action = query_completed_action(&mut state, preview_result(1), 0, Some(0));
 
-            reduce_query(
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
+            assert_eq!(state.result_interaction.selection().row(), None);
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
+        }
+
+        #[test]
+        fn stale_run_does_not_replace_current_result() {
+            let mut state = create_test_state();
+            let old_run_id = begin_query_run(&mut state);
+            let _ = begin_query_run(&mut state);
+
+            dispatch_query(
                 &mut state,
                 &Action::QueryCompleted {
-                    result: preview_result(1),
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: old_run_id,
+                    result: adhoc_result(),
                     generation: 0,
-                    target_page: Some(0),
+                    target_page: None,
                 },
                 Instant::now(),
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.result_interaction.selection().row(), None);
-            assert!(state.result_interaction.staged_delete_rows().is_empty());
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.is_running());
         }
     }
 
@@ -616,43 +694,37 @@ mod tests {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
             state.result_interaction.activate_cell(5, 2);
-            state.result_interaction.set_scroll_offset(10);
-            state.result_interaction.set_horizontal_offset(3);
-
-            reduce_query(
+            state.result_interaction.scroll_offset = 10;
+            state.result_interaction.horizontal_offset = 3;
+            let action = query_failed_action(
                 &mut state,
-                &Action::QueryFailed {
-                    error: DbOperationError::QueryFailed("error".to_string()),
-                    generation: 1,
-                    source: QuerySource::Preview,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                DbOperationError::QueryFailed("error".to_string()),
+                1,
+                QuerySource::Preview,
             );
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(
                 state.result_interaction.selection().mode(),
                 ResultNavMode::Scroll
             );
-            assert_eq!(state.result_interaction.scroll_offset(), 0);
-            assert_eq!(state.result_interaction.horizontal_offset(), 0);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+            assert_eq!(state.result_interaction.horizontal_offset, 0);
         }
 
         #[test]
         fn preview_failure_sets_error_result() {
             let mut state = state_with_table("public", "users");
             state.session.set_selection_generation(1);
-
-            reduce_query(
+            let action = query_failed_action(
                 &mut state,
-                &Action::QueryFailed {
-                    error: DbOperationError::PermissionDenied("forbidden".to_string()),
-                    generation: 1,
-                    source: QuerySource::Preview,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                DbOperationError::PermissionDenied("forbidden".to_string()),
+                1,
+                QuerySource::Preview,
             );
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             let result = state.query.current_result().expect("result");
             assert!(result.is_error());
@@ -664,7 +736,7 @@ mod tests {
                     .as_deref()
                     .is_some_and(|message| message.contains("Permission denied"))
             );
-            assert!(state.messages.last_error().is_none());
+            assert!(state.messages.last_error.is_none());
         }
 
         #[test]
@@ -675,17 +747,14 @@ mod tests {
             state
                 .sql_modal
                 .finish_adhoc_error("previous adhoc error".to_string());
-
-            reduce_query(
+            let action = query_failed_action(
                 &mut state,
-                &Action::QueryFailed {
-                    error: DbOperationError::PermissionDenied("forbidden".to_string()),
-                    generation: 1,
-                    source: QuerySource::Preview,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                DbOperationError::PermissionDenied("forbidden".to_string()),
+                1,
+                QuerySource::Preview,
             );
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
@@ -704,18 +773,15 @@ mod tests {
         #[test]
         fn dml_with_table_selected_emits_execute_preview() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Update(3)),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Update(3)),
+                0,
+                None,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(
@@ -726,18 +792,15 @@ mod tests {
         #[test]
         fn dml_without_table_selected_emits_no_effects() {
             let mut state = create_test_state();
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Insert(1)),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Insert(1)),
+                0,
+                None,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -745,18 +808,15 @@ mod tests {
         #[test]
         fn ddl_emits_cache_invalidate_and_fetch_metadata() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(
                 effects
@@ -783,25 +843,25 @@ mod tests {
         #[test]
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
-            state.sql_modal.begin_prefetch();
-            state.sql_modal.enqueue_prefetch("public.users".to_string());
+            let _ = state.sql_modal.begin_prefetch();
+            state
+                .sql_modal
+                .prefetch_queue
+                .push_back("public.users".to_string());
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
-
-            reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
+                0,
+                None,
             );
 
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
             assert!(!state.sql_modal.is_prefetch_started());
-            assert!(state.sql_modal.prefetch_queue().is_empty());
+            assert!(state.sql_modal.prefetch_queue.is_empty());
             assert!(state.session.table_detail().is_none());
         }
 
@@ -809,18 +869,12 @@ mod tests {
         fn tcl_emits_no_effects() {
             for tag in [CommandTag::Begin, CommandTag::Commit, CommandTag::Rollback] {
                 let mut state = state_with_table("public", "users");
+                let action =
+                    query_completed_action(&mut state, adhoc_result_with_tag(tag), 0, None);
 
-                let effects = reduce_query(
-                    &mut state,
-                    &Action::QueryCompleted {
-                        result: adhoc_result_with_tag(tag),
-                        generation: 0,
-                        target_page: None,
-                    },
-                    Instant::now(),
-                    &AppServices::stub(),
-                )
-                .unwrap();
+                let effects =
+                    dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub())
+                        .unwrap();
 
                 assert!(effects.is_empty());
             }
@@ -829,18 +883,15 @@ mod tests {
         #[test]
         fn select_emits_no_effects() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Select(5)),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Select(5)),
+                0,
+                None,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -848,18 +899,10 @@ mod tests {
         #[test]
         fn adhoc_error_emits_no_effects() {
             let mut state = state_with_table("public", "users");
+            let action = query_completed_action(&mut state, adhoc_error_result(), 0, None);
 
-            let effects = reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_error_result(),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -878,18 +921,10 @@ mod tests {
                 error: None,
                 command_tag: None,
             });
+            let action = query_completed_action(&mut state, result, 0, None);
 
-            let effects = reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result,
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -898,7 +933,7 @@ mod tests {
     mod adhoc_refresh_integration {
         use super::*;
         use crate::domain::{CommandTag, DatabaseMetadata, TableSummary};
-        use crate::update::browse::metadata::reduce_metadata;
+        use crate::update::browse::metadata::dispatch_metadata;
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
             Arc::new(DatabaseMetadata {
@@ -917,33 +952,22 @@ mod tests {
         #[test]
         fn dml_then_preview_updates_current_result() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Update(3)),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Update(3)),
+                0,
+                None,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
 
             let new_preview = preview_result(5);
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result: Arc::clone(&new_preview),
-                    generation: 0,
-                    target_page: Some(0),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let action = query_completed_action(&mut state, Arc::clone(&new_preview), 0, Some(0));
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             let stored = state.query.current_result().unwrap();
             assert_eq!(stored.source, QuerySource::Preview);
@@ -953,18 +977,15 @@ mod tests {
         #[test]
         fn ddl_create_then_metadata_loaded_preserves_explorer_selection() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(!state.sql_modal.is_prefetch_started());
             assert!(
@@ -974,15 +995,16 @@ mod tests {
             );
 
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
-            let meta_effects = reduce_metadata(
-                &mut state,
-                &Action::MetadataLoaded(metadata),
-                Instant::now(),
-            )
-            .unwrap();
+            let run_id = state.session.begin_metadata_refresh();
+            let action = Action::MetadataLoaded {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id,
+                metadata,
+            };
+            let meta_effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.explorer_selected(), 1);
-            assert_eq!(state.query.pagination.table(), "users");
+            assert_eq!(state.ui.explorer_selected, 1);
+            assert_eq!(state.query.pagination.table, "users");
             assert!(
                 meta_effects
                     .iter()
@@ -994,18 +1016,15 @@ mod tests {
         fn ddl_drop_then_metadata_loaded_without_table_clears_selection() {
             let mut state = state_with_table("public", "users");
             state.query.set_current_result(preview_result(3));
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(
                 effects
@@ -1014,33 +1033,32 @@ mod tests {
             );
 
             let metadata = make_metadata(vec![("public", "orders")]);
-            reduce_metadata(
-                &mut state,
-                &Action::MetadataLoaded(metadata),
-                Instant::now(),
-            );
+            let run_id = state.session.begin_metadata_refresh();
+            let action = Action::MetadataLoaded {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id,
+                metadata,
+            };
+            dispatch_metadata(&mut state, &action, Instant::now());
 
-            assert!(state.query.pagination.table().is_empty());
+            assert!(state.query.pagination.table.is_empty());
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
-            assert_eq!(state.ui.explorer_selected(), 0);
+            assert_eq!(state.ui.explorer_selected, 0);
         }
 
         #[test]
         fn ddl_does_not_emit_execute_preview_so_modal_status_stays_success() {
             let mut state = state_with_table("public", "users");
-
-            let effects = reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+                adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert!(
                 !effects
@@ -1056,17 +1074,14 @@ mod tests {
         #[test]
         fn success_snapshot_not_overwritten_by_subsequent_preview_result() {
             let mut state = state_with_table("public", "users");
-
-            reduce_query(
+            let action = query_completed_action(
                 &mut state,
-                &Action::QueryCompleted {
-                    result: adhoc_result_with_tag(CommandTag::Alter("TABLE".to_string())),
-                    generation: 0,
-                    target_page: None,
-                },
-                Instant::now(),
-                &AppServices::stub(),
+                adhoc_result_with_tag(CommandTag::Alter("TABLE".to_string())),
+                0,
+                None,
             );
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             let saved_tag = state
                 .sql_modal
@@ -1074,16 +1089,8 @@ mod tests {
                 .and_then(|s| s.command_tag.clone());
             assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
 
-            reduce_query(
-                &mut state,
-                &Action::QueryCompleted {
-                    result: preview_result(5),
-                    generation: 0,
-                    target_page: Some(0),
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let action = query_completed_action(&mut state, preview_result(5), 0, Some(0));
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             let tag_after = state
                 .sql_modal

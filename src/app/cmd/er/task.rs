@@ -14,11 +14,12 @@ pub fn spawn_er_diagram_task(
     cache_dir: PathBuf,
     tx: mpsc::Sender<Action>,
     filename: String,
+    browser: Option<String>,
 ) {
     let table_count = tables.len();
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            exporter.generate_and_export(&tables, &filename, &cache_dir)
+            exporter.generate_and_export(&tables, &filename, &cache_dir, browser.as_deref())
         })
         .await;
 
@@ -70,6 +71,7 @@ mod tests {
                 _tables: &[ErTableInfo],
                 _filename: &str,
                 _cache_dir: &Path,
+                _browser: Option<&str>,
             ) -> ErExportResult<PathBuf> {
                 Ok(self.output_path.clone())
             }
@@ -82,6 +84,7 @@ mod tests {
                 _tables: &[ErTableInfo],
                 _filename: &str,
                 _cache_dir: &Path,
+                _browser: Option<&str>,
             ) -> ErExportResult<PathBuf> {
                 Err(std::io::Error::other("export failed").into())
             }
@@ -94,6 +97,7 @@ mod tests {
                 _tables: &[ErTableInfo],
                 _filename: &str,
                 _cache_dir: &Path,
+                _browser: Option<&str>,
             ) -> ErExportResult<PathBuf> {
                 panic!("intentional panic")
             }
@@ -122,6 +126,7 @@ mod tests {
                 temp_dir.path().to_path_buf(),
                 tx,
                 "er_full.dot".to_string(),
+                None,
             );
 
             let action = receive_action(&mut rx).await;
@@ -152,6 +157,7 @@ mod tests {
                 temp_dir.path().to_path_buf(),
                 tx,
                 "er_full.dot".to_string(),
+                None,
             );
 
             let action = receive_action(&mut rx).await;
@@ -176,6 +182,7 @@ mod tests {
                 temp_dir.path().to_path_buf(),
                 tx,
                 "er_full.dot".to_string(),
+                None,
             );
 
             let action = receive_action(&mut rx).await;

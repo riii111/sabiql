@@ -10,13 +10,14 @@ use crate::model::shared::ui_state::YankFlash;
 use crate::ports::outbound::ClipboardError;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(
+pub fn reduce_yank(
     state: &mut AppState,
     action: &Action,
     services: &AppServices,
     now: Instant,
-) -> Option<Vec<Effect>> {
+) -> DispatchResult {
     match action {
         Action::ResultCellYank => {
             if let (Some(row_idx), Some(col_idx)) = (
@@ -30,45 +31,45 @@ pub fn reduce(
                     .and_then(|row| row.get(col_idx))
                     .cloned();
                 if let Some(value) = content {
-                    state.result_interaction.set_yank_flash(Some(YankFlash {
+                    state.result_interaction.yank_flash = Some(YankFlash {
                         row: row_idx,
                         col: Some(col_idx),
                         until: now + Duration::from_millis(200),
-                    }));
-                    Some(vec![Effect::CopyToClipboard {
+                    });
+                    DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: value,
-                        on_success: Some(Action::CellCopied),
-                        on_failure: Some(clipboard_unavailable()),
+                        on_success: Some(Box::new(Action::CellCopied)),
+                        on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
                     state
                         .messages
                         .set_error_at("Cell index out of bounds".into(), now);
-                    Some(vec![])
+                    DispatchResult::handled()
                 }
             } else {
-                Some(vec![])
+                DispatchResult::handled()
             }
         }
         Action::ResultRowYankOperatorPending => {
             state.result_interaction.start_yank_operator();
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::DdlYank => {
-            if state.ui.inspector_tab() == InspectorTab::Ddl
+            if state.ui.inspector_tab == InspectorTab::Ddl
                 && let Some(table) = state.session.table_detail().as_ref()
             {
                 let ddl = services
                     .ddl_generator
                     .generate_ddl(state.session.active_database_type_or_default(), table);
                 state.flash_timers.set(FlashId::Ddl, now);
-                return Some(vec![Effect::CopyToClipboard {
+                return DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: ddl,
-                    on_success: Some(Action::CellCopied),
-                    on_failure: Some(clipboard_unavailable()),
+                    on_success: Some(Box::new(Action::CellCopied)),
+                    on_failure: Some(Box::new(clipboard_unavailable())),
                 }]);
             }
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::ResultRowYank => {
             if let Some(row_idx) = state.result_interaction.selection().row() {
@@ -87,32 +88,32 @@ pub fn reduce(
                             .join("\t")
                     });
                 if let Some(tsv) = content {
-                    state.result_interaction.set_yank_flash(Some(YankFlash {
+                    state.result_interaction.yank_flash = Some(YankFlash {
                         row: row_idx,
                         col: None,
                         until: now + Duration::from_millis(200),
-                    }));
-                    Some(vec![Effect::CopyToClipboard {
+                    });
+                    DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: tsv,
-                        on_success: Some(Action::CellCopied),
-                        on_failure: Some(clipboard_unavailable()),
+                        on_success: Some(Box::new(Action::CellCopied)),
+                        on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
                     state
                         .messages
                         .set_error_at("Row index out of bounds".into(), now);
-                    Some(vec![])
+                    DispatchResult::handled()
                 }
             } else {
-                Some(vec![])
+                DispatchResult::handled()
             }
         }
-        Action::CellCopied => Some(vec![]),
+        Action::CellCopied => DispatchResult::handled(),
         Action::CopyFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
-            Some(vec![])
+            DispatchResult::handled()
         }
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -161,7 +162,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(10, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -170,7 +171,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert!(state.messages.last_error().is_some());
+            assert!(state.messages.last_error.is_some());
         }
 
         #[test]
@@ -178,7 +179,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(0, 10);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -187,7 +188,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert!(state.messages.last_error().is_some());
+            assert!(state.messages.last_error.is_some());
         }
 
         #[test]
@@ -195,7 +196,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(1, 2);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -217,7 +218,7 @@ mod tests {
             let mut state = state_with_grid(3, 3);
             state.result_interaction.activate_cell(1, 2);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYankOperatorPending,
                 &AppServices::stub(),
@@ -244,7 +245,7 @@ mod tests {
             state.query.enter_history(0);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -262,7 +263,7 @@ mod tests {
         fn no_cell_selection_is_noop() {
             let mut state = state_with_grid(3, 3);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultCellYank,
                 &AppServices::stub(),
@@ -271,7 +272,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert!(state.messages.last_error().is_none());
+            assert!(state.messages.last_error.is_none());
         }
     }
 
@@ -303,7 +304,7 @@ mod tests {
             let mut state = state_with_row(vec!["v0", "v1", "v2"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -335,7 +336,7 @@ mod tests {
             state.query.enter_history(0);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -354,7 +355,7 @@ mod tests {
             let mut state = state_with_row(vec!["a\tb", "c\nd"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -376,7 +377,7 @@ mod tests {
             let mut state = state_with_row(vec!["a\\b"]);
             state.result_interaction.activate_cell(0, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -398,7 +399,7 @@ mod tests {
             let mut state = state_with_row(vec!["val"]);
             state.result_interaction.activate_cell(99, 0);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -407,14 +408,14 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert!(state.messages.last_error().is_some());
+            assert!(state.messages.last_error.is_some());
         }
 
         #[test]
         fn no_row_selection_is_noop() {
             let mut state = state_with_row(vec!["val"]);
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::ResultRowYank,
                 &AppServices::stub(),
@@ -448,7 +449,7 @@ mod tests {
 
         fn state_with_ddl_tab() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.set_inspector_tab(InspectorTab::Ddl);
+            state.ui.inspector_tab = InspectorTab::Ddl;
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
@@ -476,14 +477,14 @@ mod tests {
         fn with_table_detail_returns_copy_effect() {
             let mut state = state_with_ddl_tab();
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::DdlYank,
                 &fake_services(),
                 Instant::now(),
             );
 
-            let effects = effects.expect("should return Some");
+            let effects = effects.into_effects().expect("should return Some");
             assert_eq!(effects.len(), 1);
             assert!(
                 matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("CREATE TABLE"))
@@ -495,7 +496,7 @@ mod tests {
             let mut state = state_with_ddl_tab();
             let now = Instant::now();
 
-            reduce(&mut state, &Action::DdlYank, &fake_services(), now);
+            reduce_yank(&mut state, &Action::DdlYank, &fake_services(), now);
 
             assert!(state.flash_timers.is_active(FlashId::Ddl, now));
         }
@@ -503,32 +504,32 @@ mod tests {
         #[test]
         fn without_table_detail_returns_empty() {
             let mut state = AppState::new("test".to_string());
-            state.ui.set_inspector_tab(InspectorTab::Ddl);
+            state.ui.inspector_tab = InspectorTab::Ddl;
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::DdlYank,
                 &fake_services(),
                 Instant::now(),
             );
 
-            let effects = effects.expect("should return Some");
+            let effects = effects.into_effects().expect("should return Some");
             assert!(effects.is_empty());
         }
 
         #[test]
         fn on_non_ddl_tab_returns_empty() {
             let mut state = state_with_ddl_tab();
-            state.ui.set_inspector_tab(InspectorTab::Info);
+            state.ui.inspector_tab = InspectorTab::Info;
 
-            let effects = reduce(
+            let effects = reduce_yank(
                 &mut state,
                 &Action::DdlYank,
                 &fake_services(),
                 Instant::now(),
             );
 
-            let effects = effects.expect("should return Some");
+            let effects = effects.into_effects().expect("should return Some");
             assert!(effects.is_empty());
         }
     }

@@ -2,10 +2,10 @@ use crate::model::shared::text_input::TextInputState;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CellEditState {
-    row: Option<usize>,
-    col: Option<usize>,
-    original_value: String,
-    input: TextInputState,
+    pub(crate) row: Option<usize>,
+    pub(crate) col: Option<usize>,
+    pub(crate) original_value: String,
+    pub(crate) input: TextInputState,
 }
 
 impl CellEditState {

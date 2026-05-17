@@ -8,11 +8,6 @@ use crate::update::input::vim::{
     classify_command,
 };
 
-#[cfg(test)]
-use crate::model::connection::error::ConnectionErrorInfo;
-#[cfg(test)]
-use crate::model::shared::ui_state::FocusMode;
-
 pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let browse_ctx = BrowseVimContext::from(state);
     let result_navigation = browse_ctx.is_result();
@@ -29,7 +24,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 };
             }
             Key::Char('k') if !state.query.is_history_mode() => {
-                return Action::OpenModal(ModalKind::CommandPalette);
+                return Action::OpenModal(ModalKind::Settings);
             }
             Key::Char('r') => {
                 return Action::ToggleReadOnly;
@@ -102,6 +97,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     if kb::is_command_line(&combo) {
         return Action::EnterCommandLine;
     }
+    if kb::is_command_palette(&combo) {
+        return Action::OpenModal(ModalKind::CommandPalette);
+    }
     if kb::is_reload(&combo) {
         return Action::ReloadMetadata;
     }
@@ -172,7 +170,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::connection::error::ConnectionErrorInfo;
     use crate::model::shared::key_sequence::KeySequenceState;
+    use crate::model::shared::ui_state::FocusMode;
     use crate::update::action::{
         CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
         SelectMotion,
@@ -239,15 +239,12 @@ mod tests {
             }
 
             #[test]
-            fn ctrl_k_opens_command_palette() {
+            fn ctrl_k_opens_settings() {
                 let state = browse_state();
 
                 let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
 
-                assert!(matches!(
-                    result,
-                    Action::OpenModal(ModalKind::CommandPalette)
-                ));
+                assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
             }
 
             #[test]
@@ -275,6 +272,18 @@ mod tests {
                 let result = handle_normal_mode(combo(Key::Char(':')), &state);
 
                 assert!(matches!(result, Action::EnterCommandLine));
+            }
+
+            #[test]
+            fn f1_opens_command_palette() {
+                let state = browse_state();
+
+                let result = handle_normal_mode(combo(Key::F(1)), &state);
+
+                assert!(matches!(
+                    result,
+                    Action::OpenModal(ModalKind::CommandPalette)
+                ));
             }
 
             #[test]
@@ -1212,6 +1221,7 @@ mod tests {
                 #[case(Key::Char('f'))]
                 #[case(Key::Char('r'))]
                 #[case(Key::Char(':'))]
+                #[case(Key::F(1))]
                 #[case(Key::Enter)]
                 #[case(Key::Esc)]
                 fn are_noop(#[case] key: Key) {

@@ -110,24 +110,24 @@ impl DatabaseTypeDropdown {
 
 #[derive(Debug, Clone)]
 pub struct ConnectionSetupState {
-    database_type: DatabaseType,
-    name: TextInputState,
-    sqlite_path: TextInputState,
-    host: TextInputState,
-    port: TextInputState,
-    database: TextInputState,
-    user: TextInputState,
-    password: TextInputState,
-    ssl_mode: SslMode,
+    pub(crate) database_type: DatabaseType,
+    pub(crate) name: TextInputState,
+    pub(crate) sqlite_path: TextInputState,
+    pub(crate) host: TextInputState,
+    pub(crate) port: TextInputState,
+    pub(crate) database: TextInputState,
+    pub(crate) user: TextInputState,
+    pub(crate) password: TextInputState,
+    pub(crate) ssl_mode: SslMode,
 
-    focused_field: ConnectionField,
-    database_type_dropdown: DatabaseTypeDropdown,
-    ssl_dropdown: SslModeDropdown,
-    validation_errors: HashMap<ConnectionField, String>,
+    pub(crate) focused_field: ConnectionField,
+    pub(crate) database_type_dropdown: DatabaseTypeDropdown,
+    pub(crate) ssl_dropdown: SslModeDropdown,
+    pub(crate) validation_errors: HashMap<ConnectionField, String>,
 
-    is_first_run: bool,
+    pub(crate) is_first_run: bool,
 
-    editing_id: Option<ConnectionId>,
+    pub(crate) editing_id: Option<ConnectionId>,
 }
 
 impl Default for ConnectionSetupState {

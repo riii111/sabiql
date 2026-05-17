@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::model::shared::async_run::AsyncRun;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ErStatus {
     #[default]
@@ -10,16 +12,16 @@ pub enum ErStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct ErPreparationState {
-    pending_tables: HashSet<String>,
-    fetching_tables: HashSet<String>,
-    failed_tables: HashMap<String, String>,
-    status: ErStatus,
-    total_tables: usize,
-    target_tables: Vec<String>,
-    seed_tables: Vec<String>,
-    fk_expanded: bool,
-    last_signatures: HashMap<String, String>,
-    run_id: u64,
+    pub pending_tables: HashSet<String>,
+    pub fetching_tables: HashSet<String>,
+    pub failed_tables: HashMap<String, String>,
+    pub status: ErStatus,
+    pub total_tables: usize,
+    pub target_tables: Vec<String>,
+    pub seed_tables: Vec<String>,
+    pub fk_expanded: bool,
+    pub last_signatures: HashMap<String, String>,
+    run: AsyncRun,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,10 +35,6 @@ pub struct ErPreparationProgress {
 impl ErPreparationState {
     pub fn status(&self) -> ErStatus {
         self.status
-    }
-
-    pub fn run_id(&self) -> u64 {
-        self.run_id
     }
 
     pub fn progress(&self) -> ErPreparationProgress {
@@ -98,6 +96,10 @@ impl ErPreparationState {
         &self.last_signatures
     }
 
+    pub fn is_busy(&self) -> bool {
+        matches!(self.status, ErStatus::Rendering | ErStatus::Waiting)
+    }
+
     pub fn is_complete(&self) -> bool {
         self.pending_tables.is_empty() && self.fetching_tables.is_empty()
     }
@@ -113,7 +115,45 @@ impl ErPreparationState {
 
     pub fn on_table_failed(&mut self, qualified_name: &str, error: String) {
         self.fetching_tables.remove(qualified_name);
+        self.pending_tables.remove(qualified_name);
         self.failed_tables.insert(qualified_name.to_string(), error);
+    }
+
+    pub fn start_fetching(&mut self, qualified_name: &str) {
+        self.pending_tables.remove(qualified_name);
+        self.fetching_tables.insert(qualified_name.to_string());
+    }
+
+    pub fn requeue_for_retry(&mut self, qualified_name: &str) {
+        self.fetching_tables.remove(qualified_name);
+        self.pending_tables.insert(qualified_name.to_string());
+    }
+
+    pub fn begin_all_prefetch<I>(&mut self, tables: I)
+    where
+        I: IntoIterator<Item = String>,
+    {
+        self.pending_tables.clear();
+        self.fetching_tables.clear();
+        self.failed_tables.clear();
+        self.total_tables = 0;
+        self.fk_expanded = true;
+
+        for table in tables {
+            self.pending_tables.insert(table);
+            self.total_tables += 1;
+        }
+    }
+
+    pub fn begin_scoped_prefetch(&mut self, tables: impl AsRef<[String]>) {
+        let tables = tables.as_ref();
+        self.pending_tables.clear();
+        self.fetching_tables.clear();
+        self.failed_tables.clear();
+        self.fk_expanded = false;
+        self.seed_tables = tables.to_vec();
+        self.total_tables = tables.len();
+        self.pending_tables.extend(tables.iter().cloned());
     }
 
     pub fn retry_failed(&mut self) {
@@ -122,12 +162,43 @@ impl ErPreparationState {
         }
     }
 
-    pub fn reset(&mut self) {
-        *self = Self::default();
-    }
-
     pub fn mark_idle(&mut self) {
         self.status = ErStatus::Idle;
+    }
+
+    pub fn begin_smart_refresh(&mut self) -> u64 {
+        let run_id = self.run.begin();
+        self.status = ErStatus::Waiting;
+        run_id
+    }
+
+    pub fn is_current_run(&self, run_id: u64) -> bool {
+        self.run.is_current(run_id)
+    }
+
+    pub fn run_id(&self) -> u64 {
+        self.run.last_id()
+    }
+
+    pub fn can_generate_from_cache(&self) -> bool {
+        matches!(self.status, ErStatus::Idle | ErStatus::Waiting)
+    }
+
+    pub fn begin_rendering(&mut self) {
+        self.status = ErStatus::Rendering;
+    }
+
+    pub fn reset(&mut self) {
+        self.pending_tables.clear();
+        self.fetching_tables.clear();
+        self.failed_tables.clear();
+        self.status = ErStatus::Idle;
+        self.total_tables = 0;
+        self.target_tables.clear();
+        self.seed_tables.clear();
+        self.fk_expanded = false;
+        self.last_signatures.clear();
+        self.run.clear_active();
     }
 
     pub fn mark_rendering(&mut self) {
@@ -135,9 +206,9 @@ impl ErPreparationState {
     }
 
     pub fn start_waiting_run(&mut self) -> u64 {
-        self.run_id += 1;
+        let run_id = self.run.begin();
         self.status = ErStatus::Waiting;
-        self.run_id
+        run_id
     }
 
     pub fn begin_full_prefetch(&mut self, total: usize) {
@@ -145,13 +216,6 @@ impl ErPreparationState {
         self.total_tables = total;
         self.seed_tables.clear();
         self.fk_expanded = true;
-    }
-
-    pub fn begin_scoped_prefetch(&mut self, tables: Vec<String>) {
-        self.clear_table_tracking();
-        self.total_tables = tables.len();
-        self.seed_tables = tables;
-        self.fk_expanded = false;
     }
 
     pub fn set_targets(&mut self, tables: Vec<String>) {
@@ -198,6 +262,13 @@ impl ErPreparationState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn set_active_run_id(state: &mut ErPreparationState, run_id: u64) {
+        for _ in 0..run_id {
+            state.begin_smart_refresh();
+        }
+        state.mark_idle();
+    }
 
     mod is_complete {
         use super::*;
@@ -263,6 +334,91 @@ mod tests {
             assert!(!state.fetching_tables.contains("public.users"));
             assert!(state.failed_tables.contains_key("public.users"));
         }
+
+        #[test]
+        fn removes_from_pending() {
+            let mut state = ErPreparationState::default();
+            state.pending_tables.insert("public.users".to_string());
+
+            state.on_table_failed("public.users", "timeout".to_string());
+
+            assert!(!state.pending_tables.contains("public.users"));
+        }
+    }
+
+    mod requeue_for_retry {
+        use super::*;
+
+        #[test]
+        fn moves_from_fetching_to_pending_without_failed_state() {
+            let mut state = ErPreparationState::default();
+            state.fetching_tables.insert("public.users".to_string());
+
+            state.requeue_for_retry("public.users");
+
+            assert!(!state.fetching_tables.contains("public.users"));
+            assert!(state.pending_tables.contains("public.users"));
+            assert!(!state.failed_tables.contains_key("public.users"));
+        }
+    }
+
+    mod start_fetching {
+        use super::*;
+
+        #[test]
+        fn moves_from_pending_to_fetching() {
+            let mut state = ErPreparationState::default();
+            state.pending_tables.insert("public.users".to_string());
+
+            state.start_fetching("public.users");
+
+            assert!(!state.pending_tables.contains("public.users"));
+            assert!(state.fetching_tables.contains("public.users"));
+        }
+    }
+
+    mod begin_prefetch {
+        use super::*;
+
+        #[test]
+        fn all_prefetch_replaces_progress_and_marks_fk_expanded() {
+            let mut state = ErPreparationState {
+                pending_tables: HashSet::from(["stale.pending".to_string()]),
+                fetching_tables: HashSet::from(["stale.fetching".to_string()]),
+                failed_tables: HashMap::from([("stale.failed".to_string(), "error".to_string())]),
+                fk_expanded: false,
+                ..Default::default()
+            };
+
+            state.begin_all_prefetch(vec![
+                "public.users".to_string(),
+                "public.orders".to_string(),
+            ]);
+
+            assert_eq!(state.total_tables, 2);
+            assert!(state.fk_expanded);
+            assert!(state.fetching_tables.is_empty());
+            assert!(state.failed_tables.is_empty());
+            assert!(state.pending_tables.contains("public.users"));
+            assert!(state.pending_tables.contains("public.orders"));
+        }
+
+        #[test]
+        fn scoped_prefetch_records_seed_tables_and_pending_set() {
+            let mut state = ErPreparationState {
+                fk_expanded: true,
+                ..Default::default()
+            };
+            let tables = vec!["public.users".to_string(), "public.orders".to_string()];
+
+            state.begin_scoped_prefetch(&tables);
+
+            assert_eq!(state.total_tables, 2);
+            assert!(!state.fk_expanded);
+            assert_eq!(state.seed_tables, tables);
+            assert!(state.pending_tables.contains("public.users"));
+            assert!(state.pending_tables.contains("public.orders"));
+        }
     }
 
     mod retry_failed {
@@ -293,12 +449,12 @@ mod tests {
                 failed_tables: HashMap::from([("c".to_string(), "err".to_string())]),
                 status: ErStatus::Waiting,
                 total_tables: 3,
-                target_tables: vec![],
                 seed_tables: vec!["a".to_string()],
                 fk_expanded: true,
                 last_signatures: HashMap::from([("a".to_string(), "sig".to_string())]),
-                run_id: 5,
+                ..Default::default()
             };
+            set_active_run_id(&mut state, 5);
 
             state.reset();
 
@@ -310,7 +466,7 @@ mod tests {
             assert!(state.seed_tables.is_empty());
             assert!(!state.fk_expanded);
             assert!(state.last_signatures.is_empty());
-            assert_eq!(state.run_id, 0);
+            assert_eq!(state.run_id(), 5);
         }
     }
 

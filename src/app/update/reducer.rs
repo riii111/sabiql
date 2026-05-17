@@ -7,9 +7,10 @@
 use std::time::Instant;
 
 use super::{
-    reduce_connection, reduce_er, reduce_explain_with_services, reduce_metadata, reduce_modal,
-    reduce_navigation, reduce_query, reduce_result, reduce_sql_modal,
+    dispatch_connection, dispatch_er, dispatch_explain, dispatch_metadata, dispatch_modal,
+    dispatch_navigation, dispatch_query, dispatch_result, dispatch_sql_modal,
 };
+use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
 use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
@@ -45,30 +46,29 @@ fn reduce_inner(
 ) -> Vec<Effect> {
     state.result_interaction.clear_operator_pending();
 
-    // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
-    // reset view state here and return None, relying on reduce_query for the actual page change.
-    if let Some(effects) = reduce_connection(state, &action, now)
-        .or_else(|| reduce_modal(state, &action, now))
-        .or_else(|| reduce_result(state, &action, services, now))
-        .or_else(|| reduce_navigation(state, &action, services, now))
-        .or_else(|| reduce_sql_modal(state, &action, now))
-        .or_else(|| reduce_explain_with_services(state, &action, now, services))
-        .or_else(|| reduce_metadata(state, &action, now))
-        .or_else(|| reduce_er(state, &action, now))
-        .or_else(|| reduce_query(state, &action, now, services))
+    if let Some(effects) = dispatch_connection(state, &action, now, services)
+        .or_else(|| dispatch_modal(state, &action, now))
+        // dispatch_result must precede dispatch_query: passthrough actions (e.g. ResultNextPage)
+        // reset view state here and return Pass, relying on dispatch_query for the page change.
+        .or_else(|| dispatch_result(state, &action, services, now))
+        .or_else(|| dispatch_navigation(state, &action, services, now))
+        .or_else(|| dispatch_sql_modal(state, &action, now, services))
+        .or_else(|| dispatch_explain(state, &action, now, services))
+        .or_else(|| dispatch_metadata(state, &action, now))
+        .or_else(|| dispatch_er(state, &action, now))
+        .or_else(|| dispatch_query(state, &action, now, services))
+        .into_effects()
     {
         return effects;
     }
 
     match action {
         Action::BeginKeySequence(prefix) => {
-            state
-                .ui
-                .set_key_sequence(KeySequenceState::WaitingSecondKey(prefix));
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(prefix);
             vec![]
         }
         Action::CancelKeySequence => {
-            state.ui.set_key_sequence(KeySequenceState::Idle);
+            state.ui.key_sequence = KeySequenceState::Idle;
             vec![]
         }
         Action::Quit => {
@@ -78,7 +78,10 @@ fn reduce_inner(
         Action::Resize(w, h) => {
             state.ui.terminal_width = w;
             state.ui.terminal_height = h;
-            state.ui.clamp_help_offsets();
+            let document = HelpDocument::from_state(state);
+            state
+                .ui
+                .clamp_help_offsets(document.line_count(), document.content_width());
             vec![]
         }
         Action::Render => {
@@ -89,7 +92,7 @@ fn reduce_inner(
             if state.modal.active_mode() == InputMode::TablePicker {
                 let table = state
                     .filtered_tables()
-                    .get(state.ui.table_picker().selected())
+                    .get(state.ui.table_picker.selected())
                     .copied()
                     .cloned();
                 if let Some(table) = table {
@@ -97,16 +100,16 @@ fn reduce_inner(
                     return select_table(state, &table);
                 }
             } else if state.modal.active_mode() == InputMode::Normal {
-                if state.connection_error.has_error() {
+                if state.connection_error.error_info.is_some() {
                     state.modal.replace_mode(InputMode::ConnectionError);
                     return vec![];
                 }
-                if state.ui.focused_pane() != FocusedPane::Explorer {
+                if state.ui.focused_pane != FocusedPane::Explorer {
                     return vec![];
                 }
                 let table = state
                     .tables()
-                    .get(state.ui.explorer_selected())
+                    .get(state.ui.explorer_selected)
                     .copied()
                     .cloned();
                 if let Some(table) = table {
@@ -115,7 +118,7 @@ fn reduce_inner(
             } else if state.modal.active_mode() == InputMode::CommandPalette {
                 use crate::update::input::palette::palette_action_for_index;
 
-                let cmd_action = palette_action_for_index(state.ui.table_picker().selected());
+                let cmd_action = palette_action_for_index(state.ui.table_picker.selected());
                 state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
             }
@@ -152,12 +155,14 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     let table_name = table.name.clone();
 
     let mut effects = Vec::new();
-    if let Some(dsn) = state.session.dsn() {
+    if let Some(dsn) = state.session.dsn.clone() {
+        let run_id = state.session.begin_table_detail_run();
         effects.push(Effect::FetchTableDetail {
-            dsn: dsn.to_string(),
+            dsn,
             schema: schema.clone(),
             table: table_name.clone(),
             generation,
+            run_id,
         });
     }
     effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
@@ -216,8 +221,8 @@ mod tests {
             let mut state = create_test_state();
             state.ui.terminal_width = 20;
             state.ui.terminal_height = 10;
-            state.ui.help_scroll_offset = usize::MAX;
-            state.ui.help_horizontal_offset = usize::MAX;
+            state.ui.help.set_scroll_offset(usize::MAX);
+            state.ui.help.set_horizontal_offset(usize::MAX);
             let now = Instant::now();
 
             let effects = reduce(
@@ -229,10 +234,18 @@ mod tests {
 
             assert_eq!(state.ui.terminal_width, 100);
             assert_eq!(state.ui.terminal_height, 50);
-            assert_eq!(state.ui.help_scroll_offset, state.ui.help_max_scroll());
+            let document = HelpDocument::from_state(&state);
             assert_eq!(
-                state.ui.help_horizontal_offset,
-                state.ui.help_max_horizontal_scroll()
+                state.ui.help.scroll_offset(),
+                state
+                    .ui
+                    .help_max_scroll(document.line_count(), document.content_width())
+            );
+            assert_eq!(
+                state.ui.help.horizontal_offset(),
+                state
+                    .ui
+                    .help_max_horizontal_scroll(document.line_count(), document.content_width())
             );
             assert!(effects.is_empty());
         }
@@ -255,13 +268,13 @@ mod tests {
         #[case(Action::Select(SelectMotion::Previous))]
         fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
             let mut state = create_test_state();
-            state.ui.set_focused_pane(FocusedPane::Explorer);
-            state.ui.set_explorer_selected_raw(0);
+            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.explorer_selected = 0;
             let now = Instant::now();
 
             reduce(&mut state, action, now, &AppServices::stub());
 
-            assert_eq!(state.ui.explorer_selected(), 0);
+            assert_eq!(state.ui.explorer_selected, 0);
         }
     }
 
@@ -273,7 +286,7 @@ mod tests {
         #[test]
         fn result_scroll_up_decrements_offset() {
             let mut state = create_test_state();
-            state.result_interaction.set_scroll_offset(5);
+            state.result_interaction.scroll_offset = 5;
             let now = Instant::now();
 
             let effects = reduce(
@@ -287,14 +300,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.result_interaction.scroll_offset(), 4);
+            assert_eq!(state.result_interaction.scroll_offset, 4);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn result_scroll_up_saturates_at_zero() {
             let mut state = create_test_state();
-            state.result_interaction.set_scroll_offset(0);
+            state.result_interaction.scroll_offset = 0;
             let now = Instant::now();
 
             let effects = reduce(
@@ -308,14 +321,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.result_interaction.scroll_offset(), 0);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn result_scroll_top_resets_to_zero() {
             let mut state = create_test_state();
-            state.result_interaction.set_scroll_offset(10);
+            state.result_interaction.scroll_offset = 10;
             let now = Instant::now();
 
             let effects = reduce(
@@ -329,7 +342,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.result_interaction.scroll_offset(), 0);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
             assert!(effects.is_empty());
         }
 
@@ -396,10 +409,27 @@ mod tests {
             );
         }
 
+        fn help_metrics(state: &AppState) -> (usize, usize) {
+            let document = HelpDocument::from_state(state);
+            (document.line_count(), document.content_width())
+        }
+
+        fn help_max_scroll(state: &AppState) -> usize {
+            let (line_count, content_width) = help_metrics(state);
+            state.ui.help_max_scroll(line_count, content_width)
+        }
+
+        fn help_max_horizontal_scroll(state: &AppState) -> usize {
+            let (line_count, content_width) = help_metrics(state);
+            state
+                .ui
+                .help_max_horizontal_scroll(line_count, content_width)
+        }
+
         #[test]
         fn help_scroll_top_resets_offset_to_zero() {
             let mut state = create_test_state();
-            state.ui.set_help_scroll_offset(8);
+            state.ui.help.set_scroll_offset(8);
             let now = Instant::now();
 
             let effects = reduce(
@@ -413,7 +443,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help_scroll_offset(), 0);
+            assert_eq!(state.ui.help.scroll_offset(), 0);
             assert!(effects.is_empty());
         }
 
@@ -433,15 +463,15 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help_scroll_offset(), state.ui.help_max_scroll());
+            assert_eq!(state.ui.help.scroll_offset(), help_max_scroll(&state));
             assert!(effects.is_empty());
         }
 
         #[test]
         fn help_half_page_scroll_uses_half_of_visible_rows() {
             let mut state = create_test_state();
-            state.ui.set_terminal_height(24);
-            state.ui.set_help_scroll_offset(1);
+            state.ui.terminal_height = 24;
+            state.ui.help.set_scroll_offset(1);
             let now = Instant::now();
 
             let effects = reduce(
@@ -455,15 +485,15 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help_scroll_offset(), 9);
+            assert_eq!(state.ui.help.scroll_offset(), 9);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn help_full_page_scroll_uses_visible_rows() {
             let mut state = create_test_state();
-            state.ui.set_terminal_height(24);
-            state.ui.set_help_scroll_offset(2);
+            state.ui.terminal_height = 24;
+            state.ui.help.set_scroll_offset(2);
             let now = Instant::now();
 
             let effects = reduce(
@@ -477,14 +507,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help_scroll_offset, 18);
+            assert_eq!(state.ui.help.scroll_offset(), 18);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn help_page_scroll_saturates_at_bounds() {
             let mut state = create_test_state();
-            state.ui.set_help_scroll_offset(state.ui.help_max_scroll());
+            state.ui.help.set_scroll_offset(help_max_scroll(&state));
             let now = Instant::now();
 
             reduce(
@@ -498,7 +528,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help_scroll_offset(), state.ui.help_max_scroll());
+            assert_eq!(state.ui.help.scroll_offset(), help_max_scroll(&state));
 
             reduce(
                 &mut state,
@@ -522,14 +552,17 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help_scroll_offset(), 0);
+            assert_eq!(state.ui.help.scroll_offset(), 0);
         }
 
         #[test]
         fn help_horizontal_scroll_saturates_at_bounds() {
             let mut state = create_test_state();
             state.ui.terminal_width = 40;
-            state.ui.help_horizontal_offset = state.ui.help_max_horizontal_scroll();
+            state
+                .ui
+                .help
+                .set_horizontal_offset(help_max_horizontal_scroll(&state));
             let now = Instant::now();
 
             reduce(
@@ -544,8 +577,8 @@ mod tests {
             );
 
             assert_eq!(
-                state.ui.help_horizontal_offset,
-                state.ui.help_max_horizontal_scroll()
+                state.ui.help.horizontal_offset(),
+                help_max_horizontal_scroll(&state)
             );
 
             reduce(
@@ -560,8 +593,8 @@ mod tests {
             );
 
             assert_eq!(
-                state.ui.help_horizontal_offset,
-                state.ui.help_max_horizontal_scroll().saturating_sub(1)
+                state.ui.help.horizontal_offset(),
+                help_max_horizontal_scroll(&state).saturating_sub(1)
             );
         }
 
@@ -569,8 +602,8 @@ mod tests {
         fn help_close_resets_vertical_and_horizontal_offsets() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::Help);
-            state.ui.help_scroll_offset = 3;
-            state.ui.help_horizontal_offset = 4;
+            state.ui.help.set_scroll_offset(3);
+            state.ui.help.set_horizontal_offset(4);
             let now = Instant::now();
 
             reduce(
@@ -580,8 +613,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help_scroll_offset, 0);
-            assert_eq!(state.ui.help_horizontal_offset, 0);
+            assert_eq!(state.ui.help.scroll_offset(), 0);
+            assert_eq!(state.ui.help.horizontal_offset(), 0);
         }
     }
 
@@ -591,7 +624,7 @@ mod tests {
         #[test]
         fn open_table_picker_sets_mode_and_clears_filter() {
             let mut state = create_test_state();
-            state.ui.table_picker_mut().insert_filter_str("test");
+            state.ui.table_picker.insert_filter_str("test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -602,8 +635,8 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::TablePicker);
-            assert!(state.ui.table_picker().filter_input().content().is_empty());
-            assert_eq!(state.ui.table_picker().selected(), 0);
+            assert!(state.ui.table_picker.filter_input().content().is_empty());
+            assert_eq!(state.ui.table_picker.selected(), 0);
             assert!(effects.is_empty());
         }
 
@@ -654,7 +687,7 @@ mod tests {
         fn close_help_resets_scroll_offset() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::Help);
-            state.ui.set_help_scroll_offset(12);
+            state.ui.help.set_scroll_offset(12);
             let now = Instant::now();
 
             let effects = reduce(
@@ -665,7 +698,30 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.ui.help_scroll_offset(), 0);
+            assert_eq!(state.ui.help.scroll_offset(), 0);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn close_help_returns_to_origin_mode() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::SqlModal);
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::ToggleModal(ModalKind::Help),
+                now,
+                &AppServices::stub(),
+            );
+            let effects = reduce(
+                &mut state,
+                Action::CloseModal(ModalKind::Help),
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::SqlModal);
             assert!(effects.is_empty());
         }
     }
@@ -673,11 +729,8 @@ mod tests {
     mod sql_modal_debounce {
         use super::*;
         use crate::model::shared::text_input::TextInputLike;
+        use crate::model::sql_editor::modal::SqlModalStatus;
         use std::time::Duration;
-
-        fn show_completion_popup(state: &mut AppState) {
-            state.sql_modal.apply_completion_update(&[], 0, true);
-        }
 
         #[test]
         fn sql_modal_input_sets_debounce_state() {
@@ -695,8 +748,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.editor().content(), "a");
-            assert_eq!(state.sql_modal.editor().cursor(), 1);
+            assert_eq!(state.sql_modal.editor.content(), "a");
+            assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce().is_some());
         }
@@ -704,10 +757,7 @@ mod tests {
         #[test]
         fn sql_modal_backspace_sets_debounce_state() {
             let mut state = create_test_state();
-            state
-                .sql_modal
-                .editor_mut_for_input()
-                .set_content("ab".to_string());
+            state.sql_modal.editor.set_content("ab".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -719,8 +769,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.editor().content(), "a");
-            assert_eq!(state.sql_modal.editor().cursor(), 1);
+            assert_eq!(state.sql_modal.editor.content(), "a");
+            assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce().is_some());
         }
@@ -748,8 +798,8 @@ mod tests {
         fn text_input_preserves_visible_completion_popup() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.enter_editing();
-            show_completion_popup(&mut state);
+            state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+            state.sql_modal.completion_mut_for_test().visible = true;
             let now = Instant::now();
 
             reduce(
@@ -786,12 +836,9 @@ mod tests {
         #[test]
         fn completion_next_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.apply_completion_update(
-                &[make_candidate("a"), make_candidate("b")],
-                0,
-                true,
-            );
-            state.sql_modal.completion_next();
+            state.sql_modal.completion_mut_for_test().candidates =
+                vec![make_candidate("a"), make_candidate("b")];
+            state.sql_modal.completion_mut_for_test().selected_index = 1;
             let now = Instant::now();
 
             let effects = reduce(
@@ -808,11 +855,9 @@ mod tests {
         #[test]
         fn completion_prev_wraps_around() {
             let mut state = create_test_state();
-            state.sql_modal.apply_completion_update(
-                &[make_candidate("a"), make_candidate("b")],
-                0,
-                true,
-            );
+            state.sql_modal.completion_mut_for_test().candidates =
+                vec![make_candidate("a"), make_candidate("b")];
+            state.sql_modal.completion_mut_for_test().selected_index = 0;
             let now = Instant::now();
 
             let effects = reduce(
@@ -832,7 +877,7 @@ mod tests {
             state.modal.set_mode(InputMode::SqlModal);
             state
                 .sql_modal
-                .editor_mut_for_input()
+                .editor
                 .set_content_with_cursor("SELECT ".to_string(), 0);
             state
                 .sql_modal
@@ -846,8 +891,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.editor().content(), "SELECT ");
-            assert_eq!(state.sql_modal.editor().cursor(), 0);
+            assert_eq!(state.sql_modal.editor.content(), "SELECT ");
+            assert_eq!(state.sql_modal.editor.cursor(), 0);
             assert!(!state.sql_modal.completion().visible);
             assert!(effects.is_empty());
         }
@@ -858,10 +903,30 @@ mod tests {
         use crate::domain::{DatabaseMetadata, MetadataState, TableSummary};
         use crate::model::connection::error::ConnectionErrorInfo;
 
+        fn metadata_loaded_action(state: &mut AppState, metadata: DatabaseMetadata) -> Action {
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.session.begin_metadata_refresh();
+            Action::MetadataLoaded {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id,
+                metadata: Arc::new(metadata),
+            }
+        }
+
+        fn metadata_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.session.begin_metadata_refresh();
+            Action::MetadataFailed {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id,
+                error,
+            }
+        }
+
         #[test]
         fn metadata_loaded_with_empty_tables_selects_none() {
             let mut state = create_test_state();
-            state.ui.set_explorer_selected_raw(5);
+            state.ui.explorer_selected = 5;
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -869,22 +934,18 @@ mod tests {
                 fetched_at: Instant::now(),
             };
             let now = Instant::now();
+            let action = metadata_loaded_action(&mut state, metadata);
 
-            reduce(
-                &mut state,
-                Action::MetadataLoaded(Arc::new(metadata)),
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, action, now, &AppServices::stub());
 
             assert!(state.session.metadata().is_some());
-            assert_eq!(state.ui.explorer_selected(), 0);
+            assert_eq!(state.ui.explorer_selected, 0);
         }
 
         #[test]
         fn metadata_loaded_with_tables_selects_first() {
             let mut state = create_test_state();
-            state.ui.set_explorer_selected_raw(3);
+            state.ui.explorer_selected = 3;
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -897,38 +958,31 @@ mod tests {
                 fetched_at: Instant::now(),
             };
             let now = Instant::now();
+            let action = metadata_loaded_action(&mut state, metadata);
 
-            reduce(
-                &mut state,
-                Action::MetadataLoaded(Arc::new(metadata)),
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, action, now, &AppServices::stub());
 
             assert!(state.session.metadata().is_some());
-            assert_eq!(state.ui.explorer_selected(), 0);
+            assert_eq!(state.ui.explorer_selected, 0);
         }
 
         #[test]
         fn metadata_failed_opens_error_modal_automatically() {
             let mut state = create_test_state();
             let now = Instant::now();
-
-            let effects = reduce(
+            let action = metadata_failed_action(
                 &mut state,
-                Action::MetadataFailed(DbOperationError::ConnectionFailed(
-                    "psql: error: connection refused".to_string(),
-                )),
-                now,
-                &AppServices::stub(),
+                DbOperationError::ConnectionFailed("psql: error: connection refused".to_string()),
             );
+
+            let effects = reduce(&mut state, action, now, &AppServices::stub());
 
             assert!(matches!(
                 state.session.metadata_state(),
                 MetadataState::Error(_)
             ));
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.has_error());
+            assert!(state.connection_error.error_info.is_some());
             assert!(effects.is_empty());
         }
 
@@ -938,7 +992,7 @@ mod tests {
             state
                 .connection_error
                 .set_error(ConnectionErrorInfo::new("error"));
-            state.ui.set_focused_pane(FocusedPane::Result); // Any pane works
+            state.ui.focused_pane = FocusedPane::Result; // Any pane works
             let now = Instant::now();
 
             reduce(
@@ -971,14 +1025,8 @@ mod tests {
         #[test]
         fn close_keeps_error_info_for_reopen() {
             let mut state = state_with_error();
-            state.connection_error.expand_details();
-            for _ in 0..5 {
-                state.connection_error.scroll_down(10);
-            }
-            assert!(
-                state.connection_error.scroll_offset() > 0,
-                "test setup must create a non-zero scroll offset"
-            );
+            state.connection_error.details_expanded = true;
+            state.connection_error.scroll_offset = 5;
             let now = Instant::now();
 
             reduce(
@@ -989,11 +1037,11 @@ mod tests {
             );
 
             // error_info is kept so Enter can re-open modal
-            assert!(state.connection_error.has_error());
+            assert!(state.connection_error.error_info.is_some());
             assert_eq!(state.input_mode(), InputMode::Normal);
             // UI state is reset
-            assert!(!state.connection_error.details_expanded());
-            assert_eq!(state.connection_error.scroll_offset(), 0);
+            assert!(!state.connection_error.details_expanded);
+            assert_eq!(state.connection_error.scroll_offset, 0);
         }
 
         #[test]
@@ -1020,7 +1068,7 @@ mod tests {
             state
                 .session
                 .set_metadata_state(MetadataState::Error("error".to_string()));
-            state.ui.set_focused_pane(FocusedPane::Explorer);
+            state.ui.focused_pane = FocusedPane::Explorer;
             let now = Instant::now();
 
             // Close modal
@@ -1040,14 +1088,14 @@ mod tests {
                 &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.has_error());
+            assert!(state.connection_error.error_info.is_some());
         }
 
         #[test]
         fn toggle_details_flips_expanded_state() {
             let mut state = state_with_error();
             let now = Instant::now();
-            assert!(!state.connection_error.details_expanded());
+            assert!(!state.connection_error.details_expanded);
 
             reduce(
                 &mut state,
@@ -1055,7 +1103,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(state.connection_error.details_expanded());
+            assert!(state.connection_error.details_expanded);
 
             reduce(
                 &mut state,
@@ -1063,7 +1111,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(!state.connection_error.details_expanded());
+            assert!(!state.connection_error.details_expanded);
         }
 
         #[test]
@@ -1141,7 +1189,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
             state.modal.set_mode(InputMode::Normal);
-            state.ui.set_focused_pane(FocusedPane::Explorer);
+            state.ui.focused_pane = FocusedPane::Explorer;
             state.ui.set_explorer_selection(Some(0));
 
             reduce(
@@ -1163,7 +1211,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
             state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker_mut().set_selection(0);
+            state.ui.table_picker.set_selection(0);
 
             reduce(
                 &mut state,
@@ -1183,7 +1231,7 @@ mod tests {
         #[test]
         fn load_metadata_with_dsn_returns_fetch_effect() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
@@ -1199,7 +1247,7 @@ mod tests {
         #[test]
         fn load_metadata_without_dsn_returns_no_effects() {
             let mut state = create_test_state();
-            state.session.clear_dsn_for_test();
+            state.session.dsn = None;
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
@@ -1210,7 +1258,7 @@ mod tests {
         #[test]
         fn reload_metadata_returns_sequence_effect() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -1234,7 +1282,7 @@ mod tests {
         #[test]
         fn reload_metadata_sets_is_reloading_flag() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
 
             reduce(
@@ -1244,13 +1292,13 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.session.is_reloading());
+            assert!(state.session.is_reloading);
         }
 
         #[test]
         fn reload_then_metadata_loaded_shows_reloaded_message() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
 
             // Trigger reload
@@ -1260,7 +1308,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(state.session.is_reloading());
+            assert!(state.session.is_reloading);
 
             // Metadata loaded
             let metadata = DatabaseMetadata {
@@ -1269,22 +1317,22 @@ mod tests {
                 table_summaries: vec![],
                 fetched_at: now,
             };
-            reduce(
-                &mut state,
-                Action::MetadataLoaded(Arc::new(metadata)),
-                now,
-                &AppServices::stub(),
-            );
+            let action = Action::MetadataLoaded {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id: 1,
+                metadata: Arc::new(metadata),
+            };
+            reduce(&mut state, action, now, &AppServices::stub());
 
             // Check reloading flag is cleared and message is shown
-            assert!(!state.session.is_reloading());
-            assert_eq!(state.messages.last_success(), Some("Reloaded!"));
+            assert!(!state.session.is_reloading);
+            assert_eq!(state.messages.last_success, Some("Reloaded!".to_string()));
         }
 
         #[test]
         fn execute_adhoc_with_dsn_returns_effect() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -1307,7 +1355,7 @@ mod tests {
         #[test]
         fn er_open_while_rendering_returns_no_effects() {
             let mut state = create_test_state();
-            state.er_preparation.mark_rendering();
+            state.er_preparation.status = ErStatus::Rendering;
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1318,22 +1366,23 @@ mod tests {
         #[test]
         fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
                 fetched_at: Instant::now(),
             })));
-            state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_prefetch();
             state
                 .er_preparation
-                .insert_pending_table("public.users".to_string());
+                .pending_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
             assert!(!state.sql_modal.is_prefetch_started());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
@@ -1342,14 +1391,14 @@ mod tests {
         #[test]
         fn prefetch_started_true_emits_smart_refresh() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
                 fetched_at: Instant::now(),
             })));
-            state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1362,7 +1411,7 @@ mod tests {
         #[test]
         fn no_prefetch_emits_smart_refresh() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1373,7 +1422,7 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -1381,31 +1430,31 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = create_test_state();
-            state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert!(state.messages.last_error().is_some());
+            assert!(state.messages.last_error.is_some());
             assert!(effects.is_empty());
         }
 
         #[test]
         fn metadata_failed_resets_er_waiting_to_idle() {
             let mut state = create_test_state();
-            state.er_preparation.start_waiting_run();
+            state.er_preparation.status = ErStatus::Waiting;
             let now = Instant::now();
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.session.begin_metadata_refresh();
+            let action = Action::MetadataFailed {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id,
+                error: DbOperationError::ConnectionFailed("connection refused".to_string()),
+            };
 
-            reduce(
-                &mut state,
-                Action::MetadataFailed(DbOperationError::ConnectionFailed(
-                    "connection refused".to_string(),
-                )),
-                now,
-                &AppServices::stub(),
-            );
+            reduce(&mut state, action, now, &AppServices::stub());
 
-            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
         }
     }
 
@@ -1432,12 +1481,19 @@ mod tests {
         #[test]
         fn emits_cache_effect() {
             let mut state = create_test_state();
-            state.sql_modal.mark_prefetching("public.users".to_string());
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.sql_modal.begin_prefetch();
+            state
+                .sql_modal
+                .prefetching_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
                 Action::TableDetailCached {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     detail: make_test_table(),
@@ -1451,25 +1507,25 @@ mod tests {
                 effects[0],
                 Effect::CacheTableInCompletionEngine { .. }
             ));
-            assert!(
-                !state
-                    .sql_modal
-                    .prefetching_tables()
-                    .contains("public.users")
-            );
+            assert!(!state.sql_modal.prefetching_tables.contains("public.users"));
         }
 
         #[test]
         fn with_queue_returns_process_effect() {
             let mut state = create_test_state();
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
-                .enqueue_prefetch("public.orders".to_string());
+                .prefetch_queue
+                .push_back("public.orders".to_string());
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
                 Action::TableDetailCached {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     detail: make_test_table(),
@@ -1481,13 +1537,14 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
+                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
             );
         }
     }
 
     mod connection_setup_validation {
         use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
+        use crate::model::shared::text_input::TextInputState;
         use crate::update::helpers::{validate_all, validate_field};
         use rstest::rstest;
 
@@ -1510,24 +1567,15 @@ mod tests {
         ) {
             let mut state = setup_state();
             match field {
-                ConnectionField::Host => state
-                    .input_mut(ConnectionField::Host)
-                    .unwrap()
-                    .set_content(value.to_string()),
-                ConnectionField::Database => state
-                    .input_mut(ConnectionField::Database)
-                    .unwrap()
-                    .set_content(value.to_string()),
-                ConnectionField::User => state
-                    .input_mut(ConnectionField::User)
-                    .unwrap()
-                    .set_content(value.to_string()),
+                ConnectionField::Host => state.host.set_content(value.to_string()),
+                ConnectionField::Database => state.database.set_content(value.to_string()),
+                ConnectionField::User => state.user.set_content(value.to_string()),
                 _ => {}
             }
 
             validate_field(&mut state, field);
 
-            assert_eq!(state.has_validation_error(field), has_error);
+            assert_eq!(state.validation_errors.contains_key(&field), has_error);
         }
 
         #[rstest]
@@ -1535,14 +1583,11 @@ mod tests {
         #[case("abc")]
         fn port_validation_invalid_format(#[case] value: &str) {
             let mut state = setup_state();
-            state
-                .input_mut(ConnectionField::Port)
-                .unwrap()
-                .set_content(value.to_string());
+            state.port.set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(state.has_validation_error(ConnectionField::Port));
+            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
         }
 
         #[rstest]
@@ -1551,14 +1596,11 @@ mod tests {
         #[case("99999")]
         fn port_validation_out_of_range(#[case] value: &str) {
             let mut state = setup_state();
-            state
-                .input_mut(ConnectionField::Port)
-                .unwrap()
-                .set_content(value.to_string());
+            state.port.set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(state.has_validation_error(ConnectionField::Port));
+            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
         }
 
         #[rstest]
@@ -1567,14 +1609,11 @@ mod tests {
         #[case("65535")]
         fn port_validation_valid_range(#[case] value: &str) {
             let mut state = setup_state();
-            state
-                .input_mut(ConnectionField::Port)
-                .unwrap()
-                .set_content(value.to_string());
+            state.port.set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert!(!state.has_validation_error(ConnectionField::Port));
+            assert!(!state.validation_errors.contains_key(&ConnectionField::Port));
         }
 
         #[rstest]
@@ -1582,59 +1621,61 @@ mod tests {
         #[case(ConnectionField::SslMode)]
         fn optional_fields_never_error(#[case] field: ConnectionField) {
             let mut state = setup_state();
-            state.input_mut(ConnectionField::Password).unwrap().clear();
+            state.password = TextInputState::default();
 
             validate_field(&mut state, field);
 
-            assert!(!state.has_validation_error(field));
+            assert!(!state.validation_errors.contains_key(&field));
         }
 
         #[test]
         fn validate_all_checks_all_required_fields() {
             let mut state = setup_state();
-            state.input_mut(ConnectionField::Host).unwrap().clear();
-            state
-                .input_mut(ConnectionField::Port)
-                .unwrap()
-                .set_content("invalid".to_string());
-            state.input_mut(ConnectionField::Database).unwrap().clear();
-            state.input_mut(ConnectionField::User).unwrap().clear();
+            state.host = TextInputState::default();
+            state.port.set_content("invalid".to_string());
+            state.database = TextInputState::default();
+            state.user = TextInputState::default();
 
             validate_all(&mut state);
 
-            assert!(state.has_validation_error(ConnectionField::Host));
-            assert!(state.has_validation_error(ConnectionField::Port));
-            assert!(state.has_validation_error(ConnectionField::Database));
-            assert!(state.has_validation_error(ConnectionField::User));
-            assert!(!state.has_validation_error(ConnectionField::Password));
-            assert!(!state.has_validation_error(ConnectionField::SslMode));
+            assert!(state.validation_errors.contains_key(&ConnectionField::Host));
+            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
+            assert!(
+                state
+                    .validation_errors
+                    .contains_key(&ConnectionField::Database)
+            );
+            assert!(state.validation_errors.contains_key(&ConnectionField::User));
+            assert!(
+                !state
+                    .validation_errors
+                    .contains_key(&ConnectionField::Password)
+            );
+            assert!(
+                !state
+                    .validation_errors
+                    .contains_key(&ConnectionField::SslMode)
+            );
         }
     }
 
     mod connection_setup_transitions {
         use super::*;
-        use crate::domain::{ConnectionId, DatabaseType};
-        use crate::model::connection::setup::ConnectionField;
+        use crate::domain::ConnectionId;
 
         #[test]
         fn save_completed_sets_dsn_and_returns_fetch_effect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.set_first_run(true);
+            state.connection_setup.is_first_run = true;
             state
                 .connection_setup
-                .input_mut(ConnectionField::Host)
-                .unwrap()
+                .host
                 .set_content("db.example.com".to_string());
+            state.connection_setup.port.set_content("5432".to_string());
             state
                 .connection_setup
-                .input_mut(ConnectionField::Port)
-                .unwrap()
-                .set_content("5432".to_string());
-            state
-                .connection_setup
-                .input_mut(ConnectionField::Database)
-                .unwrap()
+                .database
                 .set_content("mydb".to_string());
             let now = Instant::now();
 
@@ -1644,21 +1685,20 @@ mod tests {
                     id: ConnectionId::new(),
                     dsn: "postgres://db.example.com/mydb".to_string(),
                     name: "Test Connection".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
+                    database_type: crate::domain::DatabaseType::PostgreSQL,
                 }),
                 now,
                 &AppServices::stub(),
             );
 
-            assert!(!state.connection_setup.is_first_run());
-            assert_eq!(state.session.dsn(), Some("postgres://db.example.com/mydb"));
+            assert!(!state.connection_setup.is_first_run);
             assert_eq!(
-                state.session.active_connection_name(),
-                Some("Test Connection")
+                state.session.dsn,
+                Some("postgres://db.example.com/mydb".to_string())
             );
             assert_eq!(
-                state.session.active_database_type(),
-                Some(DatabaseType::PostgreSQL)
+                state.session.active_connection_name,
+                Some("Test Connection".to_string())
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(effects.len(), 1);
@@ -1680,7 +1720,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.messages.last_error().is_some());
+            assert!(state.messages.last_error.is_some());
             assert!(effects.is_empty());
         }
 
@@ -1688,7 +1728,7 @@ mod tests {
         fn cancel_on_first_run_opens_confirm_dialog() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.set_first_run(true);
+            state.connection_setup.is_first_run = true;
             let now = Instant::now();
 
             let effects = reduce(
@@ -1710,7 +1750,7 @@ mod tests {
         fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.set_first_run(false);
+            state.connection_setup.is_first_run = false;
             let now = Instant::now();
 
             let effects = reduce(
@@ -1778,7 +1818,7 @@ mod tests {
             };
 
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state.modal.set_mode(InputMode::ConfirmDialog);
 
             let delete_sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';".to_string();
@@ -1825,14 +1865,25 @@ mod tests {
             // Simulate success
             let effects = reduce(
                 &mut state,
-                Action::ExecuteWriteSucceeded { affected_rows: 1 },
+                Action::ExecuteWriteSucceeded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: 1,
+                    affected_rows: 1,
+                },
                 now,
                 &AppServices::stub(),
             );
 
             // After success, preview is cleaned up and delete message is shown
             assert!(state.result_interaction.pending_write_preview().is_none());
-            assert!(state.messages.last_success().unwrap().contains("Deleted"));
+            assert!(
+                state
+                    .messages
+                    .last_success
+                    .as_deref()
+                    .unwrap()
+                    .contains("Deleted")
+            );
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
         }
@@ -1844,7 +1895,7 @@ mod tests {
             };
 
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state.modal.set_mode(InputMode::ConfirmDialog);
 
             state.result_interaction.set_write_preview(WritePreview {
@@ -1883,9 +1934,11 @@ mod tests {
             // Simulate failure — must detect Delete and return to Normal (not CellEdit)
             reduce(
                 &mut state,
-                Action::ExecuteWriteFailed(DbOperationError::QueryFailed(
-                    "connection lost".to_string(),
-                )),
+                Action::ExecuteWriteFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: 1,
+                    error: DbOperationError::QueryFailed("connection lost".to_string()),
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -1897,14 +1950,13 @@ mod tests {
 
     mod connection_state_tests {
         use super::*;
-        use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, MetadataState};
-        use crate::model::connection::setup::ConnectionField;
+        use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
         use crate::model::connection::state::ConnectionState;
 
         #[test]
         fn try_connect_with_dsn_starts_connecting() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -1925,7 +1977,7 @@ mod tests {
         #[test]
         fn try_connect_without_dsn_does_nothing() {
             let mut state = create_test_state();
-            state.session.clear_dsn_for_test();
+            state.session.dsn = None;
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -1941,7 +1993,7 @@ mod tests {
         #[test]
         fn try_connect_when_already_connecting_is_noop() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
@@ -1957,7 +2009,7 @@ mod tests {
         #[test]
         fn try_connect_when_already_connected_is_noop() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -1973,7 +2025,7 @@ mod tests {
         #[test]
         fn try_connect_when_not_in_normal_mode_is_noop() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -1992,6 +2044,8 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.session.begin_metadata_refresh();
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -2002,7 +2056,11 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataLoaded(Arc::new(metadata)),
+                Action::MetadataLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    metadata: Arc::new(metadata),
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -2020,13 +2078,17 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.session.begin_metadata_refresh();
             let now = Instant::now();
 
             reduce(
                 &mut state,
-                Action::MetadataFailed(DbOperationError::ConnectionFailed(
-                    "connection refused".to_string(),
-                )),
+                Action::MetadataFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    error: DbOperationError::ConnectionFailed("connection refused".to_string()),
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -2046,14 +2108,18 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state.session.set_metadata_state(MetadataState::Loaded);
+            let run_id = state.session.begin_metadata_refresh();
             let now = Instant::now();
 
             reduce(
                 &mut state,
-                Action::MetadataFailed(DbOperationError::QueryFailed(
-                    "permission denied".to_string(),
-                )),
+                Action::MetadataFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    error: DbOperationError::QueryFailed("permission denied".to_string()),
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -2097,28 +2163,17 @@ mod tests {
             let mut state = create_test_state();
             state
                 .connection_setup
-                .input_mut(ConnectionField::Host)
-                .unwrap()
+                .host
                 .set_content("custom-host".to_string());
+            state.connection_setup.port.set_content("5433".to_string());
             state
                 .connection_setup
-                .input_mut(ConnectionField::Port)
-                .unwrap()
-                .set_content("5433".to_string());
-            state
-                .connection_setup
-                .input_mut(ConnectionField::Database)
-                .unwrap()
+                .database
                 .set_content("mydb".to_string());
+            state.connection_setup.user.set_content("admin".to_string());
             state
                 .connection_setup
-                .input_mut(ConnectionField::User)
-                .unwrap()
-                .set_content("admin".to_string());
-            state
-                .connection_setup
-                .input_mut(ConnectionField::Password)
-                .unwrap()
+                .password
                 .set_content("secret".to_string());
             state.session.set_connection_state(ConnectionState::Failed);
             let now = Instant::now();
@@ -2130,46 +2185,11 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(
-                state
-                    .connection_setup
-                    .input(ConnectionField::Host)
-                    .unwrap()
-                    .content(),
-                "custom-host"
-            );
-            assert_eq!(
-                state
-                    .connection_setup
-                    .input(ConnectionField::Port)
-                    .unwrap()
-                    .content(),
-                "5433"
-            );
-            assert_eq!(
-                state
-                    .connection_setup
-                    .input(ConnectionField::Database)
-                    .unwrap()
-                    .content(),
-                "mydb"
-            );
-            assert_eq!(
-                state
-                    .connection_setup
-                    .input(ConnectionField::User)
-                    .unwrap()
-                    .content(),
-                "admin"
-            );
-            assert_eq!(
-                state
-                    .connection_setup
-                    .input(ConnectionField::Password)
-                    .unwrap()
-                    .content(),
-                "secret"
-            );
+            assert_eq!(state.connection_setup.host.content(), "custom-host");
+            assert_eq!(state.connection_setup.port.content(), "5433");
+            assert_eq!(state.connection_setup.database.content(), "mydb");
+            assert_eq!(state.connection_setup.user.content(), "admin");
+            assert_eq!(state.connection_setup.password.content(), "secret");
         }
 
         #[test]
@@ -2187,7 +2207,7 @@ mod tests {
                     id: ConnectionId::new(),
                     dsn: "postgres://localhost/test".to_string(),
                     name: "Test".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
+                    database_type: crate::domain::DatabaseType::PostgreSQL,
                 }),
                 now,
                 &AppServices::stub(),
@@ -2208,13 +2228,11 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state
-                .session
-                .set_active_connection_id_for_test(Some(conn_a.clone()));
+            state.session.active_connection_id = Some(conn_a.clone());
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
-            state.ui.set_explorer_selected_raw(5);
+            state.ui.explorer_selected = 5;
             let now = Instant::now();
 
             let effects = reduce(
@@ -2223,13 +2241,13 @@ mod tests {
                     id: conn_b.clone(),
                     dsn: "postgres://localhost/other".to_string(),
                     name: "Other".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
+                    database_type: crate::domain::DatabaseType::PostgreSQL,
                 }),
                 now,
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.session.active_connection_id().cloned(), Some(conn_b));
+            assert_eq!(state.session.active_connection_id, Some(conn_b));
             assert!(state.session.connection_state().is_connecting());
             assert!(state.connection_caches.get(&conn_a).is_some());
             assert_eq!(
@@ -2251,13 +2269,11 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state
-                .session
-                .set_active_connection_id_for_test(Some(conn_a));
+            state.session.active_connection_id = Some(conn_a);
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
-            state.ui.set_explorer_selected_raw(3);
+            state.ui.explorer_selected = 3;
 
             let cached = crate::model::connection::cache::ConnectionCache {
                 explorer_selected: 10,
@@ -2279,16 +2295,16 @@ mod tests {
                     id: conn_b.clone(),
                     dsn: "postgres://localhost/cached".to_string(),
                     name: "Cached".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
+                    database_type: crate::domain::DatabaseType::PostgreSQL,
                 }),
                 now,
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.session.active_connection_id().cloned(), Some(conn_b));
+            assert_eq!(state.session.active_connection_id, Some(conn_b));
             assert!(state.session.connection_state().is_connected());
-            assert_eq!(state.ui.explorer_selected(), 10);
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Indexes);
+            assert_eq!(state.ui.explorer_selected, 10);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Indexes);
             assert_eq!(
                 state.session.metadata().as_ref().unwrap().database_name,
                 "cached_db"
@@ -2318,10 +2334,11 @@ mod tests {
         #[test]
         fn open_clears_selections_and_filter() {
             let mut state = state_with_metadata();
-            state.ui.er_picker_mut().insert_filter_str("old");
+            state.ui.er_picker.insert_filter_str("old");
             state
                 .ui
-                .replace_er_selected_tables(["public.users".to_string()]);
+                .er_selected_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2332,8 +2349,8 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
-            assert!(state.ui.er_picker().filter_input().content().is_empty());
-            assert!(state.ui.er_selected_tables().is_empty());
+            assert!(state.ui.er_picker.filter_input().content().is_empty());
+            assert!(state.ui.er_selected_tables.is_empty());
             assert!(effects.is_empty());
         }
 
@@ -2349,8 +2366,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.ui.pending_er_picker());
-            assert!(state.messages.last_success().is_some());
+            assert!(state.ui.pending_er_picker);
+            assert!(state.messages.last_success.is_some());
             assert_ne!(state.input_mode(), InputMode::ErTablePicker);
             assert!(effects.is_empty());
         }
@@ -2369,6 +2386,16 @@ mod tests {
             })
         }
 
+        fn metadata_loaded_action(state: &mut AppState) -> Action {
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.session.begin_metadata_refresh();
+            Action::MetadataLoaded {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id,
+                metadata: sample_metadata(),
+            }
+        }
+
         fn has_open_er_dispatch(effects: &[Effect]) -> bool {
             effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
@@ -2379,33 +2406,25 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_dispatches_open() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(true);
+            state.ui.pending_er_picker = true;
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
+            let action = metadata_loaded_action(&mut state);
 
-            let effects = reduce(
-                &mut state,
-                Action::MetadataLoaded(sample_metadata()),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, action, now, &AppServices::stub());
 
-            assert!(!state.ui.pending_er_picker());
+            assert!(!state.ui.pending_er_picker);
             assert!(has_open_er_dispatch(&effects));
         }
 
         #[test]
         fn metadata_loaded_without_pending_does_not_dispatch_open() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(false);
+            state.ui.pending_er_picker = false;
             let now = Instant::now();
+            let action = metadata_loaded_action(&mut state);
 
-            let effects = reduce(
-                &mut state,
-                Action::MetadataLoaded(sample_metadata()),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, action, now, &AppServices::stub());
 
             assert!(!has_open_er_dispatch(&effects));
         }
@@ -2413,18 +2432,14 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_but_non_normal_mode_discards() {
             let mut state = create_test_state();
-            state.ui.set_pending_er_picker(true);
+            state.ui.pending_er_picker = true;
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
+            let action = metadata_loaded_action(&mut state);
 
-            let effects = reduce(
-                &mut state,
-                Action::MetadataLoaded(sample_metadata()),
-                now,
-                &AppServices::stub(),
-            );
+            let effects = reduce(&mut state, action, now, &AppServices::stub());
 
-            assert!(!state.ui.pending_er_picker());
+            assert!(!state.ui.pending_er_picker);
             assert!(!has_open_er_dispatch(&effects));
         }
 
@@ -2433,7 +2448,7 @@ mod tests {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            state.ui.er_picker_mut().insert_filter_str("test");
+            state.ui.er_picker.insert_filter_str("test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -2444,7 +2459,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.ui.er_picker().filter_input().content().is_empty());
+            assert!(state.ui.er_picker.filter_input().content().is_empty());
             assert!(effects.is_empty());
         }
 
@@ -2455,7 +2470,8 @@ mod tests {
 
             state
                 .ui
-                .replace_er_selected_tables(["public.users".to_string()]);
+                .er_selected_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2466,7 +2482,7 @@ mod tests {
             );
 
             assert_eq!(
-                state.er_preparation.target_tables(),
+                state.er_preparation.target_tables,
                 vec!["public.users".to_string()]
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -2489,38 +2505,16 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
-            assert!(state.messages.last_error().is_some());
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn select_all_replaces_stale_selection_entries() {
-            let mut state = state_with_metadata();
-            state.modal.set_mode(InputMode::ErTablePicker);
-            state.ui.replace_er_selected_tables([
-                "public.users".to_string(),
-                "missing.table".to_string(),
-            ]);
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErSelectAll, now, &AppServices::stub());
-
-            let selected: Vec<_> = state.ui.er_selected_tables().iter().cloned().collect();
-            assert_eq!(
-                selected,
-                vec!["public.posts".to_string(), "public.users".to_string()]
-            );
+            assert!(state.messages.last_error.is_some());
             assert!(effects.is_empty());
         }
 
         #[test]
         fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
-            state.session.set_dsn_for_test("postgres://localhost/test");
-            state.sql_modal.begin_prefetch();
-            state
-                .er_preparation
-                .set_targets(vec!["public.users".to_string()]);
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let _ = state.sql_modal.begin_prefetch();
+            state.er_preparation.target_tables = vec!["public.users".to_string()];
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -2528,7 +2522,7 @@ mod tests {
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
             assert_eq!(
-                state.er_preparation.target_tables(),
+                state.er_preparation.target_tables,
                 vec!["public.users".to_string()]
             );
         }
@@ -2538,17 +2532,22 @@ mod tests {
             use crate::model::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            state.sql_modal.begin_prefetch();
-            state.er_preparation.start_waiting_run();
-            state.er_preparation.begin_full_prefetch(1);
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.sql_modal.begin_prefetch();
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.total_tables = 1;
+            state.er_preparation.fk_expanded = true;
             state
                 .er_preparation
-                .insert_pending_table("public.users".to_string());
+                .pending_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
                 Action::TableDetailAlreadyCached {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
                 },
@@ -2556,7 +2555,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
             assert!(effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
@@ -2568,20 +2567,26 @@ mod tests {
             use crate::model::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            state.sql_modal.begin_prefetch();
-            state.er_preparation.start_waiting_run();
-            state.er_preparation.begin_full_prefetch(2);
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.sql_modal.begin_prefetch();
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.total_tables = 2;
+            state.er_preparation.fk_expanded = true;
             state
                 .er_preparation
-                .on_table_failed("public.posts", "timeout".to_string());
+                .failed_tables
+                .insert("public.posts".to_string(), "timeout".to_string());
             state
                 .er_preparation
-                .insert_pending_table("public.users".to_string());
+                .pending_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
                 Action::TableDetailAlreadyCached {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
                     schema: "public".to_string(),
                     table: "users".to_string(),
                 },
@@ -2589,12 +2594,12 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
             assert!(!effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
             }));
-            assert!(state.messages.last_error().is_some());
+            assert!(state.messages.last_error.is_some());
         }
     }
 
@@ -2606,7 +2611,7 @@ mod tests {
 
         fn state_after_confirm_and_complete() -> (AppState, Instant) {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
 
             // Load metadata with a table
@@ -2621,17 +2626,22 @@ mod tests {
                 )],
                 fetched_at: now,
             };
+            let run_id = state.session.begin_metadata_refresh();
             reduce(
                 &mut state,
-                Action::MetadataLoaded(Arc::new(metadata)),
+                Action::MetadataLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    metadata: Arc::new(metadata),
+                },
                 now,
                 &AppServices::stub(),
             );
 
             // ConfirmSelection from Normal mode (explorer focused)
             state.modal.set_mode(InputMode::Normal);
-            state.ui.set_focused_pane(FocusedPane::Explorer);
-            state.ui.set_explorer_selected_raw(0);
+            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.explorer_selected = 0;
             let effects = reduce(
                 &mut state,
                 Action::ConfirmSelection,
@@ -2665,9 +2675,12 @@ mod tests {
                 error: None,
                 command_tag: None,
             });
+            let run_id = state.query.begin_running(now);
             reduce(
                 &mut state,
                 Action::QueryCompleted {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
                     result,
                     generation: current_gen,
                     target_page: Some(0),
@@ -2683,11 +2696,11 @@ mod tests {
         fn confirm_selection_initializes_pagination_via_dispatch() {
             let (state, _now) = state_after_confirm_and_complete();
 
-            assert_eq!(state.query.pagination.schema(), "public");
-            assert_eq!(state.query.pagination.table(), "users");
-            assert_eq!(state.query.pagination.total_rows_estimate(), Some(1200));
-            assert_eq!(state.query.pagination.current_page(), 0);
-            assert!(!state.query.pagination.reached_end());
+            assert_eq!(state.query.pagination.schema, "public");
+            assert_eq!(state.query.pagination.table, "users");
+            assert_eq!(state.query.pagination.total_rows_estimate, Some(1200));
+            assert_eq!(state.query.pagination.current_page, 0);
+            assert!(!state.query.pagination.reached_end);
         }
 
         #[test]
@@ -2718,6 +2731,39 @@ mod tests {
                 assert_eq!(schema, "public");
                 assert_eq!(table, "users");
             }
+        }
+
+        #[test]
+        fn prev_page_after_confirm_flows_through_result_to_query() {
+            let (mut state, now) = state_after_confirm_and_complete();
+            state.query.pagination.current_page = 1;
+            state.query.pagination.reached_end = true;
+
+            let effects = reduce(
+                &mut state,
+                Action::ResultPrevPage,
+                now,
+                &AppServices::stub(),
+            );
+
+            let preview_effect = effects
+                .iter()
+                .find(|e| matches!(e, Effect::ExecutePreview { .. }));
+            assert!(preview_effect.is_some());
+            if let Some(Effect::ExecutePreview {
+                offset,
+                target_page,
+                schema,
+                table,
+                ..
+            }) = preview_effect
+            {
+                assert_eq!(*offset, 0);
+                assert_eq!(*target_page, 0);
+                assert_eq!(schema, "public");
+                assert_eq!(table, "users");
+            }
+            assert!(!state.query.pagination.reached_end);
         }
     }
 
@@ -2761,7 +2807,7 @@ mod tests {
             let entry_index = palette_index_of(|a| same_palette_action(a, &target_action));
 
             let mut state = state_in_palette_mode();
-            state.ui.table_picker_mut().set_selection(entry_index);
+            state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 
             reduce(
@@ -2779,8 +2825,8 @@ mod tests {
             let entry_index = palette_index_of(|a| matches!(a, Action::ReloadMetadata));
 
             let mut state = state_in_palette_mode();
-            state.session.set_dsn_for_test("postgres://localhost/test");
-            state.ui.table_picker_mut().set_selection(entry_index);
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2802,7 +2848,7 @@ mod tests {
                 palette_index_of(|a| matches!(a, Action::OpenModal(ModalKind::ConnectionSelector)));
 
             let mut state = state_in_palette_mode();
-            state.ui.table_picker_mut().set_selection(entry_index);
+            state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 
             reduce(
@@ -2842,7 +2888,7 @@ mod tests {
         #[test]
         fn y_then_d_cancels_yank_starts_delete() {
             let mut state = create_test_state();
-            state.ui.set_focused_pane(FocusedPane::Result);
+            state.ui.focused_pane = FocusedPane::Result;
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 
@@ -2868,7 +2914,7 @@ mod tests {
         #[test]
         fn d_then_y_cancels_delete_starts_yank() {
             let mut state = create_test_state();
-            state.ui.set_focused_pane(FocusedPane::Result);
+            state.ui.focused_pane = FocusedPane::Result;
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 

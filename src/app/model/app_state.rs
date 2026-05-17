@@ -17,6 +17,7 @@ use crate::model::shared::flash_timer::FlashTimerStore;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
+use crate::model::shared::settings::SettingsState;
 use crate::model::shared::ui_state::UiState;
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
@@ -41,6 +42,7 @@ pub struct AppState {
     pub result_interaction: ResultInteraction,
     pub jsonb_detail: JsonbDetailState,
     pub query_history_picker: QueryHistoryPickerState,
+    pub settings: SettingsState,
     pub explain: ExplainContext,
     pub modal: ModalState,
     pub flash_timers: FlashTimerStore,
@@ -70,6 +72,7 @@ impl AppState {
             result_interaction: ResultInteraction::default(),
             jsonb_detail: JsonbDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
+            settings: SettingsState::default(),
             explain: ExplainContext::default(),
             modal: ModalState::default(),
             flash_timers: FlashTimerStore::default(),
@@ -233,7 +236,7 @@ mod tests {
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::update::action::Action;
-    use crate::update::reduce_metadata;
+    use crate::update::dispatch_metadata;
     use rstest::rstest;
     fn make_state() -> AppState {
         AppState::new("test".to_string())
@@ -535,8 +538,8 @@ mod tests {
 
         fn prepare_state_for_reload() -> AppState {
             let mut state = make_state();
-            state.session.begin_connecting("postgres://localhost/test");
-            state.sql_modal.begin_prefetch();
+            let _ = state.session.begin_connecting("postgres://localhost/test");
+            let _ = state.sql_modal.begin_prefetch();
             state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
                 .sql_modal
@@ -556,7 +559,7 @@ mod tests {
         fn resets_prefetch_state() {
             let mut state = prepare_state_for_reload();
 
-            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(!state.sql_modal.is_prefetch_started());
             assert!(state.sql_modal.prefetch_queue().is_empty());
@@ -569,7 +572,7 @@ mod tests {
             let mut state = prepare_state_for_reload();
             state.er_preparation.start_waiting_run();
 
-            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
@@ -584,7 +587,7 @@ mod tests {
             assert!(state.messages.last_error().is_some());
             assert!(state.messages.expires_at().is_some());
 
-            reduce_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
+            dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(state.messages.last_error().is_none());
             assert!(state.messages.expires_at().is_none());
@@ -686,11 +689,18 @@ mod tests {
                     .session
                     .select_table("public", "users", &mut state.query.pagination);
                 let generation = state.session.selection_generation();
+                state.session.set_dsn_for_test("dsn://test");
+                let run_id = state.session.begin_table_detail_run();
                 state.ui.set_inspector_scroll_offset(42);
 
-                reduce_metadata(
+                dispatch_metadata(
                     &mut state,
-                    &Action::TableDetailLoaded(Box::new(make_table_detail()), generation),
+                    &Action::TableDetailLoaded {
+                        dsn: "dsn://test".to_string(),
+                        run_id,
+                        detail: Box::new(make_table_detail()),
+                        generation,
+                    },
                     Instant::now(),
                 );
 

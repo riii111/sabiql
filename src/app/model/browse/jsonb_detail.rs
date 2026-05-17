@@ -11,10 +11,10 @@ pub enum JsonbDetailMode {
 
 #[derive(Debug, Clone, Default)]
 pub struct JsonbSearchState {
-    input: TextInputState,
-    matches: Vec<usize>,
-    current_match: usize,
-    active: bool,
+    pub(crate) input: TextInputState,
+    pub(crate) matches: Vec<usize>,
+    pub(crate) current_match: usize,
+    pub(crate) active: bool,
 }
 
 impl JsonbSearchState {
@@ -86,10 +86,15 @@ pub struct JsonbDetailState {
     editor: MultiLineInputState,
     validation_error: Option<String>,
     search: JsonbSearchState,
-    active: bool,
+    pub(crate) active: bool,
 }
 
 impl JsonbDetailState {
+    #[cfg(test)]
+    pub fn set_mode(&mut self, mode: JsonbDetailMode) {
+        self.mode = mode;
+    }
+
     pub fn open_pretty(
         row: usize,
         col: usize,

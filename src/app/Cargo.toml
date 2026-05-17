@@ -1,5 +1,5 @@
 [package]
-name = "app"
+name = "sabiql-app"
 version.workspace = true
 edition.workspace = true
 description = "Application layer for sabiql"
@@ -31,7 +31,7 @@ unicode-width.workspace = true
 urlencoding.workspace = true
 uuid.workspace = true
 dirs.workspace = true
-domain.workspace = true
+sabiql-domain.workspace = true
 
 [dev-dependencies]
 mockall.workspace = true

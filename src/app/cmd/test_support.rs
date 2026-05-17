@@ -13,7 +13,7 @@ use crate::ports::outbound::{
     ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder,
     ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
     MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore,
-    ServiceFileError,
+    ServiceFileError, SettingsStore, SettingsStoreError,
 };
 use crate::update::action::Action;
 
@@ -31,6 +31,7 @@ impl ErDiagramExporter for NoopErExporter {
         _tables: &[ErTableInfo],
         _filename: &str,
         _cache_dir: &Path,
+        _browser: Option<&str>,
     ) -> ErExportResult<PathBuf> {
         Ok(PathBuf::from("/tmp/er.svg"))
     }
@@ -96,6 +97,20 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
     }
 }
 
+pub struct NoopSettingsStore;
+impl SettingsStore for NoopSettingsStore {
+    fn load(&self) -> Result<crate::ports::outbound::AppSettings, SettingsStoreError> {
+        Ok(crate::ports::outbound::AppSettings::default())
+    }
+
+    fn save(
+        &self,
+        _settings: crate::ports::outbound::AppSettings,
+    ) -> Result<(), SettingsStoreError> {
+        Ok(())
+    }
+}
+
 pub fn make_runner(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
@@ -131,6 +146,7 @@ pub fn make_runner_builder(
         .clipboard(Arc::new(NoopClipboardWriter))
         .folder_opener(Arc::new(NoopFolderOpener))
         .query_history_store(Arc::new(NoopQueryHistoryStore))
+        .settings_store(Arc::new(NoopSettingsStore))
         .metadata_cache(cache)
         .action_tx(action_tx)
         .pg_service_entry_reader(Arc::new(NoopPgServiceEntryReader))

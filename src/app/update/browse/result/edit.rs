@@ -7,6 +7,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::write::write_update::build_pk_pairs;
 use crate::update::action::{Action, InputTarget, ModalKind};
+use crate::update::dispatch_result::DispatchResult;
 
 use crate::update::helpers::{EditGuardrailError, editable_preview_base};
 
@@ -64,21 +65,21 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     Ok((row_idx, col_idx, cell_value))
 }
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::ResultEnterCellEdit => {
             if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
-                return Some(vec![]);
+                return DispatchResult::handled();
             }
 
             // JSONB columns open the dedicated detail modal instead of inline edit
             if is_jsonb_cell(state) {
-                return Some(vec![Effect::DispatchActions(vec![Action::OpenModal(
-                    ModalKind::JsonbDetail,
-                )])]);
+                return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
+                    Action::OpenModal(ModalKind::JsonbDetail),
+                ])]);
             }
 
             match editable_cell_context(state) {
@@ -92,11 +93,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         state.result_interaction.clear_write_preview();
                     }
                     state.modal.set_mode(InputMode::CellEdit);
-                    Some(vec![])
+                    DispatchResult::handled()
                 }
                 Err(reason) => {
                     state.messages.set_error_at(reason.to_string(), now);
-                    Some(vec![])
+                    DispatchResult::handled()
                 }
             }
         }
@@ -107,12 +108,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.result_interaction.discard_cell_edit();
             }
             state.modal.set_mode(InputMode::Normal);
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::ResultDiscardCellEdit => {
             state.result_interaction.discard_cell_edit();
             state.modal.set_mode(InputMode::Normal);
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::TextInput {
             target: InputTarget::ResultCellEdit,
@@ -122,19 +123,19 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 .result_interaction
                 .cell_edit_input_mut()
                 .insert_char(*c);
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::ResultCellEdit,
         } => {
             state.result_interaction.cell_edit_input_mut().backspace();
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::TextDelete {
             target: InputTarget::ResultCellEdit,
         } => {
             state.result_interaction.cell_edit_input_mut().delete();
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::TextMoveCursor {
             target: InputTarget::ResultCellEdit,
@@ -144,9 +145,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 .result_interaction
                 .cell_edit_input_mut()
                 .move_cursor(*m);
-            Some(vec![])
+            DispatchResult::handled()
         }
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
@@ -209,7 +210,9 @@ mod tests {
                 .set_content("modified".to_string());
             state.modal.set_mode(InputMode::Normal);
 
-            reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(
@@ -232,7 +235,9 @@ mod tests {
                 .cell_edit_input_mut()
                 .set_content("stale-modified".to_string());
 
-            reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(state.result_interaction.cell_edit().col(), Some(1));
@@ -256,7 +261,9 @@ mod tests {
                 comment: None,
             }));
 
-            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -276,7 +283,9 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now()).unwrap();
+            reduce_edit(&mut state, &Action::ResultCancelCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
@@ -297,7 +306,9 @@ mod tests {
                 .set_content("bob".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
-            reduce(&mut state, &Action::ResultCancelCellEdit, Instant::now()).unwrap();
+            reduce_edit(&mut state, &Action::ResultCancelCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.result_interaction.cell_edit().is_active());
@@ -338,7 +349,9 @@ mod tests {
         fn jsonb_cell_returns_dispatch_to_open_jsonb_detail() {
             let mut state = state_with_jsonb_column();
 
-            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -359,7 +372,9 @@ mod tests {
                 .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
             state.session.enable_read_only();
 
-            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -387,7 +402,7 @@ mod tests {
         fn delete_removes_char_at_cursor() {
             let mut state = state_in_cell_edit("abcd", 1);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextDelete {
                     target: InputTarget::ResultCellEdit,
@@ -403,7 +418,7 @@ mod tests {
         fn delete_at_end_is_noop() {
             let mut state = state_in_cell_edit("abc", 3);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextDelete {
                     target: InputTarget::ResultCellEdit,
@@ -418,7 +433,7 @@ mod tests {
         fn move_cursor_left_decrements() {
             let mut state = state_in_cell_edit("abc", 2);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -434,7 +449,7 @@ mod tests {
         fn move_cursor_right_increments() {
             let mut state = state_in_cell_edit("abc", 1);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -450,7 +465,7 @@ mod tests {
         fn move_cursor_home_jumps_to_start() {
             let mut state = state_in_cell_edit("abc", 3);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -466,7 +481,7 @@ mod tests {
         fn move_cursor_end_jumps_to_end() {
             let mut state = state_in_cell_edit("abc", 0);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextMoveCursor {
                     target: InputTarget::ResultCellEdit,
@@ -482,7 +497,7 @@ mod tests {
         fn input_inserts_at_cursor_not_at_end() {
             let mut state = state_in_cell_edit("ac", 1);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextInput {
                     target: InputTarget::ResultCellEdit,
@@ -499,7 +514,7 @@ mod tests {
         fn backspace_removes_char_before_cursor() {
             let mut state = state_in_cell_edit("abc", 2);
 
-            reduce(
+            reduce_edit(
                 &mut state,
                 &Action::TextBackspace {
                     target: InputTarget::ResultCellEdit,

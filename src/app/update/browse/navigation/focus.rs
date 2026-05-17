@@ -1,11 +1,28 @@
-use crate::cmd::effect::Effect;
+use std::time::Instant;
+
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
+use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
+use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
+fn active_capabilities<'a>(state: &'a AppState, services: &'a AppServices) -> &'a DbCapabilities {
+    if state.session.active_database_type().is_some() {
+        state.session.active_db_capabilities()
+    } else {
+        &services.db_capabilities
+    }
+}
+
+pub fn reduce_focus(
+    state: &mut AppState,
+    action: &Action,
+    services: &AppServices,
+    _now: Instant,
+) -> DispatchResult {
     match action {
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {
@@ -15,7 +32,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 }
             }
             state.ui.set_focused_pane(*pane);
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::ToggleFocus => {
             let was_focus = state.ui.is_focus_mode();
@@ -23,7 +40,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             if was_focus {
                 state.result_interaction.reset_interaction();
             }
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::ToggleReadOnly => {
             if state.session.is_read_only() {
@@ -36,39 +53,32 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             } else {
                 state.session.enable_read_only();
             }
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::InspectorNextTab => {
             state.ui.set_inspector_tab(
-                state
-                    .session
-                    .active_db_capabilities()
-                    .next_inspector_tab(state.ui.inspector_tab()),
+                active_capabilities(state, services).next_inspector_tab(state.ui.inspector_tab()),
             );
-            Some(vec![])
+            DispatchResult::handled()
         }
         Action::InspectorPrevTab => {
             state.ui.set_inspector_tab(
-                state
-                    .session
-                    .active_db_capabilities()
-                    .prev_inspector_tab(state.ui.inspector_tab()),
+                active_capabilities(state, services).prev_inspector_tab(state.ui.inspector_tab()),
             );
-            Some(vec![])
+            DispatchResult::handled()
         }
 
-        _ => None,
+        _ => DispatchResult::pass(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::model::shared::db_capabilities::DbCapabilities;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::services::AppServices;
-    use crate::update::browse::navigation::reduce_navigation;
-    use std::time::Instant;
+    use crate::update::browse::navigation::dispatch_navigation;
 
     mod toggle_read_only {
         use super::*;
@@ -76,32 +86,32 @@ mod tests {
         #[test]
         fn rw_to_ro_switches_immediately() {
             let mut state = AppState::new("test".to_string());
-            assert!(!state.session.is_read_only());
+            assert!(!state.session.read_only);
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ToggleReadOnly,
                 &AppServices::stub(),
                 Instant::now(),
             );
 
-            assert!(state.session.is_read_only());
+            assert!(state.session.read_only);
             assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]
         fn ro_to_rw_opens_confirm_dialog() {
             let mut state = AppState::new("test".to_string());
-            state.session.enable_read_only();
+            state.session.read_only = true;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::ToggleReadOnly,
                 &AppServices::stub(),
                 Instant::now(),
             );
 
-            assert!(state.session.is_read_only());
+            assert!(state.session.read_only);
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
                 state.confirm_dialog.intent(),
@@ -113,45 +123,41 @@ mod tests {
     mod inspector_tabs {
         use super::*;
 
-        fn use_sqlite_tabs(state: &mut AppState) {
-            state.session.set_active_connection(
-                &ConnectionId::new(),
-                "sqlite",
-                DatabaseType::SQLite,
-                "sqlite://test.db",
-            );
+        fn services_with_two_tabs() -> AppServices {
+            let mut services = AppServices::stub();
+            services.db_capabilities =
+                DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
+            services
         }
 
         #[test]
-        fn next_tab_moves_to_next_supported_tab() {
+        fn next_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
-            use_sqlite_tabs(&mut state);
-            state.ui.set_inspector_tab(InspectorTab::Info);
+            state.ui.inspector_tab = InspectorTab::Info;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::InspectorNextTab,
-                &AppServices::stub(),
+                &services_with_two_tabs(),
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Columns);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Columns);
         }
 
         #[test]
-        fn prev_tab_wraps_to_last_supported_tab() {
+        fn prev_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
-            use_sqlite_tabs(&mut state);
-            state.ui.set_inspector_tab(InspectorTab::Info);
+            state.ui.inspector_tab = InspectorTab::Info;
 
-            reduce_navigation(
+            dispatch_navigation(
                 &mut state,
                 &Action::InspectorPrevTab,
-                &AppServices::stub(),
+                &services_with_two_tabs(),
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Columns);
         }
     }
 }

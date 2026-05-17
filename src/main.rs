@@ -7,7 +7,7 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
-mod error;
+mod panic_hooks;
 
 #[cfg(test)]
 mod tests;
@@ -16,28 +16,30 @@ mod tests;
 #[path = "tests/render_snapshots/mod.rs"]
 mod render_snapshots;
 
-use app::cmd::cache::TtlCache;
-use app::cmd::completion_engine::CompletionEngine;
-use app::cmd::effect::Effect;
-use app::cmd::render_schedule::next_animation_deadline;
-use app::cmd::runner::EffectRunner;
-use app::model::app_state::AppState;
-use app::model::shared::input_mode::InputMode;
-use app::ports::outbound::{
-    ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError,
+use sabiql_app::cmd::cache::TtlCache;
+use sabiql_app::cmd::completion_engine::CompletionEngine;
+use sabiql_app::cmd::effect::Effect;
+use sabiql_app::cmd::render_schedule::next_animation_deadline;
+use sabiql_app::cmd::runner::EffectRunner;
+use sabiql_app::model::app_state::AppState;
+use sabiql_app::model::shared::db_capabilities::DbCapabilities;
+use sabiql_app::model::shared::input_mode::InputMode;
+use sabiql_app::ports::outbound::{
+    ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError, SettingsStore,
 };
-use app::services::AppServices;
-use app::update::action::Action;
-use app::update::input::handle_event;
-use app::update::reducer::reduce;
-use infra::adapters::{
+use sabiql_app::services::AppServices;
+use sabiql_app::update::action::Action;
+use sabiql_app::update::input::handle_event;
+use sabiql_app::update::reducer::reduce;
+use sabiql_infra::adapters::{
     ArboardClipboard, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter,
     NativeFolderOpener, PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
+    TomlSettingsStore,
 };
-use infra::config::project_root::{find_project_root, get_project_name};
-use infra::export::DotExporter;
-use ui::adapters::TuiAdapter;
-use ui::tui::TuiRunner;
+use sabiql_infra::config::project_root::{find_project_root, get_project_name};
+use sabiql_infra::export::DotExporter;
+use sabiql_ui::adapters::TuiAdapter;
+use sabiql_ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -64,7 +66,7 @@ enum Command {
 )]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
-    error::install_hooks()?;
+    panic_hooks::install_hooks()?;
 
     let args = Args::parse();
     if matches!(args.command, Some(Command::Update)) {
@@ -89,8 +91,11 @@ async fn main() -> Result<()> {
     let metadata_cache = TtlCache::new(300);
     let completion_engine = RefCell::new(CompletionEngine::new());
     let connection_store = TomlConnectionStore::new()?;
+    let settings_store = TomlSettingsStore::new()?;
+    let app_settings = settings_store.load().unwrap_or_default();
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
+    let settings_store = Arc::new(settings_store);
 
     let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
         Arc::new(PgServiceFileReader::new());
@@ -107,6 +112,7 @@ async fn main() -> Result<()> {
         .clipboard(Arc::new(ArboardClipboard))
         .folder_opener(Arc::new(NativeFolderOpener))
         .query_history_store(Arc::new(FileQueryHistoryStore::new()))
+        .settings_store(Arc::clone(&settings_store) as _)
         .metadata_cache(metadata_cache.clone())
         .action_tx(action_tx.clone())
         .build();
@@ -114,9 +120,12 @@ async fn main() -> Result<()> {
     let services = AppServices {
         ddl_generator: Arc::clone(&adapter_registry) as _,
         sql_dialect: Arc::clone(&adapter_registry) as _,
+        db_capabilities: DbCapabilities::postgres_like(),
     };
 
     let mut state = AppState::new(project_name);
+    state.ui.set_theme(app_settings.theme_id);
+    state.settings.load_er_browser(app_settings.er_browser);
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {

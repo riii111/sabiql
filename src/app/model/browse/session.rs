@@ -7,6 +7,7 @@ use crate::model::browse::query_execution::{PaginationState, QueryExecution};
 use crate::model::browse::result_history::ResultHistory;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::connection::state::ConnectionState;
+use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::inspector_tab::InspectorTab;
 
@@ -26,25 +27,27 @@ use crate::model::shared::inspector_tab::InspectorTab;
 #[derive(Debug, Clone)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
-    connection_state: ConnectionState,
-    metadata_state: MetadataState,
+    pub(crate) connection_state: ConnectionState,
+    pub(crate) metadata_state: MetadataState,
 
     // -- co-dependent: table selection --
-    selected_table_key: Option<String>,
-    table_detail: Option<Table>,
-    selection_generation: u64,
+    pub(crate) selected_table_key: Option<String>,
+    pub(crate) table_detail: Option<Table>,
+    pub(crate) selection_generation: u64,
 
     // -- lifecycle-gated --
-    metadata: Option<Arc<DatabaseMetadata>>,
+    pub(crate) metadata: Option<Arc<DatabaseMetadata>>,
+    pub(crate) metadata_run: AsyncRun,
+    pub(crate) table_detail_run: AsyncRun,
 
     // -- co-dependent: connection identity / lifecycle --
-    dsn: Option<String>,
-    active_connection_id: Option<ConnectionId>,
-    active_connection_name: Option<String>,
-    active_database_type: Option<DatabaseType>,
-    active_db_capabilities: DbCapabilities,
-    read_only: bool,
-    is_reloading: bool,
+    pub(crate) dsn: Option<String>,
+    pub(crate) active_connection_id: Option<ConnectionId>,
+    pub(crate) active_connection_name: Option<String>,
+    pub(crate) active_database_type: Option<DatabaseType>,
+    pub(crate) active_db_capabilities: DbCapabilities,
+    pub(crate) read_only: bool,
+    pub(crate) is_reloading: bool,
 }
 
 impl Default for BrowseSession {
@@ -56,6 +59,8 @@ impl Default for BrowseSession {
             table_detail: None,
             selection_generation: 0,
             metadata: None,
+            metadata_run: AsyncRun::default(),
+            table_detail_run: AsyncRun::default(),
             dsn: None,
             active_connection_id: None,
             active_connection_name: None,
@@ -98,7 +103,17 @@ impl BrowseSession {
         self.selected_table_key = None;
         self.table_detail = None;
         self.selection_generation += 1;
+        self.table_detail_run.clear_active();
         pagination.reset();
+    }
+
+    #[must_use]
+    pub fn begin_table_detail_run(&mut self) -> u64 {
+        self.table_detail_run.begin()
+    }
+
+    pub fn is_current_table_detail_run(&self, run_id: u64) -> bool {
+        self.table_detail_run.is_current(run_id)
     }
 
     // ── Connection lifecycle ─────────────────────────────────────────
@@ -108,9 +123,11 @@ impl BrowseSession {
         self.metadata_state = MetadataState::Loading;
     }
 
-    pub fn begin_connecting(&mut self, dsn: &str) {
+    #[must_use]
+    pub fn begin_connecting(&mut self, dsn: &str) -> u64 {
         self.dsn = Some(dsn.to_string());
         self.mark_connecting();
+        self.begin_metadata_run()
     }
 
     pub fn set_active_connection(
@@ -131,6 +148,7 @@ impl BrowseSession {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.metadata = Some(metadata);
+        self.metadata_run.clear_active();
     }
 
     // On reload failure (already Connected), keeps Connected to preserve
@@ -138,23 +156,30 @@ impl BrowseSession {
     pub fn mark_connection_failed(&mut self, error: String) {
         self.metadata_state = MetadataState::Error(error);
         self.is_reloading = false;
+        self.metadata_run.clear_active();
         if !self.connection_state.is_connected() {
             self.connection_state = ConnectionState::Failed;
         }
     }
 
-    pub fn begin_metadata_refresh(&mut self) {
+    #[must_use]
+    pub fn begin_metadata_refresh(&mut self) -> u64 {
         self.metadata_state = MetadataState::Loading;
+        self.begin_metadata_run()
     }
 
     pub fn mark_disconnected(&mut self) {
         self.connection_state = ConnectionState::NotConnected;
         self.metadata_state = MetadataState::NotLoaded;
         self.is_reloading = false;
+        self.metadata_run.clear_active();
+        self.table_detail_run.clear_active();
     }
 
-    pub fn begin_reload(&mut self) {
+    #[must_use]
+    pub fn begin_reload(&mut self) -> u64 {
         self.is_reloading = true;
+        self.begin_metadata_run()
     }
 
     pub fn finish_reload(&mut self) {
@@ -167,6 +192,15 @@ impl BrowseSession {
 
     pub fn disable_read_only(&mut self) {
         self.read_only = false;
+    }
+
+    #[must_use]
+    fn begin_metadata_run(&mut self) -> u64 {
+        self.metadata_run.begin()
+    }
+
+    pub fn is_current_metadata_run(&self, run_id: u64) -> bool {
+        self.metadata_run.is_current(run_id)
     }
 
     // ── Cache operations ─────────────────────────────────────────────
@@ -198,6 +232,8 @@ impl BrowseSession {
         self.metadata_state = MetadataState::Loaded;
         self.selection_generation = 0;
         self.is_reloading = false;
+        self.metadata_run.clear_active();
+        self.table_detail_run.clear_active();
         match &cache.query_result {
             Some(r) => query.set_current_result(r.clone()),
             None => query.clear_current_result(),
@@ -228,6 +264,8 @@ impl BrowseSession {
         self.selection_generation = 0;
         self.connection_state = ConnectionState::default();
         self.metadata_state = MetadataState::default();
+        self.metadata_run.clear_active();
+        self.table_detail_run.clear_active();
         self.dsn = None;
         self.active_connection_id = None;
         self.active_connection_name = None;
@@ -542,7 +580,7 @@ mod tests {
         fn begin_connecting_sets_pair() {
             let mut session = BrowseSession::default();
 
-            session.begin_connecting("postgres://localhost/test");
+            let _ = session.begin_connecting("postgres://localhost/test");
 
             assert!(session.connection_state().is_connecting());
             assert_eq!(session.metadata_state(), &MetadataState::Loading);
@@ -593,7 +631,7 @@ mod tests {
         fn mark_connection_failed_when_connected_keeps_connected() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            session.begin_reload();
+            let _ = session.begin_reload();
 
             session.mark_connection_failed("reload timeout".to_string());
 
@@ -610,7 +648,7 @@ mod tests {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
 
-            session.begin_metadata_refresh();
+            let _ = session.begin_metadata_refresh();
 
             assert!(session.connection_state().is_connected());
             assert_eq!(session.metadata_state(), &MetadataState::Loading);
@@ -619,8 +657,8 @@ mod tests {
         #[test]
         fn mark_disconnected_resets_connection_pair() {
             let mut session = BrowseSession::default();
-            session.begin_connecting("postgres://localhost/test");
-            session.begin_reload();
+            let _ = session.begin_connecting("postgres://localhost/test");
+            let _ = session.begin_reload();
 
             session.mark_disconnected();
 
@@ -633,7 +671,7 @@ mod tests {
         fn begin_reload_and_finish_reload() {
             let mut session = BrowseSession::default();
 
-            session.begin_reload();
+            let _ = session.begin_reload();
             assert!(session.is_reloading());
 
             session.finish_reload();
@@ -681,14 +719,14 @@ mod tests {
             session.mark_connected(make_metadata("db"));
             let mut pagination = PaginationState::default();
             let _ = session.select_table("public", "users", &mut pagination);
-            session.begin_reload();
+            let _ = session.begin_reload();
             assert!(session.selection_generation() > 0);
 
             let cache = session.to_cache(0, InspectorTab::Info, None, ResultHistory::default());
 
             let mut new_session = BrowseSession::default();
             new_session.set_selection_generation(42);
-            new_session.begin_reload();
+            let _ = new_session.begin_reload();
             let mut query = QueryExecution::default();
             new_session.restore_from_cache(&cache, &mut query);
 
@@ -714,7 +752,7 @@ mod tests {
             let mut restored = BrowseSession::default();
             let mut query = QueryExecution::default();
             restored.restore_from_cache(&cache, &mut query);
-            restored.begin_reload();
+            let _ = restored.begin_reload();
 
             assert_eq!(restored.selected_table_key(), Some("public.users"));
             assert!(restored.table_detail().is_some());
@@ -737,7 +775,7 @@ mod tests {
             session.set_active_connection_name_for_test(Some("mydb".to_string()));
             session.set_active_database_type_for_test(Some(DatabaseType::PostgreSQL));
             session.enable_read_only();
-            session.begin_reload();
+            let _ = session.begin_reload();
             let mut query = QueryExecution::default();
             query.set_current_result(make_query_result());
             query.pagination.set_page_for_test(3);

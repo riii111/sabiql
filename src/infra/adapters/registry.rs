@@ -1,12 +1,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use app::ports::outbound::{
+use crate::app::ports::outbound::{
     DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
 };
+use crate::domain::connection::{ConnectionProfile, DatabaseType};
+use crate::domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
 use async_trait::async_trait;
-use domain::connection::{ConnectionProfile, DatabaseType};
-use domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
 
 use super::postgres::PostgresAdapter;
 use super::sqlite::SqliteAdapter;
@@ -255,8 +255,8 @@ impl SqlDialect for DbAdapterRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::connection::SslMode;
-    use domain::{Column, ColumnAttributes};
+    use crate::domain::connection::SslMode;
+    use crate::domain::{Column, ColumnAttributes};
     use std::process::Command;
 
     fn make_sqlite_dsn(sql: &str) -> (tempfile::TempDir, String) {

@@ -32,7 +32,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                        │psql: error: connection to server at "192.168.1.100", port 5432 failed: timeout expired                          │                        │
 │                        │                                                                                                                 │                        │
 │                        │Actions:  e  Re-enter   s  Switch   d  Details   y  Copy                                                         │                        │
-│                        ╰ Esc to close ───────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

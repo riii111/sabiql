@@ -42,7 +42,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                        │ERROR line 21: something went wrong in module_21                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │Actions:  e  Re-enter   s  Switch   d  Details   y  Copy                                                         │                        │
-│                        ╰ Esc to close ───────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use domain::{
+use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
     IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };

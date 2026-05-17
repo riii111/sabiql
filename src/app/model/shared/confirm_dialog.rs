@@ -9,6 +9,8 @@ pub enum ConfirmIntent {
         blocked: bool,
     },
     CsvExport {
+        dsn: String,
+        run_id: u64,
         export_query: String,
         file_name: String,
         row_count: Option<usize>,
@@ -18,12 +20,12 @@ pub enum ConfirmIntent {
 
 #[derive(Debug, Clone)]
 pub struct ConfirmDialogState {
-    title: String,
-    message: String,
-    intent: Option<ConfirmIntent>,
-    preview_scroll: u16,
-    preview_viewport_height: Option<u16>,
-    preview_content_height: Option<u16>,
+    pub(crate) title: String,
+    pub(crate) message: String,
+    pub(crate) intent: Option<ConfirmIntent>,
+    pub(crate) preview_scroll: u16,
+    pub(crate) preview_viewport_height: Option<u16>,
+    pub(crate) preview_content_height: Option<u16>,
 }
 
 impl ConfirmDialogState {

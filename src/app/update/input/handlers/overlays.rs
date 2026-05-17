@@ -1,9 +1,19 @@
 use crate::update::action::Action;
-use crate::update::input::keybindings::{self, KeyCombo};
+use crate::update::input::keybindings::{self, KeyCombo, Modifiers};
 use crate::update::input::keymap;
 
 pub fn handle_help_keys(combo: KeyCombo) -> Action {
-    keybindings::HELP.resolve(&combo).unwrap_or(Action::None)
+    if let Some(action) = keybindings::HELP.resolve(&combo) {
+        return action;
+    }
+
+    match (combo.key, combo.modifiers) {
+        (keybindings::Key::Char(ch), Modifiers::NONE | Modifiers::SHIFT) => Action::TextInput {
+            target: crate::update::action::InputTarget::HelpFilter,
+            ch,
+        },
+        _ => Action::None,
+    }
 }
 
 pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
@@ -14,7 +24,7 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
 mod tests {
     use super::*;
     use crate::update::action::ModalKind;
-    use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::action::{InputTarget, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
@@ -55,22 +65,34 @@ mod tests {
         }
 
         #[test]
-        fn unknown_key_returns_none() {
+        fn char_falls_through_to_filter_input() {
             let result = handle_help_keys(combo(Key::Char('a')));
+
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::HelpFilter,
+                    ch: 'a'
+                }
+            ));
+        }
+
+        #[rstest]
+        #[case(KeyCombo::ctrl(Key::Char('a')))]
+        #[case(KeyCombo::alt(Key::Char('a')))]
+        #[case(KeyCombo::ctrl_alt(Key::Char('a')))]
+        fn modified_chars_do_not_filter_help(#[case] combo: KeyCombo) {
+            let result = handle_help_keys(combo);
 
             assert!(matches!(result, Action::None));
         }
 
         #[rstest]
-        #[case(combo(Key::Char('j')), ScrollDirection::Down, ScrollAmount::Line)]
         #[case(combo(Key::Down), ScrollDirection::Down, ScrollAmount::Line)]
         #[case(combo_ctrl(Key::Char('n')), ScrollDirection::Down, ScrollAmount::Line)]
-        #[case(combo(Key::Char('k')), ScrollDirection::Up, ScrollAmount::Line)]
         #[case(combo(Key::Up), ScrollDirection::Up, ScrollAmount::Line)]
         #[case(combo_ctrl(Key::Char('p')), ScrollDirection::Up, ScrollAmount::Line)]
-        #[case(combo(Key::Char('g')), ScrollDirection::Up, ScrollAmount::ToStart)]
         #[case(combo(Key::Home), ScrollDirection::Up, ScrollAmount::ToStart)]
-        #[case(combo(Key::Char('G')), ScrollDirection::Down, ScrollAmount::ToEnd)]
         #[case(combo(Key::End), ScrollDirection::Down, ScrollAmount::ToEnd)]
         #[case(
             combo_ctrl(Key::Char('d')),
@@ -94,9 +116,7 @@ mod tests {
             ScrollAmount::FullPage
         )]
         #[case(combo(Key::PageUp), ScrollDirection::Up, ScrollAmount::FullPage)]
-        #[case(combo(Key::Char('h')), ScrollDirection::Left, ScrollAmount::Line)]
         #[case(combo(Key::Left), ScrollDirection::Left, ScrollAmount::Line)]
-        #[case(combo(Key::Char('l')), ScrollDirection::Right, ScrollAmount::Line)]
         #[case(combo(Key::Right), ScrollDirection::Right, ScrollAmount::Line)]
         fn supported_help_scroll_keys_map_to_expected_action(
             #[case] combo: KeyCombo,
@@ -113,10 +133,22 @@ mod tests {
         #[case(Key::Char('M'))]
         #[case(Key::Char('L'))]
         #[case(Key::Char('z'))]
-        fn issue_non_goals_remain_unbound_in_help_mode(#[case] code: Key) {
+        #[case(Key::Char('j'))]
+        #[case(Key::Char('k'))]
+        #[case(Key::Char('g'))]
+        #[case(Key::Char('G'))]
+        #[case(Key::Char('h'))]
+        #[case(Key::Char('l'))]
+        fn non_scroll_chars_filter_help(#[case] code: Key) {
             let result = handle_help_keys(combo(code));
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::HelpFilter,
+                    ..
+                }
+            ));
         }
     }
 

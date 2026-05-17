@@ -8,7 +8,7 @@ use crate::app::model::connection::setup::{
 };
 use crate::domain::connection::{DatabaseType, SslMode};
 use crate::primitives::atoms::text_cursor_spans;
-use crate::primitives::molecules::render_modal;
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
 const LABEL_WIDTH: u16 = 12;
@@ -40,23 +40,22 @@ impl ConnectionSetup {
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
         let modal_height = visible_fields.len() as u16 + MODAL_VERTICAL_CHROME;
 
-        let (title, hint) = if form_state.is_edit_mode() {
-            (
-                " Edit Connection ",
-                " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ",
-            )
+        let (title, submit_desc) = if form_state.is_edit_mode() {
+            (" Edit Connection ", "Save")
         } else {
-            (
-                " New Connection ",
-                " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Connect │ Esc: Cancel ",
-            )
+            (" New Connection ", "Connect")
         };
         let (_, modal_inner) = render_modal(
             frame,
             Constraint::Length(modal_width),
             Constraint::Length(modal_height),
             title,
-            hint,
+            FooterHintBar::new([
+                ("Tab", "Next"),
+                ("Shift+Tab", "Prev"),
+                ("Ctrl+S", submit_desc),
+                ("Esc", "Cancel"),
+            ]),
             theme,
         );
 

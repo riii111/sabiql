@@ -21,5 +21,6 @@ pub trait ErDiagramExporter: Send + Sync {
         tables: &[ErTableInfo],
         filename: &str,
         cache_dir: &Path,
+        browser: Option<&str>,
     ) -> ErExportResult<PathBuf>;
 }

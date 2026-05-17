@@ -6,6 +6,7 @@ pub enum InputMode {
     CellEdit,
     TablePicker,
     CommandPalette,
+    Settings,
     Help,
     SqlModal,
     ConnectionSetup,

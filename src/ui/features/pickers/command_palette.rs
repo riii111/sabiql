@@ -7,7 +7,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::update::input::palette::palette_commands;
 use crate::theme::ThemePalette;
 
-use crate::primitives::molecules::render_modal;
+use crate::primitives::molecules::{FooterHintBar, render_modal};
 
 pub struct CommandPalette;
 
@@ -18,7 +18,7 @@ impl CommandPalette {
             Constraint::Percentage(50),
             Constraint::Percentage(50),
             " Command Palette ",
-            " Enter Select │ Esc Close ",
+            FooterHintBar::new([("Enter", "Select"), ("Esc", "Close")]),
             theme,
         );
 
