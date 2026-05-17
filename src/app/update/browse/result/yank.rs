@@ -56,7 +56,7 @@ pub fn reduce_yank(
             DispatchResult::handled()
         }
         Action::DdlYank => {
-            if state.ui.inspector_tab == InspectorTab::Ddl
+            if state.ui.inspector_tab() == InspectorTab::Ddl
                 && let Some(table) = state.session.table_detail().as_ref()
             {
                 let ddl = services
@@ -449,7 +449,7 @@ mod tests {
 
         fn state_with_ddl_tab() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
@@ -504,7 +504,7 @@ mod tests {
         #[test]
         fn without_table_detail_returns_empty() {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.ui.set_inspector_tab(InspectorTab::Ddl);
 
             let effects = reduce_yank(
                 &mut state,
@@ -520,7 +520,7 @@ mod tests {
         #[test]
         fn on_non_ddl_tab_returns_empty() {
             let mut state = state_with_ddl_tab();
-            state.ui.inspector_tab = InspectorTab::Info;
+            state.ui.set_inspector_tab(InspectorTab::Info);
 
             let effects = reduce_yank(
                 &mut state,

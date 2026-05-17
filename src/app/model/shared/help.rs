@@ -117,7 +117,7 @@ impl HelpOrigin {
     pub fn from_state(state: &AppState) -> Self {
         match state.input_mode() {
             InputMode::Normal => Self::Normal {
-                focused_pane: state.ui.focused_pane,
+                focused_pane: state.ui.focused_pane(),
                 result_active: state.result_interaction.selection().cell().is_some(),
                 history_mode: state.query.is_history_mode(),
             },
@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn normal_origin_captures_focused_pane() {
         let mut state = AppState::new("test".to_string());
-        state.ui.focused_pane = FocusedPane::Inspector;
+        state.ui.set_focused_pane(FocusedPane::Inspector);
 
         let origin = HelpOrigin::from_state(&state);
 

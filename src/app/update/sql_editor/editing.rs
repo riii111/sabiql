@@ -118,13 +118,13 @@ pub(super) fn reduce_editing(
                 .sql_modal
                 .editor
                 .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             DispatchResult::handled()
         }
         Action::SqlModalClear => {
             state.sql_modal.editor.clear();
             state.sql_modal.reset_completion();
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             DispatchResult::handled()
         }
         _ => DispatchResult::pass(),

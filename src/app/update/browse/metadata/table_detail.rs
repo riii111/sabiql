@@ -18,7 +18,7 @@ pub(super) fn reduce_table_detail(state: &mut AppState, action: &Action) -> Disp
             }
 
             if state.session.set_table_detail(*detail.clone(), *generation) {
-                state.ui.inspector_scroll_offset = 0;
+                state.ui.set_inspector_scroll_offset(0);
             }
             DispatchResult::handled()
         }

@@ -64,11 +64,13 @@ fn reduce_inner(
 
     match action {
         Action::BeginKeySequence(prefix) => {
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(prefix);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(prefix));
             vec![]
         }
         Action::CancelKeySequence => {
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             vec![]
         }
         Action::Quit => {
@@ -92,7 +94,7 @@ fn reduce_inner(
             if state.modal.active_mode() == InputMode::TablePicker {
                 let table = state
                     .filtered_tables()
-                    .get(state.ui.table_picker.selected())
+                    .get(state.ui.table_picker().selected())
                     .copied()
                     .cloned();
                 if let Some(table) = table {
@@ -104,12 +106,12 @@ fn reduce_inner(
                     state.modal.replace_mode(InputMode::ConnectionError);
                     return vec![];
                 }
-                if state.ui.focused_pane != FocusedPane::Explorer {
+                if state.ui.focused_pane() != FocusedPane::Explorer {
                     return vec![];
                 }
                 let table = state
                     .tables()
-                    .get(state.ui.explorer_selected)
+                    .get(state.ui.explorer_selected())
                     .copied()
                     .cloned();
                 if let Some(table) = table {
@@ -118,7 +120,7 @@ fn reduce_inner(
             } else if state.modal.active_mode() == InputMode::CommandPalette {
                 use crate::update::input::palette::palette_action_for_index;
 
-                let cmd_action = palette_action_for_index(state.ui.table_picker.selected());
+                let cmd_action = palette_action_for_index(state.ui.table_picker().selected());
                 state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
             }
@@ -268,13 +270,13 @@ mod tests {
         #[case(Action::Select(SelectMotion::Previous))]
         fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
             let mut state = create_test_state();
-            state.ui.focused_pane = FocusedPane::Explorer;
-            state.ui.explorer_selected = 0;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
+            state.ui.set_explorer_selected_raw(0);
             let now = Instant::now();
 
             reduce(&mut state, action, now, &AppServices::stub());
 
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
     }
 
@@ -624,7 +626,7 @@ mod tests {
         #[test]
         fn open_table_picker_sets_mode_and_clears_filter() {
             let mut state = create_test_state();
-            state.ui.table_picker.insert_filter_str("test");
+            state.ui.table_picker_mut().insert_filter_str("test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -635,8 +637,8 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::TablePicker);
-            assert!(state.ui.table_picker.filter_input().content().is_empty());
-            assert_eq!(state.ui.table_picker.selected(), 0);
+            assert!(state.ui.table_picker().filter_input().content().is_empty());
+            assert_eq!(state.ui.table_picker().selected(), 0);
             assert!(effects.is_empty());
         }
 
@@ -926,7 +928,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_empty_tables_selects_none() {
             let mut state = create_test_state();
-            state.ui.explorer_selected = 5;
+            state.ui.set_explorer_selected_raw(5);
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -939,13 +941,13 @@ mod tests {
             reduce(&mut state, action, now, &AppServices::stub());
 
             assert!(state.session.metadata().is_some());
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]
         fn metadata_loaded_with_tables_selects_first() {
             let mut state = create_test_state();
-            state.ui.explorer_selected = 3;
+            state.ui.set_explorer_selected_raw(3);
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -963,7 +965,7 @@ mod tests {
             reduce(&mut state, action, now, &AppServices::stub());
 
             assert!(state.session.metadata().is_some());
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]
@@ -992,7 +994,7 @@ mod tests {
             state
                 .connection_error
                 .set_error(ConnectionErrorInfo::new("error"));
-            state.ui.focused_pane = FocusedPane::Result; // Any pane works
+            state.ui.set_focused_pane(FocusedPane::Result); // Any pane works
             let now = Instant::now();
 
             reduce(
@@ -1068,7 +1070,7 @@ mod tests {
             state
                 .session
                 .set_metadata_state(MetadataState::Error("error".to_string()));
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
             let now = Instant::now();
 
             // Close modal
@@ -1189,7 +1191,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
             state.modal.set_mode(InputMode::Normal);
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
             state.ui.set_explorer_selection(Some(0));
 
             reduce(
@@ -1211,7 +1213,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
             state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker.set_selection(0);
+            state.ui.table_picker_mut().set_selection(0);
 
             reduce(
                 &mut state,
@@ -2239,7 +2241,7 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
-            state.ui.explorer_selected = 5;
+            state.ui.set_explorer_selected_raw(5);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2285,7 +2287,7 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
-            state.ui.explorer_selected = 3;
+            state.ui.set_explorer_selected_raw(3);
 
             let cached = crate::model::connection::cache::ConnectionCache {
                 explorer_selected: 10,
@@ -2315,8 +2317,8 @@ mod tests {
 
             assert_eq!(state.session.active_connection_id(), Some(&conn_b));
             assert!(state.session.connection_state().is_connected());
-            assert_eq!(state.ui.explorer_selected, 10);
-            assert_eq!(state.ui.inspector_tab, InspectorTab::Indexes);
+            assert_eq!(state.ui.explorer_selected(), 10);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Indexes);
             assert_eq!(
                 state.session.metadata().as_ref().unwrap().database_name,
                 "cached_db"
@@ -2346,11 +2348,10 @@ mod tests {
         #[test]
         fn open_clears_selections_and_filter() {
             let mut state = state_with_metadata();
-            state.ui.er_picker.insert_filter_str("old");
+            state.ui.er_picker_mut().insert_filter_str("old");
             state
                 .ui
-                .er_selected_tables
-                .insert("public.users".to_string());
+                .toggle_er_selected_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2361,8 +2362,8 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
-            assert!(state.ui.er_picker.filter_input().content().is_empty());
-            assert!(state.ui.er_selected_tables.is_empty());
+            assert!(state.ui.er_picker().filter_input().content().is_empty());
+            assert!(state.ui.er_selected_tables().is_empty());
             assert!(effects.is_empty());
         }
 
@@ -2378,7 +2379,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.ui.pending_er_picker);
+            assert!(state.ui.pending_er_picker());
             assert!(state.messages.last_success.is_some());
             assert_ne!(state.input_mode(), InputMode::ErTablePicker);
             assert!(effects.is_empty());
@@ -2418,21 +2419,21 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_dispatches_open() {
             let mut state = create_test_state();
-            state.ui.pending_er_picker = true;
+            state.ui.set_pending_er_picker(true);
             state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
             let effects = reduce(&mut state, action, now, &AppServices::stub());
 
-            assert!(!state.ui.pending_er_picker);
+            assert!(!state.ui.pending_er_picker());
             assert!(has_open_er_dispatch(&effects));
         }
 
         #[test]
         fn metadata_loaded_without_pending_does_not_dispatch_open() {
             let mut state = create_test_state();
-            state.ui.pending_er_picker = false;
+            state.ui.set_pending_er_picker(false);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
@@ -2444,14 +2445,14 @@ mod tests {
         #[test]
         fn metadata_loaded_with_pending_but_non_normal_mode_discards() {
             let mut state = create_test_state();
-            state.ui.pending_er_picker = true;
+            state.ui.set_pending_er_picker(true);
             state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state);
 
             let effects = reduce(&mut state, action, now, &AppServices::stub());
 
-            assert!(!state.ui.pending_er_picker);
+            assert!(!state.ui.pending_er_picker());
             assert!(!has_open_er_dispatch(&effects));
         }
 
@@ -2460,7 +2461,7 @@ mod tests {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            state.ui.er_picker.insert_filter_str("test");
+            state.ui.er_picker_mut().insert_filter_str("test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -2471,7 +2472,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.ui.er_picker.filter_input().content().is_empty());
+            assert!(state.ui.er_picker().filter_input().content().is_empty());
             assert!(effects.is_empty());
         }
 
@@ -2482,8 +2483,7 @@ mod tests {
 
             state
                 .ui
-                .er_selected_tables
-                .insert("public.users".to_string());
+                .toggle_er_selected_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2651,8 +2651,8 @@ mod tests {
 
             // ConfirmSelection from Normal mode (explorer focused)
             state.modal.set_mode(InputMode::Normal);
-            state.ui.focused_pane = FocusedPane::Explorer;
-            state.ui.explorer_selected = 0;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
+            state.ui.set_explorer_selected_raw(0);
             let effects = reduce(
                 &mut state,
                 Action::ConfirmSelection,
@@ -2817,7 +2817,7 @@ mod tests {
             let entry_index = palette_index_of(|a| same_palette_action(a, &target_action));
 
             let mut state = state_in_palette_mode();
-            state.ui.table_picker.set_selection(entry_index);
+            state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
             reduce(
@@ -2836,7 +2836,7 @@ mod tests {
 
             let mut state = state_in_palette_mode();
             state.session.set_dsn_for_test("postgres://localhost/test");
-            state.ui.table_picker.set_selection(entry_index);
+            state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2858,7 +2858,7 @@ mod tests {
                 palette_index_of(|a| matches!(a, Action::OpenModal(ModalKind::ConnectionSelector)));
 
             let mut state = state_in_palette_mode();
-            state.ui.table_picker.set_selection(entry_index);
+            state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
             reduce(
@@ -2898,7 +2898,7 @@ mod tests {
         #[test]
         fn y_then_d_cancels_yank_starts_delete() {
             let mut state = create_test_state();
-            state.ui.focused_pane = FocusedPane::Result;
+            state.ui.set_focused_pane(FocusedPane::Result);
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 
@@ -2924,7 +2924,7 @@ mod tests {
         #[test]
         fn d_then_y_cancels_delete_starts_yank() {
             let mut state = create_test_state();
-            state.ui.focused_pane = FocusedPane::Result;
+            state.ui.set_focused_pane(FocusedPane::Result);
             state.result_interaction.activate_cell(0, 0);
             let now = Instant::now();
 

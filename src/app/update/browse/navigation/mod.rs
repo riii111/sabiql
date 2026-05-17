@@ -23,7 +23,7 @@ fn active_capabilities<'a>(state: &'a AppState, services: &'a AppServices) -> &'
 
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
     let active_tab =
-        active_capabilities(state, services).normalize_inspector_tab(state.ui.inspector_tab);
+        active_capabilities(state, services).normalize_inspector_tab(state.ui.inspector_tab());
     state
         .session
         .table_detail()
@@ -54,7 +54,7 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
 
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
     let visible = match active_capabilities(state, services)
-        .normalize_inspector_tab(state.ui.inspector_tab)
+        .normalize_inspector_tab(state.ui.inspector_tab())
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
         _ => state.inspector_visible_rows(),
