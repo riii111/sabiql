@@ -35,12 +35,6 @@ impl DbAdapterRegistry {
             "Unsupported database DSN scheme: {dsn}"
         )))
     }
-
-    fn sqlite_query_not_implemented() -> DbOperationError {
-        DbOperationError::UnsupportedOperation(
-            "SQLite query execution is not implemented yet".to_string(),
-        )
-    }
 }
 
 impl DsnBuilder for DbAdapterRegistry {
@@ -127,7 +121,11 @@ impl QueryExecutor for DbAdapterRegistry {
                     .execute_preview(dsn, schema, table, limit, offset, read_only)
                     .await
             }
-            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
+            DatabaseType::SQLite => {
+                self.sqlite
+                    .execute_preview(dsn, schema, table, limit, offset, read_only)
+                    .await
+            }
         }
     }
 
@@ -139,7 +137,7 @@ impl QueryExecutor for DbAdapterRegistry {
     ) -> Result<QueryResult, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.execute_adhoc(dsn, query, read_only).await,
-            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
+            DatabaseType::SQLite => self.sqlite.execute_adhoc(dsn, query, read_only).await,
         }
     }
 
@@ -151,7 +149,7 @@ impl QueryExecutor for DbAdapterRegistry {
     ) -> Result<WriteExecutionResult, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.execute_write(dsn, query, read_only).await,
-            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
+            DatabaseType::SQLite => self.sqlite.execute_write(dsn, query, read_only).await,
         }
     }
 
@@ -163,7 +161,7 @@ impl QueryExecutor for DbAdapterRegistry {
     ) -> Result<usize, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.count_query_rows(dsn, query, read_only).await,
-            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
+            DatabaseType::SQLite => self.sqlite.count_query_rows(dsn, query, read_only).await,
         }
     }
 
@@ -180,7 +178,7 @@ impl QueryExecutor for DbAdapterRegistry {
                     .export_to_csv(dsn, query, path, read_only)
                     .await
             }
-            DatabaseType::SQLite => Err(Self::sqlite_query_not_implemented()),
+            DatabaseType::SQLite => self.sqlite.export_to_csv(dsn, query, path, read_only).await,
         }
     }
 }
@@ -419,6 +417,20 @@ mod tests {
         assert_eq!(detail.schema, "main");
         assert_eq!(detail.name, "users");
         assert_eq!(detail.primary_key, Some(vec!["id".to_string()]));
+    }
+
+    #[tokio::test]
+    async fn sqlite_query_execution_is_dispatched_to_sqlite_adapter() {
+        let (_dir, dsn) = make_sqlite_dsn("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let result = registry
+            .execute_adhoc(&dsn, "SELECT 1 AS value", true)
+            .await
+            .unwrap();
+
+        assert_eq!(result.columns, vec!["value"]);
+        assert_eq!(result.rows, vec![vec!["1".to_string()]]);
     }
 
     #[tokio::test]

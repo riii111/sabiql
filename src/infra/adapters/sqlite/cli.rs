@@ -2,7 +2,7 @@ use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -29,7 +29,7 @@ impl SqliteCli {
         path: &str,
         sql: &str,
     ) -> Result<T, DbOperationError> {
-        let output = self.run(path, sql).await?;
+        let output = self.run(path, &["-readonly", "-json"], sql).await?;
         if !output.status.success() {
             return Err(DbOperationError::QueryFailed(output.stderr));
         }
@@ -40,9 +40,106 @@ impl SqliteCli {
         serde_json::from_str(stdout).map_err(DbOperationError::from)
     }
 
-    async fn run(&self, path: &str, sql: &str) -> Result<SqliteOutput, DbOperationError> {
+    pub(super) async fn execute_csv(
+        &self,
+        path: &str,
+        sql: &str,
+        read_only: bool,
+    ) -> Result<String, DbOperationError> {
+        let mut args = vec!["-batch", "-bail", "-csv", "-header"];
+        if read_only {
+            args.push("-readonly");
+        }
+        let output = self.run(path, &args, sql).await?;
+        if !output.status.success() {
+            return Err(DbOperationError::QueryFailed(output.stderr));
+        }
+        Ok(output.stdout)
+    }
+
+    pub(super) async fn export_csv(
+        &self,
+        path: &str,
+        sql: &str,
+        output_path: &std::path::Path,
+        read_only: bool,
+    ) -> Result<usize, DbOperationError> {
         let mut cmd = Command::new("sqlite3");
-        cmd.arg("-readonly").arg("-json").arg(path).arg(sql);
+        cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
+        if read_only {
+            cmd.arg("-readonly");
+        }
+        cmd.arg(path).arg(sql);
+
+        let mut child = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|error| DbOperationError::CommandNotFound(error.to_string()))?;
+
+        let stdout = child.stdout.take();
+        let mut stderr_handle = child.stderr.take();
+
+        let file = tokio::fs::File::create(output_path)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let mut writer = tokio::io::BufWriter::new(file);
+
+        let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
+            let mut newline_count = 0usize;
+            if let Some(mut stdout) = stdout {
+                let mut buf = [0u8; 8192];
+                loop {
+                    let n = stdout.read(&mut buf).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    newline_count += buf[..n].iter().filter(|&&b| b == b'\n').count();
+                    writer.write_all(&buf[..n]).await?;
+                }
+                writer.flush().await?;
+            }
+
+            let stderr = {
+                let mut buf = Vec::new();
+                if let Some(ref mut stderr) = stderr_handle {
+                    stderr.read_to_end(&mut buf).await?;
+                }
+                String::from_utf8_lossy(&buf).into_owned()
+            };
+            let status = child.wait().await?;
+            Ok::<_, std::io::Error>((status, stderr, newline_count))
+        })
+        .await;
+
+        let (status, stderr, newline_count) = match result {
+            Ok(inner) => inner.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?,
+            Err(error) => {
+                let _ = tokio::fs::remove_file(output_path).await;
+                return Err(DbOperationError::Timeout(error.to_string()));
+            }
+        };
+
+        if !status.success() {
+            let _ = tokio::fs::remove_file(output_path).await;
+            return Err(DbOperationError::QueryFailed(stderr));
+        }
+
+        Ok(newline_count.saturating_sub(1))
+    }
+
+    async fn run(
+        &self,
+        path: &str,
+        args: &[&str],
+        sql: &str,
+    ) -> Result<SqliteOutput, DbOperationError> {
+        let mut cmd = Command::new("sqlite3");
+        for arg in args {
+            cmd.arg(arg);
+        }
+        cmd.arg(path).arg(sql);
         Self::collect_output(&mut cmd, self.timeout_secs).await
     }
 
