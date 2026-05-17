@@ -256,15 +256,14 @@ pub struct ConnectionTarget {
     pub name: String,
 }
 
-// Do not derive PartialEq here: payload variants carry domain snapshots and
-// errors that are not all value-comparable.
+// Full Action equality is intentionally unavailable: some payloads carry
+// snapshots or errors that are not value-comparable.
 //
 // Classification rule:
-// Order actions by user-facing responsibility:
-// - Shared controls: common behavior used across features (e.g., Quit, Render, Scroll, TextInput).
-// - Product objects: group by the object in the action sentence, rather than by UI component or reducer (e.g., ConnectionSetupSave -> Connections).
-// Product object groups follow dependency order:
-// User setup -> DB structure -> Authored SQL -> Query results -> Result derivatives.
+// Order shared controls first, then product objects by dependency:
+// setup -> DB structure -> SQL -> query results -> result derivatives.
+// Product groups follow the object in the action sentence, not UI/reducer names
+// (e.g., MetadataLoaded -> Database structure, QueryCompleted -> Query results).
 #[derive(Debug, Clone)]
 pub enum Action {
     // App shell
