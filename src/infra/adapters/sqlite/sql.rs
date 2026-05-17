@@ -35,6 +35,32 @@ pub(super) fn row_count_query(table: &str) -> String {
     format!("SELECT COUNT(*) AS count FROM {}", quote_ident(table))
 }
 
+pub(super) fn build_preview_query(
+    table: &str,
+    order_columns: &[String],
+    limit: usize,
+    offset: usize,
+) -> String {
+    let order_clause = if order_columns.is_empty() {
+        String::new()
+    } else {
+        let cols = order_columns
+            .iter()
+            .map(|col| quote_ident(col))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(" ORDER BY {cols}")
+    };
+
+    format!(
+        "SELECT * FROM {}{} LIMIT {} OFFSET {}",
+        quote_ident(table),
+        order_clause,
+        limit,
+        offset
+    )
+}
+
 pub(super) fn table_xinfo_query(table: &str) -> String {
     format!("PRAGMA table_xinfo({})", quote_ident(table))
 }
@@ -238,6 +264,14 @@ mod tests {
         assert_eq!(
             row_count_query(r#"my"table"#),
             r#"SELECT COUNT(*) AS count FROM "my""table""#
+        );
+    }
+
+    #[test]
+    fn build_preview_query_orders_by_primary_key_columns_when_available() {
+        assert_eq!(
+            build_preview_query("users", &["id".to_string()], 10, 20),
+            r#"SELECT * FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
         );
     }
 

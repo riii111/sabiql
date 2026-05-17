@@ -120,7 +120,7 @@ async fn main() -> Result<()> {
     let services = AppServices {
         ddl_generator: Arc::clone(&adapter_registry) as _,
         sql_dialect: Arc::clone(&adapter_registry) as _,
-        db_capabilities: DbCapabilities::postgres_like(),
+        db_capabilities: DbCapabilities::disconnected(),
     };
 
     let mut state = AppState::new(project_name);

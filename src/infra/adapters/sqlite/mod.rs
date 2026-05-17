@@ -1,12 +1,14 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use serde::Deserialize;
 
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::{DbOperationError, MetadataProvider, QueryExecutor};
 use crate::domain::{
-    Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, Schema, Table, TableSignature, TableSummary,
+    Column, ColumnAttributes, CommandTag, DatabaseMetadata, FkAction, ForeignKey, Index,
+    IndexAttributes, IndexType, QueryResult, QuerySource, Schema, Table, TableSignature,
+    TableSummary, WriteExecutionResult,
 };
 
 mod cli;
@@ -135,6 +137,50 @@ impl SqliteAdapter {
     ) -> Result<Vec<String>, DbOperationError> {
         let columns = self.columns(path, table).await?;
         Ok(Self::extract_primary_key(&columns))
+    }
+
+    fn validate_main_schema(schema: &str) -> Result<(), DbOperationError> {
+        if schema == MAIN_SCHEMA {
+            Ok(())
+        } else {
+            Err(DbOperationError::ObjectMissing(format!(
+                "SQLite schema not found: {schema}"
+            )))
+        }
+    }
+
+    async fn preview_order_columns(&self, path: &str, table: &str) -> Vec<String> {
+        self.primary_key_columns(path, table)
+            .await
+            .unwrap_or_default()
+    }
+
+    async fn execute_csv_query(
+        &self,
+        path: &str,
+        query: &str,
+        source: QuerySource,
+        read_only: bool,
+    ) -> Result<QueryResult, DbOperationError> {
+        let start = Instant::now();
+        let stdout = self.cli.execute_csv(path, query, read_only).await?;
+        let elapsed = start.elapsed().as_millis() as u64;
+        csv_to_query_result(query, &stdout, source, elapsed)
+    }
+
+    async fn execute_changes_query(
+        &self,
+        path: &str,
+        query: &str,
+        read_only: bool,
+    ) -> Result<(usize, u64), DbOperationError> {
+        let start = Instant::now();
+        let stdout = self
+            .cli
+            .execute_csv(path, &append_changes_query(query), read_only)
+            .await?;
+        let elapsed = start.elapsed().as_millis() as u64;
+        Ok((parse_affected_rows(&stdout)?, elapsed))
     }
 
     async fn indexes(&self, path: &str, table: &str) -> Result<Vec<Index>, DbOperationError> {
@@ -343,6 +389,289 @@ impl SqliteAdapter {
     }
 }
 
+fn append_changes_query(query: &str) -> String {
+    let trimmed = query.trim_end();
+    // The standalone separator also terminates a trailing line comment before
+    // appending the changes() probe.
+    format!("{trimmed}\n;\nSELECT changes() AS affected_rows;")
+}
+
+fn csv_field_count(line: &str) -> usize {
+    let mut count = 1;
+    let mut in_quotes = false;
+    for ch in line.chars() {
+        match ch {
+            '"' => in_quotes = !in_quotes,
+            ',' if !in_quotes => count += 1,
+            _ => {}
+        }
+    }
+    count
+}
+
+fn is_ident_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
+    i += 1;
+    while i < bytes.len() {
+        if bytes[i] == quote {
+            if i + 1 < bytes.len() && bytes[i + 1] == quote {
+                i += 2;
+            } else {
+                return i + 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    i
+}
+
+fn skip_bracket_quoted(bytes: &[u8], mut i: usize) -> usize {
+    i += 1;
+    while i < bytes.len() {
+        if bytes[i] == b']' {
+            return i + 1;
+        }
+        i += 1;
+    }
+    i
+}
+
+/// Returns the next SQL keyword and the byte offset immediately after it.
+fn next_keyword_from(sql: &str, mut i: usize) -> Option<(&str, usize)> {
+    let bytes = sql.as_bytes();
+    while i < bytes.len() {
+        match bytes[i] {
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                if i + 1 < bytes.len() {
+                    i += 2;
+                }
+            }
+            b'\'' | b'"' | b'`' => {
+                i = skip_quoted(bytes, i, bytes[i]);
+            }
+            b'[' => {
+                i = skip_bracket_quoted(bytes, i);
+            }
+            b if b.is_ascii_alphabetic() => {
+                let start = i;
+                while i < bytes.len() && is_ident_char(bytes[i]) {
+                    i += 1;
+                }
+                return Some((&sql[start..i], i));
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+fn first_keyword(sql: &str) -> &str {
+    next_keyword_from(sql, 0)
+        .map(|(keyword, _)| keyword)
+        .unwrap_or("")
+}
+
+fn second_keyword(sql: &str) -> Option<&str> {
+    let (_, end) = next_keyword_from(sql, 0)?;
+    next_keyword_from(sql, end).map(|(keyword, _)| keyword)
+}
+
+fn contains_keyword(sql: &str, expected: &str) -> bool {
+    let mut offset = 0;
+    while let Some((keyword, end)) = next_keyword_from(sql, offset) {
+        if keyword.eq_ignore_ascii_case(expected) {
+            return true;
+        }
+        offset = end;
+    }
+    false
+}
+
+fn count_select_statements(sql: &str) -> usize {
+    sql.split(';')
+        .filter(|stmt| {
+            let keyword = first_keyword(stmt);
+            keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("WITH")
+        })
+        .count()
+}
+
+fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
+    let lines: Vec<&str> = stdout.lines().collect();
+    if lines.len() <= 2 {
+        return stdout;
+    }
+
+    let expected_sets = count_select_statements(sql);
+    let first_header = lines[0];
+    let mut current_fc = csv_field_count(first_header);
+    let mut known_headers: Vec<&str> = vec![first_header];
+    let mut last_header_idx = 0;
+    let mut data_rows_since_header = 0usize;
+
+    for (i, &line) in lines.iter().enumerate().skip(1) {
+        let fc = csv_field_count(line);
+        if fc != current_fc {
+            last_header_idx = i;
+            current_fc = fc;
+            data_rows_since_header = 0;
+            if !known_headers.contains(&line) {
+                known_headers.push(line);
+            }
+        } else if known_headers.contains(&line) {
+            last_header_idx = i;
+            data_rows_since_header = 0;
+        } else if expected_sets > 1
+            && data_rows_since_header >= 1
+            && known_headers.len() < expected_sets
+        {
+            last_header_idx = i;
+            known_headers.push(line);
+            data_rows_since_header = 0;
+        } else {
+            data_rows_since_header += 1;
+        }
+    }
+
+    if last_header_idx == 0 {
+        return stdout;
+    }
+
+    let byte_offset: usize = stdout
+        .lines()
+        .take(last_header_idx)
+        .map(|line| line.len() + 1)
+        .sum();
+
+    &stdout[byte_offset..]
+}
+
+fn csv_to_query_result(
+    query: &str,
+    stdout: &str,
+    source: QuerySource,
+    execution_time_ms: u64,
+) -> Result<QueryResult, DbOperationError> {
+    let stdout = stdout.trim();
+    if stdout.is_empty() {
+        return Ok(QueryResult::success(
+            query.to_string(),
+            Vec::new(),
+            Vec::new(),
+            execution_time_ms,
+            source,
+        ));
+    }
+
+    let csv_block = extract_last_csv_block(stdout, query);
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(csv_block.as_bytes());
+    let columns = reader.headers()?.iter().map(ToString::to_string).collect();
+    let mut rows = Vec::new();
+    for result in reader.records() {
+        rows.push(result?.iter().map(ToString::to_string).collect());
+    }
+
+    Ok(QueryResult::success(
+        query.to_string(),
+        columns,
+        rows,
+        execution_time_ms,
+        source,
+    ))
+}
+
+fn first_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(stdout.trim().as_bytes());
+    let mut records = reader.records();
+    let record = records
+        .next()
+        .transpose()?
+        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))?;
+    record
+        .get(0)
+        .map(ToString::to_string)
+        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))
+}
+
+fn last_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
+    let line = stdout
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))?;
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .from_reader(line.as_bytes());
+    let mut records = reader.records();
+    let record = records
+        .next()
+        .transpose()?
+        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))?;
+    record
+        .get(0)
+        .map(ToString::to_string)
+        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))
+}
+
+fn parse_affected_rows(stdout: &str) -> Result<usize, DbOperationError> {
+    last_csv_cell(stdout)
+        .map_err(|error| match error {
+            DbOperationError::EmptyResponse(_) => {
+                DbOperationError::CommandTagParseFailed(stdout.to_string())
+            }
+            other => other,
+        })?
+        .parse::<usize>()
+        .map_err(|error| DbOperationError::CommandTagParseFailed(error.to_string()))
+}
+
+fn parse_count_result(stdout: &str) -> Result<usize, DbOperationError> {
+    first_csv_cell(stdout)
+        .map_err(|error| match error {
+            DbOperationError::EmptyResponse(_) => {
+                DbOperationError::QueryFailed("Failed to parse COUNT result".to_string())
+            }
+            other => other,
+        })?
+        .parse::<usize>()
+        .map_err(|error| {
+            DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {error}"))
+        })
+}
+
+fn ddl_tag(query: &str) -> Option<CommandTag> {
+    let object = second_keyword(query)
+        .unwrap_or("OBJECT")
+        .to_ascii_uppercase();
+    let keyword = first_keyword(query);
+    if keyword.eq_ignore_ascii_case("CREATE") {
+        Some(CommandTag::Create(object))
+    } else if keyword.eq_ignore_ascii_case("DROP") {
+        Some(CommandTag::Drop(object))
+    } else if keyword.eq_ignore_ascii_case("ALTER") {
+        Some(CommandTag::Alter(object))
+    } else {
+        None
+    }
+}
+
 fn parse_fk_action(action: &str) -> Result<FkAction, DbOperationError> {
     action
         .parse::<FkAction>()
@@ -379,11 +708,7 @@ impl MetadataProvider for SqliteAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        if schema != MAIN_SCHEMA {
-            return Err(DbOperationError::ObjectMissing(format!(
-                "SQLite schema not found: {schema}"
-            )));
-        }
+        Self::validate_main_schema(schema)?;
         self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, true)
             .await
     }
@@ -394,11 +719,7 @@ impl MetadataProvider for SqliteAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        if schema != MAIN_SCHEMA {
-            return Err(DbOperationError::ObjectMissing(format!(
-                "SQLite schema not found: {schema}"
-            )));
-        }
+        Self::validate_main_schema(schema)?;
         self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, false)
             .await
     }
@@ -417,11 +738,132 @@ impl MetadataProvider for SqliteAdapter {
     }
 }
 
+#[async_trait]
+impl QueryExecutor for SqliteAdapter {
+    async fn execute_preview(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+        limit: usize,
+        offset: usize,
+        read_only: bool,
+    ) -> Result<QueryResult, DbOperationError> {
+        Self::validate_main_schema(schema)?;
+        let path = Self::path_from_dsn(dsn)?;
+        let order_columns = self.preview_order_columns(path, table).await;
+        let query = sql::build_preview_query(table, &order_columns, limit, offset);
+        self.execute_csv_query(path, &query, QuerySource::Preview, read_only)
+            .await
+    }
+
+    async fn execute_adhoc(
+        &self,
+        dsn: &str,
+        query: &str,
+        read_only: bool,
+    ) -> Result<QueryResult, DbOperationError> {
+        let path = Self::path_from_dsn(dsn)?;
+        let keyword = first_keyword(query);
+        if keyword.eq_ignore_ascii_case("INSERT")
+            || keyword.eq_ignore_ascii_case("UPDATE")
+            || keyword.eq_ignore_ascii_case("DELETE")
+        {
+            if contains_keyword(query, "RETURNING") {
+                let mut result = self
+                    .execute_csv_query(path, query, QuerySource::Adhoc, read_only)
+                    .await?;
+                let affected_rows = result.row_count as u64;
+                let tag = if keyword.eq_ignore_ascii_case("INSERT") {
+                    CommandTag::Insert(affected_rows)
+                } else if keyword.eq_ignore_ascii_case("UPDATE") {
+                    CommandTag::Update(affected_rows)
+                } else {
+                    CommandTag::Delete(affected_rows)
+                };
+                result = result.with_command_tag(tag);
+                return Ok(result);
+            }
+
+            let (affected_rows, elapsed) =
+                self.execute_changes_query(path, query, read_only).await?;
+            let tag = if keyword.eq_ignore_ascii_case("INSERT") {
+                CommandTag::Insert(affected_rows as u64)
+            } else if keyword.eq_ignore_ascii_case("UPDATE") {
+                CommandTag::Update(affected_rows as u64)
+            } else {
+                CommandTag::Delete(affected_rows as u64)
+            };
+            let mut result = QueryResult::success(
+                query.to_string(),
+                Vec::new(),
+                Vec::new(),
+                elapsed,
+                QuerySource::Adhoc,
+            );
+            result.row_count = affected_rows;
+            return Ok(result.with_command_tag(tag));
+        }
+
+        let mut result = self
+            .execute_csv_query(path, query, QuerySource::Adhoc, read_only)
+            .await?;
+        if let Some(tag) = ddl_tag(query) {
+            result = result.with_command_tag(tag);
+        } else if keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("WITH") {
+            let row_count = result.row_count;
+            result = result.with_command_tag(CommandTag::Select(row_count as u64));
+        }
+        Ok(result)
+    }
+
+    async fn execute_write(
+        &self,
+        dsn: &str,
+        query: &str,
+        read_only: bool,
+    ) -> Result<WriteExecutionResult, DbOperationError> {
+        let (affected_rows, execution_time_ms) = self
+            .execute_changes_query(Self::path_from_dsn(dsn)?, query, read_only)
+            .await?;
+        Ok(WriteExecutionResult {
+            affected_rows,
+            execution_time_ms,
+        })
+    }
+
+    async fn count_query_rows(
+        &self,
+        dsn: &str,
+        query: &str,
+        read_only: bool,
+    ) -> Result<usize, DbOperationError> {
+        let stdout = self
+            .cli
+            .execute_csv(Self::path_from_dsn(dsn)?, query, read_only)
+            .await?;
+        parse_count_result(&stdout)
+    }
+
+    async fn export_to_csv(
+        &self,
+        dsn: &str,
+        query: &str,
+        path: &std::path::Path,
+        read_only: bool,
+    ) -> Result<usize, DbOperationError> {
+        self.cli
+            .export_csv(Self::path_from_dsn(dsn)?, query, path, read_only)
+            .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::process::Command;
 
-    use crate::app::ports::outbound::MetadataProvider;
+    use crate::app::ports::outbound::{MetadataProvider, QueryExecutor};
+    use crate::domain::{CommandTag, QuerySource};
 
     use super::*;
 
@@ -435,6 +877,312 @@ mod tests {
             .unwrap();
         assert!(status.success());
         (dir, format!("sqlite://{}", path.display()))
+    }
+
+    #[tokio::test]
+    async fn preview_returns_columns_rows_and_respects_pagination() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (2, 'b'), (1, 'a'), (3, 'c');
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_preview(&dsn, "main", "users", 1, 1, true)
+            .await
+            .unwrap();
+
+        assert_eq!(result.source, QuerySource::Preview);
+        assert_eq!(result.columns, vec!["id", "name"]);
+        assert_eq!(result.rows, vec![vec!["2".to_string(), "b".to_string()]]);
+    }
+
+    #[tokio::test]
+    async fn preview_rejects_non_main_schema() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_preview(&dsn, "other", "users", 10, 0, true)
+            .await;
+
+        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+    }
+
+    #[tokio::test]
+    async fn adhoc_select_returns_query_result() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "SELECT 1 AS value", true)
+            .await
+            .unwrap();
+
+        assert_eq!(result.columns, vec!["value"]);
+        assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+        assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_returns_affected_rows_command_tag() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "UPDATE users SET name = 'x' WHERE id = 1", false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_with_following_select_uses_trailing_changes_result() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "UPDATE users SET name = 'x' WHERE id = 1; SELECT 42",
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_with_trailing_line_comment_returns_affected_rows() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "DELETE FROM users WHERE id = 1 -- cleanup selected row",
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_returning_preserves_returned_rows() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "INSERT INTO users(name) VALUES ('a') RETURNING id, name",
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.columns, vec!["id", "name"]);
+        assert_eq!(result.rows, vec![vec!["1".to_string(), "a".to_string()]]);
+        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_update_returning_preserves_returned_rows() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "UPDATE users SET name = 'x' RETURNING id, name",
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(result.command_tag, Some(CommandTag::Update(2)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_delete_returning_preserves_returned_rows() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "DELETE FROM users WHERE id = 1 RETURNING id, name",
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.rows, vec![vec!["1".to_string(), "a".to_string()]]);
+        assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_table_name_containing_returning_reports_affected_rows() {
+        let (_dir, dsn) = make_db("CREATE TABLE returning_log(id INTEGER PRIMARY KEY, name TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "INSERT INTO returning_log(name) VALUES ('a')", false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_backtick_quoted_identifier_containing_returning_reports_affected_rows() {
+        let (_dir, dsn) =
+            make_db("CREATE TABLE `my returning`(id INTEGER PRIMARY KEY, name TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "INSERT INTO `my returning`(name) VALUES ('a')", false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_bracket_quoted_identifier_containing_returning_reports_affected_rows() {
+        let (_dir, dsn) =
+            make_db("CREATE TABLE [my returning](id INTEGER PRIMARY KEY, name TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "INSERT INTO [my returning](name) VALUES ('a')", false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_ddl_returns_schema_refresh_command_tag() {
+        let (_dir, dsn) = make_db("");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "CREATE TABLE users(id INTEGER PRIMARY KEY)", false)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result.command_tag,
+            Some(CommandTag::Create("TABLE".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn write_execution_returns_affected_rows() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_write(&dsn, "DELETE FROM users WHERE id IN (1, 2)", false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.affected_rows, 2);
+    }
+
+    #[tokio::test]
+    async fn count_query_rows_parses_count_result() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            INSERT INTO users(id) VALUES (1), (2), (3);
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let count = adapter
+            .count_query_rows(&dsn, "SELECT COUNT(*) FROM users", true)
+            .await
+            .unwrap();
+
+        assert_eq!(count, 3);
+    }
+
+    #[tokio::test]
+    async fn export_to_csv_writes_rows_and_returns_row_count() {
+        let (dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            "#,
+        );
+        let path = dir.path().join("users.csv");
+        let adapter = SqliteAdapter::new();
+
+        let row_count = adapter
+            .export_to_csv(&dsn, "SELECT id, name FROM users ORDER BY id", &path, true)
+            .await
+            .unwrap();
+        let csv = std::fs::read_to_string(path).unwrap();
+
+        assert_eq!(row_count, 2);
+        assert_eq!(csv, "id,name\n1,a\n2,b\n");
+    }
+
+    #[tokio::test]
+    async fn read_only_write_fails() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_write(&dsn, "INSERT INTO users(id) VALUES (1)", true)
+            .await;
+
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
     }
 
     #[tokio::test]
@@ -614,6 +1362,32 @@ mod tests {
             empty_result,
             Err(DbOperationError::ConnectionFailed(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn relative_path_starting_with_dash_is_opened_as_database_path() {
+        struct CleanupPath(String);
+        impl Drop for CleanupPath {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = format!("-sabiql-{unique}.db");
+        let _cleanup = CleanupPath(path.clone());
+        let dsn = format!("sqlite://{path}");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "SELECT 1 AS value", false)
+            .await;
+
+        let result = result.unwrap();
+        assert_eq!(result.rows, vec![vec!["1".to_string()]]);
     }
 
     #[tokio::test]
