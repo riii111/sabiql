@@ -57,8 +57,8 @@ fn build_update_preview(
 
     let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
     let target = crate::policy::write::write_guardrails::TargetSummary {
-        schema: state.query.pagination.schema.clone(),
-        table: state.query.pagination.table.clone(),
+        schema: state.query.pagination.schema().to_string(),
+        table: state.query.pagination.table().to_string(),
         key_values: pk_pairs.clone().unwrap_or_default(),
     };
     let has_where = pk_pairs.as_ref().is_some_and(|pairs| !pairs.is_empty());
@@ -183,7 +183,7 @@ pub fn reduce_write(
         }
 
         Action::OpenWritePreviewConfirm(preview) => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
@@ -230,20 +230,20 @@ pub fn reduce_write(
         }
 
         Action::ExecuteWrite(query) => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
                 );
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = &state.session.dsn {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteWrite {
-                    dsn: dsn.clone(),
+                    dsn,
                     run_id,
                     query: query.clone(),
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             } else {
                 state
@@ -258,7 +258,7 @@ pub fn reduce_write(
             run_id,
             affected_rows,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -285,19 +285,19 @@ pub fn reduce_write(
                     state.result_interaction.clear_cell_edit();
                     state.modal.set_mode(InputMode::Normal);
 
-                    if let Some(dsn) = &state.session.dsn {
-                        let page = state.query.pagination.current_page;
+                    if let Some(dsn) = state.session.dsn().map(String::from) {
+                        let page = state.query.pagination.current_page();
                         let run_id = state.query.begin_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                            dsn: dsn.clone(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
+                            dsn,
+                            schema: state.query.pagination.schema().to_string(),
+                            table: state.query.pagination.table().to_string(),
                             generation: state.session.selection_generation(),
                             run_id,
                             limit: PREVIEW_PAGE_SIZE,
                             offset: page * PREVIEW_PAGE_SIZE,
                             target_page: page,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         DispatchResult::handled()
@@ -312,7 +312,7 @@ pub fn reduce_write(
                         .query
                         .take_delete_refresh_target()
                         .unwrap_or(DeleteRefreshTarget {
-                            target_page: state.query.pagination.current_page,
+                            target_page: state.query.pagination.current_page(),
                             target_row: None,
                             expected_delete_count: 1,
                         });
@@ -344,19 +344,19 @@ pub fn reduce_write(
                         PostDeleteRowSelection::Select,
                     ));
 
-                    if let Some(dsn) = &state.session.dsn {
+                    if let Some(dsn) = state.session.dsn().map(String::from) {
                         let run_id = state.query.begin_running(now);
-                        state.query.pagination.reached_end = false;
+                        state.query.pagination.clear_reached_end();
                         DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                            dsn: dsn.clone(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
+                            dsn,
+                            schema: state.query.pagination.schema().to_string(),
+                            table: state.query.pagination.table().to_string(),
                             generation: state.session.selection_generation(),
                             run_id,
                             limit: PREVIEW_PAGE_SIZE,
                             offset: target_page * PREVIEW_PAGE_SIZE,
                             target_page,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         DispatchResult::handled()
@@ -366,7 +366,7 @@ pub fn reduce_write(
         }
 
         Action::ExecuteWriteFailed { dsn, run_id, error } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -448,13 +448,12 @@ mod tests {
 
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state.query.set_current_result(editable_preview_result());
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.reset_for_table("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             state
                 .result_interaction
@@ -566,14 +565,16 @@ mod tests {
         #[test]
         fn sqlite_active_database_type_uses_sqlite_update_preview() {
             let mut state = editable_state();
-            state.session.set_dsn_for_test("sqlite:///tmp/app.db");
-            state
-                .session
-                .set_active_database_type_for_test(Some(DatabaseType::SQLite));
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
             let mut detail = users_table_detail();
             detail.schema = "main".to_string();
             state.session.set_table_detail_raw(Some(detail));
-            state.query.pagination.set_table_for_test("main", "users");
+            state.query.pagination.reset_for_table("main", "users");
 
             let effects = dispatch_query(
                 &mut state,
@@ -600,15 +601,14 @@ mod tests {
 
         fn editable_state_with_jsonb() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
                 .query
                 .set_current_result(editable_preview_result_with_jsonb());
             state
                 .session
                 .set_table_detail_raw(Some(jsonb_table_detail()));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.reset_for_table("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             // col 2 = metadata (jsonb)
             state
@@ -728,7 +728,7 @@ mod tests {
         #[test]
         fn execute_write_success_refreshes_preview_page() {
             let mut state = editable_state();
-            state.query.pagination.current_page = 2;
+            state.query.pagination.set_current_page(2);
             let action = write_succeeded_action(&mut state, 1);
 
             let effects =
@@ -870,8 +870,7 @@ mod tests {
         #[test]
         fn execute_write_success_for_delete_refreshes_target_page() {
             let mut state = create_test_state();
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.reset_for_table("public", "users");
             state.query.set_delete_refresh_target(1, Some(499), 1);
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_succeeded_action(&mut state, 1);
@@ -905,8 +904,7 @@ mod tests {
         #[test]
         fn execute_write_non_one_rows_for_delete_sets_error() {
             let mut state = create_test_state();
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.reset_for_table("public", "users");
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_succeeded_action(&mut state, 0);
 

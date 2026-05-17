@@ -24,11 +24,11 @@ pub enum QueryStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct PaginationState {
-    pub(crate) current_page: usize,
-    pub(crate) total_rows_estimate: Option<i64>,
-    pub(crate) reached_end: bool,
-    pub(crate) schema: String,
-    pub(crate) table: String,
+    current_page: usize,
+    total_rows_estimate: Option<i64>,
+    reached_end: bool,
+    schema: String,
+    table: String,
 }
 
 impl PaginationState {
@@ -56,8 +56,24 @@ impl PaginationState {
         !self.table.is_empty()
     }
 
+    pub fn qualified_name(&self) -> String {
+        if self.schema.is_empty() {
+            self.table.clone()
+        } else {
+            format!("{}.{}", self.schema, self.table)
+        }
+    }
+
     pub fn offset(&self) -> usize {
         self.current_page * PREVIEW_PAGE_SIZE
+    }
+
+    pub fn next_page(&self) -> usize {
+        self.current_page + 1
+    }
+
+    pub fn prev_page(&self) -> usize {
+        self.current_page.saturating_sub(1)
     }
 
     pub fn total_pages_estimate(&self) -> Option<usize> {
@@ -99,38 +115,25 @@ impl PaginationState {
         self.total_rows_estimate = estimate;
     }
 
-    pub fn allow_next_page_after_refresh(&mut self) {
+    pub fn clear_reached_end(&mut self) {
         self.reached_end = false;
     }
 
-    pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
-        self.current_page = page;
-        self.reached_end = reached_end;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_table_for_test(&mut self, schema: &str, table: &str) {
-        self.schema = schema.to_string();
-        self.table = table.to_string();
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_page_for_test(&mut self, page: usize) {
-        self.current_page = page;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_total_rows_estimate_for_test(&mut self, estimate: Option<i64>) {
+    pub fn set_total_rows_estimate(&mut self, estimate: Option<i64>) {
         self.total_rows_estimate = estimate;
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn mark_reached_end_for_test(&mut self) {
-        self.reached_end = true;
+    // Use when navigation changes only the page index and must preserve the
+    // current end-of-data flag.
+    pub fn set_current_page(&mut self, page: usize) {
+        self.current_page = page;
+    }
+
+    // Applying a query result replaces both the page and end-of-data flag so
+    // stale pagination state cannot survive a completed fetch.
+    pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
+        self.current_page = page;
+        self.reached_end = reached_end;
     }
 }
 
@@ -797,14 +800,14 @@ mod tests {
         }
 
         #[test]
-        fn allow_next_page_after_refresh_clears_reached_end_only() {
+        fn clear_reached_end_only_clears_that_flag() {
             let mut p = PaginationState {
                 current_page: 3,
                 reached_end: true,
                 ..Default::default()
             };
 
-            p.allow_next_page_after_refresh();
+            p.clear_reached_end();
 
             assert_eq!(p.current_page(), 3);
             assert!(!p.reached_end());

@@ -528,13 +528,16 @@ mod tests {
 
         fn editable_state(database_type: DatabaseType) -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.set_dsn_for_test(match database_type {
+            let dsn = match database_type {
                 DatabaseType::PostgreSQL => "postgres://localhost/test",
                 DatabaseType::SQLite => "sqlite:///tmp/app.db",
-            });
-            state
-                .session
-                .set_active_database_type_for_test(Some(database_type));
+            };
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::connection::ConnectionId::from_string("test-connection"),
+                "test",
+                database_type,
+                dsn,
+            );
             state.query.set_current_result(Arc::new(QueryResult {
                 query: "SELECT * FROM users".to_string(),
                 columns: vec!["id".to_string(), "name".to_string()],
@@ -576,7 +579,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
             }));
-            state.query.pagination.set_table_for_test("main", "users");
+            state.query.pagination.reset_for_table("main", "users");
             state.result_interaction.stage_row(0);
             state
         }

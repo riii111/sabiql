@@ -18,36 +18,38 @@ use crate::model::shared::inspector_tab::InspectorTab;
 // - `selected_table_key`, `table_detail`, and `selection_generation` change
 //   together via `select_table` / `clear_table_selection`.
 // - `database_name` is derived from `metadata` (single source of truth).
+// - Cache restore for a connection exits transient reload/read-only state.
 //
 // # Transitional raw setters
 //
-// `set_metadata`, `set_table_detail_raw`, `set_connection_state`,
-// `set_metadata_state` are `pub(crate)` for reducers where the aggregate API
-// does not cover the exact semantics needed (e.g. ER refresh, reload).
+// `set_metadata` and `set_table_detail_raw` are `pub(crate)` for reducers
+// where the aggregate API does not cover the exact semantics needed.
+// `set_connection_state` and `set_metadata_state` are test-only lifecycle
+// fixtures.
 #[derive(Debug, Clone)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
-    pub(crate) connection_state: ConnectionState,
-    pub(crate) metadata_state: MetadataState,
+    connection_state: ConnectionState,
+    metadata_state: MetadataState,
 
     // -- co-dependent: table selection --
-    pub(crate) selected_table_key: Option<String>,
-    pub(crate) table_detail: Option<Table>,
-    pub(crate) selection_generation: u64,
+    selected_table_key: Option<String>,
+    table_detail: Option<Table>,
+    selection_generation: u64,
 
     // -- lifecycle-gated --
-    pub(crate) metadata: Option<Arc<DatabaseMetadata>>,
-    pub(crate) metadata_run: AsyncRun,
-    pub(crate) table_detail_run: AsyncRun,
+    metadata: Option<Arc<DatabaseMetadata>>,
+    metadata_run: AsyncRun,
+    table_detail_run: AsyncRun,
 
     // -- co-dependent: connection identity / lifecycle --
-    pub(crate) dsn: Option<String>,
-    pub(crate) active_connection_id: Option<ConnectionId>,
-    pub(crate) active_connection_name: Option<String>,
-    pub(crate) active_database_type: Option<DatabaseType>,
-    pub(crate) active_db_capabilities: DbCapabilities,
-    pub(crate) read_only: bool,
-    pub(crate) is_reloading: bool,
+    dsn: Option<String>,
+    active_connection_id: Option<ConnectionId>,
+    active_connection_name: Option<String>,
+    active_database_type: Option<DatabaseType>,
+    active_db_capabilities: DbCapabilities,
+    read_only: bool,
+    is_reloading: bool,
 }
 
 impl Default for BrowseSession {
@@ -130,7 +132,7 @@ impl BrowseSession {
         self.begin_metadata_run()
     }
 
-    pub fn set_active_connection(
+    pub fn set_active_connection_with_dsn(
         &mut self,
         id: &ConnectionId,
         name: &str,
@@ -142,6 +144,35 @@ impl BrowseSession {
         self.active_database_type = Some(database_type);
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_active_connection_identity_for_test(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+    ) {
+        self.active_connection_id = Some(id.clone());
+        self.active_connection_name = Some(name.to_string());
+        self.active_database_type = Some(database_type);
+        self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_active_database_type_for_test(&mut self, database_type: DatabaseType) {
+        self.active_database_type = Some(database_type);
+        self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
+    }
+
+    pub fn clear_connection(&mut self) {
+        self.dsn = None;
+        self.active_connection_id = None;
+        self.active_connection_name = None;
+        self.active_database_type = None;
+        self.active_db_capabilities = DbCapabilities::disconnected();
     }
 
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
@@ -252,7 +283,7 @@ impl BrowseSession {
         dsn: &str,
     ) {
         self.restore_from_cache(cache, query);
-        self.set_active_connection(id, name, database_type, dsn);
+        self.set_active_connection_with_dsn(id, name, database_type, dsn);
         self.disable_read_only();
     }
 
@@ -266,11 +297,7 @@ impl BrowseSession {
         self.metadata_state = MetadataState::default();
         self.metadata_run.clear_active();
         self.table_detail_run.clear_active();
-        self.dsn = None;
-        self.active_connection_id = None;
-        self.active_connection_name = None;
-        self.active_database_type = None;
-        self.active_db_capabilities = DbCapabilities::disconnected();
+        self.clear_connection();
         self.read_only = false;
         self.is_reloading = false;
         query.pagination.reset();
@@ -311,6 +338,12 @@ impl BrowseSession {
 
     pub fn dsn(&self) -> Option<&str> {
         self.dsn.as_deref()
+    }
+
+    // Async completion reducers use this guard with run ids to reject stale
+    // effects from a previous connection.
+    pub fn dsn_matches(&self, expected: &str) -> bool {
+        self.dsn() == Some(expected)
     }
 
     pub fn active_connection_id(&self) -> Option<&ConnectionId> {
@@ -379,33 +412,6 @@ impl BrowseSession {
     #[doc(hidden)]
     pub fn set_dsn_for_test(&mut self, dsn: impl Into<String>) {
         self.dsn = Some(dsn.into());
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn clear_dsn_for_test(&mut self) {
-        self.dsn = None;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_active_connection_id_for_test(&mut self, id: Option<ConnectionId>) {
-        self.active_connection_id = id;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_active_connection_name_for_test(&mut self, name: Option<String>) {
-        self.active_connection_name = name;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_active_database_type_for_test(&mut self, database_type: Option<DatabaseType>) {
-        self.active_database_type = database_type;
-        self.active_db_capabilities = database_type
-            .map(DbCapabilities::for_database_type)
-            .unwrap_or_else(DbCapabilities::disconnected);
     }
 }
 
@@ -495,10 +501,9 @@ mod tests {
         fn resets_pagination() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
-            pagination.set_page_for_test(5);
-            pagination.set_total_rows_estimate_for_test(Some(10000));
-            pagination.mark_reached_end_for_test();
-            pagination.set_table_for_test("old", "old");
+            pagination.reset_for_table("old", "old");
+            pagination.set_total_rows_estimate(Some(10000));
+            pagination.set_page_result(5, true);
 
             let _ = session.select_table("public", "users", &mut pagination);
 
@@ -770,20 +775,19 @@ mod tests {
         fn clears_session_and_query_state() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            session.set_dsn_for_test("postgres://host/db");
-            session.set_active_connection_id_for_test(Some(ConnectionId::new()));
-            session.set_active_connection_name_for_test(Some("mydb".to_string()));
-            session.set_active_database_type_for_test(Some(DatabaseType::PostgreSQL));
+            session.set_active_connection_with_dsn(
+                &ConnectionId::new(),
+                "mydb",
+                DatabaseType::PostgreSQL,
+                "postgres://host/db",
+            );
             session.enable_read_only();
             let _ = session.begin_reload();
             let mut query = QueryExecution::default();
             query.set_current_result(make_query_result());
-            query.pagination.set_page_for_test(3);
-            query
-                .pagination
-                .set_total_rows_estimate_for_test(Some(1000));
-            query.pagination.mark_reached_end_for_test();
-            query.pagination.set_table_for_test("public", "users");
+            query.pagination.reset_for_table("public", "users");
+            query.pagination.set_total_rows_estimate(Some(1000));
+            query.pagination.set_page_result(3, true);
             query.enter_history(2);
 
             session.reset(&mut query);

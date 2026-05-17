@@ -54,7 +54,7 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
                         let kind = statement_classifier::classify(s);
                         !matches!(kind, StatementKind::Select | StatementKind::Transaction)
                     });
-                    if state.session.read_only && has_write {
+                    if state.session.is_read_only() && has_write {
                         state.sql_modal.finish_adhoc_error(
                             "Read-only mode: write operations are disabled".to_string(),
                         );

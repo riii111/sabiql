@@ -264,7 +264,7 @@ mod tests {
         }
 
         fn use_sqlite_tabs(state: &mut AppState) {
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &ConnectionId::new(),
                 "sqlite",
                 DatabaseType::SQLite,

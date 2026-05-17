@@ -44,7 +44,7 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
         error: None,
         command_tag: None,
     }));
-    state.query.pagination.set_table_for_test("public", "users");
+    state.query.pagination.reset_for_table("public", "users");
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
     (state, now)

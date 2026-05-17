@@ -9,7 +9,7 @@ pub(super) fn start_adhoc_if_connected(
     query: String,
     now: Instant,
 ) -> DispatchResult {
-    let Some(dsn) = state.session.dsn.clone() else {
+    let Some(dsn) = state.session.dsn().map(String::from) else {
         state
             .sql_modal
             .finish_adhoc_error("No active connection".to_string());
@@ -22,6 +22,6 @@ pub(super) fn start_adhoc_if_connected(
         dsn,
         run_id,
         query,
-        read_only: state.session.read_only,
+        read_only: state.session.is_read_only(),
     }])
 }

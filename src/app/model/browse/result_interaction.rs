@@ -12,16 +12,16 @@ use crate::policy::write::write_guardrails::WritePreview;
 // - Callers must restore `input_mode` themselves when leaving `CellEdit`.
 #[derive(Debug, Clone, Default)]
 pub struct ResultInteraction {
-    pub(crate) scroll_offset: usize,
-    pub(crate) horizontal_offset: usize,
-    pub(crate) yank_flash: Option<YankFlash>,
+    scroll_offset: usize,
+    horizontal_offset: usize,
+    yank_flash: Option<YankFlash>,
 
-    pub(crate) delete_op_pending: bool,
-    pub(crate) yank_op_pending: bool,
-    pub(crate) selection: ResultSelection,
-    pub(crate) cell_edit: CellEditState,
-    pub(crate) staged_delete_rows: BTreeSet<usize>,
-    pub(crate) pending_write_preview: Option<WritePreview>,
+    delete_op_pending: bool,
+    yank_op_pending: bool,
+    selection: ResultSelection,
+    cell_edit: CellEditState,
+    staged_delete_rows: BTreeSet<usize>,
+    pending_write_preview: Option<WritePreview>,
 }
 
 impl ResultInteraction {

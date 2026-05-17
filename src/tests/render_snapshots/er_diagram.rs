@@ -6,14 +6,12 @@ fn er_waiting_progress() {
     let (mut state, _now) = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    state.er_preparation.start_waiting_run();
+    let _ = state.er_preparation.start_waiting_run();
     state.er_preparation.begin_full_prefetch(3);
     state
         .er_preparation
-        .insert_pending_table("public.comments".to_string());
-    state
-        .er_preparation
-        .insert_fetching_table("public.posts".to_string());
+        .queue_pending_table("public.comments".to_string());
+    state.er_preparation.start_fetching("public.posts");
 
     let output = render_to_string(&mut terminal, &mut state);
 

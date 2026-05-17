@@ -390,7 +390,7 @@ mod tests {
     ) {
         let mut state = inspector_state();
         if let Some(database_type) = database_type {
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &ConnectionId::new(),
                 "database",
                 database_type,

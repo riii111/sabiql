@@ -329,9 +329,12 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state
-                .session
-                .set_active_connection_id_for_test(Some(active_id));
+            state.session.set_active_connection_with_dsn(
+                &active_id,
+                "active",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.ui.set_connection_list_selection(Some(1));
 
             let effects = dispatch_navigation(
@@ -360,9 +363,12 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state
-                .session
-                .set_active_connection_id_for_test(Some(active_id));
+            state.session.set_active_connection_with_dsn(
+                &active_id,
+                "active",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.ui.set_connection_list_selection(Some(0));
 
             let effects = dispatch_navigation(
@@ -401,9 +407,12 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state
-                .session
-                .set_active_connection_id_for_test(Some(active_id));
+            state.session.set_active_connection_with_dsn(
+                &active_id,
+                "active",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(1));
 
@@ -430,9 +439,12 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state
-                .session
-                .set_active_connection_id_for_test(Some(active_id));
+            state.session.set_active_connection_with_dsn(
+                &active_id,
+                "active",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
 

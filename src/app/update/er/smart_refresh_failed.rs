@@ -18,9 +18,7 @@ pub(super) fn reduce_smart_refresh_failed(
             error,
             new_metadata,
         }) => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.er_preparation.is_current_run(*run_id)
-            {
+            if !state.session.dsn_matches(dsn) || !state.er_preparation.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -33,18 +31,17 @@ pub(super) fn reduce_smart_refresh_failed(
                 state.set_error("Metadata not loaded yet".to_string());
                 return DispatchResult::handled();
             };
-            let total_table_count = metadata.table_summaries.len();
-            let is_scoped = !state.er_preparation.target_tables.is_empty()
-                && state.er_preparation.target_tables.len() < total_table_count;
+            let scoped_tables = state
+                .er_preparation
+                .scoped_fallback_tables(metadata.table_summaries.len());
+            state
+                .er_preparation
+                .invalidate_refresh_signatures(metadata.table_summaries.len());
 
-            state.er_preparation.total_tables = total_table_count;
-            state.er_preparation.last_signatures.clear();
-
-            if is_scoped {
+            if let Some(scoped_tables) = scoped_tables {
                 state.set_error(format!(
                     "Smart refresh failed ({error}), falling back to scoped prefetch"
                 ));
-                let scoped_tables = state.er_preparation.target_tables.clone();
                 DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchScoped {

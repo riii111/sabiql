@@ -38,7 +38,7 @@ pub(super) fn reduce_diagram_lifecycle(
                 return DispatchResult::handled();
             }
 
-            let Some(dsn) = state.session.dsn.clone() else {
+            let Some(dsn) = state.session.dsn().map(String::from) else {
                 state.set_error("No active connection".to_string());
                 return DispatchResult::handled();
             };
@@ -48,7 +48,7 @@ pub(super) fn reduce_diagram_lifecycle(
             }
 
             state.sql_modal.invalidate_prefetch();
-            let run_id = state.er_preparation.begin_smart_refresh();
+            let run_id = state.er_preparation.start_waiting_run();
             state.set_success("Checking for schema changes...".to_string());
 
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
@@ -58,7 +58,7 @@ pub(super) fn reduce_diagram_lifecycle(
                 return DispatchResult::handled();
             }
 
-            state.er_preparation.begin_rendering();
+            state.er_preparation.mark_rendering();
             let total_tables = state
                 .session
                 .metadata()
@@ -67,7 +67,7 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::GenerateErDiagramFromCache {
                 total_tables,
                 project_name: state.runtime.project_name.clone(),
-                target_tables: state.er_preparation.target_tables.clone(),
+                target_tables: state.er_preparation.target_tables().to_vec(),
             }])
         }
         _ => DispatchResult::pass(),

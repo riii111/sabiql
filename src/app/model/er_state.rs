@@ -12,15 +12,15 @@ pub enum ErStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct ErPreparationState {
-    pub pending_tables: HashSet<String>,
-    pub fetching_tables: HashSet<String>,
-    pub failed_tables: HashMap<String, String>,
-    pub status: ErStatus,
-    pub total_tables: usize,
-    pub target_tables: Vec<String>,
-    pub seed_tables: Vec<String>,
-    pub fk_expanded: bool,
-    pub last_signatures: HashMap<String, String>,
+    pending_tables: HashSet<String>,
+    fetching_tables: HashSet<String>,
+    failed_tables: HashMap<String, String>,
+    status: ErStatus,
+    total_tables: usize,
+    target_tables: Vec<String>,
+    seed_tables: Vec<String>,
+    fk_expanded: bool,
+    last_signatures: HashMap<String, String>,
     run: AsyncRun,
 }
 
@@ -35,6 +35,10 @@ pub struct ErPreparationProgress {
 impl ErPreparationState {
     pub fn status(&self) -> ErStatus {
         self.status
+    }
+
+    pub fn is_waiting(&self) -> bool {
+        self.status == ErStatus::Waiting
     }
 
     pub fn progress(&self) -> ErPreparationProgress {
@@ -111,6 +115,7 @@ impl ErPreparationState {
     pub fn on_table_cached(&mut self, qualified_name: &str) {
         self.fetching_tables.remove(qualified_name);
         self.pending_tables.remove(qualified_name);
+        self.failed_tables.remove(qualified_name);
     }
 
     pub fn on_table_failed(&mut self, qualified_name: &str, error: String) {
@@ -166,10 +171,8 @@ impl ErPreparationState {
         self.status = ErStatus::Idle;
     }
 
-    pub fn begin_smart_refresh(&mut self) -> u64 {
-        let run_id = self.run.begin();
+    pub fn mark_waiting(&mut self) {
         self.status = ErStatus::Waiting;
-        run_id
     }
 
     pub fn is_current_run(&self, run_id: u64) -> bool {
@@ -182,10 +185,6 @@ impl ErPreparationState {
 
     pub fn can_generate_from_cache(&self) -> bool {
         matches!(self.status, ErStatus::Idle | ErStatus::Waiting)
-    }
-
-    pub fn begin_rendering(&mut self) {
-        self.status = ErStatus::Rendering;
     }
 
     pub fn reset(&mut self) {
@@ -205,6 +204,7 @@ impl ErPreparationState {
         self.status = ErStatus::Rendering;
     }
 
+    #[must_use]
     pub fn start_waiting_run(&mut self) -> u64 {
         let run_id = self.run.begin();
         self.status = ErStatus::Waiting;
@@ -226,6 +226,10 @@ impl ErPreparationState {
         self.fk_expanded = true;
     }
 
+    pub fn mark_fk_unexpanded(&mut self) {
+        self.fk_expanded = false;
+    }
+
     pub fn apply_refresh_metadata(
         &mut self,
         signatures: HashMap<String, String>,
@@ -240,22 +244,26 @@ impl ErPreparationState {
         self.total_tables = total_tables;
     }
 
-    pub fn clear_table_tracking(&mut self) {
+    pub fn scoped_fallback_tables(&self, total_table_count: usize) -> Option<Vec<String>> {
+        if !self.target_tables.is_empty() && self.target_tables.len() < total_table_count {
+            Some(self.target_tables.clone())
+        } else {
+            None
+        }
+    }
+
+    fn clear_table_tracking(&mut self) {
         self.pending_tables.clear();
         self.fetching_tables.clear();
         self.failed_tables.clear();
     }
 
-    pub fn insert_pending_table(&mut self, table: String) {
-        self.pending_tables.insert(table);
-    }
-
-    pub fn remove_pending_table(&mut self, table: &str) {
-        self.pending_tables.remove(table);
-    }
-
-    pub fn insert_fetching_table(&mut self, table: String) {
-        self.fetching_tables.insert(table);
+    // Re-queueing a table starts a fresh attempt and clears any prior failure
+    // record for that table.
+    pub fn queue_pending_table(&mut self, table: String) -> bool {
+        self.fetching_tables.remove(&table);
+        self.failed_tables.remove(&table);
+        self.pending_tables.insert(table)
     }
 }
 
@@ -265,7 +273,7 @@ mod tests {
 
     fn set_active_run_id(state: &mut ErPreparationState, run_id: u64) {
         for _ in 0..run_id {
-            state.begin_smart_refresh();
+            let _ = state.start_waiting_run();
         }
         state.mark_idle();
     }

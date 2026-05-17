@@ -276,7 +276,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT * INTO backup FROM users".to_string());
-            state.session.dsn = Some("postgres://test".to_string());
+            state.session.set_dsn_for_test("postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -290,7 +290,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("COPY users FROM '/tmp/data.csv'".to_string());
-            state.session.dsn = Some("postgres://test".to_string());
+            state.session.set_dsn_for_test("postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -304,7 +304,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("UPDATE users SET x=1 WHERE id=1".to_string());
-            state.session.dsn = Some("postgres://test".to_string());
+            state.session.set_dsn_for_test("postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -387,7 +387,7 @@ mod tests {
         #[test]
         fn high_risk_confirm_executes_on_match() {
             let mut state = confirming_high_state("DROP TABLE users", Some("users"));
-            state.session.dsn = Some("postgres://test".to_string());
+            state.session.set_dsn_for_test("postgres://test");
             for c in "users".chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -604,7 +604,7 @@ mod tests {
             let full_name = "my_schema.very_long_table_name";
             let mut state =
                 confirming_high_state(&format!("DROP TABLE {full_name}"), Some(full_name));
-            state.session.dsn = Some("postgres://test".to_string());
+            state.session.set_dsn_for_test("postgres://test");
             for c in full_name.chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -642,8 +642,8 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id = 1".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.session.read_only = true;
+            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.enable_read_only();
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
                 .into_effects()
@@ -661,8 +661,8 @@ mod tests {
         fn read_only_reject_clears_prior_success() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
-            state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.session.read_only = true;
+            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.enable_read_only();
 
             // Simulate a prior adhoc success
             state.sql_modal.finish_adhoc_success(
@@ -693,8 +693,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.session.read_only = true;
+            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.enable_read_only();
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
                 .into_effects()
@@ -713,7 +713,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.editor.set_content(query.to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.set_dsn_for_test("postgres://localhost/test");
             state
         }
 

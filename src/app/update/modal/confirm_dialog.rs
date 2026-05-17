@@ -47,13 +47,13 @@ pub(super) fn reduce_confirm_dialog(
                     sql,
                     blocked: false,
                 }) => {
-                    if let Some(dsn) = &state.session.dsn {
+                    if let Some(dsn) = state.session.dsn().map(String::from) {
                         let run_id = state.query.begin_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecuteWrite {
-                            dsn: dsn.clone(),
+                            dsn,
                             run_id,
                             query: sql,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         state.result_interaction.clear_write_preview();
@@ -65,7 +65,7 @@ pub(super) fn reduce_confirm_dialog(
                     }
                 }
                 Some(ConfirmIntent::DisableReadOnly) => {
-                    state.session.read_only = false;
+                    state.session.disable_read_only();
                     DispatchResult::handled()
                 }
                 Some(ConfirmIntent::CsvExport {
@@ -75,7 +75,7 @@ pub(super) fn reduce_confirm_dialog(
                     file_name,
                     row_count,
                 }) => {
-                    if state.session.dsn.as_ref() == Some(&dsn)
+                    if state.session.dsn() == Some(dsn.as_str())
                         && state.query.is_current_run(run_id)
                     {
                         DispatchResult::handled_with(vec![Effect::ExportCsv {
@@ -84,7 +84,7 @@ pub(super) fn reduce_confirm_dialog(
                             query: export_query,
                             file_name,
                             row_count,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         DispatchResult::handled()
@@ -100,7 +100,7 @@ pub(super) fn reduce_confirm_dialog(
 
             if matches!(intent, Some(ConfirmIntent::QuitNoConnection)) {
                 state.connection_setup.reset();
-                if !state.connections().is_empty() || state.session.dsn.is_some() {
+                if !state.connections().is_empty() || state.session.dsn().is_some() {
                     state.connection_setup.is_first_run = false;
                 }
                 state.modal.pop_mode_override(InputMode::ConnectionSetup);

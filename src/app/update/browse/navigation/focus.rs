@@ -86,7 +86,7 @@ mod tests {
         #[test]
         fn rw_to_ro_switches_immediately() {
             let mut state = AppState::new("test".to_string());
-            assert!(!state.session.read_only);
+            assert!(!state.session.is_read_only());
 
             dispatch_navigation(
                 &mut state,
@@ -95,14 +95,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.session.read_only);
+            assert!(state.session.is_read_only());
             assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]
         fn ro_to_rw_opens_confirm_dialog() {
             let mut state = AppState::new("test".to_string());
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             dispatch_navigation(
                 &mut state,
@@ -111,7 +111,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.session.read_only);
+            assert!(state.session.is_read_only());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
                 state.confirm_dialog.intent(),

@@ -190,9 +190,12 @@ mod tests {
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
             state.ui.set_connection_list_selected_raw(0);
-            state
-                .session
-                .set_active_connection_id_for_test(Some(profile_id));
+            state.session.set_active_connection_with_dsn(
+                &profile_id,
+                "Production",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/db",
+            );
 
             reduce_connection_selector(
                 &mut state,
@@ -300,10 +303,12 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state
-                .session
-                .set_active_connection_id_for_test(Some(profile_id.clone()));
-            state.session.set_dsn_for_test("postgres://localhost/db");
+            state.session.set_active_connection_with_dsn(
+                &profile_id,
+                "Production",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/db",
+            );
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -325,17 +330,19 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state
-                .session
-                .set_active_connection_id_for_test(Some(profile_id.clone()));
-            state.session.set_dsn_for_test("postgres://localhost/db");
+            state.session.set_active_connection_with_dsn(
+                &profile_id,
+                "Production",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/db",
+            );
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
 
             // Set state that was previously not reset by ConnectionDeleted
             state.query.enter_history(2);
-            state.query.pagination.set_page_for_test(3);
+            state.query.pagination.set_current_page(3);
             state.result_interaction.activate_cell(5, 0);
             state.result_interaction.set_scroll_offset(10);
             state.result_interaction.set_horizontal_offset(20);

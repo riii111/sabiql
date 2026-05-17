@@ -13,7 +13,7 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::connection::setup::ConnectionField;
 use sabiql_app::model::shared::text_input::TextInputState;
 use sabiql_app::services::AppServices;
-use sabiql_domain::DatabaseType;
+use sabiql_domain::{ConnectionId, DatabaseType};
 use sabiql_ui::shell::layout::MainLayout;
 use sabiql_ui::theme::{ThemePalette, palette_for};
 
@@ -26,12 +26,11 @@ pub fn test_instant() -> Instant {
 
 pub fn create_test_state() -> AppState {
     let mut state = AppState::new("test_project".to_string());
-    state
-        .session
-        .set_active_connection_name_for_test(Some("localhost:5432/test".to_string()));
-    state
-        .session
-        .set_active_database_type_for_test(Some(DatabaseType::PostgreSQL));
+    state.session.set_active_connection_identity_for_test(
+        &ConnectionId::from_string("test-connection"),
+        "localhost:5432/test",
+        DatabaseType::PostgreSQL,
+    );
     state
 }
 

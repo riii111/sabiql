@@ -122,9 +122,12 @@ mod tests {
                 .sql_modal
                 .set_active_tab(crate::model::sql_editor::modal::SqlModalTab::Plan);
 
-            state
-                .session
-                .set_active_database_type_for_test(Some(crate::domain::DatabaseType::SQLite));
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                crate::domain::DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
 
             let result = handle_key_event(combo(Key::Char('i')), &state);
 
