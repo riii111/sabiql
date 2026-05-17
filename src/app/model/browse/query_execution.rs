@@ -99,16 +99,16 @@ impl PaginationState {
         self.table.clear();
     }
 
-    pub fn reset_for_table(&mut self, schema: impl AsRef<str>, table: impl AsRef<str>) {
+    pub fn reset_for_table(&mut self, schema: &str, table: &str) {
         self.reset();
-        self.schema = schema.as_ref().to_string();
-        self.table = table.as_ref().to_string();
+        self.schema = schema.to_string();
+        self.table = table.to_string();
     }
 
     pub fn reset_for_table_with_estimate(
         &mut self,
-        schema: impl AsRef<str>,
-        table: impl AsRef<str>,
+        schema: &str,
+        table: &str,
         estimate: Option<i64>,
     ) {
         self.reset_for_table(schema, table);

@@ -486,9 +486,7 @@ mod tests {
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
             state.sql_modal.prefetching_tables.insert(qualified.clone());
-            state
-                .er_preparation
-                .insert_fetching_table(qualified.clone());
+            state.er_preparation.start_fetching(&qualified);
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -532,7 +530,7 @@ mod tests {
             let queued = "public.posts".to_string();
             state.sql_modal.prefetching_tables.insert(failed.clone());
             state.sql_modal.prefetch_queue.push_back(queued);
-            state.er_preparation.insert_fetching_table(failed);
+            state.er_preparation.start_fetching(&failed);
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -567,9 +565,7 @@ mod tests {
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             state.sql_modal.prefetching_tables.insert(qualified.clone());
-            state
-                .er_preparation
-                .insert_fetching_table(qualified.clone());
+            state.er_preparation.start_fetching(&qualified);
 
             dispatch_metadata(
                 &mut state,
@@ -585,7 +581,9 @@ mod tests {
             state.sql_modal.prefetch_queue.clear();
             state
                 .er_preparation
-                .insert_fetching_table(qualified.clone());
+                .on_table_failed(&qualified, "timed out".to_string());
+            assert!(!state.er_preparation.failed_tables().is_empty());
+            state.er_preparation.start_fetching(&qualified);
 
             let effects = dispatch_metadata(
                 &mut state,

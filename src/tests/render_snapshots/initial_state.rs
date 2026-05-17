@@ -16,7 +16,7 @@ fn explorer_shows_not_connected_when_no_active_connection() {
     state.session.clear_connection();
     state
         .session
-        .set_active_database_type(sabiql_domain::DatabaseType::PostgreSQL);
+        .set_active_database_type_for_test(sabiql_domain::DatabaseType::PostgreSQL);
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);

@@ -115,6 +115,7 @@ impl ErPreparationState {
     pub fn on_table_cached(&mut self, qualified_name: &str) {
         self.fetching_tables.remove(qualified_name);
         self.pending_tables.remove(qualified_name);
+        self.failed_tables.remove(qualified_name);
     }
 
     pub fn on_table_failed(&mut self, qualified_name: &str, error: String) {
@@ -263,13 +264,6 @@ impl ErPreparationState {
         self.fetching_tables.remove(&table);
         self.failed_tables.remove(&table);
         self.pending_tables.insert(table)
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn insert_fetching_table(&mut self, table: String) {
-        self.pending_tables.remove(&table);
-        self.fetching_tables.insert(table);
     }
 }
 

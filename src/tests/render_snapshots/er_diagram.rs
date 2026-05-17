@@ -11,9 +11,7 @@ fn er_waiting_progress() {
     state
         .er_preparation
         .queue_pending_table("public.comments".to_string());
-    state
-        .er_preparation
-        .insert_fetching_table("public.posts".to_string());
+    state.er_preparation.start_fetching("public.posts");
 
     let output = render_to_string(&mut terminal, &mut state);
 

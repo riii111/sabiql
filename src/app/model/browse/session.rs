@@ -160,7 +160,9 @@ impl BrowseSession {
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
     }
 
-    pub fn set_active_database_type(&mut self, database_type: DatabaseType) {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn set_active_database_type_for_test(&mut self, database_type: DatabaseType) {
         self.active_database_type = Some(database_type);
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
     }
@@ -338,6 +340,8 @@ impl BrowseSession {
         self.dsn.as_deref()
     }
 
+    // Async completion reducers use this guard with run ids to reject stale
+    // effects from a previous connection.
     pub fn dsn_matches(&self, expected: &str) -> bool {
         self.dsn() == Some(expected)
     }
