@@ -203,6 +203,7 @@ pub(super) fn reduce_prefetch(
                 .sql_modal
                 .failed_prefetch_entry(&qualified_name)
                 .map_or(0, |e| e.retry_count);
+            // Snapshot before requeue: self retry is delayed below; immediate processing is for peers.
             let had_other_pending_before_requeue = state.sql_modal.has_pending_prefetch();
             state.sql_modal.record_prefetch_failure_and_requeue(
                 qualified_name.clone(),
