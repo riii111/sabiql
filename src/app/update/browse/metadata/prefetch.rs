@@ -140,7 +140,9 @@ pub(super) fn reduce_prefetch(
             }
 
             let Some(dsn) = state.session.dsn().map(String::from) else {
-                state.sql_modal.enqueue_prefetch_front(qualified_name);
+                state
+                    .sql_modal
+                    .requeue_prefetch_for_missing_dsn(qualified_name);
                 return DispatchResult::handled();
             };
 
@@ -201,7 +203,7 @@ pub(super) fn reduce_prefetch(
                 .sql_modal
                 .failed_prefetch_entry(&qualified_name)
                 .map_or(0, |e| e.retry_count);
-            let should_continue_queue = state.sql_modal.has_pending_prefetch();
+            let had_other_pending_before_requeue = state.sql_modal.has_pending_prefetch();
             state.sql_modal.record_prefetch_failure_and_requeue(
                 qualified_name.clone(),
                 FailedPrefetchEntry {
@@ -214,7 +216,7 @@ pub(super) fn reduce_prefetch(
 
             let mut effects = Vec::new();
 
-            if should_continue_queue {
+            if had_other_pending_before_requeue {
                 effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
             }
             effects.push(Effect::DelayedProcessPrefetchQueue {

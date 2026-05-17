@@ -567,7 +567,14 @@ mod tests {
                 },
                 Instant::now(),
             );
-            state.sql_modal.abandon_prefetch(&qualified);
+            state.sql_modal.record_prefetch_failure(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timed out".to_string(),
+                    retry_count: 1,
+                },
+            );
             state
                 .er_preparation
                 .on_table_failed(&qualified, "timed out".to_string());

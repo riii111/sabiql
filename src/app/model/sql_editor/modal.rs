@@ -178,7 +178,7 @@ impl SqlModalContext {
         self.prefetch_queue.push_back(table);
     }
 
-    pub fn enqueue_prefetch_front(&mut self, table: String) {
+    pub fn requeue_prefetch_for_missing_dsn(&mut self, table: String) {
         if self.prefetching_tables.contains(&table) || self.prefetch_queue.contains(&table) {
             return;
         }
@@ -187,15 +187,6 @@ impl SqlModalContext {
 
     pub fn dequeue_prefetch(&mut self) -> Option<String> {
         self.prefetch_queue.pop_front()
-    }
-
-    pub fn start_prefetch(&mut self) -> Option<String> {
-        while let Some(table) = self.prefetch_queue.pop_front() {
-            if self.prefetching_tables.insert(table.clone()) {
-                return Some(table);
-            }
-        }
-        None
     }
 
     pub fn mark_prefetching(&mut self, table: String) {
@@ -220,14 +211,10 @@ impl SqlModalContext {
         table: String,
         entry: FailedPrefetchEntry,
     ) {
+        self.prefetch_queue.retain(|queued| queued != &table);
         self.prefetching_tables.remove(&table);
         self.failed_prefetch_tables.insert(table.clone(), entry);
         self.enqueue_prefetch(table);
-    }
-
-    pub fn abandon_prefetch(&mut self, table: &str) {
-        self.prefetch_queue.retain(|queued| queued != table);
-        self.prefetching_tables.remove(table);
     }
 
     pub fn active_prefetch_run_id(&self) -> Option<u64> {
