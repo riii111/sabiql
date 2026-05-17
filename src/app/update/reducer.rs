@@ -1487,10 +1487,7 @@ mod tests {
             let mut state = create_test_state();
             state.session.set_dsn_for_test("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert("public.users".to_string());
+            state.sql_modal.mark_prefetching("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -1511,7 +1508,7 @@ mod tests {
                 effects[0],
                 Effect::CacheTableInCompletionEngine { .. }
             ));
-            assert!(!state.sql_modal.prefetching_tables.contains("public.users"));
+            assert!(!state.sql_modal.is_prefetching("public.users"));
         }
 
         #[test]
@@ -1521,8 +1518,7 @@ mod tests {
             let run_id = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.orders".to_string());
+                .enqueue_prefetch("public.orders".to_string());
             let now = Instant::now();
 
             let effects = reduce(

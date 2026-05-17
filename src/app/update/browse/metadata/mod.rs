@@ -141,10 +141,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let old_run_id = state.sql_modal.begin_prefetch();
             let _ = state.sql_modal.begin_prefetch();
-            state
-                .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
+            state.sql_modal.enqueue_prefetch("public.users".to_string());
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -154,8 +151,8 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.sql_modal.prefetch_queue.len(), 1);
-            assert!(state.sql_modal.prefetching_tables.is_empty());
+            assert_eq!(state.sql_modal.prefetch_queue().len(), 1);
+            assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
         }
     }
 
@@ -170,7 +167,7 @@ mod tests {
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
             // Insert a recently failed entry (retry_count=1, just failed)
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.record_prefetch_failure(
                 qualified.clone(),
                 FailedPrefetchEntry {
                     failed_at: Instant::now(),
@@ -191,7 +188,7 @@ mod tests {
             .unwrap();
 
             // Should be re-queued at tail
-            assert_eq!(state.sql_modal.prefetch_queue.back(), Some(&qualified));
+            assert_eq!(state.sql_modal.prefetch_queue().back(), Some(&qualified));
             // Should return DelayedProcessPrefetchQueue (not an immediate busy-loop)
             assert!(
                 effects
@@ -207,7 +204,7 @@ mod tests {
             let qualified = "public.users".to_string();
             let failed_at = Instant::now();
             let now = failed_at.checked_add(Duration::from_secs(1)).unwrap();
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.record_prefetch_failure(
                 qualified,
                 FailedPrefetchEntry {
                     failed_at,
@@ -254,8 +251,8 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.sql_modal.prefetch_queue.front(), Some(&qualified));
-            assert!(!state.sql_modal.prefetching_tables.contains(&qualified));
+            assert_eq!(state.sql_modal.prefetch_queue().front(), Some(&qualified));
+            assert!(!state.sql_modal.is_prefetching(&qualified));
             assert!(!state.er_preparation.fetching_tables().contains(&qualified));
             assert!(state.er_preparation.pending_tables().contains(&qualified));
         }
@@ -266,7 +263,7 @@ mod tests {
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
             state.er_preparation.queue_pending_table(qualified.clone());
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.record_prefetch_failure(
                 qualified.clone(),
                 FailedPrefetchEntry {
                     failed_at: Instant::now(),
@@ -285,7 +282,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(!state.sql_modal.prefetch_queue.contains(&qualified));
+            assert!(!state.sql_modal.is_prefetch_queued(&qualified));
             assert!(
                 state
                     .er_preparation
@@ -304,7 +301,7 @@ mod tests {
             let qualified = "public.users".to_string();
             // Only table remaining; retry limit exceeded
             state.er_preparation.queue_pending_table(qualified.clone());
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.record_prefetch_failure(
                 qualified,
                 FailedPrefetchEntry {
                     failed_at: Instant::now(),
@@ -343,8 +340,8 @@ mod tests {
             // users exhausted retries; posts still awaiting in queue
             state.er_preparation.queue_pending_table(failed.clone());
             state.er_preparation.queue_pending_table(remaining.clone());
-            state.sql_modal.prefetch_queue.push_back(remaining);
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.enqueue_prefetch(remaining);
+            state.sql_modal.record_prefetch_failure(
                 failed,
                 FailedPrefetchEntry {
                     failed_at: Instant::now(),
@@ -378,7 +375,7 @@ mod tests {
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
             // Failed 10 seconds ago with retry_count=1 (backoff = 2s, already expired)
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.record_prefetch_failure(
                 qualified.clone(),
                 FailedPrefetchEntry {
                     failed_at: Instant::now().checked_sub(Duration::from_secs(10)).unwrap(),
@@ -399,7 +396,7 @@ mod tests {
             .unwrap();
 
             // Should proceed to fetching
-            assert!(state.sql_modal.prefetching_tables.contains(&qualified));
+            assert!(state.sql_modal.is_prefetching(&qualified));
             assert!(
                 effects
                     .iter()
@@ -417,8 +414,8 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
-            state.sql_modal.prefetching_tables.insert(qualified.clone());
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.mark_prefetching(qualified.clone());
+            state.sql_modal.record_prefetch_failure(
                 qualified.clone(),
                 FailedPrefetchEntry {
                     failed_at: Instant::now().checked_sub(Duration::from_secs(60)).unwrap(),
@@ -440,11 +437,7 @@ mod tests {
                 now,
             );
 
-            let entry = state
-                .sql_modal
-                .failed_prefetch_tables
-                .get(&qualified)
-                .unwrap();
+            let entry = state.sql_modal.failed_prefetch_entry(&qualified).unwrap();
             assert_eq!(entry.retry_count, 2);
             assert_eq!(
                 entry.error,
@@ -457,7 +450,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
-            state.sql_modal.prefetching_tables.insert(qualified.clone());
+            state.sql_modal.mark_prefetching(qualified.clone());
 
             let now = Instant::now();
             dispatch_metadata(
@@ -472,11 +465,7 @@ mod tests {
                 now,
             );
 
-            let entry = state
-                .sql_modal
-                .failed_prefetch_tables
-                .get(&qualified)
-                .unwrap();
+            let entry = state.sql_modal.failed_prefetch_entry(&qualified).unwrap();
             assert_eq!(entry.retry_count, 1);
         }
 
@@ -485,7 +474,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
-            state.sql_modal.prefetching_tables.insert(qualified.clone());
+            state.sql_modal.mark_prefetching(qualified.clone());
             state.er_preparation.start_fetching(&qualified);
 
             let effects = dispatch_metadata(
@@ -501,7 +490,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.sql_modal.prefetch_queue.back(), Some(&qualified));
+            assert_eq!(state.sql_modal.prefetch_queue().back(), Some(&qualified));
             assert!(state.er_preparation.pending_tables().contains(&qualified));
             assert!(!state.er_preparation.fetching_tables().contains(&qualified));
             assert!(
@@ -528,8 +517,8 @@ mod tests {
             let run_id = state.sql_modal.begin_prefetch();
             let failed = "public.users".to_string();
             let queued = "public.posts".to_string();
-            state.sql_modal.prefetching_tables.insert(failed.clone());
-            state.sql_modal.prefetch_queue.push_back(queued);
+            state.sql_modal.mark_prefetching(failed.clone());
+            state.sql_modal.enqueue_prefetch(queued);
             state.er_preparation.start_fetching(&failed);
 
             let effects = dispatch_metadata(
@@ -564,7 +553,7 @@ mod tests {
             state.er_preparation.mark_waiting();
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
-            state.sql_modal.prefetching_tables.insert(qualified.clone());
+            state.sql_modal.mark_prefetching(qualified.clone());
             state.er_preparation.start_fetching(&qualified);
 
             dispatch_metadata(
@@ -578,7 +567,6 @@ mod tests {
                 },
                 Instant::now(),
             );
-            state.sql_modal.prefetch_queue.clear();
             state
                 .er_preparation
                 .on_table_failed(&qualified, "timed out".to_string());
@@ -836,7 +824,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
+            assert_eq!(state.sql_modal.prefetch_queue().len(), 2);
             assert!(
                 state
                     .er_preparation
@@ -948,7 +936,7 @@ mod tests {
                     .pending_tables()
                     .contains("public.tags")
             );
-            assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
+            assert_eq!(state.sql_modal.prefetch_queue().len(), 2);
             assert!(
                 effects
                     .iter()
@@ -972,7 +960,7 @@ mod tests {
 
             assert!(!state.er_preparation.fk_expanded());
             assert!(state.er_preparation.pending_tables().is_empty());
-            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(state.sql_modal.prefetch_queue().is_empty());
             assert!(effects.is_empty());
         }
 
@@ -984,14 +972,8 @@ mod tests {
             state
                 .er_preparation
                 .queue_pending_table("public.posts".to_string());
-            state
-                .sql_modal
-                .prefetch_queue
-                .push_back("public.posts".to_string());
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert("public.tags".to_string());
+            state.sql_modal.enqueue_prefetch("public.posts".to_string());
+            state.sql_modal.mark_prefetching("public.tags".to_string());
 
             dispatch_metadata(
                 &mut state,
@@ -1005,11 +987,11 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
+            assert_eq!(state.sql_modal.prefetch_queue().len(), 2);
             assert_eq!(
                 state
                     .sql_modal
-                    .prefetch_queue
+                    .prefetch_queue()
                     .iter()
                     .filter(|table| table.as_str() == "public.posts")
                     .count(),
@@ -1018,13 +1000,13 @@ mod tests {
             assert!(
                 state
                     .sql_modal
-                    .prefetch_queue
+                    .prefetch_queue()
                     .contains(&"public.comments".to_string())
             );
             assert!(
                 !state
                     .sql_modal
-                    .prefetch_queue
+                    .prefetch_queue()
                     .contains(&"public.tags".to_string())
             );
         }
@@ -1038,7 +1020,7 @@ mod tests {
             state.er_preparation.mark_fk_expanded();
             let neighbor = "public.posts".to_string();
             state.er_preparation.queue_pending_table(neighbor.clone());
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.record_prefetch_failure(
                 neighbor,
                 FailedPrefetchEntry {
                     failed_at: Instant::now(),
