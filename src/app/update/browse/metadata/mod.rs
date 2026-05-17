@@ -909,6 +909,7 @@ mod tests {
         #[test]
         fn empty_neighbors_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
+            let _ = state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
 
             let effects = dispatch_metadata(
@@ -949,6 +950,80 @@ mod tests {
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
+            );
+        }
+
+        #[test]
+        fn stale_neighbors_without_active_run_do_not_mutate_state() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::FkNeighborsDiscovered {
+                    tables: vec!["public.posts".to_string()],
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(!state.er_preparation.fk_expanded);
+            assert!(state.er_preparation.pending_tables.is_empty());
+            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn duplicate_neighbors_are_not_requeued() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let _ = state.sql_modal.begin_prefetch();
+            state.er_preparation.status = ErStatus::Waiting;
+            state
+                .er_preparation
+                .pending_tables
+                .insert("public.posts".to_string());
+            state
+                .sql_modal
+                .prefetch_queue
+                .push_back("public.posts".to_string());
+            state
+                .sql_modal
+                .prefetching_tables
+                .insert("public.tags".to_string());
+
+            dispatch_metadata(
+                &mut state,
+                &Action::FkNeighborsDiscovered {
+                    tables: vec![
+                        "public.posts".to_string(),
+                        "public.tags".to_string(),
+                        "public.comments".to_string(),
+                    ],
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
+            assert_eq!(
+                state
+                    .sql_modal
+                    .prefetch_queue
+                    .iter()
+                    .filter(|table| table.as_str() == "public.posts")
+                    .count(),
+                1
+            );
+            assert!(
+                state
+                    .sql_modal
+                    .prefetch_queue
+                    .contains(&"public.comments".to_string())
+            );
+            assert!(
+                !state
+                    .sql_modal
+                    .prefetch_queue
+                    .contains(&"public.tags".to_string())
             );
         }
 
