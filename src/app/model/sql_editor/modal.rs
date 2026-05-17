@@ -209,30 +209,19 @@ impl SqlModalContext {
         self.failed_prefetch_tables.remove(table);
     }
 
-    pub fn clear_prefetching(&mut self, table: &str) {
-        self.prefetching_tables.remove(table);
-    }
-
     pub fn record_prefetch_failure(&mut self, table: String, entry: FailedPrefetchEntry) {
         self.prefetch_queue.retain(|queued| queued != &table);
         self.prefetching_tables.remove(&table);
         self.failed_prefetch_tables.insert(table, entry);
     }
 
-    pub fn record_prefetch_failure_for_retry(
+    pub fn record_prefetch_failure_and_requeue(
         &mut self,
         table: String,
         entry: FailedPrefetchEntry,
-    ) -> bool {
+    ) {
         self.prefetching_tables.remove(&table);
-        let had_pending_prefetch = self.has_pending_prefetch();
         self.failed_prefetch_tables.insert(table.clone(), entry);
-        self.enqueue_prefetch(table);
-        had_pending_prefetch
-    }
-
-    pub fn defer_prefetch_retry(&mut self, table: String) {
-        self.prefetching_tables.remove(&table);
         self.enqueue_prefetch(table);
     }
 
@@ -548,7 +537,7 @@ mod tests {
             assert!(!ctx.is_prefetch_started());
             assert!(!ctx.has_pending_prefetch());
             assert_eq!(ctx.prefetch_in_flight_count(), 0);
-            assert!(ctx.failed_prefetch_entry("public.failed").is_none());
+            assert!(ctx.failed_prefetch_tables.is_empty());
         }
     }
 

@@ -201,7 +201,8 @@ pub(super) fn reduce_prefetch(
                 .sql_modal
                 .failed_prefetch_entry(&qualified_name)
                 .map_or(0, |e| e.retry_count);
-            let should_continue_queue = state.sql_modal.record_prefetch_failure_for_retry(
+            let should_continue_queue = state.sql_modal.has_pending_prefetch();
+            state.sql_modal.record_prefetch_failure_and_requeue(
                 qualified_name.clone(),
                 FailedPrefetchEntry {
                     failed_at: now,
