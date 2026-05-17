@@ -44,10 +44,7 @@ impl MessageState {
     pub fn clear_expired(&mut self) {
         self.clear_expired_at(Instant::now());
     }
-}
 
-#[cfg(test)]
-impl MessageState {
     pub fn clear(&mut self) {
         self.last_error = None;
         self.last_success = None;

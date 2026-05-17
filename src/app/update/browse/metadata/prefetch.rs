@@ -28,22 +28,20 @@ pub(super) fn reduce_prefetch(
                 && let Some(metadata) = state.session.metadata()
             {
                 let run_id = state.sql_modal.begin_prefetch();
-                state.er_preparation.pending_tables.clear();
-                state.er_preparation.fetching_tables.clear();
-                state.er_preparation.failed_tables.clear();
-                state.er_preparation.total_tables = metadata.table_summaries.len();
-                state.er_preparation.fk_expanded = true;
+                let qualified_names: Vec<String> = metadata
+                    .table_summaries
+                    .iter()
+                    .map(|table| table.qualified_name())
+                    .collect();
+                state
+                    .er_preparation
+                    .begin_all_prefetch(qualified_names.iter().cloned());
 
-                let table_count = metadata.table_summaries.len();
+                let table_count = qualified_names.len();
                 let resize_capacity = table_count.clamp(500, 10_000);
 
-                for table_summary in &metadata.table_summaries {
-                    let qualified_name = table_summary.qualified_name();
-                    state
-                        .sql_modal
-                        .prefetch_queue
-                        .push_back(qualified_name.clone());
-                    state.er_preparation.pending_tables.insert(qualified_name);
+                for qualified_name in qualified_names {
+                    state.sql_modal.prefetch_queue.push_back(qualified_name);
                 }
                 DispatchResult::handled_with(vec![
                     Effect::ResizeCompletionCache {
@@ -61,22 +59,13 @@ pub(super) fn reduce_prefetch(
                 DispatchResult::handled()
             } else {
                 let run_id = state.sql_modal.begin_prefetch();
-                state.er_preparation.pending_tables.clear();
-                state.er_preparation.fetching_tables.clear();
-                state.er_preparation.failed_tables.clear();
-                state.er_preparation.fk_expanded = false;
-                state.er_preparation.seed_tables.clone_from(tables);
-                state.er_preparation.total_tables = tables.len();
+                state.er_preparation.begin_scoped_prefetch(tables);
 
                 for qualified_name in tables {
                     state
                         .sql_modal
                         .prefetch_queue
                         .push_back(qualified_name.clone());
-                    state
-                        .er_preparation
-                        .pending_tables
-                        .insert(qualified_name.clone());
                 }
                 DispatchResult::handled_with(vec![Effect::ProcessPrefetchQueue { run_id }])
             }

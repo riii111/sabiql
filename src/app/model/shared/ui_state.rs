@@ -320,6 +320,21 @@ impl UiState {
             self.connection_list_scroll_offset = 0;
         }
     }
+
+    pub fn request_er_picker_after_metadata(&mut self) {
+        self.pending_er_picker = true;
+    }
+
+    pub fn take_pending_er_picker(&mut self) -> bool {
+        let pending = self.pending_er_picker;
+        self.pending_er_picker = false;
+        pending
+    }
+
+    pub fn reset_er_picker_request(&mut self) {
+        self.er_selected_tables.clear();
+        self.pending_er_picker = false;
+    }
 }
 
 pub fn help_viewport_layout_for(

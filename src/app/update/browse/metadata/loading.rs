@@ -87,7 +87,7 @@ pub(super) fn reduce_loading(
 
             if state.session.is_reloading {
                 state.messages.set_success_at("Reloaded!".to_string(), now);
-                state.session.is_reloading = false;
+                state.session.finish_reload();
             }
 
             if state.modal.active_mode() == InputMode::SqlModal
@@ -96,13 +96,10 @@ pub(super) fn reduce_loading(
                 effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
 
-            if state.ui.pending_er_picker && state.modal.active_mode() == InputMode::Normal {
-                state.ui.pending_er_picker = false;
+            if state.ui.take_pending_er_picker() && state.modal.active_mode() == InputMode::Normal {
                 effects.push(Effect::DispatchActions(vec![Action::OpenModal(
                     ModalKind::ErTablePicker,
                 )]));
-            } else {
-                state.ui.pending_er_picker = false;
             }
 
             DispatchResult::handled_with(effects)
@@ -122,7 +119,7 @@ pub(super) fn reduce_loading(
                 state.modal.replace_mode(InputMode::ConnectionError);
             }
             if state.er_preparation.status == ErStatus::Waiting {
-                state.er_preparation.status = ErStatus::Idle;
+                state.er_preparation.mark_idle();
             }
             DispatchResult::handled()
         }
@@ -139,11 +136,8 @@ pub(super) fn reduce_loading(
                 let run_id = state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();
-                state.ui.er_selected_tables.clear();
-                state.ui.pending_er_picker = false;
-                state.messages.last_error = None;
-                state.messages.last_success = None;
-                state.messages.expires_at = None;
+                state.ui.reset_er_picker_request();
+                state.messages.clear();
 
                 DispatchResult::handled_with(vec![Effect::Sequence(vec![
                     Effect::CacheInvalidate { dsn: dsn.clone() },

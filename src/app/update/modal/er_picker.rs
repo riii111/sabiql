@@ -14,12 +14,11 @@ pub(super) fn reduce_er_picker(
     match action {
         Action::OpenModal(ModalKind::ErTablePicker) => {
             if state.session.metadata().is_none() {
-                state.ui.pending_er_picker = true;
+                state.ui.request_er_picker_after_metadata();
                 state.set_success("Waiting for metadata...".to_string());
                 return DispatchResult::handled();
             }
-            state.ui.pending_er_picker = false;
-            state.ui.er_selected_tables.clear();
+            state.ui.reset_er_picker_request();
             state.modal.set_mode(InputMode::ErTablePicker);
             state.ui.er_picker.clear_filter_and_reset();
             DispatchResult::handled()
@@ -27,8 +26,7 @@ pub(super) fn reduce_er_picker(
         Action::CloseModal(ModalKind::ErTablePicker) => {
             state.modal.set_mode(InputMode::Normal);
             state.ui.er_picker.clear_filter();
-            state.ui.er_selected_tables.clear();
-            state.ui.pending_er_picker = false;
+            state.ui.reset_er_picker_request();
             DispatchResult::handled()
         }
         Action::TextInput {
