@@ -197,7 +197,7 @@ pub fn reduce_connection_setup(
             state.modal.set_mode(InputMode::Normal);
             state
                 .session
-                .set_active_connection(id, name, *database_type, dsn);
+                .set_active_connection_with_dsn(id, name, *database_type, dsn);
             state.session.disable_read_only();
             let run_id = state.session.begin_connecting(dsn);
             DispatchResult::Handled(vec![Effect::FetchMetadata {

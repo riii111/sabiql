@@ -115,7 +115,6 @@ pub(super) fn reduce_prefetch(
             if let Some(entry) = state.sql_modal.failed_prefetch_tables.get(&qualified_name) {
                 if entry.retry_count >= MAX_PREFETCH_RETRIES {
                     // Exceeded retry limit — give up, don't re-queue
-                    state.er_preparation.remove_pending_table(&qualified_name);
                     state
                         .er_preparation
                         .on_table_failed(&qualified_name, entry.error.clone());

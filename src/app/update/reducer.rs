@@ -1298,7 +1298,7 @@ mod tests {
         #[test]
         fn reload_then_metadata_loaded_shows_reloaded_message() {
             let mut state = create_test_state();
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &crate::domain::connection::ConnectionId::from_string("test-connection"),
                 "test",
                 crate::domain::DatabaseType::PostgreSQL,
@@ -1381,7 +1381,7 @@ mod tests {
             let _ = state.sql_modal.begin_prefetch();
             state
                 .er_preparation
-                .insert_pending_table("public.users".to_string());
+                .queue_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -2106,7 +2106,7 @@ mod tests {
             // When already connected, metadata failure should preserve connection state
             // (metadata-only failure, e.g., permission denied on schema)
             let mut state = create_test_state();
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &crate::domain::connection::ConnectionId::from_string("test-connection"),
                 "test",
                 crate::domain::DatabaseType::PostgreSQL,
@@ -2234,7 +2234,7 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &conn_a,
                 "conn-a",
                 crate::domain::DatabaseType::PostgreSQL,
@@ -2280,7 +2280,7 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &conn_a,
                 "conn-a",
                 crate::domain::DatabaseType::PostgreSQL,
@@ -2557,7 +2557,7 @@ mod tests {
             state.er_preparation.mark_fk_expanded();
             state
                 .er_preparation
-                .insert_pending_table("public.users".to_string());
+                .queue_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2594,7 +2594,7 @@ mod tests {
                 .on_table_failed("public.posts", "timeout".to_string());
             state
                 .er_preparation
-                .insert_pending_table("public.users".to_string());
+                .queue_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(

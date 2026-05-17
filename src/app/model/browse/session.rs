@@ -18,12 +18,14 @@ use crate::model::shared::inspector_tab::InspectorTab;
 // - `selected_table_key`, `table_detail`, and `selection_generation` change
 //   together via `select_table` / `clear_table_selection`.
 // - `database_name` is derived from `metadata` (single source of truth).
+// - Cache restore for a connection exits transient reload/read-only state.
 //
 // # Transitional raw setters
 //
-// `set_metadata`, `set_table_detail_raw`, `set_connection_state`,
-// `set_metadata_state` are `pub(crate)` for reducers where the aggregate API
-// does not cover the exact semantics needed (e.g. ER refresh, reload).
+// `set_metadata` and `set_table_detail_raw` are `pub(crate)` for reducers
+// where the aggregate API does not cover the exact semantics needed.
+// `set_connection_state` and `set_metadata_state` are test-only lifecycle
+// fixtures.
 #[derive(Debug, Clone)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
@@ -130,7 +132,7 @@ impl BrowseSession {
         self.begin_metadata_run()
     }
 
-    pub fn set_active_connection(
+    pub fn set_active_connection_with_dsn(
         &mut self,
         id: &ConnectionId,
         name: &str,
@@ -277,7 +279,7 @@ impl BrowseSession {
         dsn: &str,
     ) {
         self.restore_from_cache(cache, query);
-        self.set_active_connection(id, name, database_type, dsn);
+        self.set_active_connection_with_dsn(id, name, database_type, dsn);
         self.disable_read_only();
     }
 
@@ -767,7 +769,7 @@ mod tests {
         fn clears_session_and_query_state() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            session.set_active_connection(
+            session.set_active_connection_with_dsn(
                 &ConnectionId::new(),
                 "mydb",
                 DatabaseType::PostgreSQL,

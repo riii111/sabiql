@@ -38,7 +38,7 @@ mod tests {
 
     fn set_active_run_id(state: &mut AppState, run_id: u64) {
         for _ in 0..run_id {
-            state.er_preparation.begin_smart_refresh();
+            let _ = state.er_preparation.start_waiting_run();
         }
         state.er_preparation.mark_idle();
     }

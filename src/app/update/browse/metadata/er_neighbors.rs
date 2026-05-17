@@ -25,7 +25,7 @@ pub(super) fn reduce_er_neighbors(state: &mut AppState, action: &Action) -> Disp
             for qualified_name in tables {
                 let is_new_pending = state
                     .er_preparation
-                    .insert_pending_table(qualified_name.clone());
+                    .queue_pending_table(qualified_name.clone());
                 let already_fetching = state.sql_modal.prefetching_tables.contains(qualified_name);
                 let already_queued = state.sql_modal.prefetch_queue.contains(qualified_name);
 

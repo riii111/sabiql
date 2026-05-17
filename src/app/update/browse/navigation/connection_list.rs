@@ -329,7 +329,7 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &active_id,
                 "active",
                 crate::domain::DatabaseType::PostgreSQL,
@@ -363,7 +363,7 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &active_id,
                 "active",
                 crate::domain::DatabaseType::PostgreSQL,
@@ -407,7 +407,7 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &active_id,
                 "active",
                 crate::domain::DatabaseType::PostgreSQL,
@@ -439,7 +439,7 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &active_id,
                 "active",
                 crate::domain::DatabaseType::PostgreSQL,

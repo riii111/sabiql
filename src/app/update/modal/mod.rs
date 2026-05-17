@@ -827,7 +827,7 @@ mod tests {
 
         fn connected_state() -> AppState {
             let mut state = create_test_state();
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &ConnectionId::from_string("test-conn"),
                 "test",
                 crate::domain::DatabaseType::PostgreSQL,

@@ -48,7 +48,7 @@ pub(super) fn reduce_diagram_lifecycle(
             }
 
             state.sql_modal.invalidate_prefetch();
-            let run_id = state.er_preparation.begin_smart_refresh();
+            let run_id = state.er_preparation.start_waiting_run();
             state.set_success("Checking for schema changes...".to_string());
 
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
@@ -58,7 +58,7 @@ pub(super) fn reduce_diagram_lifecycle(
                 return DispatchResult::handled();
             }
 
-            state.er_preparation.begin_rendering();
+            state.er_preparation.mark_rendering();
             let total_tables = state
                 .session
                 .metadata()

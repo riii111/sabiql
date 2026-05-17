@@ -174,12 +174,6 @@ impl ErPreparationState {
         self.status = ErStatus::Waiting;
     }
 
-    pub fn begin_smart_refresh(&mut self) -> u64 {
-        let run_id = self.run.begin();
-        self.status = ErStatus::Waiting;
-        run_id
-    }
-
     pub fn is_current_run(&self, run_id: u64) -> bool {
         self.run.is_current(run_id)
     }
@@ -190,10 +184,6 @@ impl ErPreparationState {
 
     pub fn can_generate_from_cache(&self) -> bool {
         matches!(self.status, ErStatus::Idle | ErStatus::Waiting)
-    }
-
-    pub fn begin_rendering(&mut self) {
-        self.status = ErStatus::Rendering;
     }
 
     pub fn reset(&mut self) {
@@ -213,6 +203,7 @@ impl ErPreparationState {
         self.status = ErStatus::Rendering;
     }
 
+    #[must_use]
     pub fn start_waiting_run(&mut self) -> u64 {
         let run_id = self.run.begin();
         self.status = ErStatus::Waiting;
@@ -260,21 +251,23 @@ impl ErPreparationState {
         }
     }
 
-    pub fn clear_table_tracking(&mut self) {
+    fn clear_table_tracking(&mut self) {
         self.pending_tables.clear();
         self.fetching_tables.clear();
         self.failed_tables.clear();
     }
 
-    pub fn insert_pending_table(&mut self, table: String) -> bool {
+    pub fn queue_pending_table(&mut self, table: String) -> bool {
+        self.fetching_tables.remove(&table);
+        self.failed_tables.remove(&table);
         self.pending_tables.insert(table)
     }
 
-    pub fn remove_pending_table(&mut self, table: &str) {
-        self.pending_tables.remove(table);
-    }
-
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn insert_fetching_table(&mut self, table: String) {
+        self.pending_tables.remove(&table);
+        self.failed_tables.remove(&table);
         self.fetching_tables.insert(table);
     }
 }
@@ -285,7 +278,7 @@ mod tests {
 
     fn set_active_run_id(state: &mut ErPreparationState, run_id: u64) {
         for _ in 0..run_id {
-            state.begin_smart_refresh();
+            let _ = state.start_waiting_run();
         }
         state.mark_idle();
     }

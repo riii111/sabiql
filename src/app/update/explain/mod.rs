@@ -66,7 +66,7 @@ mod tests {
     }
 
     fn use_sqlite_connection(state: &mut AppState) {
-        state.session.set_active_connection(
+        state.session.set_active_connection_with_dsn(
             &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
             "sqlite",
             DatabaseType::SQLite,

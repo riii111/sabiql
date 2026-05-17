@@ -240,7 +240,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
-            state.er_preparation.insert_pending_table(qualified.clone());
+            state.er_preparation.queue_pending_table(qualified.clone());
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -265,7 +265,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
-            state.er_preparation.insert_pending_table(qualified.clone());
+            state.er_preparation.queue_pending_table(qualified.clone());
             state.sql_modal.failed_prefetch_tables.insert(
                 qualified.clone(),
                 FailedPrefetchEntry {
@@ -303,7 +303,7 @@ mod tests {
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             // Only table remaining; retry limit exceeded
-            state.er_preparation.insert_pending_table(qualified.clone());
+            state.er_preparation.queue_pending_table(qualified.clone());
             state.sql_modal.failed_prefetch_tables.insert(
                 qualified,
                 FailedPrefetchEntry {
@@ -341,8 +341,8 @@ mod tests {
             let failed = "public.users".to_string();
             let remaining = "public.posts".to_string();
             // users exhausted retries; posts still awaiting in queue
-            state.er_preparation.insert_pending_table(failed.clone());
-            state.er_preparation.insert_pending_table(remaining.clone());
+            state.er_preparation.queue_pending_table(failed.clone());
+            state.er_preparation.queue_pending_table(remaining.clone());
             state.sql_modal.prefetch_queue.push_back(remaining);
             state.sql_modal.failed_prefetch_tables.insert(
                 failed,
@@ -583,7 +583,6 @@ mod tests {
                 Instant::now(),
             );
             state.sql_modal.prefetch_queue.clear();
-            state.er_preparation.remove_pending_table(&qualified);
             state
                 .er_preparation
                 .insert_fetching_table(qualified.clone());
@@ -804,7 +803,7 @@ mod tests {
             let _ = state.sql_modal.begin_prefetch();
             state
                 .er_preparation
-                .insert_pending_table("public.users".to_string());
+                .queue_pending_table("public.users".to_string());
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -986,7 +985,7 @@ mod tests {
             state.er_preparation.mark_waiting();
             state
                 .er_preparation
-                .insert_pending_table("public.posts".to_string());
+                .queue_pending_table("public.posts".to_string());
             state
                 .sql_modal
                 .prefetch_queue
@@ -1040,7 +1039,7 @@ mod tests {
             state.er_preparation.mark_waiting();
             state.er_preparation.mark_fk_expanded();
             let neighbor = "public.posts".to_string();
-            state.er_preparation.insert_pending_table(neighbor.clone());
+            state.er_preparation.queue_pending_table(neighbor.clone());
             state.sql_modal.failed_prefetch_tables.insert(
                 neighbor,
                 FailedPrefetchEntry {

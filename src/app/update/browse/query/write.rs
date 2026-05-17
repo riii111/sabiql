@@ -565,7 +565,7 @@ mod tests {
         #[test]
         fn sqlite_active_database_type_uses_sqlite_update_preview() {
             let mut state = editable_state();
-            state.session.set_active_connection(
+            state.session.set_active_connection_with_dsn(
                 &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
                 "sqlite",
                 DatabaseType::SQLite,

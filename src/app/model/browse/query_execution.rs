@@ -127,6 +127,8 @@ impl PaginationState {
         self.current_page = page;
     }
 
+    // Applying a query result replaces both the page and end-of-data flag so
+    // stale pagination state cannot survive a completed fetch.
     pub fn set_page_result(&mut self, page: usize, reached_end: bool) {
         self.current_page = page;
         self.reached_end = reached_end;
@@ -796,7 +798,7 @@ mod tests {
         }
 
         #[test]
-        fn allow_next_page_after_refresh_clears_reached_end_only() {
+        fn clear_reached_end_only_clears_that_flag() {
             let mut p = PaginationState {
                 current_page: 3,
                 reached_end: true,
