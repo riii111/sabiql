@@ -34,7 +34,7 @@ pub(super) fn reduce_high_risk_confirmation(
                 SqlModalStatus::ConfirmingHigh { .. }
             ) {
                 state.sql_modal.cancel_confirmation();
-                state.ui.key_sequence = KeySequenceState::Idle;
+                state.ui.set_key_sequence(KeySequenceState::Idle);
                 DispatchResult::handled()
             } else {
                 DispatchResult::pass()

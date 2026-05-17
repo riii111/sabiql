@@ -18,8 +18,8 @@ const SECTION_HEADER_LINE_COUNT: usize = 1;
 
 impl HelpDocument {
     pub fn from_state(state: &AppState) -> Self {
-        let filter = state.ui.help.filter();
-        Self::new_with_cursor(state.ui.help.origin(), filter.content(), filter.cursor())
+        let filter = state.ui.help().filter();
+        Self::new_with_cursor(state.ui.help().origin(), filter.content(), filter.cursor())
     }
 
     pub fn new(origin: HelpOrigin, filter: &str) -> Self {

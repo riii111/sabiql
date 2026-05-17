@@ -28,7 +28,7 @@ pub(super) fn reduce_mode(state: &mut AppState, action: &Action, _now: Instant) 
             state
                 .sql_modal
                 .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state.sql_modal.enter_editing();
             DispatchResult::handled()
         }

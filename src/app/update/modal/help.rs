@@ -17,27 +17,24 @@ fn scroll_help_by(
     content_width: usize,
 ) {
     let max_scroll = state.ui.help_max_scroll(line_count, content_width);
-    let offset = direction.clamp_vertical_offset(state.ui.help.scroll_offset(), max_scroll, delta);
-    state.ui.help.set_scroll_offset(offset);
+    let offset =
+        direction.clamp_vertical_offset(state.ui.help().scroll_offset(), max_scroll, delta);
+    state.ui.help_mut().set_scroll_offset(offset);
 }
 
 fn scroll_help_horizontally(state: &mut AppState, direction: ScrollDirection) {
     match direction {
         ScrollDirection::Left => {
-            state
-                .ui
-                .help
-                .set_horizontal_offset(state.ui.help.horizontal_offset().saturating_sub(1));
+            let offset = state.ui.help().horizontal_offset().saturating_sub(1);
+            state.ui.help_mut().set_horizontal_offset(offset);
         }
         ScrollDirection::Right => {
             let document = HelpDocument::from_state(state);
             let max_scroll = state
                 .ui
                 .help_max_horizontal_scroll(document.line_count(), document.content_width());
-            state
-                .ui
-                .help
-                .set_horizontal_offset((state.ui.help.horizontal_offset() + 1).min(max_scroll));
+            let offset = (state.ui.help().horizontal_offset() + 1).min(max_scroll);
+            state.ui.help_mut().set_horizontal_offset(offset);
         }
         ScrollDirection::Up | ScrollDirection::Down => {}
     }
@@ -45,7 +42,7 @@ fn scroll_help_horizontally(state: &mut AppState, direction: ScrollDirection) {
 
 fn close_help(state: &mut AppState) {
     state.modal.pop_mode();
-    state.ui.help.close();
+    state.ui.help_mut().close();
 }
 
 pub(super) fn reduce_help(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
@@ -55,7 +52,7 @@ pub(super) fn reduce_help(state: &mut AppState, action: &Action, _now: Instant) 
                 close_help(state);
             } else {
                 let origin = HelpOrigin::from_state(state);
-                state.ui.help.open(origin);
+                state.ui.help_mut().open(origin);
                 state.modal.push_mode(InputMode::Help);
             }
             DispatchResult::handled()
@@ -68,13 +65,13 @@ pub(super) fn reduce_help(state: &mut AppState, action: &Action, _now: Instant) 
             target: InputTarget::HelpFilter,
             ch,
         } => {
-            state.ui.help.insert_filter_char(*ch);
+            state.ui.help_mut().insert_filter_char(*ch);
             DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::HelpFilter,
         } => {
-            state.ui.help.backspace_filter();
+            state.ui.help_mut().backspace_filter();
             DispatchResult::handled()
         }
         Action::Scroll {
@@ -100,9 +97,9 @@ pub(super) fn reduce_help(state: &mut AppState, action: &Action, _now: Instant) 
                 }
                 ScrollAmount::ToStart => {
                     if matches!(direction, ScrollDirection::Left | ScrollDirection::Right) {
-                        state.ui.help.set_horizontal_offset(0);
+                        state.ui.help_mut().set_horizontal_offset(0);
                     } else {
-                        state.ui.help.set_scroll_offset(0);
+                        state.ui.help_mut().set_scroll_offset(0);
                     }
                 }
                 ScrollAmount::ToEnd => {
@@ -112,12 +109,12 @@ pub(super) fn reduce_help(state: &mut AppState, action: &Action, _now: Instant) 
                             document.line_count(),
                             document.content_width(),
                         );
-                        state.ui.help.set_horizontal_offset(max_scroll);
+                        state.ui.help_mut().set_horizontal_offset(max_scroll);
                     } else {
                         let max_scroll = state
                             .ui
                             .help_max_scroll(document.line_count(), document.content_width());
-                        state.ui.help.set_scroll_offset(max_scroll);
+                        state.ui.help_mut().set_scroll_offset(max_scroll);
                     }
                 }
                 ScrollAmount::HalfPage | ScrollAmount::FullPage => {

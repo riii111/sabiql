@@ -383,9 +383,10 @@ fn help_overlay_filtered_current_result() {
 
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
-    state.ui.help.open(HelpOrigin::from_state(&state));
+    let origin = HelpOrigin::from_state(&state);
+    state.ui.help_mut().open(origin);
     for ch in "copy".chars() {
-        state.ui.help.insert_filter_char(ch);
+        state.ui.help_mut().insert_filter_char(ch);
     }
     state.modal.set_mode(InputMode::Help);
 
@@ -400,7 +401,7 @@ fn help_overlay_long_key_rows() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.help.set_scroll_offset(58);
+    state.ui.help_mut().set_scroll_offset(58);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -413,10 +414,10 @@ fn help_overlay_narrow_horizontal_scroll() {
     let mut terminal = create_test_terminal_sized(50, 24);
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.terminal_width = 50;
-    state.ui.terminal_height = 24;
-    state.ui.help.set_scroll_offset(58);
-    state.ui.help.set_horizontal_offset(18);
+    state.ui.set_terminal_width(50);
+    state.ui.set_terminal_height(24);
+    state.ui.help_mut().set_scroll_offset(58);
+    state.ui.help_mut().set_horizontal_offset(18);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -429,8 +430,8 @@ fn help_overlay_omits_scrollbars_when_content_fits() {
     let mut terminal = create_test_terminal_sized(180, 300);
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.terminal_width = 180;
-    state.ui.terminal_height = 300;
+    state.ui.set_terminal_width(180);
+    state.ui.set_terminal_height(300);
 
     let output = render_to_string(&mut terminal, &mut state);
 

@@ -201,7 +201,7 @@ pub fn reduce_execution(
                     vec![]
                 }
                 Action::ToggleModal(ModalKind::Help) => {
-                    state.ui.help.open(HelpOrigin::CommandLine);
+                    state.ui.help_mut().open(HelpOrigin::CommandLine);
                     state.modal.push_mode(InputMode::Help);
                     vec![]
                 }
@@ -993,7 +993,7 @@ mod tests {
             };
             let meta_effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.explorer_selected, 1);
+            assert_eq!(state.ui.explorer_selected(), 1);
             assert_eq!(state.query.pagination.table(), "users");
             assert!(
                 meta_effects
@@ -1034,7 +1034,7 @@ mod tests {
             assert!(state.query.pagination.table().is_empty());
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]

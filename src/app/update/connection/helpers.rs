@@ -27,7 +27,6 @@ pub(super) fn restore_cache(
         database_type,
         dsn,
     );
-    state.ui.set_explorer_selected_raw(cache.explorer_selected);
     state.ui.set_inspector_tab(
         state
             .session

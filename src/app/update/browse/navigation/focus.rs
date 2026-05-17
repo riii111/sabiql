@@ -133,7 +133,7 @@ mod tests {
         #[test]
         fn next_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Info;
+            state.ui.set_inspector_tab(InspectorTab::Info);
 
             dispatch_navigation(
                 &mut state,
@@ -142,13 +142,13 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.inspector_tab, InspectorTab::Columns);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Columns);
         }
 
         #[test]
         fn prev_tab_wraps_between_supported_tabs() {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Info;
+            state.ui.set_inspector_tab(InspectorTab::Info);
 
             dispatch_navigation(
                 &mut state,
@@ -157,7 +157,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.inspector_tab, InspectorTab::Columns);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Columns);
         }
     }
 }

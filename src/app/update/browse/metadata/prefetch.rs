@@ -140,9 +140,7 @@ pub(super) fn reduce_prefetch(
             }
 
             let Some(dsn) = state.session.dsn().map(String::from) else {
-                state
-                    .sql_modal
-                    .requeue_prefetch_for_missing_dsn(qualified_name);
+                state.sql_modal.prioritize_prefetch(qualified_name);
                 return DispatchResult::handled();
             };
 
@@ -203,18 +201,15 @@ pub(super) fn reduce_prefetch(
                 .sql_modal
                 .failed_prefetch_entry(&qualified_name)
                 .map_or(0, |e| e.retry_count);
-            // Snapshot before record_prefetch_failure_and_requeue so this self retry is not
-            // counted by has_pending_prefetch; immediate processing is only for peers, while
-            // this entry resumes through DelayedProcessPrefetchQueue with backoff_secs_for.
-            let had_other_pending_before_requeue = state.sql_modal.has_pending_prefetch();
-            state.sql_modal.record_prefetch_failure_and_requeue(
-                qualified_name.clone(),
-                FailedPrefetchEntry {
-                    failed_at: now,
-                    error: error.user_message(),
-                    retry_count: prev_count + 1,
-                },
-            );
+            let had_other_pending_before_requeue =
+                state.sql_modal.record_prefetch_failure_and_requeue(
+                    qualified_name.clone(),
+                    FailedPrefetchEntry {
+                        failed_at: now,
+                        error: error.user_message(),
+                        retry_count: prev_count + 1,
+                    },
+                );
             state.er_preparation.requeue_for_retry(&qualified_name);
 
             let mut effects = Vec::new();

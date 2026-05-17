@@ -183,7 +183,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 _ => state.jsonb_detail.editor_mut().move_cursor(*direction),
             }
             update_editor_scroll(state);
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             DispatchResult::handled()
         }
 
@@ -670,7 +670,7 @@ mod tests {
         #[test]
         fn movement_updates_scroll_with_current_editor_viewport_height() {
             let mut state = state_with_jsonb_value(r#"{"items":["admin","writer","reader"]}"#);
-            state.ui.jsonb_detail_editor_visible_rows = 2;
+            state.ui.set_jsonb_detail_editor_visible_rows(2);
             open_detail(&mut state);
 
             reduce_jsonb(
@@ -703,7 +703,7 @@ mod tests {
         ) {
             let mut state =
                 state_with_jsonb_value("{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3,\n  \"d\": 4\n}");
-            state.ui.jsonb_detail_editor_visible_rows = 3;
+            state.ui.set_jsonb_detail_editor_visible_rows(3);
             open_detail(&mut state);
             state.modal.replace_mode(InputMode::JsonbEdit);
             state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
@@ -733,7 +733,9 @@ mod tests {
             open_detail(&mut state);
             state.modal.replace_mode(InputMode::JsonbEdit);
             state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::G);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::G));
 
             reduce_jsonb(
                 &mut state,
@@ -744,7 +746,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.key_sequence.pending_prefix(), None);
+            assert_eq!(state.ui.key_sequence().pending_prefix(), None);
         }
 
         #[test]

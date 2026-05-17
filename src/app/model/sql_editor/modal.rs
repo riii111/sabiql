@@ -172,17 +172,22 @@ impl SqlModalContext {
     }
 
     pub fn enqueue_prefetch(&mut self, table: String) {
-        if self.prefetching_tables.contains(&table) || self.prefetch_queue.contains(&table) {
+        if self.has_prefetch_entry(&table) {
             return;
         }
         self.prefetch_queue.push_back(table);
     }
 
-    pub fn requeue_prefetch_for_missing_dsn(&mut self, table: String) {
-        if self.prefetching_tables.contains(&table) || self.prefetch_queue.contains(&table) {
+    pub fn prioritize_prefetch(&mut self, table: String) {
+        if self.has_prefetch_entry(&table) {
             return;
         }
         self.prefetch_queue.push_front(table);
+    }
+
+    fn has_prefetch_entry(&self, table: &str) -> bool {
+        self.prefetching_tables.contains(table)
+            || self.prefetch_queue.iter().any(|queued| queued == table)
     }
 
     pub fn dequeue_prefetch(&mut self) -> Option<String> {
@@ -210,9 +215,11 @@ impl SqlModalContext {
         &mut self,
         table: String,
         entry: FailedPrefetchEntry,
-    ) {
+    ) -> bool {
+        let had_other_pending_before_requeue = self.has_pending_prefetch();
         self.record_prefetch_failure(table.clone(), entry);
         self.enqueue_prefetch(table);
+        had_other_pending_before_requeue
     }
 
     pub fn active_prefetch_run_id(&self) -> Option<u64> {
@@ -541,11 +548,11 @@ mod tests {
         }
 
         #[test]
-        fn requeue_for_missing_dsn_skips_already_queued_table() {
+        fn prioritize_prefetch_skips_already_queued_table() {
             let mut ctx = SqlModalContext::default();
 
             ctx.enqueue_prefetch("public.users".to_string());
-            ctx.requeue_prefetch_for_missing_dsn("public.users".to_string());
+            ctx.prioritize_prefetch("public.users".to_string());
 
             assert_eq!(ctx.prefetch_queue().len(), 1);
             assert_eq!(
@@ -555,13 +562,35 @@ mod tests {
         }
 
         #[test]
+        fn prioritize_prefetch_skips_in_flight_table() {
+            let mut ctx = SqlModalContext::default();
+
+            ctx.mark_prefetching("public.users".to_string());
+            ctx.prioritize_prefetch("public.users".to_string());
+
+            assert!(ctx.prefetch_queue().is_empty());
+            assert!(ctx.is_prefetching("public.users"));
+        }
+
+        #[test]
+        fn prioritize_prefetch_pushes_to_front_of_pending_queue() {
+            let mut ctx = SqlModalContext::default();
+
+            ctx.enqueue_prefetch("public.orders".to_string());
+            ctx.prioritize_prefetch("public.users".to_string());
+
+            let queued: Vec<&str> = ctx.prefetch_queue().iter().map(String::as_str).collect();
+            assert_eq!(queued, vec!["public.users", "public.orders"]);
+        }
+
+        #[test]
         fn failure_requeue_appends_after_existing_pending_tables() {
             let mut ctx = SqlModalContext::default();
             let failed_at = Instant::now();
 
             ctx.mark_prefetching("public.users".to_string());
             ctx.enqueue_prefetch("public.orders".to_string());
-            ctx.record_prefetch_failure_and_requeue(
+            let had_other_pending_before_requeue = ctx.record_prefetch_failure_and_requeue(
                 "public.users".to_string(),
                 FailedPrefetchEntry {
                     failed_at,
@@ -570,8 +599,35 @@ mod tests {
                 },
             );
 
+            assert!(had_other_pending_before_requeue);
             let queued: Vec<&str> = ctx.prefetch_queue().iter().map(String::as_str).collect();
             assert_eq!(queued, vec!["public.orders", "public.users"]);
+            assert!(!ctx.is_prefetching("public.users"));
+            assert_eq!(
+                ctx.failed_prefetch_entry("public.users")
+                    .map(|entry| (entry.failed_at, entry.retry_count)),
+                Some((failed_at, 1))
+            );
+        }
+
+        #[test]
+        fn failure_requeue_returns_false_for_self_retry_only() {
+            let mut ctx = SqlModalContext::default();
+            let failed_at = Instant::now();
+
+            ctx.mark_prefetching("public.users".to_string());
+            let had_other_pending_before_requeue = ctx.record_prefetch_failure_and_requeue(
+                "public.users".to_string(),
+                FailedPrefetchEntry {
+                    failed_at,
+                    error: "timeout".to_string(),
+                    retry_count: 1,
+                },
+            );
+
+            assert!(!had_other_pending_before_requeue);
+            let queued: Vec<&str> = ctx.prefetch_queue().iter().map(String::as_str).collect();
+            assert_eq!(queued, vec!["public.users"]);
             assert!(!ctx.is_prefetching("public.users"));
             assert_eq!(
                 ctx.failed_prefetch_entry("public.users")

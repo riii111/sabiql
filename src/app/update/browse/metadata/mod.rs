@@ -658,7 +658,7 @@ mod tests {
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert!(state.session.selected_table_key().is_none());
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]
@@ -672,7 +672,7 @@ mod tests {
             let effects = dispatch_metadata(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(state.query.pagination.table(), "users");
-            assert_eq!(state.ui.explorer_selected, 1);
+            assert_eq!(state.ui.explorer_selected(), 1);
             assert!(
                 effects
                     .iter()
@@ -693,7 +693,7 @@ mod tests {
             let action = metadata_loaded_action(&mut state, metadata);
             dispatch_metadata(&mut state, &action, Instant::now());
 
-            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_selected(), 0);
         }
 
         #[test]

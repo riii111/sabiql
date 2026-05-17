@@ -14,7 +14,7 @@ pub(super) fn reduce_base_lifecycle(
     match action {
         Action::OpenModal(ModalKind::TablePicker) => {
             state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker.clear_filter_and_reset();
+            state.ui.table_picker_mut().clear_filter_and_reset();
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::TablePicker)
@@ -32,7 +32,7 @@ pub(super) fn reduce_base_lifecycle(
         Action::OpenModal(ModalKind::CommandPalette) => {
             state.modal.set_mode(InputMode::CommandPalette);
             // Command palette currently reuses the generic picker selection state.
-            state.ui.table_picker.reset();
+            state.ui.table_picker_mut().reset();
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::SqlModal) => {

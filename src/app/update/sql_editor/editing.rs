@@ -23,7 +23,7 @@ pub(super) fn reduce_editing(
             state
                 .sql_modal
                 .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion_after_dismiss(now + Duration::from_millis(100));
@@ -41,7 +41,7 @@ pub(super) fn reduce_editing(
             state
                 .sql_modal
                 .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -55,7 +55,7 @@ pub(super) fn reduce_editing(
             state
                 .sql_modal
                 .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -69,7 +69,7 @@ pub(super) fn reduce_editing(
             state
                 .sql_modal
                 .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -81,7 +81,7 @@ pub(super) fn reduce_editing(
             state
                 .sql_modal
                 .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -93,7 +93,7 @@ pub(super) fn reduce_editing(
             state
                 .sql_modal
                 .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
             state
                 .sql_modal
                 .schedule_completion(now + Duration::from_millis(100));
@@ -109,7 +109,7 @@ pub(super) fn reduce_editing(
                 | CursorMove::ViewportBottom => {
                     state.sql_modal.editor.move_cursor_to_viewport_position(
                         *movement,
-                        sql_modal_visible_rows(state.ui.terminal_height),
+                        sql_modal_visible_rows(state.ui.terminal_height()),
                     );
                 }
                 _ => state.sql_modal.editor.move_cursor(*movement),
@@ -117,14 +117,14 @@ pub(super) fn reduce_editing(
             state
                 .sql_modal
                 .editor
-                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height));
-            state.ui.key_sequence = KeySequenceState::Idle;
+                .update_scroll(sql_modal_visible_rows(state.ui.terminal_height()));
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             DispatchResult::handled()
         }
         Action::SqlModalClear => {
             state.sql_modal.editor.clear();
             state.sql_modal.reset_completion();
-            state.ui.key_sequence = KeySequenceState::Idle;
+            state.ui.set_key_sequence(KeySequenceState::Idle);
             DispatchResult::handled()
         }
         _ => DispatchResult::pass(),

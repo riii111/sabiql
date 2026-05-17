@@ -783,7 +783,7 @@ mod tests {
         #[test]
         fn plan_scroll_down_increments() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
@@ -806,14 +806,14 @@ mod tests {
         #[test]
         fn plan_scroll_down_clamps_at_max() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
             let modal_inner = crate::model::explain_context::ExplainContext::modal_inner_height(
-                state.ui.terminal_height,
+                state.ui.terminal_height(),
             );
             let max = state.explain.line_count().saturating_sub(modal_inner);
             state.explain.scroll_offset = max;
@@ -875,7 +875,7 @@ mod tests {
         #[test]
         fn compare_scroll_down_stops_at_max() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
@@ -883,7 +883,7 @@ mod tests {
             state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
             state.explain.set_plan(long_plan, false, 0, "Q2");
 
-            let max = state.explain.compare_max_scroll(state.ui.terminal_height);
+            let max = state.explain.compare_max_scroll(state.ui.terminal_height());
 
             // Scroll to max
             for _ in 0..max + 5 {
@@ -916,7 +916,7 @@ mod tests {
         #[test]
         fn right_only_plan_scroll_down_increments() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()

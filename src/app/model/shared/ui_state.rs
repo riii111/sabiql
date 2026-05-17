@@ -162,45 +162,45 @@ impl ResultSelection {
 
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
-    pub(crate) theme_id: ThemeId,
-    pub(crate) focused_pane: FocusedPane,
-    pub(crate) focus_mode: FocusMode,
-    pub(crate) explorer_selected: usize,
-    pub(crate) explorer_scroll_offset: usize,
-    pub(crate) explorer_horizontal_offset: usize,
+    theme_id: ThemeId,
+    focused_pane: FocusedPane,
+    focus_mode: FocusMode,
+    explorer_selected: usize,
+    explorer_scroll_offset: usize,
+    explorer_horizontal_offset: usize,
     // Default::default() leaves this at 0 until the first render updates it, so
     // scroll_max_offset may temporarily return the full content width.
-    pub(crate) explorer_content_width: usize,
+    explorer_content_width: usize,
 
-    pub(crate) connection_list_selected: usize,
-    pub(crate) connection_list_scroll_offset: usize,
-    pub(crate) connection_list_pane_height: u16,
+    connection_list_selected: usize,
+    connection_list_scroll_offset: usize,
+    connection_list_pane_height: u16,
 
-    pub(crate) table_picker: PickerState,
+    table_picker: PickerState,
 
-    pub(crate) er_picker: PickerState,
-    pub(crate) er_selected_tables: BTreeSet<String>,
-    pub(crate) pending_er_picker: bool,
+    er_picker: PickerState,
+    er_selected_tables: BTreeSet<String>,
+    pending_er_picker: bool,
 
-    pub(crate) inspector_tab: InspectorTab,
-    pub(crate) inspector_scroll_offset: usize,
-    pub(crate) inspector_horizontal_offset: usize,
-    pub(crate) inspector_viewport_plan: ViewportPlan,
-    pub(crate) inspector_pane_height: u16,
+    inspector_tab: InspectorTab,
+    inspector_scroll_offset: usize,
+    inspector_horizontal_offset: usize,
+    inspector_viewport_plan: ViewportPlan,
+    inspector_pane_height: u16,
 
-    pub(crate) explorer_pane_height: u16,
+    explorer_pane_height: u16,
 
-    pub(crate) result_viewport_plan: ViewportPlan,
-    pub(crate) result_widths_cache: ColumnWidthsCache,
-    pub(crate) result_pane_height: u16,
-    pub(crate) jsonb_detail_editor_visible_rows: usize,
+    result_viewport_plan: ViewportPlan,
+    result_widths_cache: ColumnWidthsCache,
+    result_pane_height: u16,
+    jsonb_detail_editor_visible_rows: usize,
 
-    pub help: HelpState,
+    help: HelpState,
 
-    pub terminal_width: u16,
-    pub terminal_height: u16,
+    terminal_width: u16,
+    terminal_height: u16,
 
-    pub(crate) key_sequence: KeySequenceState,
+    key_sequence: KeySequenceState,
 }
 
 impl UiState {
@@ -249,10 +249,35 @@ impl UiState {
         self.explorer_scroll_offset = offset;
     }
 
-    // Sets selection index without adjusting scroll offset.
-    // Used when the caller manages scroll state independently (page scroll, cache restore).
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn set_explorer_selected_raw(&mut self, selected: usize) {
         self.explorer_selected = selected;
+    }
+
+    pub fn scroll_explorer_page_down(&mut self, item_count: usize, delta: usize) {
+        if item_count == 0 {
+            return;
+        }
+        let visible = self.explorer_visible_items();
+        if visible == 0 {
+            return;
+        }
+        let max_idx = item_count.saturating_sub(1);
+        let max_offset = item_count.saturating_sub(visible);
+        self.explorer_selected = (self.explorer_selected + delta).min(max_idx);
+        self.explorer_scroll_offset = (self.explorer_scroll_offset + delta).min(max_offset);
+    }
+
+    pub fn scroll_explorer_page_up(&mut self, item_count: usize, delta: usize) {
+        if item_count == 0 {
+            return;
+        }
+        if self.explorer_visible_items() == 0 {
+            return;
+        }
+        self.explorer_selected = self.explorer_selected.saturating_sub(delta);
+        self.explorer_scroll_offset = self.explorer_scroll_offset.saturating_sub(delta);
     }
 
     pub fn set_explorer_horizontal_offset(&mut self, offset: usize) {
@@ -283,7 +308,8 @@ impl UiState {
         self.connection_list_pane_height = height;
     }
 
-    // Test/setup helper for selection-only states where scroll is controlled separately.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn set_connection_list_selected_raw(&mut self, selected: usize) {
         self.connection_list_selected = selected;
     }
@@ -414,6 +440,14 @@ impl UiState {
         self.jsonb_detail_editor_visible_rows = rows;
     }
 
+    pub fn help(&self) -> &HelpState {
+        &self.help
+    }
+
+    pub fn help_mut(&mut self) -> &mut HelpState {
+        &mut self.help
+    }
+
     pub fn help_scroll_offset(&self) -> usize {
         self.help.scroll_offset()
     }
@@ -426,7 +460,20 @@ impl UiState {
         self.terminal_height
     }
 
+    pub fn terminal_width(&self) -> u16 {
+        self.terminal_width
+    }
+
     pub fn set_terminal_height(&mut self, height: u16) {
+        self.terminal_height = height;
+    }
+
+    pub fn set_terminal_width(&mut self, width: u16) {
+        self.terminal_width = width;
+    }
+
+    pub fn set_terminal_size(&mut self, width: u16, height: u16) {
+        self.terminal_width = width;
         self.terminal_height = height;
     }
 
