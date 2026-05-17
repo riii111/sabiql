@@ -69,7 +69,7 @@ impl SqliteCli {
         if read_only {
             cmd.arg("-readonly");
         }
-        cmd.arg(path).arg(sql);
+        cmd.arg("--").arg(path).arg(sql);
 
         let mut child = cmd
             .stdout(Stdio::piped())
@@ -139,7 +139,7 @@ impl SqliteCli {
         for arg in args {
             cmd.arg(arg);
         }
-        cmd.arg(path).arg(sql);
+        cmd.arg("--").arg(path).arg(sql);
         Self::collect_output(&mut cmd, self.timeout_secs).await
     }
 

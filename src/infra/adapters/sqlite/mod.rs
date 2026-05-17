@@ -391,11 +391,7 @@ impl SqliteAdapter {
 
 fn append_changes_query(query: &str) -> String {
     let trimmed = query.trim_end();
-    if trimmed.ends_with(';') {
-        format!("{trimmed}\nSELECT changes() AS affected_rows;")
-    } else {
-        format!("{trimmed};\nSELECT changes() AS affected_rows;")
-    }
+    format!("{trimmed}\n;\nSELECT changes() AS affected_rows;")
 }
 
 fn csv_field_count(line: &str) -> usize {
@@ -447,6 +443,70 @@ fn second_keyword(sql: &str) -> Option<&str> {
     let first = first_keyword(sql);
     let start = sql.find(first)? + first.len();
     Some(first_keyword(&sql[start..])).filter(|keyword| !keyword.is_empty())
+}
+
+fn contains_keyword(sql: &str, expected: &str) -> bool {
+    let bytes = sql.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                if i + 1 < bytes.len() {
+                    i += 2;
+                }
+            }
+            b'\'' => {
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == b'\'' {
+                        if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                            i += 2;
+                        } else {
+                            i += 1;
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'"' => {
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == b'"' {
+                        if i + 1 < bytes.len() && bytes[i + 1] == b'"' {
+                            i += 2;
+                        } else {
+                            i += 1;
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b if b.is_ascii_alphabetic() => {
+                let start = i;
+                while i < bytes.len() && bytes[i].is_ascii_alphanumeric() {
+                    i += 1;
+                }
+                if sql[start..i].eq_ignore_ascii_case(expected) {
+                    return true;
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    false
 }
 
 fn count_select_statements(sql: &str) -> usize {
@@ -544,15 +604,37 @@ fn csv_to_query_result(
     ))
 }
 
+fn first_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(stdout.trim().as_bytes());
+    let mut records = reader.records();
+    let record = records
+        .next()
+        .transpose()?
+        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))?;
+    record
+        .get(0)
+        .map(ToString::to_string)
+        .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))
+}
+
 fn parse_affected_rows(stdout: &str) -> Result<usize, DbOperationError> {
-    let result = csv_to_query_result(stdout, stdout, QuerySource::Adhoc, 0)?;
-    result
-        .rows
-        .first()
-        .and_then(|row| row.first())
-        .ok_or_else(|| DbOperationError::CommandTagParseFailed(stdout.to_string()))?
+    first_csv_cell(stdout)
+        .map_err(|error| match error {
+            DbOperationError::EmptyResponse(_) => {
+                DbOperationError::CommandTagParseFailed(stdout.to_string())
+            }
+            other => other,
+        })?
         .parse::<usize>()
         .map_err(|error| DbOperationError::CommandTagParseFailed(error.to_string()))
+}
+
+fn parse_count_result(stdout: &str) -> Result<usize, DbOperationError> {
+    first_csv_cell(stdout)?.parse::<usize>().map_err(|error| {
+        DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {error}"))
+    })
 }
 
 fn ddl_tag(query: &str) -> Option<CommandTag> {
@@ -607,11 +689,7 @@ impl MetadataProvider for SqliteAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        if schema != MAIN_SCHEMA {
-            return Err(DbOperationError::ObjectMissing(format!(
-                "SQLite schema not found: {schema}"
-            )));
-        }
+        Self::validate_main_schema(schema)?;
         self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, true)
             .await
     }
@@ -622,11 +700,7 @@ impl MetadataProvider for SqliteAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        if schema != MAIN_SCHEMA {
-            return Err(DbOperationError::ObjectMissing(format!(
-                "SQLite schema not found: {schema}"
-            )));
-        }
+        Self::validate_main_schema(schema)?;
         self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, false)
             .await
     }
@@ -676,6 +750,22 @@ impl QueryExecutor for SqliteAdapter {
             || keyword.eq_ignore_ascii_case("UPDATE")
             || keyword.eq_ignore_ascii_case("DELETE")
         {
+            if contains_keyword(query, "RETURNING") {
+                let mut result = self
+                    .execute_csv_query(path, query, QuerySource::Adhoc, read_only)
+                    .await?;
+                let affected_rows = result.row_count as u64;
+                let tag = if keyword.eq_ignore_ascii_case("INSERT") {
+                    CommandTag::Insert(affected_rows)
+                } else if keyword.eq_ignore_ascii_case("UPDATE") {
+                    CommandTag::Update(affected_rows)
+                } else {
+                    CommandTag::Delete(affected_rows)
+                };
+                result = result.with_command_tag(tag);
+                return Ok(result);
+            }
+
             let (affected_rows, elapsed) =
                 self.execute_changes_query(path, query, read_only).await?;
             let tag = if keyword.eq_ignore_ascii_case("INSERT") {
@@ -729,25 +819,11 @@ impl QueryExecutor for SqliteAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
-        let result = self
-            .execute_csv_query(
-                Self::path_from_dsn(dsn)?,
-                query,
-                QuerySource::Adhoc,
-                read_only,
-            )
+        let stdout = self
+            .cli
+            .execute_csv(Self::path_from_dsn(dsn)?, query, read_only)
             .await?;
-        result
-            .rows
-            .first()
-            .and_then(|row| row.first())
-            .ok_or_else(|| {
-                DbOperationError::QueryFailed("Failed to parse COUNT result".to_string())
-            })?
-            .parse::<usize>()
-            .map_err(|error| {
-                DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {error}"))
-            })
+        parse_count_result(&stdout)
     }
 
     async fn export_to_csv(
@@ -848,6 +924,48 @@ mod tests {
 
         assert_eq!(result.row_count, 1);
         assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_with_trailing_line_comment_returns_affected_rows() {
+        let (_dir, dsn) = make_db(
+            r#"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            "#,
+        );
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "DELETE FROM users WHERE id = 1 -- cleanup selected row",
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_dml_returning_preserves_returned_rows() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "INSERT INTO users(name) VALUES ('a') RETURNING id, name",
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.columns, vec!["id", "name"]);
+        assert_eq!(result.rows, vec![vec!["1".to_string(), "a".to_string()]]);
+        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
     }
 
     #[tokio::test]
@@ -1112,6 +1230,25 @@ mod tests {
             empty_result,
             Err(DbOperationError::ConnectionFailed(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn relative_path_starting_with_dash_is_opened_as_database_path() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = format!("-sabiql-{unique}.db");
+        let dsn = format!("sqlite://{path}");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "SELECT 1 AS value", false)
+            .await;
+        let _ = std::fs::remove_file(&path);
+
+        let result = result.unwrap();
+        assert_eq!(result.rows, vec![vec!["1".to_string()]]);
     }
 
     #[tokio::test]
