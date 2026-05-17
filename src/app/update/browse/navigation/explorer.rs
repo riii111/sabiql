@@ -146,14 +146,7 @@ pub fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult 
                 SelectMotion::HalfPageDown => (visible / 2).max(1),
                 _ => visible.max(1),
             };
-            let max_idx = len.saturating_sub(1);
-            let max_offset = len.saturating_sub(visible);
-            state
-                .ui
-                .set_explorer_selected_raw((state.ui.explorer_selected() + delta).min(max_idx));
-            state.ui.set_explorer_scroll_offset(
-                (state.ui.explorer_scroll_offset() + delta).min(max_offset),
-            );
+            state.ui.scroll_explorer_page_down(len, delta);
             DispatchResult::handled()
         }
         Action::Select(motion @ (SelectMotion::HalfPageUp | SelectMotion::FullPageUp)) => {
@@ -169,12 +162,7 @@ pub fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult 
                 SelectMotion::HalfPageUp => (visible / 2).max(1),
                 _ => visible.max(1),
             };
-            state
-                .ui
-                .set_explorer_selected_raw(state.ui.explorer_selected().saturating_sub(delta));
-            state.ui.set_explorer_scroll_offset(
-                state.ui.explorer_scroll_offset().saturating_sub(delta),
-            );
+            state.ui.scroll_explorer_page_up(delta);
             DispatchResult::handled()
         }
 

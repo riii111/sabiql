@@ -181,7 +181,7 @@ mod tests {
         #[test]
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 20;
+            state.ui.set_terminal_height(20);
             state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
             state
                 .sql_modal
@@ -206,7 +206,7 @@ mod tests {
         #[test]
         fn scrolls_once_cursor_moves_past_visible_rows() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 20;
+            state.ui.set_terminal_height(20);
             state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
             state
                 .sql_modal

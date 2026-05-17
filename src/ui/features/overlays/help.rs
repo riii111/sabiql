@@ -53,11 +53,14 @@ impl HelpOverlay {
         );
         let content_area = Self::content_area(inner, viewport);
         let viewport_height = content_area.height as usize;
-        let scroll_offset =
-            clamp_scroll_offset(state.ui.help.scroll_offset(), viewport_height, total_lines);
+        let scroll_offset = clamp_scroll_offset(
+            state.ui.help().scroll_offset(),
+            viewport_height,
+            total_lines,
+        );
         let viewport_width = content_area.width as usize;
         let horizontal_offset = clamp_scroll_offset(
-            state.ui.help.horizontal_offset(),
+            state.ui.help().horizontal_offset(),
             viewport_width,
             content_width,
         );

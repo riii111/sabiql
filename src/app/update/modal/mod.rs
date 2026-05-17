@@ -83,7 +83,7 @@ mod tests {
         fn escape_returns_to_help_origin_with_filter() {
             let mut state = create_test_state();
             open_help(&mut state);
-            state.ui.help.insert_filter_char('c');
+            state.ui.help_mut().insert_filter_char('c');
 
             let effects = super::dispatch_modal(
                 &mut state,
@@ -93,7 +93,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.input_mode(), InputMode::CommandPalette);
-            assert!(state.ui.help.filter().content().is_empty());
+            assert!(state.ui.help().filter().content().is_empty());
             assert!(effects.is_empty());
         }
 
@@ -136,7 +136,7 @@ mod tests {
             )
             .unwrap();
 
-            assert!(state.ui.help.filter().content().is_empty());
+            assert!(state.ui.help().filter().content().is_empty());
             assert!(input_effects.is_empty());
             assert!(backspace_effects.is_empty());
         }

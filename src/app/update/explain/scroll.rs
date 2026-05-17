@@ -26,19 +26,21 @@ pub(super) fn reduce_scroll(
                     const CONFIRM_HEADER_LINES: usize = 8;
                     let content_lines =
                         CONFIRM_HEADER_LINES + state.sql_modal.editor.content().lines().count();
-                    let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
+                    let modal_inner =
+                        ExplainContext::modal_inner_height(state.ui.terminal_height());
                     (
                         &mut state.explain.confirm_scroll_offset,
                         content_lines.saturating_sub(modal_inner),
                     )
                 }
                 ScrollTarget::ExplainPlan => {
-                    let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
+                    let modal_inner =
+                        ExplainContext::modal_inner_height(state.ui.terminal_height());
                     let max = state.explain.line_count().saturating_sub(modal_inner);
                     (&mut state.explain.scroll_offset, max)
                 }
                 ScrollTarget::ExplainCompare => {
-                    let max = state.explain.compare_max_scroll(state.ui.terminal_height);
+                    let max = state.explain.compare_max_scroll(state.ui.terminal_height());
                     (&mut state.explain.compare_scroll_offset, max)
                 }
                 _ => unreachable!(),

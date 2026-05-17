@@ -195,10 +195,10 @@ pub struct UiState {
     result_pane_height: u16,
     jsonb_detail_editor_visible_rows: usize,
 
-    pub help: HelpState,
+    help: HelpState,
 
-    pub terminal_width: u16,
-    pub terminal_height: u16,
+    terminal_width: u16,
+    terminal_height: u16,
 
     key_sequence: KeySequenceState,
 }
@@ -253,6 +253,25 @@ impl UiState {
     // Used when the caller manages scroll state independently (page scroll, cache restore).
     pub fn set_explorer_selected_raw(&mut self, selected: usize) {
         self.explorer_selected = selected;
+    }
+
+    pub fn scroll_explorer_page_down(&mut self, item_count: usize, delta: usize) {
+        if item_count == 0 {
+            return;
+        }
+        let visible = self.explorer_visible_items();
+        if visible == 0 {
+            return;
+        }
+        let max_idx = item_count.saturating_sub(1);
+        let max_offset = item_count.saturating_sub(visible);
+        self.explorer_selected = (self.explorer_selected + delta).min(max_idx);
+        self.explorer_scroll_offset = (self.explorer_scroll_offset + delta).min(max_offset);
+    }
+
+    pub fn scroll_explorer_page_up(&mut self, delta: usize) {
+        self.explorer_selected = self.explorer_selected.saturating_sub(delta);
+        self.explorer_scroll_offset = self.explorer_scroll_offset.saturating_sub(delta);
     }
 
     pub fn set_explorer_horizontal_offset(&mut self, offset: usize) {
@@ -414,6 +433,14 @@ impl UiState {
         self.jsonb_detail_editor_visible_rows = rows;
     }
 
+    pub fn help(&self) -> &HelpState {
+        &self.help
+    }
+
+    pub fn help_mut(&mut self) -> &mut HelpState {
+        &mut self.help
+    }
+
     pub fn help_scroll_offset(&self) -> usize {
         self.help.scroll_offset()
     }
@@ -426,7 +453,20 @@ impl UiState {
         self.terminal_height
     }
 
+    pub fn terminal_width(&self) -> u16 {
+        self.terminal_width
+    }
+
     pub fn set_terminal_height(&mut self, height: u16) {
+        self.terminal_height = height;
+    }
+
+    pub fn set_terminal_width(&mut self, width: u16) {
+        self.terminal_width = width;
+    }
+
+    pub fn set_terminal_size(&mut self, width: u16, height: u16) {
+        self.terminal_width = width;
         self.terminal_height = height;
     }
 

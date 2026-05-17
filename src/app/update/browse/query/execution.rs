@@ -201,7 +201,7 @@ pub fn reduce_execution(
                     vec![]
                 }
                 Action::ToggleModal(ModalKind::Help) => {
-                    state.ui.help.open(HelpOrigin::CommandLine);
+                    state.ui.help_mut().open(HelpOrigin::CommandLine);
                     state.modal.push_mode(InputMode::Help);
                     vec![]
                 }
