@@ -26,14 +26,11 @@ pub(super) fn reduce_er_neighbors(state: &mut AppState, action: &Action) -> Disp
                 let is_new_pending = state
                     .er_preparation
                     .queue_pending_table(qualified_name.clone());
-                let already_fetching = state.sql_modal.prefetching_tables.contains(qualified_name);
-                let already_queued = state.sql_modal.prefetch_queue.contains(qualified_name);
+                let already_fetching = state.sql_modal.is_prefetching(qualified_name);
+                let already_queued = state.sql_modal.is_prefetch_queued(qualified_name);
 
                 if is_new_pending && !already_fetching && !already_queued {
-                    state
-                        .sql_modal
-                        .prefetch_queue
-                        .push_back(qualified_name.clone());
+                    state.sql_modal.enqueue_prefetch(qualified_name.clone());
                 }
             }
             DispatchResult::handled_with(vec![Effect::ProcessPrefetchQueue { run_id }])
