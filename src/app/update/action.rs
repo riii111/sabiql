@@ -258,15 +258,23 @@ pub struct ConnectionTarget {
 
 // Do not derive PartialEq here: payload variants carry domain snapshots and
 // errors that are not all value-comparable.
+//
+// Classification rule:
+// Order actions by user-facing responsibility:
+// - Shared controls: common behavior used across features (e.g., Quit, Render, Scroll, TextInput).
+// - Product objects: group by the object in the action sentence, rather than by UI component or reducer (e.g., ConnectionSetupSave -> Connections).
+// Product object groups follow dependency order:
+// User setup -> DB structure -> Authored SQL -> Query results -> Result derivatives.
 #[derive(Debug, Clone)]
 pub enum Action {
+    // App shell
     None,
     Quit,
     Render,
     Resize(u16, u16),
     SetFocusedPane(FocusedPane),
 
-    // Parametric variants (consolidation targets)
+    // Input primitives
     Scroll {
         target: ScrollTarget,
         direction: ScrollDirection,
@@ -295,17 +303,29 @@ pub enum Action {
         target: ListTarget,
         motion: ListMotion,
     },
+    Paste(String),
+    BeginKeySequence(Prefix),
+    CancelKeySequence,
 
-    // Modal lifecycle
+    // Modal shell
     OpenModal(ModalKind),
     CloseModal(ModalKind),
     ToggleModal(ModalKind),
+    Escape,
+    ConfirmSelection,
+    ConfirmDialogConfirm,
+    ConfirmDialogCancel,
 
-    // Connection lifecycle
+    // Command line
+    EnterCommandLine,
+    ExitCommandLine,
+    CommandLineSubmit,
+
+    // Connections
     TryConnect,
     SwitchConnection(ConnectionTarget),
-
-    // Connection Setup
+    ConnectionsLoaded(ConnectionsLoadedPayload),
+    ConfirmConnectionSelection,
     StartEditConnection(ConnectionId),
     ConnectionSetupNextField,
     ConnectionSetupPrevField,
@@ -320,8 +340,6 @@ pub enum Action {
     ConnectionSaveFailed(ConnectionSaveError),
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(ConnectionStoreError),
-
-    // Connection Error
     ShowConnectionError(ConnectionErrorInfo),
     CloseConnectionError,
     ToggleConnectionErrorDetails,
@@ -329,24 +347,11 @@ pub enum Action {
     ConnectionErrorCopied,
     ReenterConnectionSetup,
     RetryServiceConnection,
-
-    // Confirm Dialog
-    ConfirmDialogConfirm,
-    ConfirmDialogCancel,
-
-    // Connection deletion
     RequestDeleteSelectedConnection,
     DeleteConnection(ConnectionId),
     ConnectionDeleted(ConnectionId),
     ConnectionDeleteFailed(ConnectionStoreError),
-
-    // Connection edit (from list)
     RequestEditSelectedConnection,
-
-    // Command line actions
-    EnterCommandLine,
-    ExitCommandLine,
-    CommandLineSubmit,
 
     // Settings
     SettingsSelectNext,
@@ -360,17 +365,7 @@ pub enum Action {
     SettingsSaved(AppSettings),
     SettingsSaveFailed(SettingsStoreError),
 
-    // Connection list navigation
-    ConnectionsLoaded(ConnectionsLoadedPayload),
-    ConfirmConnectionSelection,
-
-    // Selection
-    ConfirmSelection,
-
-    // Escape (context-dependent close)
-    Escape,
-
-    // Metadata loading
+    // Database structure
     LoadMetadata,
     ReloadMetadata,
     MetadataLoaded {
@@ -383,8 +378,6 @@ pub enum Action {
         run_id: u64,
         error: DbOperationError,
     },
-
-    // Table detail loading
     LoadTableDetail(TableTarget),
     TableDetailLoaded {
         dsn: String,
@@ -398,8 +391,6 @@ pub enum Action {
         error: DbOperationError,
         generation: u64,
     },
-
-    // Completion prefetch (does NOT update state.table_detail)
     PrefetchTableDetail {
         run_id: u64,
         schema: String,
@@ -425,8 +416,6 @@ pub enum Action {
         schema: String,
         table: String,
     },
-
-    // Prefetch all tables for completion
     StartPrefetchAll,
     StartPrefetchScoped {
         tables: Vec<String>,
@@ -438,15 +427,10 @@ pub enum Action {
     ProcessPrefetchQueue {
         run_id: u64,
     },
-
-    // Inspector sub-tabs
     InspectorNextTab,
     InspectorPrevTab,
 
-    // Clipboard paste (bracketed paste)
-    Paste(String),
-
-    // SQL Modal
+    // SQL editing
     SqlModalAppendInsert,
     SqlModalEnterInsert,
     SqlModalEnterNormal,
@@ -458,12 +442,20 @@ pub enum Action {
     SqlModalClear,
     SqlModalCancelConfirm,
     SqlModalHighRiskConfirmExecute,
-
-    // SQL Modal tabs
     SqlModalNextTab,
     SqlModalPrevTab,
+    CompletionTrigger,
+    CompletionUpdated {
+        candidates: Vec<CompletionCandidate>,
+        trigger_position: usize,
+        visible: bool,
+    },
+    CompletionAccept,
+    CompletionDismiss,
+    CompletionNext,
+    CompletionPrev,
 
-    // EXPLAIN
+    // Explain plans
     ExplainRequest,
     ExplainAnalyzeRequest,
     ExplainAnalyzeConfirm,
@@ -483,19 +475,7 @@ pub enum Action {
     },
     CompareEditQuery,
 
-    // SQL Modal completion
-    CompletionTrigger,
-    CompletionUpdated {
-        candidates: Vec<CompletionCandidate>,
-        trigger_position: usize,
-        visible: bool,
-    },
-    CompletionAccept,
-    CompletionDismiss,
-    CompletionNext,
-    CompletionPrev,
-
-    // Query execution
+    // Query results
     ExecutePreview(TableTarget),
     ExecuteAdhoc(String),
     ExecuteWrite(String),
@@ -523,12 +503,8 @@ pub enum Action {
         run_id: u64,
         error: DbOperationError,
     },
-
-    // Result pane
     ResultNextPage,
     ResultPrevPage,
-
-    // Result pane selection
     ResultActivateCell,
     ResultExitToScroll,
     ResultCellLeft,
@@ -550,29 +526,16 @@ pub enum Action {
     CellCopied,
     CopyFailed(ClipboardError),
     OpenFolderFailed(FolderOpenError),
+    ToggleFocus,
+    ToggleReadOnly,
 
-    // Result history navigation
+    // Result history
     OpenResultHistory,
     HistoryOlder,
     HistoryNewer,
     ExitResultHistory,
 
-    // Multi-key sequence FSM (zz, zt, zb)
-    BeginKeySequence(Prefix),
-    CancelKeySequence,
-
-    // Focus mode
-    ToggleFocus,
-
-    // Read-only mode
-    ToggleReadOnly,
-
-    // ER Table Picker
-    ErToggleSelection,
-    ErSelectAll,
-    ErConfirmSelection,
-
-    // Query History Picker
+    // Query history
     QueryHistoryLoaded(
         crate::domain::ConnectionId,
         Vec<crate::domain::query_history::QueryHistoryEntry>,
@@ -581,7 +544,7 @@ pub enum Action {
     QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
-    // CSV Export
+    // CSV export
     RequestCsvExport,
     CsvExportRowsCounted {
         dsn: String,
@@ -609,7 +572,7 @@ pub enum Action {
         error: DbOperationError,
     },
 
-    // JSONB Detail View
+    // JSONB detail
     JsonbYankAll,
     JsonbEnterEdit,
     JsonbAppendInsert,
@@ -620,7 +583,10 @@ pub enum Action {
     JsonbSearchPrev,
     JsonbSearchSubmit,
 
-    // ER Diagram (full or partial, depending on selected tables)
+    // ER diagrams
+    ErToggleSelection,
+    ErSelectAll,
+    ErConfirmSelection,
     ErOpenDiagram,
     ErGenerateFromCache,
     SmartErRefreshCompleted(SmartErRefreshResult),
