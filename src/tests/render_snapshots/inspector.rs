@@ -87,3 +87,22 @@ fn inspector_info_tab_with_no_metadata() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
+    let (mut state, _now) = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    state.session.set_active_connection_with_dsn(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Info);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
