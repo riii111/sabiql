@@ -75,7 +75,7 @@ pub fn reduce_focus(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::services::AppServices;
     use crate::update::browse::navigation::dispatch_navigation;
@@ -125,8 +125,11 @@ mod tests {
 
         fn services_with_two_tabs() -> AppServices {
             let mut services = AppServices::stub();
-            services.db_capabilities =
-                DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
+            services.db_capabilities = DbCapabilities::new(
+                true,
+                vec![InspectorTab::Info, InspectorTab::Columns],
+                vec![InspectorInfoField::Owner],
+            );
             services
         }
 

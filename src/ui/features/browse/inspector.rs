@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
@@ -109,6 +110,7 @@ impl Inspector {
                     Self::render_info(
                         frame,
                         inner,
+                        state.session.active_db_capabilities(),
                         table,
                         state.ui.inspector_scroll_offset(),
                         theme,
@@ -191,57 +193,17 @@ impl Inspector {
     fn render_info(
         frame: &mut Frame,
         area: Rect,
+        capabilities: &DbCapabilities,
         table: &Table,
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
-        let label_style = Style::default().add_modifier(Modifier::BOLD);
-        let none_style = Style::default().fg(theme.semantic.text.placeholder);
-
-        let owner_value = table.owner.as_deref().unwrap_or("(none)");
-        let comment_value = table.comment.as_deref().unwrap_or("(none)");
-        let row_count_value = table
-            .row_count_estimate
-            .map_or_else(|| "(none)".to_string(), |n| format!("~{n}"));
-
-        let owner_style = if table.owner.is_some() {
-            Style::default()
-        } else {
-            none_style
-        };
-        let comment_style = if table.comment.is_some() {
-            Style::default()
-        } else {
-            none_style
-        };
-        let row_count_style = if table.row_count_estimate.is_some() {
-            Style::default()
-        } else {
-            none_style
-        };
-
-        let lines = vec![
-            Line::from(vec![
-                Span::styled("Owner:   ", label_style),
-                Span::styled(owner_value, owner_style),
-            ]),
-            Line::from(vec![
-                Span::styled("Comment: ", label_style),
-                Span::styled(comment_value, comment_style),
-            ]),
-            Line::from(vec![
-                Span::styled("Rows:    ", label_style),
-                Span::styled(row_count_value, row_count_style),
-            ]),
-            Line::from(vec![
-                Span::styled("Schema:  ", label_style),
-                Span::raw(&table.schema),
-            ]),
-            Line::from(vec![
-                Span::styled("Table:   ", label_style),
-                Span::raw(&table.name),
-            ]),
-        ];
+        let lines: Vec<Line> = capabilities
+            .supported_inspector_info_fields()
+            .iter()
+            .copied()
+            .map(|field| Self::render_info_field(field, table, theme))
+            .collect();
 
         let total_lines = lines.len();
         let visible_lines = area.height as usize;
@@ -254,6 +216,64 @@ impl Inspector {
             .wrap(Wrap { trim: false })
             .scroll((clamped_scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
+    }
+
+    fn render_info_field<'a>(
+        field: InspectorInfoField,
+        table: &'a Table,
+        theme: &ThemePalette,
+    ) -> Line<'a> {
+        let label_style = Style::default().add_modifier(Modifier::BOLD);
+        let none_style = Style::default().fg(theme.semantic.text.placeholder);
+
+        match field {
+            InspectorInfoField::Owner => {
+                let value = table.owner.as_deref().unwrap_or("(none)");
+                let style = if table.owner.is_some() {
+                    Style::default()
+                } else {
+                    none_style
+                };
+                Line::from(vec![
+                    Span::styled("Owner:   ", label_style),
+                    Span::styled(value, style),
+                ])
+            }
+            InspectorInfoField::Comment => {
+                let value = table.comment.as_deref().unwrap_or("(none)");
+                let style = if table.comment.is_some() {
+                    Style::default()
+                } else {
+                    none_style
+                };
+                Line::from(vec![
+                    Span::styled("Comment: ", label_style),
+                    Span::styled(value, style),
+                ])
+            }
+            InspectorInfoField::RowCount => {
+                let value = table
+                    .row_count_estimate
+                    .map_or_else(|| "(none)".to_string(), |n| format!("~{n}"));
+                let style = if table.row_count_estimate.is_some() {
+                    Style::default()
+                } else {
+                    none_style
+                };
+                Line::from(vec![
+                    Span::styled("Rows:    ", label_style),
+                    Span::styled(value, style),
+                ])
+            }
+            InspectorInfoField::Schema => Line::from(vec![
+                Span::styled("Schema:  ", label_style),
+                Span::raw(&table.schema),
+            ]),
+            InspectorInfoField::TableName => Line::from(vec![
+                Span::styled("Table:   ", label_style),
+                Span::raw(&table.name),
+            ]),
+        }
     }
 
     fn render_columns(

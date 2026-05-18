@@ -28,7 +28,7 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
         .session
         .table_detail()
         .map_or(0, |t| match active_tab {
-            InspectorTab::Info => 5,
+            InspectorTab::Info => active_capabilities(state, services).inspector_info_line_count(),
             InspectorTab::Columns => t.columns.len(),
             InspectorTab::Indexes => t.indexes.len(),
             InspectorTab::ForeignKeys => t.foreign_keys.len(),

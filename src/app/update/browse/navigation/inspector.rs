@@ -115,7 +115,7 @@ pub fn reduce_inspector(
 mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
-    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -275,8 +275,17 @@ mod tests {
 
         fn services_without_ddl() -> AppServices {
             let mut services = AppServices::stub();
-            services.db_capabilities =
-                DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
+            services.db_capabilities = DbCapabilities::new(
+                true,
+                vec![InspectorTab::Info, InspectorTab::Columns],
+                vec![
+                    InspectorInfoField::Owner,
+                    InspectorInfoField::Comment,
+                    InspectorInfoField::RowCount,
+                    InspectorInfoField::Schema,
+                    InspectorInfoField::TableName,
+                ],
+            );
             services
         }
 
@@ -287,6 +296,59 @@ mod tests {
                 DatabaseType::SQLite,
                 "sqlite://test.db",
             );
+        }
+
+        mod info_tab {
+            use super::*;
+
+            #[test]
+            fn postgresql_uses_all_fields() {
+                let mut state = state_with_table_detail(0);
+                state.ui.set_inspector_pane_height(8);
+                state.ui.set_inspector_tab(InspectorTab::Info);
+                let expected_max = DbCapabilities::postgres_like()
+                    .inspector_info_line_count()
+                    .saturating_sub(state.inspector_visible_rows());
+
+                let effects = dispatch_navigation(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Inspector,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::ToEnd,
+                    },
+                    &AppServices::stub(),
+                    Instant::now(),
+                );
+
+                assert!(effects.is_handled());
+                assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
+            }
+
+            #[test]
+            fn sqlite_uses_supported_fields() {
+                let mut state = state_with_table_detail(0);
+                use_sqlite_tabs(&mut state);
+                state.ui.set_inspector_pane_height(7);
+                state.ui.set_inspector_tab(InspectorTab::Info);
+                let expected_max = DbCapabilities::sqlite_like()
+                    .inspector_info_line_count()
+                    .saturating_sub(state.inspector_visible_rows());
+
+                let effects = dispatch_navigation(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Inspector,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::ToEnd,
+                    },
+                    &AppServices::stub(),
+                    Instant::now(),
+                );
+
+                assert!(effects.is_handled());
+                assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
+            }
         }
 
         #[test]

@@ -46,6 +46,7 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::domain::DatabaseType;
     use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::model::shared::db_capabilities::InspectorInfoField;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
@@ -61,7 +62,11 @@ mod tests {
 
     fn services_without_explain() -> AppServices {
         let mut services = AppServices::stub();
-        services.db_capabilities = DbCapabilities::new(false, vec![InspectorTab::Info]);
+        services.db_capabilities = DbCapabilities::new(
+            false,
+            vec![InspectorTab::Info],
+            vec![InspectorInfoField::Schema, InspectorInfoField::TableName],
+        );
         services
     }
 
