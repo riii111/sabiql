@@ -98,6 +98,14 @@ impl DbCapabilities {
             !supported_inspector_info_fields.is_empty(),
             "DbCapabilities requires at least one supported inspector info field"
         );
+        assert!(
+            has_unique_items(&supported_inspector_tabs),
+            "DbCapabilities supported inspector tabs must be unique"
+        );
+        assert!(
+            has_unique_items(&supported_inspector_info_fields),
+            "DbCapabilities supported inspector info fields must be unique"
+        );
         Self {
             supports_explain,
             supported_inspector_tabs,
@@ -167,6 +175,13 @@ impl DbCapabilities {
         let next_idx = (current_idx + delta).rem_euclid(tabs.len() as isize) as usize;
         tabs[next_idx]
     }
+}
+
+fn has_unique_items<T: Eq>(items: &[T]) -> bool {
+    !items
+        .iter()
+        .enumerate()
+        .any(|(idx, item)| items[idx + 1..].contains(item))
 }
 
 impl From<DatabaseCapabilities> for DbCapabilities {
@@ -331,6 +346,26 @@ mod tests {
         )]
         fn rejects_empty_supported_inspector_info_fields() {
             let _ = DbCapabilities::new(false, vec![InspectorTab::Info], vec![]);
+        }
+
+        #[test]
+        #[should_panic(expected = "DbCapabilities supported inspector tabs must be unique")]
+        fn rejects_duplicate_supported_inspector_tabs() {
+            let _ = DbCapabilities::new(
+                false,
+                vec![InspectorTab::Info, InspectorTab::Info],
+                vec![InspectorInfoField::Schema],
+            );
+        }
+
+        #[test]
+        #[should_panic(expected = "DbCapabilities supported inspector info fields must be unique")]
+        fn rejects_duplicate_supported_inspector_info_fields() {
+            let _ = DbCapabilities::new(
+                false,
+                vec![InspectorTab::Info],
+                vec![InspectorInfoField::Schema, InspectorInfoField::Schema],
+            );
         }
     }
 
