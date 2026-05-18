@@ -303,6 +303,9 @@ mod tests {
             let mut state = state_with_table_detail(0);
             state.ui.set_inspector_pane_height(8);
             state.ui.set_inspector_tab(InspectorTab::Info);
+            let expected_max = DbCapabilities::postgres_like()
+                .inspector_info_line_count()
+                .saturating_sub(state.inspector_visible_rows());
 
             let effects = dispatch_navigation(
                 &mut state,
@@ -316,7 +319,7 @@ mod tests {
             );
 
             assert!(effects.is_handled());
-            assert_eq!(state.ui.inspector_scroll_offset(), 2);
+            assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
         }
 
         #[test]
@@ -325,6 +328,9 @@ mod tests {
             use_sqlite_tabs(&mut state);
             state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Info);
+            let expected_max = DbCapabilities::sqlite_like()
+                .inspector_info_line_count()
+                .saturating_sub(state.inspector_visible_rows());
 
             let effects = dispatch_navigation(
                 &mut state,
@@ -338,7 +344,7 @@ mod tests {
             );
 
             assert!(effects.is_handled());
-            assert_eq!(state.ui.inspector_scroll_offset(), 1);
+            assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
         }
 
         #[test]
