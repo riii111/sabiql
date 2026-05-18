@@ -49,6 +49,7 @@ mod tests {
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+    use crate::ports::outbound::InspectorInfoField;
     use crate::services::AppServices;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
     use std::time::Instant;
@@ -61,7 +62,11 @@ mod tests {
 
     fn services_without_explain() -> AppServices {
         let mut services = AppServices::stub();
-        services.db_capabilities = DbCapabilities::new(false, vec![InspectorTab::Info]);
+        services.db_capabilities = DbCapabilities::new(
+            false,
+            vec![InspectorTab::Info],
+            vec![InspectorInfoField::Schema, InspectorInfoField::TableName],
+        );
         services
     }
 

@@ -116,6 +116,7 @@ mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
     use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::ports::outbound::InspectorInfoField;
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -275,8 +276,17 @@ mod tests {
 
         fn services_without_ddl() -> AppServices {
             let mut services = AppServices::stub();
-            services.db_capabilities =
-                DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]);
+            services.db_capabilities = DbCapabilities::new(
+                true,
+                vec![InspectorTab::Info, InspectorTab::Columns],
+                vec![
+                    InspectorInfoField::Owner,
+                    InspectorInfoField::Comment,
+                    InspectorInfoField::RowCount,
+                    InspectorInfoField::Schema,
+                    InspectorInfoField::TableName,
+                ],
+            );
             services
         }
 
@@ -287,6 +297,49 @@ mod tests {
                 DatabaseType::SQLite,
                 "sqlite://test.db",
             );
+        }
+
+        #[test]
+        fn postgres_info_scroll_uses_all_info_fields() {
+            let mut state = state_with_table_detail(0);
+            state.ui.set_inspector_pane_height(8);
+            state.ui.set_inspector_tab(InspectorTab::Info);
+
+            let effects = dispatch_navigation(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset(), 2);
+        }
+
+        #[test]
+        fn sqlite_info_scroll_omits_postgres_only_info_fields() {
+            let mut state = state_with_table_detail(0);
+            use_sqlite_tabs(&mut state);
+            state.ui.set_inspector_pane_height(8);
+            state.ui.set_inspector_tab(InspectorTab::Info);
+
+            let effects = dispatch_navigation(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert!(effects.is_handled());
+            assert_eq!(state.ui.inspector_scroll_offset(), 1);
         }
 
         #[test]

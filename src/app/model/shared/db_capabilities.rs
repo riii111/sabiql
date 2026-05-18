@@ -1,17 +1,22 @@
 use crate::domain::connection::DatabaseType;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::sql_editor::modal::SqlModalTab;
-use crate::ports::outbound::{DatabaseCapabilities, InspectorFeature};
+use crate::ports::outbound::{DatabaseCapabilities, InspectorFeature, InspectorInfoField};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
     supports_explain: bool,
     supported_inspector_tabs: Vec<InspectorTab>,
+    supported_inspector_info_fields: Vec<InspectorInfoField>,
 }
 
 impl DbCapabilities {
     pub fn disconnected() -> Self {
-        Self::new(false, vec![InspectorTab::Info])
+        Self::new(
+            false,
+            vec![InspectorTab::Info],
+            vec![InspectorInfoField::Schema, InspectorInfoField::TableName],
+        )
     }
 
     pub fn postgres_like() -> Self {
@@ -26,6 +31,13 @@ impl DbCapabilities {
                 InspectorFeature::Triggers,
                 InspectorFeature::Ddl,
             ],
+            vec![
+                InspectorInfoField::Owner,
+                InspectorInfoField::Comment,
+                InspectorInfoField::RowCount,
+                InspectorInfoField::Schema,
+                InspectorInfoField::TableName,
+            ],
         )
         .into()
     }
@@ -39,6 +51,12 @@ impl DbCapabilities {
                 InspectorFeature::Indexes,
                 InspectorFeature::ForeignKeys,
                 InspectorFeature::Ddl,
+            ],
+            vec![
+                InspectorInfoField::Comment,
+                InspectorInfoField::RowCount,
+                InspectorInfoField::Schema,
+                InspectorInfoField::TableName,
             ],
         )
         .into()
@@ -59,14 +77,31 @@ impl DbCapabilities {
         &self.supported_inspector_tabs
     }
 
-    pub fn new(supports_explain: bool, supported_inspector_tabs: Vec<InspectorTab>) -> Self {
+    pub fn supported_inspector_info_fields(&self) -> &[InspectorInfoField] {
+        &self.supported_inspector_info_fields
+    }
+
+    pub fn inspector_info_line_count(&self) -> usize {
+        self.supported_inspector_info_fields.len()
+    }
+
+    pub fn new(
+        supports_explain: bool,
+        supported_inspector_tabs: Vec<InspectorTab>,
+        supported_inspector_info_fields: Vec<InspectorInfoField>,
+    ) -> Self {
         assert!(
             !supported_inspector_tabs.is_empty(),
             "DbCapabilities requires at least one supported inspector tab"
         );
+        assert!(
+            !supported_inspector_info_fields.is_empty(),
+            "DbCapabilities requires at least one supported inspector info field"
+        );
         Self {
             supports_explain,
             supported_inspector_tabs,
+            supported_inspector_info_fields,
         }
     }
 
@@ -152,6 +187,7 @@ impl From<DatabaseCapabilities> for DbCapabilities {
                     InspectorFeature::Ddl => InspectorTab::Ddl,
                 })
                 .collect(),
+            capabilities.supported_inspector_info_fields().to_vec(),
         )
     }
 }
@@ -167,6 +203,16 @@ mod tests {
         assert!(caps.supports_explain());
         assert!(caps.supports_inspector_tab(InspectorTab::Ddl));
         assert_eq!(caps.supported_inspector_tabs().len(), 7);
+        assert_eq!(
+            caps.supported_inspector_info_fields(),
+            &[
+                InspectorInfoField::Owner,
+                InspectorInfoField::Comment,
+                InspectorInfoField::RowCount,
+                InspectorInfoField::Schema,
+                InspectorInfoField::TableName,
+            ]
+        );
     }
 
     #[test]
@@ -182,6 +228,15 @@ mod tests {
                 InspectorTab::Indexes,
                 InspectorTab::ForeignKeys,
                 InspectorTab::Ddl
+            ]
+        );
+        assert_eq!(
+            caps.supported_inspector_info_fields(),
+            &[
+                InspectorInfoField::Comment,
+                InspectorInfoField::RowCount,
+                InspectorInfoField::Schema,
+                InspectorInfoField::TableName,
             ]
         );
         assert_eq!(caps.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
@@ -201,7 +256,11 @@ mod tests {
 
     #[test]
     fn normalize_unsupported_tab_returns_first_supported_tab() {
-        let caps = DbCapabilities::new(false, vec![InspectorTab::Info, InspectorTab::Columns]);
+        let caps = DbCapabilities::new(
+            false,
+            vec![InspectorTab::Info, InspectorTab::Columns],
+            vec![InspectorInfoField::Owner],
+        );
 
         assert_eq!(
             caps.normalize_inspector_tab(InspectorTab::Triggers),
@@ -211,7 +270,11 @@ mod tests {
 
     #[test]
     fn normalize_supported_sql_modal_tab_passes_through() {
-        let caps = DbCapabilities::new(true, vec![InspectorTab::Info]);
+        let caps = DbCapabilities::new(
+            true,
+            vec![InspectorTab::Info],
+            vec![InspectorInfoField::Owner],
+        );
 
         assert_eq!(
             caps.normalize_sql_modal_tab(SqlModalTab::Compare),
@@ -221,7 +284,11 @@ mod tests {
 
     #[test]
     fn normalize_unsupported_sql_modal_tab_returns_sql() {
-        let no_explain_caps = DbCapabilities::new(false, vec![InspectorTab::Info]);
+        let no_explain_caps = DbCapabilities::new(
+            false,
+            vec![InspectorTab::Info],
+            vec![InspectorInfoField::Owner],
+        );
         assert_eq!(
             no_explain_caps.normalize_sql_modal_tab(SqlModalTab::Plan),
             SqlModalTab::Sql
@@ -231,7 +298,15 @@ mod tests {
     #[test]
     #[should_panic(expected = "DbCapabilities requires at least one supported inspector tab")]
     fn rejects_empty_supported_inspector_tabs() {
-        let _ = DbCapabilities::new(false, vec![]);
+        let _ = DbCapabilities::new(false, vec![], vec![InspectorInfoField::Owner]);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "DbCapabilities requires at least one supported inspector info field"
+    )]
+    fn rejects_empty_supported_inspector_info_fields() {
+        let _ = DbCapabilities::new(false, vec![InspectorTab::Info], vec![]);
     }
 
     #[test]
@@ -240,6 +315,26 @@ mod tests {
 
         assert!(!caps.supports_explain());
         assert_eq!(caps.supported_inspector_tabs(), &[InspectorTab::Info]);
+        assert_eq!(
+            caps.supported_inspector_info_fields(),
+            &[InspectorInfoField::Schema, InspectorInfoField::TableName]
+        );
         assert_eq!(caps.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
+    }
+
+    #[test]
+    fn database_capabilities_conversion_preserves_info_fields() {
+        let caps: DbCapabilities = DatabaseCapabilities::new(
+            false,
+            vec![InspectorFeature::Info],
+            vec![InspectorInfoField::Comment, InspectorInfoField::TableName],
+        )
+        .into();
+
+        assert_eq!(caps.supported_inspector_tabs(), &[InspectorTab::Info]);
+        assert_eq!(
+            caps.supported_inspector_info_fields(),
+            &[InspectorInfoField::Comment, InspectorInfoField::TableName]
+        );
     }
 }
