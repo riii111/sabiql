@@ -298,53 +298,57 @@ mod tests {
             );
         }
 
-        #[test]
-        fn postgres_info_scroll_uses_all_info_fields() {
-            let mut state = state_with_table_detail(0);
-            state.ui.set_inspector_pane_height(8);
-            state.ui.set_inspector_tab(InspectorTab::Info);
-            let expected_max = DbCapabilities::postgres_like()
-                .inspector_info_line_count()
-                .saturating_sub(state.inspector_visible_rows());
+        mod info_tab {
+            use super::*;
 
-            let effects = dispatch_navigation(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Inspector,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::ToEnd,
-                },
-                &AppServices::stub(),
-                Instant::now(),
-            );
+            #[test]
+            fn postgresql_uses_all_fields() {
+                let mut state = state_with_table_detail(0);
+                state.ui.set_inspector_pane_height(8);
+                state.ui.set_inspector_tab(InspectorTab::Info);
+                let expected_max = DbCapabilities::postgres_like()
+                    .inspector_info_line_count()
+                    .saturating_sub(state.inspector_visible_rows());
 
-            assert!(effects.is_handled());
-            assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
-        }
+                let effects = dispatch_navigation(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Inspector,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::ToEnd,
+                    },
+                    &AppServices::stub(),
+                    Instant::now(),
+                );
 
-        #[test]
-        fn sqlite_info_scroll_omits_postgres_only_info_fields() {
-            let mut state = state_with_table_detail(0);
-            use_sqlite_tabs(&mut state);
-            state.ui.set_inspector_pane_height(7);
-            state.ui.set_inspector_tab(InspectorTab::Info);
-            let expected_max = DbCapabilities::sqlite_like()
-                .inspector_info_line_count()
-                .saturating_sub(state.inspector_visible_rows());
+                assert!(effects.is_handled());
+                assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
+            }
 
-            let effects = dispatch_navigation(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Inspector,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::ToEnd,
-                },
-                &AppServices::stub(),
-                Instant::now(),
-            );
+            #[test]
+            fn sqlite_uses_supported_fields() {
+                let mut state = state_with_table_detail(0);
+                use_sqlite_tabs(&mut state);
+                state.ui.set_inspector_pane_height(7);
+                state.ui.set_inspector_tab(InspectorTab::Info);
+                let expected_max = DbCapabilities::sqlite_like()
+                    .inspector_info_line_count()
+                    .saturating_sub(state.inspector_visible_rows());
 
-            assert!(effects.is_handled());
-            assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
+                let effects = dispatch_navigation(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Inspector,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::ToEnd,
+                    },
+                    &AppServices::stub(),
+                    Instant::now(),
+                );
+
+                assert!(effects.is_handled());
+                assert_eq!(state.ui.inspector_scroll_offset(), expected_max);
+            }
         }
 
         #[test]
