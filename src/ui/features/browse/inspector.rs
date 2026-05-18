@@ -7,14 +7,13 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::db_capabilities::DbCapabilities;
+use crate::app::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
-use crate::app::ports::outbound::InspectorInfoField;
 use crate::app::services::AppServices;
 use crate::domain::Table;
 use crate::primitives::atoms::panel_block;
@@ -219,17 +218,17 @@ impl Inspector {
         frame.render_widget(paragraph, area);
     }
 
-    fn render_info_field(
+    fn render_info_field<'a>(
         field: InspectorInfoField,
-        table: &Table,
+        table: &'a Table,
         theme: &ThemePalette,
-    ) -> Line<'static> {
+    ) -> Line<'a> {
         let label_style = Style::default().add_modifier(Modifier::BOLD);
         let none_style = Style::default().fg(theme.semantic.text.placeholder);
 
         match field {
             InspectorInfoField::Owner => {
-                let value = table.owner.clone().unwrap_or_else(|| "(none)".to_string());
+                let value = table.owner.as_deref().unwrap_or("(none)");
                 let style = if table.owner.is_some() {
                     Style::default()
                 } else {
@@ -241,10 +240,7 @@ impl Inspector {
                 ])
             }
             InspectorInfoField::Comment => {
-                let value = table
-                    .comment
-                    .clone()
-                    .unwrap_or_else(|| "(none)".to_string());
+                let value = table.comment.as_deref().unwrap_or("(none)");
                 let style = if table.comment.is_some() {
                     Style::default()
                 } else {
@@ -271,11 +267,11 @@ impl Inspector {
             }
             InspectorInfoField::Schema => Line::from(vec![
                 Span::styled("Schema:  ", label_style),
-                Span::raw(table.schema.clone()),
+                Span::raw(&table.schema),
             ]),
             InspectorInfoField::TableName => Line::from(vec![
                 Span::styled("Table:   ", label_style),
-                Span::raw(table.name.clone()),
+                Span::raw(&table.name),
             ]),
         }
     }

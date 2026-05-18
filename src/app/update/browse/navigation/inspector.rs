@@ -115,8 +115,7 @@ pub fn reduce_inspector(
 mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
-    use crate::model::shared::db_capabilities::DbCapabilities;
-    use crate::ports::outbound::InspectorInfoField;
+    use crate::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -324,7 +323,7 @@ mod tests {
         fn sqlite_info_scroll_omits_postgres_only_info_fields() {
             let mut state = state_with_table_detail(0);
             use_sqlite_tabs(&mut state);
-            state.ui.set_inspector_pane_height(8);
+            state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Info);
 
             let effects = dispatch_navigation(

@@ -75,9 +75,8 @@ pub fn reduce_focus(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
     use crate::model::shared::inspector_tab::InspectorTab;
-    use crate::ports::outbound::InspectorInfoField;
     use crate::services::AppServices;
     use crate::update::browse::navigation::dispatch_navigation;
 

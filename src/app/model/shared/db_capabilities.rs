@@ -1,7 +1,8 @@
 use crate::domain::connection::DatabaseType;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::sql_editor::modal::SqlModalTab;
-use crate::ports::outbound::{DatabaseCapabilities, InspectorFeature, InspectorInfoField};
+pub use crate::ports::outbound::InspectorInfoField;
+use crate::ports::outbound::{DatabaseCapabilities, InspectorFeature};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
@@ -53,7 +54,6 @@ impl DbCapabilities {
                 InspectorFeature::Ddl,
             ],
             vec![
-                InspectorInfoField::Comment,
                 InspectorInfoField::RowCount,
                 InspectorInfoField::Schema,
                 InspectorInfoField::TableName,
@@ -233,7 +233,6 @@ mod tests {
         assert_eq!(
             caps.supported_inspector_info_fields(),
             &[
-                InspectorInfoField::Comment,
                 InspectorInfoField::RowCount,
                 InspectorInfoField::Schema,
                 InspectorInfoField::TableName,

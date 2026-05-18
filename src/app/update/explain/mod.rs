@@ -46,10 +46,10 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::domain::DatabaseType;
     use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::model::shared::db_capabilities::InspectorInfoField;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-    use crate::ports::outbound::InspectorInfoField;
     use crate::services::AppServices;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
     use std::time::Instant;
