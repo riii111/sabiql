@@ -65,7 +65,7 @@ pub fn dispatch_navigation(
     services: &AppServices,
     now: Instant,
 ) -> DispatchResult {
-    focus::reduce_focus(state, action, services, now)
+    focus::reduce_focus(state, action)
         .or_else(|| input::reduce_input(state, action))
         .or_else(|| explorer::reduce_explorer(state, action))
         .or_else(|| inspector::reduce_inspector(state, action, services))

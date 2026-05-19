@@ -1,19 +1,11 @@
-use std::time::Instant;
-
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
-use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn reduce_focus(
-    state: &mut AppState,
-    action: &Action,
-    _services: &AppServices,
-    _now: Instant,
-) -> DispatchResult {
+pub fn reduce_focus(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {
@@ -76,6 +68,7 @@ mod tests {
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::services::AppServices;
     use crate::update::browse::navigation::dispatch_navigation;
+    use std::time::Instant;
 
     mod toggle_read_only {
         use super::*;
