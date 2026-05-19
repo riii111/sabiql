@@ -230,9 +230,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::domain::DatabaseMetadata;
-    use crate::domain::QuerySource;
-    use crate::domain::Table;
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, QuerySource, Table};
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::update::action::Action;
@@ -240,6 +238,15 @@ mod tests {
     use rstest::rstest;
     fn make_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
+        state.session.set_active_connection_with_dsn(
+            &ConnectionId::new(),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            dsn,
+        );
     }
 
     fn make_query_result(source: QuerySource) -> Arc<crate::domain::QueryResult> {
@@ -538,12 +545,7 @@ mod tests {
 
         fn prepare_state_for_reload() -> AppState {
             let mut state = make_state();
-            state.session.set_active_connection_with_dsn(
-                &crate::domain::ConnectionId::new(),
-                "postgres",
-                crate::domain::DatabaseType::PostgreSQL,
-                "postgres://localhost/test",
-            );
+            use_postgres_connection(&mut state, "postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
             state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
@@ -694,12 +696,7 @@ mod tests {
                     .session
                     .select_table("public", "users", &mut state.query.pagination);
                 let generation = state.session.selection_generation();
-                state.session.set_active_connection_with_dsn(
-                    &crate::domain::ConnectionId::new(),
-                    "postgres",
-                    crate::domain::DatabaseType::PostgreSQL,
-                    "dsn://test",
-                );
+                use_postgres_connection(&mut state, "dsn://test");
                 let run_id = state.session.begin_table_detail_run();
                 state.ui.set_inspector_scroll_offset(42);
 
