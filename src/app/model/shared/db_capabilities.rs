@@ -1,8 +1,15 @@
 use crate::domain::connection::DatabaseType;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::sql_editor::modal::SqlModalTab;
-pub use crate::ports::outbound::InspectorInfoField;
-use crate::ports::outbound::{DatabaseCapabilities, InspectorFeature};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InspectorInfoField {
+    Owner,
+    Comment,
+    RowCount,
+    Schema,
+    TableName,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
@@ -21,16 +28,16 @@ impl DbCapabilities {
     }
 
     pub fn postgres_like() -> Self {
-        DatabaseCapabilities::new(
+        Self::new(
             true,
             vec![
-                InspectorFeature::Info,
-                InspectorFeature::Columns,
-                InspectorFeature::Indexes,
-                InspectorFeature::ForeignKeys,
-                InspectorFeature::Rls,
-                InspectorFeature::Triggers,
-                InspectorFeature::Ddl,
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+                InspectorTab::Rls,
+                InspectorTab::Triggers,
+                InspectorTab::Ddl,
             ],
             vec![
                 InspectorInfoField::Owner,
@@ -40,18 +47,17 @@ impl DbCapabilities {
                 InspectorInfoField::TableName,
             ],
         )
-        .into()
     }
 
     pub fn sqlite_like() -> Self {
-        DatabaseCapabilities::new(
+        Self::new(
             false,
             vec![
-                InspectorFeature::Info,
-                InspectorFeature::Columns,
-                InspectorFeature::Indexes,
-                InspectorFeature::ForeignKeys,
-                InspectorFeature::Ddl,
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+                InspectorTab::Ddl,
             ],
             vec![
                 InspectorInfoField::RowCount,
@@ -59,7 +65,6 @@ impl DbCapabilities {
                 InspectorInfoField::TableName,
             ],
         )
-        .into()
     }
 
     pub fn for_database_type(database_type: DatabaseType) -> Self {
@@ -182,29 +187,6 @@ fn has_unique_items<T: Eq>(items: &[T]) -> bool {
         .iter()
         .enumerate()
         .any(|(idx, item)| items[idx + 1..].contains(item))
-}
-
-impl From<DatabaseCapabilities> for DbCapabilities {
-    fn from(capabilities: DatabaseCapabilities) -> Self {
-        Self::new(
-            capabilities.supports_explain(),
-            capabilities
-                .supported_inspector_features()
-                .iter()
-                .copied()
-                .map(|feature| match feature {
-                    InspectorFeature::Info => InspectorTab::Info,
-                    InspectorFeature::Columns => InspectorTab::Columns,
-                    InspectorFeature::Indexes => InspectorTab::Indexes,
-                    InspectorFeature::ForeignKeys => InspectorTab::ForeignKeys,
-                    InspectorFeature::Rls => InspectorTab::Rls,
-                    InspectorFeature::Triggers => InspectorTab::Triggers,
-                    InspectorFeature::Ddl => InspectorTab::Ddl,
-                })
-                .collect(),
-            capabilities.supported_inspector_info_fields().to_vec(),
-        )
-    }
 }
 
 #[cfg(test)]
@@ -365,26 +347,6 @@ mod tests {
                 false,
                 vec![InspectorTab::Info],
                 vec![InspectorInfoField::Schema, InspectorInfoField::Schema],
-            );
-        }
-    }
-
-    mod conversion {
-        use super::*;
-
-        #[test]
-        fn preserves_info_fields() {
-            let caps: DbCapabilities = DatabaseCapabilities::new(
-                false,
-                vec![InspectorFeature::Info],
-                vec![InspectorInfoField::Comment, InspectorInfoField::TableName],
-            )
-            .into();
-
-            assert_eq!(caps.supported_inspector_tabs(), &[InspectorTab::Info]);
-            assert_eq!(
-                caps.supported_inspector_info_fields(),
-                &[InspectorInfoField::Comment, InspectorInfoField::TableName]
             );
         }
     }
