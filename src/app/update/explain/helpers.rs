@@ -4,29 +4,20 @@ use crate::model::app_state::AppState;
 use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::policy::write::sql_risk::split_statements;
-use crate::services::AppServices;
 
-pub(super) fn active_capabilities<'a>(
-    state: &'a AppState,
-    services: &'a AppServices,
-) -> &'a DbCapabilities {
-    if state.session.active_database_type().is_some() {
-        state.session.active_db_capabilities()
-    } else {
-        &services.db_capabilities
-    }
+pub(super) fn active_capabilities(state: &AppState) -> &DbCapabilities {
+    state.session.active_db_capabilities()
 }
 
 pub(super) fn is_multi_statement(content: &str) -> bool {
     split_statements(content).len() > 1
 }
 
-pub(super) fn mark_explain_unavailable(state: &mut AppState, services: &AppServices) {
+pub(super) fn mark_explain_unavailable(state: &mut AppState) {
     state
         .explain
         .set_error("EXPLAIN is unavailable for this database".to_string());
-    let tab =
-        active_capabilities(state, services).normalize_sql_modal_tab(state.sql_modal.active_tab());
+    let tab = active_capabilities(state).normalize_sql_modal_tab(state.sql_modal.active_tab());
     state.sql_modal.set_active_tab(tab);
 }
 
@@ -64,11 +55,11 @@ pub(super) fn finish_explain_error(state: &mut AppState, error: impl Into<String
     state.query.mark_idle();
 }
 
-pub(super) fn reject_unsupported_explain(state: &mut AppState, services: &AppServices) -> bool {
-    if active_capabilities(state, services).supports_explain() {
+pub(super) fn reject_unsupported_explain(state: &mut AppState) -> bool {
+    if active_capabilities(state).supports_explain() {
         return false;
     }
 
-    mark_explain_unavailable(state, services);
+    mark_explain_unavailable(state);
     true
 }

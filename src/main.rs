@@ -22,7 +22,6 @@ use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
 use sabiql_app::cmd::runner::EffectRunner;
 use sabiql_app::model::app_state::AppState;
-use sabiql_app::model::shared::db_capabilities::DbCapabilities;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError, SettingsStore,
@@ -120,7 +119,6 @@ async fn main() -> Result<()> {
     let services = AppServices {
         ddl_generator: Arc::clone(&adapter_registry) as _,
         sql_dialect: Arc::clone(&adapter_registry) as _,
-        db_capabilities: DbCapabilities::disconnected(),
     };
 
     let mut state = AppState::new(project_name);

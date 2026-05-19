@@ -52,7 +52,7 @@ fn reduce_inner(
         // reset view state here and return Pass, relying on dispatch_query for the page change.
         .or_else(|| dispatch_result(state, &action, services, now))
         .or_else(|| dispatch_navigation(state, &action, services, now))
-        .or_else(|| dispatch_sql_modal(state, &action, now, services))
+        .or_else(|| dispatch_sql_modal(state, &action, now))
         .or_else(|| dispatch_explain(state, &action, now, services))
         .or_else(|| dispatch_metadata(state, &action, now))
         .or_else(|| dispatch_er(state, &action, now))

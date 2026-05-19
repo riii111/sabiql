@@ -5,14 +5,12 @@ use crate::services::AppServices;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 
-use super::{active_capabilities, inspector_max_scroll};
+use super::inspector_max_scroll;
 
-fn inspector_page_scroll_delta(
-    state: &AppState,
-    services: &AppServices,
-    amount: ScrollAmount,
-) -> Option<usize> {
-    let visible = match active_capabilities(state, services)
+fn inspector_page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
+    let visible = match state
+        .session
+        .active_db_capabilities()
         .normalize_inspector_tab(state.ui.inspector_tab())
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
@@ -66,7 +64,7 @@ pub fn reduce_inspector(
             direction,
             amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
-            if let Some(delta) = inspector_page_scroll_delta(state, services, *amount) {
+            if let Some(delta) = inspector_page_scroll_delta(state, *amount) {
                 let max = inspector_max_scroll(state, services);
                 state
                     .ui
@@ -115,7 +113,7 @@ pub fn reduce_inspector(
 mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
-    use crate::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
+    use crate::model::shared::db_capabilities::DbCapabilities;
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -126,6 +124,12 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_inspector_pane_height(10);
             state.ui.set_inspector_tab(InspectorTab::Columns);
+            state.session.set_active_connection_with_dsn(
+                &ConnectionId::new(),
+                "postgres",
+                DatabaseType::PostgreSQL,
+                "postgres://test",
+            );
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
                     name: format!("col_{i}"),
@@ -273,22 +277,6 @@ mod tests {
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
-        fn services_without_ddl() -> AppServices {
-            let mut services = AppServices::stub();
-            services.db_capabilities = DbCapabilities::new(
-                true,
-                vec![InspectorTab::Info, InspectorTab::Columns],
-                vec![
-                    InspectorInfoField::Owner,
-                    InspectorInfoField::Comment,
-                    InspectorInfoField::RowCount,
-                    InspectorInfoField::Schema,
-                    InspectorInfoField::TableName,
-                ],
-            );
-            services
-        }
-
         fn use_sqlite_tabs(state: &mut AppState) {
             state.session.set_active_connection_with_dsn(
                 &ConnectionId::new(),
@@ -400,13 +388,10 @@ mod tests {
         #[test]
         fn inspector_half_page_scroll_normalizes_unsupported_ddl_tab() {
             let mut state = state_with_table_detail(20);
-            let services = services_without_ddl();
+            state.session.clear_connection();
             state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
-            let expected_delta = ScrollAmount::HalfPage
-                .page_delta(state.inspector_visible_rows())
-                .unwrap();
 
             let effects = dispatch_navigation(
                 &mut state,
@@ -415,18 +400,18 @@ mod tests {
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::HalfPage,
                 },
-                &services,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
             assert!(effects.is_handled());
-            assert_eq!(state.ui.inspector_scroll_offset(), 1 + expected_delta);
+            assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
         #[test]
         fn inspector_full_page_scroll_normalizes_unsupported_ddl_tab() {
             let mut state = state_with_table_detail(20);
-            let services = services_without_ddl();
+            state.session.clear_connection();
             state.ui.set_inspector_pane_height(7);
             state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.ui.set_inspector_scroll_offset(1);
@@ -438,12 +423,12 @@ mod tests {
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::FullPage,
                 },
-                &services,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
             assert!(effects.is_handled());
-            assert_eq!(state.ui.inspector_scroll_offset(), 3);
+            assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
     }
 }

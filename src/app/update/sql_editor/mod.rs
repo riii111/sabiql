@@ -9,28 +9,23 @@ mod yank;
 use std::time::Instant;
 
 use crate::model::app_state::AppState;
-use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn dispatch_sql_modal(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
+pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     completion::reduce_completion(state, action, now)
         .or_else(|| editing::reduce_editing(state, action, now))
         .or_else(|| mode::reduce_mode(state, action, now))
         .or_else(|| submit::reduce_submit(state, action, now))
         .or_else(|| high_risk::reduce_high_risk_confirmation(state, action, now))
-        .or_else(|| yank::reduce_yank(state, action, now, services))
+        .or_else(|| yank::reduce_yank(state, action, now))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -40,13 +35,22 @@ mod tests {
     use std::time::Instant;
 
     fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-        super::dispatch_sql_modal(state, action, now, &crate::services::AppServices::stub())
+        super::dispatch_sql_modal(state, action, now)
     }
 
     fn sql_modal_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::SqlModal);
         state
+    }
+
+    fn use_postgres_connection(state: &mut AppState) {
+        state.session.set_active_connection_with_dsn(
+            &ConnectionId::from_string("postgres-test"),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            "postgres://test",
+        );
     }
 
     mod paste {
@@ -974,6 +978,7 @@ mod tests {
         #[test]
         fn plan_tab_yank_copies_plan_text() {
             let mut state = sql_modal_state();
+            use_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.plan_text = Some("Seq Scan on users".to_string());
 
@@ -990,6 +995,7 @@ mod tests {
         #[test]
         fn plan_tab_yank_no_plan_is_noop() {
             let mut state = sql_modal_state();
+            use_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.plan_text = None;
 
@@ -1003,6 +1009,7 @@ mod tests {
         #[test]
         fn plan_tab_yank_error_state_is_noop() {
             let mut state = sql_modal_state();
+            use_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.plan_text = None;
             state.explain.error = Some("syntax error".to_string());
@@ -1017,6 +1024,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_both_slots() {
             let mut state = sql_modal_state();
+            use_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = Some(make_slot("Seq Scan", false, 420, SlotSource::AutoPrevious));
             state.explain.right = Some(make_slot("Index Scan", true, 50, SlotSource::AutoLatest));
@@ -1042,6 +1050,7 @@ mod tests {
         #[test]
         fn both_auto_slots_yank_returns_distinguishable_headers() {
             let mut state = sql_modal_state();
+            use_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::AutoPrevious));
             state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
@@ -1062,6 +1071,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_right_only_is_noop() {
             let mut state = sql_modal_state();
+            use_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = None;
             state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
@@ -1076,6 +1086,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_left_only_is_noop() {
             let mut state = sql_modal_state();
+            use_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = Some(make_slot("Seq Scan", false, 200, SlotSource::AutoPrevious));
             state.explain.right = None;
@@ -1090,6 +1101,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_empty_is_noop() {
             let mut state = sql_modal_state();
+            use_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = None;
             state.explain.right = None;
@@ -1104,6 +1116,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_includes_verdict_with_reasons() {
             let mut state = sql_modal_state();
+            use_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             // Use parseable EXPLAIN output so compare_plans produces a real verdict
             state.explain.left = Some(CompareSlot {

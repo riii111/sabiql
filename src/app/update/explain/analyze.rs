@@ -23,7 +23,7 @@ pub(super) fn reduce_analyze(
 ) -> DispatchResult {
     match action {
         Action::ExplainAnalyzeRequest => {
-            if reject_unsupported_explain(state, services) {
+            if reject_unsupported_explain(state) {
                 return DispatchResult::handled();
             }
             let content = state.sql_modal.editor.content().trim().to_string();
@@ -68,7 +68,7 @@ pub(super) fn reduce_analyze(
                     let Some(explain_query) =
                         services.sql_dialect.build_explain_analyze_sql(&content)
                     else {
-                        mark_explain_unavailable(state, services);
+                        mark_explain_unavailable(state);
                         return DispatchResult::handled();
                     };
                     let run_id = begin_explain_running(state, now);
@@ -87,7 +87,7 @@ pub(super) fn reduce_analyze(
         }
 
         Action::ExplainAnalyzeConfirm => {
-            if reject_unsupported_explain(state, services) {
+            if reject_unsupported_explain(state) {
                 return DispatchResult::handled();
             }
             let query = match state.sql_modal.status() {
@@ -106,7 +106,7 @@ pub(super) fn reduce_analyze(
             {
                 let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
                 else {
-                    mark_explain_unavailable(state, services);
+                    mark_explain_unavailable(state);
                     return DispatchResult::handled();
                 };
                 let run_id = begin_explain_running(state, now);

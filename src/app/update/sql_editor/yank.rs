@@ -4,32 +4,19 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 use crate::model::app_state::AppState;
-use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::ports::outbound::ClipboardError;
-use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-fn active_capabilities<'a>(state: &'a AppState, services: &'a AppServices) -> &'a DbCapabilities {
-    if state.session.active_database_type().is_some() {
-        state.session.active_db_capabilities()
-    } else {
-        &services.db_capabilities
-    }
-}
-
-pub(super) fn reduce_yank(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
+pub(super) fn reduce_yank(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::SqlModalYank => {
-            let active_tab = active_capabilities(state, services)
+            let active_tab = state
+                .session
+                .active_db_capabilities()
                 .normalize_sql_modal_tab(state.sql_modal.active_tab());
             let content = match active_tab {
                 SqlModalTab::Plan => state.explain.plan_text.clone(),

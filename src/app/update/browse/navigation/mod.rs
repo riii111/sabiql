@@ -7,28 +7,19 @@ mod inspector;
 use std::time::Instant;
 
 use crate::model::app_state::AppState;
-use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-fn active_capabilities<'a>(state: &'a AppState, services: &'a AppServices) -> &'a DbCapabilities {
-    if state.session.active_database_type().is_some() {
-        state.session.active_db_capabilities()
-    } else {
-        &services.db_capabilities
-    }
-}
-
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
-    let active_tab =
-        active_capabilities(state, services).normalize_inspector_tab(state.ui.inspector_tab());
+    let capabilities = state.session.active_db_capabilities();
+    let active_tab = capabilities.normalize_inspector_tab(state.ui.inspector_tab());
     state
         .session
         .table_detail()
         .map_or(0, |t| match active_tab {
-            InspectorTab::Info => active_capabilities(state, services).inspector_info_line_count(),
+            InspectorTab::Info => capabilities.inspector_info_line_count(),
             InspectorTab::Columns => t.columns.len(),
             InspectorTab::Indexes => t.indexes.len(),
             InspectorTab::ForeignKeys => t.foreign_keys.len(),
@@ -53,7 +44,9 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
 }
 
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
-    let visible = match active_capabilities(state, services)
+    let visible = match state
+        .session
+        .active_db_capabilities()
         .normalize_inspector_tab(state.ui.inspector_tab())
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
