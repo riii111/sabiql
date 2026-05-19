@@ -4,8 +4,6 @@ use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-use super::helpers::active_capabilities;
-
 pub(super) fn reduce_tabs(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
     match action {
         Action::CompareEditQuery => {
@@ -17,13 +15,19 @@ pub(super) fn reduce_tabs(state: &mut AppState, action: &Action, _now: Instant) 
         }
 
         Action::SqlModalNextTab => {
-            let tab = active_capabilities(state).next_sql_modal_tab(state.sql_modal.active_tab());
+            let tab = state
+                .session
+                .active_db_capabilities()
+                .next_sql_modal_tab(state.sql_modal.active_tab());
             state.sql_modal.set_active_tab(tab);
             DispatchResult::handled()
         }
 
         Action::SqlModalPrevTab => {
-            let tab = active_capabilities(state).prev_sql_modal_tab(state.sql_modal.active_tab());
+            let tab = state
+                .session
+                .active_db_capabilities()
+                .prev_sql_modal_tab(state.sql_modal.active_tab());
             state.sql_modal.set_active_tab(tab);
             DispatchResult::handled()
         }

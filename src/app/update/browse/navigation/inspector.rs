@@ -385,8 +385,10 @@ mod tests {
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
         }
 
-        #[test]
-        fn inspector_half_page_scroll_normalizes_unsupported_ddl_tab() {
+        #[rstest::rstest]
+        #[case(ScrollAmount::HalfPage)]
+        #[case(ScrollAmount::FullPage)]
+        fn page_scroll_normalizes_unsupported_ddl_tab(#[case] amount: ScrollAmount) {
             let mut state = state_with_table_detail(20);
             state.session.clear_connection();
             state.ui.set_inspector_pane_height(7);
@@ -398,30 +400,7 @@ mod tests {
                 &Action::Scroll {
                     target: ScrollTarget::Inspector,
                     direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert!(effects.is_handled());
-            assert_eq!(state.ui.inspector_scroll_offset(), 0);
-        }
-
-        #[test]
-        fn inspector_full_page_scroll_normalizes_unsupported_ddl_tab() {
-            let mut state = state_with_table_detail(20);
-            state.session.clear_connection();
-            state.ui.set_inspector_pane_height(7);
-            state.ui.set_inspector_tab(InspectorTab::Ddl);
-            state.ui.set_inspector_scroll_offset(1);
-
-            let effects = dispatch_navigation(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Inspector,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::FullPage,
+                    amount,
                 },
                 &AppServices::stub(),
                 Instant::now(),
