@@ -26,16 +26,6 @@ pub fn dispatch_explain(
 }
 
 #[cfg(test)]
-fn reduce_explain_with_services(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
-    dispatch_explain(state, action, now, services)
-}
-
-#[cfg(test)]
 fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     dispatch_explain(state, action, now, &crate::services::AppServices::stub())
 }
@@ -126,7 +116,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
 
-            let effects = reduce_explain_with_services(
+            let effects = dispatch_explain(
                 &mut state,
                 &Action::ExplainRequest,
                 Instant::now(),
@@ -148,7 +138,7 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             use_sqlite_connection(&mut state);
 
-            let effects = reduce_explain_with_services(
+            let effects = dispatch_explain(
                 &mut state,
                 &Action::ExplainRequest,
                 Instant::now(),
@@ -266,7 +256,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
 
-            let effects = reduce_explain_with_services(
+            let effects = dispatch_explain(
                 &mut state,
                 &Action::ExplainAnalyzeRequest,
                 Instant::now(),
@@ -998,7 +988,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalNextTab,
                 Instant::now(),
@@ -1014,7 +1004,7 @@ mod tests {
             use_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalNextTab,
                 Instant::now(),
@@ -1029,7 +1019,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalNextTab,
                 Instant::now(),
@@ -1077,7 +1067,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalPrevTab,
                 Instant::now(),
@@ -1093,7 +1083,7 @@ mod tests {
             use_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalPrevTab,
                 Instant::now(),
@@ -1108,7 +1098,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalPrevTab,
                 Instant::now(),
