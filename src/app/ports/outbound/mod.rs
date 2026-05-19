@@ -7,7 +7,6 @@
 pub mod clipboard;
 pub mod config_writer;
 pub mod connection_store;
-pub mod db_capabilities;
 pub mod db_operation_error;
 pub mod ddl_generator;
 pub mod dsn_builder;
@@ -26,7 +25,6 @@ pub mod sql_dialect;
 pub use clipboard::{ClipboardError, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
-pub use db_capabilities::{DatabaseCapabilities, InspectorFeature, InspectorInfoField};
 pub use db_operation_error::DbOperationError;
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;
