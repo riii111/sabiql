@@ -407,12 +407,6 @@ impl BrowseSession {
     pub(crate) fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
     }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_dsn_for_test(&mut self, dsn: impl Into<String>) {
-        self.dsn = Some(dsn.into());
-    }
 }
 
 #[cfg(test)]
@@ -595,7 +589,12 @@ mod tests {
         #[test]
         fn mark_connecting_sets_pair_without_changing_dsn() {
             let mut session = BrowseSession::default();
-            session.set_dsn_for_test("postgres://localhost/test");
+            session.set_active_connection_with_dsn(
+                &ConnectionId::new(),
+                "postgres",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
 
             session.mark_connecting();
 

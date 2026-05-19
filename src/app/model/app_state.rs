@@ -538,7 +538,12 @@ mod tests {
 
         fn prepare_state_for_reload() -> AppState {
             let mut state = make_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let _ = state.sql_modal.begin_prefetch();
             state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
@@ -689,7 +694,12 @@ mod tests {
                     .session
                     .select_table("public", "users", &mut state.query.pagination);
                 let generation = state.session.selection_generation();
-                state.session.set_dsn_for_test("dsn://test");
+                state.session.set_active_connection_with_dsn(
+                    &crate::domain::ConnectionId::new(),
+                    "postgres",
+                    crate::domain::DatabaseType::PostgreSQL,
+                    "dsn://test",
+                );
                 let run_id = state.session.begin_table_detail_run();
                 state.ui.set_inspector_scroll_offset(42);
 

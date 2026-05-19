@@ -448,7 +448,12 @@ mod tests {
 
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.query.set_current_result(editable_preview_result());
             state
                 .session
@@ -601,7 +606,12 @@ mod tests {
 
         fn editable_state_with_jsonb() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state
                 .query
                 .set_current_result(editable_preview_result_with_jsonb());

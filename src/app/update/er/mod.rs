@@ -32,7 +32,12 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.set_dsn_for_test(dsn);
+        state.session.set_active_connection_with_dsn(
+            &crate::domain::ConnectionId::new(),
+            "postgres",
+            crate::domain::DatabaseType::PostgreSQL,
+            dsn,
+        );
         state
     }
 

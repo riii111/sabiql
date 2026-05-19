@@ -132,7 +132,12 @@ mod tests {
         #[test]
         fn blocked_for_service_connection() {
             let mut state = AppState::new("test".to_string());
-            state.session.set_dsn_for_test("service=mydb");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "service",
+                crate::domain::DatabaseType::PostgreSQL,
+                "service=mydb",
+            );
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
@@ -143,7 +148,12 @@ mod tests {
         #[test]
         fn allowed_for_profile_connection() {
             let mut state = AppState::new("test".to_string());
-            state.session.set_dsn_for_test("postgres://localhost/db");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/db",
+            );
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());

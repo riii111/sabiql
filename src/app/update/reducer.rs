@@ -905,7 +905,12 @@ mod tests {
         use crate::model::connection::error::ConnectionErrorInfo;
 
         fn metadata_loaded_action(state: &mut AppState, metadata: DatabaseMetadata) -> Action {
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
@@ -915,7 +920,12 @@ mod tests {
         }
 
         fn metadata_failed_action(state: &mut AppState, error: DbOperationError) -> Action {
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataFailed {
                 dsn: "postgres://localhost/test".to_string(),
@@ -1232,7 +1242,12 @@ mod tests {
         #[test]
         fn load_metadata_with_dsn_returns_fetch_effect() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
@@ -1259,7 +1274,12 @@ mod tests {
         #[test]
         fn reload_metadata_returns_sequence_effect() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let now = Instant::now();
 
             let effects = reduce(
@@ -1283,7 +1303,12 @@ mod tests {
         #[test]
         fn reload_metadata_sets_is_reloading_flag() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let now = Instant::now();
 
             reduce(
@@ -1338,7 +1363,12 @@ mod tests {
         #[test]
         fn execute_adhoc_with_dsn_returns_effect() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let now = Instant::now();
 
             let effects = reduce(
@@ -1372,7 +1402,12 @@ mod tests {
         #[test]
         fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1396,7 +1431,12 @@ mod tests {
         #[test]
         fn prefetch_started_true_emits_smart_refresh() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1416,7 +1456,12 @@ mod tests {
         #[test]
         fn no_prefetch_emits_smart_refresh() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1449,7 +1494,12 @@ mod tests {
             let mut state = create_test_state();
             state.er_preparation.mark_waiting();
             let now = Instant::now();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.session.begin_metadata_refresh();
             let action = Action::MetadataFailed {
                 dsn: "postgres://localhost/test".to_string(),
@@ -1486,7 +1536,12 @@ mod tests {
         #[test]
         fn emits_cache_effect() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.sql_modal.begin_prefetch();
             state.sql_modal.mark_prefetching("public.users".to_string());
             let now = Instant::now();
@@ -1515,7 +1570,12 @@ mod tests {
         #[test]
         fn with_queue_returns_process_effect() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
@@ -1816,7 +1876,12 @@ mod tests {
             };
 
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.modal.set_mode(InputMode::ConfirmDialog);
 
             let delete_sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';".to_string();
@@ -1893,7 +1958,12 @@ mod tests {
             };
 
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.modal.set_mode(InputMode::ConfirmDialog);
 
             state.result_interaction.set_write_preview(WritePreview {
@@ -1954,7 +2024,12 @@ mod tests {
         #[test]
         fn try_connect_with_dsn_starts_connecting() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -1991,7 +2066,12 @@ mod tests {
         #[test]
         fn try_connect_when_already_connecting_is_noop() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
@@ -2007,7 +2087,12 @@ mod tests {
         #[test]
         fn try_connect_when_already_connected_is_noop() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -2023,7 +2108,12 @@ mod tests {
         #[test]
         fn try_connect_when_not_in_normal_mode_is_noop() {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
@@ -2042,7 +2132,12 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.session.begin_metadata_refresh();
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
@@ -2076,7 +2171,12 @@ mod tests {
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.session.begin_metadata_refresh();
             let now = Instant::now();
 
@@ -2399,7 +2499,12 @@ mod tests {
         }
 
         fn metadata_loaded_action(state: &mut AppState) -> Action {
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.session.begin_metadata_refresh();
             Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
@@ -2523,7 +2628,12 @@ mod tests {
         #[test]
         fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let _ = state.sql_modal.begin_prefetch();
             state
                 .er_preparation
@@ -2545,7 +2655,12 @@ mod tests {
             use crate::model::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting();
             state.er_preparation.begin_full_prefetch(1);
@@ -2579,7 +2694,12 @@ mod tests {
             use crate::model::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting();
             state.er_preparation.begin_full_prefetch(2);
@@ -2621,7 +2741,12 @@ mod tests {
 
         fn state_after_confirm_and_complete() -> (AppState, Instant) {
             let mut state = create_test_state();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let now = Instant::now();
 
             // Load metadata with a table
@@ -2834,7 +2959,12 @@ mod tests {
             let entry_index = palette_index_of(|a| matches!(a, Action::ReloadMetadata));
 
             let mut state = state_in_palette_mode();
-            state.session.set_dsn_for_test("postgres://localhost/test");
+            state.session.set_active_connection_with_dsn(
+                &crate::domain::ConnectionId::new(),
+                "postgres",
+                crate::domain::DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.ui.table_picker_mut().set_selection(entry_index);
             let now = Instant::now();
 
