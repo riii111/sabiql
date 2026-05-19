@@ -21,7 +21,7 @@ pub(super) fn reduce_request(
 ) -> DispatchResult {
     match action {
         Action::ExplainRequest => {
-            if reject_unsupported_explain(state, services) {
+            if reject_unsupported_explain(state) {
                 return DispatchResult::handled();
             }
             let content = state.sql_modal.editor.content().trim().to_string();
@@ -40,7 +40,7 @@ pub(super) fn reduce_request(
             }
 
             let Some(query) = services.sql_dialect.build_explain_sql(&content) else {
-                mark_explain_unavailable(state, services);
+                mark_explain_unavailable(state);
                 return DispatchResult::handled();
             };
             let run_id = begin_explain_running(state, now);

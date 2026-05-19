@@ -26,6 +26,7 @@ mod tests {
 
     use super::*;
     use crate::cmd::effect::Effect;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::confirm_dialog::ConfirmIntent;
     use crate::model::shared::input_mode::InputMode;
     use crate::ports::outbound::AppSettings;
@@ -37,6 +38,15 @@ mod tests {
 
     fn create_test_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
+        state.session.set_active_connection_with_dsn(
+            &ConnectionId::new(),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            dsn,
+        );
     }
 
     mod base {
@@ -381,7 +391,7 @@ mod tests {
             fn delete_connection_returns_delete_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::ConnectionSelector);
-                let id = crate::domain::ConnectionId::new();
+                let id = ConnectionId::new();
                 state
                     .confirm_dialog
                     .open("", "", ConfirmIntent::DeleteConnection(id));
@@ -402,7 +412,7 @@ mod tests {
             fn execute_write_sets_running_state_and_returns_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::CellEdit);
-                state.session.set_dsn_for_test("postgres://localhost/test");
+                use_postgres_connection(&mut state, "postgres://localhost/test");
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -520,7 +530,7 @@ mod tests {
             fn csv_export_returns_export_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.set_dsn_for_test("postgres://localhost/test");
+                use_postgres_connection(&mut state, "postgres://localhost/test");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
@@ -579,7 +589,7 @@ mod tests {
             fn csv_export_ignores_mismatched_run_id() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.set_dsn_for_test("postgres://localhost/test");
+                use_postgres_connection(&mut state, "postgres://localhost/test");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
@@ -810,7 +820,6 @@ mod tests {
 
     mod query_history_picker {
         use super::*;
-        use crate::domain::ConnectionId;
         use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
         use crate::model::shared::text_input::TextInputLike;
         use crate::ports::outbound::query_history::QueryHistoryError;
@@ -830,7 +839,7 @@ mod tests {
             state.session.set_active_connection_with_dsn(
                 &ConnectionId::from_string("test-conn"),
                 "test",
-                crate::domain::DatabaseType::PostgreSQL,
+                DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
             state.runtime.project_name = "test-project".to_string();
@@ -996,7 +1005,7 @@ mod tests {
                 super::dispatch_modal(
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
-                        crate::domain::ConnectionId::from_string("test-conn"),
+                        ConnectionId::from_string("test-conn"),
                         QueryHistoryError::Io(Arc::new(std::io::Error::other("disk error"))),
                     ),
                     now,
@@ -1018,7 +1027,7 @@ mod tests {
                 super::dispatch_modal(
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
-                        crate::domain::ConnectionId::from_string("test-conn"),
+                        ConnectionId::from_string("test-conn"),
                         QueryHistoryError::Io(Arc::new(std::io::Error::other("stale error"))),
                     ),
                     now,

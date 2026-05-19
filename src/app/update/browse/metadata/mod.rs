@@ -49,6 +49,7 @@ pub fn dispatch_metadata(state: &mut AppState, action: &Action, now: Instant) ->
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::app_state::AppState;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
     use crate::update::action::Action;
@@ -57,7 +58,12 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.set_dsn_for_test(dsn);
+        state.session.set_active_connection_with_dsn(
+            &ConnectionId::new(),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            dsn,
+        );
         state
     }
 

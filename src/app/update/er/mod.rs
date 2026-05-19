@@ -21,6 +21,7 @@ mod tests {
 
     use super::*;
     use crate::cmd::effect::Effect;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
     use crate::update::action::{SmartErRefreshError, SmartErRefreshResult};
@@ -32,7 +33,12 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.set_dsn_for_test(dsn);
+        state.session.set_active_connection_with_dsn(
+            &ConnectionId::new(),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            dsn,
+        );
         state
     }
 

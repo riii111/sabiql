@@ -1,28 +1,11 @@
-use std::time::Instant;
-
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
-use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
-use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-fn active_capabilities<'a>(state: &'a AppState, services: &'a AppServices) -> &'a DbCapabilities {
-    if state.session.active_database_type().is_some() {
-        state.session.active_db_capabilities()
-    } else {
-        &services.db_capabilities
-    }
-}
-
-pub fn reduce_focus(
-    state: &mut AppState,
-    action: &Action,
-    services: &AppServices,
-    _now: Instant,
-) -> DispatchResult {
+pub fn reduce_focus(state: &mut AppState, action: &Action) -> DispatchResult {
     match action {
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {
@@ -57,13 +40,19 @@ pub fn reduce_focus(
         }
         Action::InspectorNextTab => {
             state.ui.set_inspector_tab(
-                active_capabilities(state, services).next_inspector_tab(state.ui.inspector_tab()),
+                state
+                    .session
+                    .active_db_capabilities()
+                    .next_inspector_tab(state.ui.inspector_tab()),
             );
             DispatchResult::handled()
         }
         Action::InspectorPrevTab => {
             state.ui.set_inspector_tab(
-                active_capabilities(state, services).prev_inspector_tab(state.ui.inspector_tab()),
+                state
+                    .session
+                    .active_db_capabilities()
+                    .prev_inspector_tab(state.ui.inspector_tab()),
             );
             DispatchResult::handled()
         }
@@ -75,10 +64,11 @@ pub fn reduce_focus(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::services::AppServices;
     use crate::update::browse::navigation::dispatch_navigation;
+    use std::time::Instant;
 
     mod toggle_read_only {
         use super::*;
@@ -123,25 +113,25 @@ mod tests {
     mod inspector_tabs {
         use super::*;
 
-        fn services_with_two_tabs() -> AppServices {
-            let mut services = AppServices::stub();
-            services.db_capabilities = DbCapabilities::new(
-                true,
-                vec![InspectorTab::Info, InspectorTab::Columns],
-                vec![InspectorInfoField::Owner],
+        fn use_sqlite_connection(state: &mut AppState) {
+            state.session.set_active_connection_with_dsn(
+                &ConnectionId::new(),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite://test.db",
             );
-            services
         }
 
         #[test]
-        fn next_tab_wraps_between_supported_tabs() {
+        fn next_tab_uses_session_capabilities() {
             let mut state = AppState::new("test".to_string());
+            use_sqlite_connection(&mut state);
             state.ui.set_inspector_tab(InspectorTab::Info);
 
             dispatch_navigation(
                 &mut state,
                 &Action::InspectorNextTab,
-                &services_with_two_tabs(),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -149,18 +139,19 @@ mod tests {
         }
 
         #[test]
-        fn prev_tab_wraps_between_supported_tabs() {
+        fn prev_tab_uses_session_capabilities() {
             let mut state = AppState::new("test".to_string());
+            use_sqlite_connection(&mut state);
             state.ui.set_inspector_tab(InspectorTab::Info);
 
             dispatch_navigation(
                 &mut state,
                 &Action::InspectorPrevTab,
-                &services_with_two_tabs(),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Columns);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
         }
     }
 }

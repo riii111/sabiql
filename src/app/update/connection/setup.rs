@@ -221,6 +221,7 @@ pub fn reduce_connection_setup(
 mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionProfile, SslMode};
+    use crate::domain::{ConnectionId, DatabaseType};
 
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
         reduce_connection_setup(state, action, now).into_effects()
@@ -237,6 +238,15 @@ mod tests {
             SslMode::default(),
         )
         .unwrap()
+    }
+
+    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
+        state.session.set_active_connection_with_dsn(
+            &ConnectionId::new(),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            dsn,
+        );
     }
 
     mod paste {
@@ -410,7 +420,6 @@ mod tests {
 
     mod connection_save {
         use super::*;
-        use crate::domain::DatabaseType;
         use crate::domain::MetadataState;
         use crate::model::connection::state::ConnectionState;
         use crate::update::action::ConnectionTarget;
@@ -499,7 +508,7 @@ mod tests {
             state.session.enable_read_only();
 
             let action = Action::ConnectionSaveCompleted(ConnectionTarget {
-                id: crate::domain::ConnectionId::new(),
+                id: ConnectionId::new(),
                 dsn: "postgres://localhost/new_db".to_string(),
                 name: "new_db".to_string(),
                 database_type: DatabaseType::PostgreSQL,
@@ -514,7 +523,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
 
             let action = Action::ConnectionSaveCompleted(ConnectionTarget {
-                id: crate::domain::ConnectionId::new(),
+                id: ConnectionId::new(),
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
                 database_type: DatabaseType::SQLite,
@@ -572,7 +581,7 @@ mod tests {
         #[test]
         fn is_first_run_false_when_already_connected() {
             let mut state = AppState::new("test".to_string());
-            state.session.set_dsn_for_test("postgres://localhost/db");
+            use_postgres_connection(&mut state, "postgres://localhost/db");
 
             reduce(
                 &mut state,

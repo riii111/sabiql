@@ -4,12 +4,9 @@ use std::sync::Arc;
 use crate::domain::DatabaseType;
 
 use super::ports::outbound::{DdlGenerator, SqlDialect};
-use crate::model::shared::db_capabilities::DbCapabilities;
-
 pub struct AppServices {
     pub ddl_generator: Arc<dyn DdlGenerator>,
     pub sql_dialect: Arc<dyn SqlDialect>,
-    pub db_capabilities: DbCapabilities,
 }
 
 impl AppServices {
@@ -100,7 +97,6 @@ impl AppServices {
         Self {
             ddl_generator: Arc::new(StubDdlGenerator),
             sql_dialect: Arc::new(StubSqlDialect),
-            db_capabilities: DbCapabilities::postgres_like(),
         }
     }
 }
