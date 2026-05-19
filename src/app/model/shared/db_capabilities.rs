@@ -19,7 +19,7 @@ pub struct DbCapabilities {
 }
 
 impl DbCapabilities {
-    pub fn new(
+    pub(crate) fn new(
         supports_explain: bool,
         supported_inspector_tabs: Vec<InspectorTab>,
         supported_inspector_info_fields: Vec<InspectorInfoField>,
