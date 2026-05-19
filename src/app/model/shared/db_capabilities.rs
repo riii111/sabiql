@@ -19,6 +19,34 @@ pub struct DbCapabilities {
 }
 
 impl DbCapabilities {
+    pub fn new(
+        supports_explain: bool,
+        supported_inspector_tabs: Vec<InspectorTab>,
+        supported_inspector_info_fields: Vec<InspectorInfoField>,
+    ) -> Self {
+        assert!(
+            !supported_inspector_tabs.is_empty(),
+            "DbCapabilities requires at least one supported inspector tab"
+        );
+        assert!(
+            !supported_inspector_info_fields.is_empty(),
+            "DbCapabilities requires at least one supported inspector info field"
+        );
+        assert!(
+            has_unique_items(&supported_inspector_tabs),
+            "DbCapabilities supported inspector tabs must be unique"
+        );
+        assert!(
+            has_unique_items(&supported_inspector_info_fields),
+            "DbCapabilities supported inspector info fields must be unique"
+        );
+        Self {
+            supports_explain,
+            supported_inspector_tabs,
+            supported_inspector_info_fields,
+        }
+    }
+
     pub fn disconnected() -> Self {
         Self::new(
             false,
@@ -88,34 +116,6 @@ impl DbCapabilities {
 
     pub fn inspector_info_line_count(&self) -> usize {
         self.supported_inspector_info_fields.len()
-    }
-
-    pub fn new(
-        supports_explain: bool,
-        supported_inspector_tabs: Vec<InspectorTab>,
-        supported_inspector_info_fields: Vec<InspectorInfoField>,
-    ) -> Self {
-        assert!(
-            !supported_inspector_tabs.is_empty(),
-            "DbCapabilities requires at least one supported inspector tab"
-        );
-        assert!(
-            !supported_inspector_info_fields.is_empty(),
-            "DbCapabilities requires at least one supported inspector info field"
-        );
-        assert!(
-            has_unique_items(&supported_inspector_tabs),
-            "DbCapabilities supported inspector tabs must be unique"
-        );
-        assert!(
-            has_unique_items(&supported_inspector_info_fields),
-            "DbCapabilities supported inspector info fields must be unique"
-        );
-        Self {
-            supports_explain,
-            supported_inspector_tabs,
-            supported_inspector_info_fields,
-        }
     }
 
     pub fn supports_inspector_tab(&self, tab: InspectorTab) -> bool {
