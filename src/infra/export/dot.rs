@@ -59,7 +59,7 @@ fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
 #[cfg(target_os = "windows")]
 fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
     Command::new("cmd")
-        .args(["/C", "start"])
+        .args(["/C", "start", ""])
         .arg(path)
         .spawn()?;
     Ok(())
