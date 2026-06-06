@@ -215,8 +215,16 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
-                Effect::CopyToClipboard { content, .. } => {
+                Effect::CopyToClipboard {
+                    content,
+                    on_success,
+                    ..
+                } => {
                     assert_eq!(content, "r1c2");
+                    assert!(matches!(
+                        on_success.as_deref(),
+                        Some(Action::ResultCellYankSuccess { row: 1, col: 2 })
+                    ));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
@@ -341,8 +349,16 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
-                Effect::CopyToClipboard { content, .. } => {
+                Effect::CopyToClipboard {
+                    content,
+                    on_success,
+                    ..
+                } => {
                     assert_eq!(content, "v0\tv1\tv2");
+                    assert!(matches!(
+                        on_success.as_deref(),
+                        Some(Action::ResultRowYankSuccess { row: 0 })
+                    ));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
@@ -527,9 +543,20 @@ mod tests {
 
             let effects = effects.into_effects().expect("should return Some");
             assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("CREATE TABLE"))
-            );
+            match &effects[0] {
+                Effect::CopyToClipboard {
+                    content,
+                    on_success,
+                    ..
+                } => {
+                    assert!(content.contains("CREATE TABLE"));
+                    assert!(matches!(
+                        on_success.as_deref(),
+                        Some(Action::DdlYankSuccess)
+                    ));
+                }
+                other => panic!("expected CopyToClipboard, got {other:?}"),
+            }
         }
 
         #[test]

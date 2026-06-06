@@ -860,13 +860,26 @@ mod tests {
                 Instant::now(),
             );
 
-            let effects = reduce_jsonb(&mut state, &Action::JsonbYankAll, Instant::now());
+            let now = Instant::now();
+            let effects = reduce_jsonb(&mut state, &Action::JsonbYankAll, now);
 
             let effects = effects.into_effects().expect("should return effects");
             assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("theme"))
-            );
+            match &effects[0] {
+                Effect::CopyToClipboard {
+                    content,
+                    on_success,
+                    ..
+                } => {
+                    assert!(content.contains("theme"));
+                    assert!(matches!(
+                        on_success.as_deref(),
+                        Some(Action::JsonbYankSuccess)
+                    ));
+                }
+                other => panic!("expected CopyToClipboard, got {other:?}"),
+            }
+            assert!(!state.flash_timers.is_active(FlashId::JsonbDetail, now));
         }
 
         #[test]
