@@ -87,14 +87,18 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
 
         Action::JsonbYankAll => {
             let json = state.jsonb_detail.current_json_for_yank();
-            state.flash_timers.set(FlashId::JsonbDetail, now);
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content: json,
-                on_success: Some(Box::new(Action::CellCopied)),
+                on_success: Some(Box::new(Action::JsonbYankSuccess)),
                 on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
                     "Clipboard unavailable".into(),
                 )))),
             }])
+        }
+
+        Action::JsonbYankSuccess => {
+            state.flash_timers.set(FlashId::JsonbDetail, now);
+            DispatchResult::handled()
         }
 
         Action::JsonbEnterEdit => {
@@ -863,6 +867,16 @@ mod tests {
             assert!(
                 matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("theme"))
             );
+        }
+
+        #[test]
+        fn success_sets_flash() {
+            let mut state = state_with_jsonb_cell();
+            let now = Instant::now();
+
+            reduce_jsonb(&mut state, &Action::JsonbYankSuccess, now);
+
+            assert!(state.flash_timers.is_active(FlashId::JsonbDetail, now));
         }
     }
 

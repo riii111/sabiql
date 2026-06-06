@@ -509,9 +509,17 @@ pub enum Action {
     ResultCellLeft,
     ResultCellRight,
     ResultCellYank,
+    ResultCellYankSuccess {
+        row: usize,
+        col: usize,
+    },
     ResultRowYankOperatorPending,
     ResultRowYank,
+    ResultRowYankSuccess {
+        row: usize,
+    },
     DdlYank,
+    DdlYankSuccess,
     ResultDeleteOperatorPending,
     StageRowForDelete,
     UnstageLastStagedRow,
@@ -522,7 +530,6 @@ pub enum Action {
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
     OpenWritePreviewConfirm(Box<WritePreview>),
-    CellCopied,
     CopyFailed(ClipboardError),
     OpenFolderFailed(FolderOpenError),
     ToggleFocus,
@@ -573,6 +580,7 @@ pub enum Action {
 
     // JSONB detail
     JsonbYankAll,
+    JsonbYankSuccess,
     JsonbEnterEdit,
     JsonbAppendInsert,
     JsonbExitEdit,
