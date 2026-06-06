@@ -118,7 +118,6 @@ pub fn reduce_yank(
             state.flash_timers.set(FlashId::Ddl, now);
             DispatchResult::handled()
         }
-        Action::CellCopied => DispatchResult::handled(),
         Action::CopyFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
             DispatchResult::handled()
