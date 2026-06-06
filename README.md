@@ -91,7 +91,7 @@ Open Settings with `Ctrl+K` to switch themes and configure the ER diagram browse
 
 ### Android / Termux
 
-Termux builds are limited support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. `psql` is still required.
+Termux is build-only support, not full Android support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. `psql` is still required.
 
 ## Development
 
