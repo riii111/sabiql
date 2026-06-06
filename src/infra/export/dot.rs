@@ -72,8 +72,8 @@ fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
     target_os = "windows"
 )))]
 fn open_with_default_viewer(_path: &Path) -> Result<(), ViewerError> {
-    Err(ViewerError::UnsupportedBrowser {
-        browser: "default browser".to_string(),
+    Err(ViewerError::UnsupportedPlatform {
+        operation: "Opening ER diagrams".to_string(),
     })
 }
 
@@ -178,8 +178,8 @@ fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
     target_os = "windows"
 )))]
 fn open_with_browser(_path: &Path, browser: &str) -> Result<(), ViewerError> {
-    Err(ViewerError::UnsupportedBrowser {
-        browser: browser.to_string(),
+    Err(ViewerError::UnsupportedPlatform {
+        operation: format!("Opening ER diagrams with {browser}"),
     })
 }
 
