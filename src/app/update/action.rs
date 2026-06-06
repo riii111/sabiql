@@ -530,6 +530,7 @@ pub enum Action {
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
     OpenWritePreviewConfirm(Box<WritePreview>),
+    CellCopied,
     CopyFailed(ClipboardError),
     OpenFolderFailed(FolderOpenError),
     ToggleFocus,
