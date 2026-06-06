@@ -3,14 +3,14 @@ use std::sync::Arc;
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ClipboardError {
     #[error("{0}")]
-    Backend(#[source] Arc<arboard::Error>),
+    Backend(#[source] Arc<dyn std::error::Error + Send + Sync>),
     #[error("{0}")]
     Unavailable(String),
 }
 
-impl From<arboard::Error> for ClipboardError {
-    fn from(e: arboard::Error) -> Self {
-        Self::Backend(Arc::new(e))
+impl ClipboardError {
+    pub fn backend(error: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::Backend(Arc::new(error))
     }
 }
 

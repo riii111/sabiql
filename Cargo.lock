@@ -2546,7 +2546,6 @@ dependencies = [
 name = "sabiql-app"
 version = "1.12.2"
 dependencies = [
- "arboard",
  "async-trait",
  "color-eyre",
  "crossterm",

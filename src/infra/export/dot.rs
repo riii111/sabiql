@@ -41,23 +41,40 @@ impl ViewerLauncher for SystemViewerLauncher {
             return Ok(());
         }
 
-        #[cfg(target_os = "macos")]
-        {
-            open_with_default_browser(path)?;
-        }
-        #[cfg(any(target_os = "freebsd", target_os = "linux"))]
-        {
-            Command::new("xdg-open").arg(path).spawn()?;
-        }
-        #[cfg(target_os = "windows")]
-        {
-            Command::new("cmd")
-                .args(["/C", "start"])
-                .arg(path)
-                .spawn()?;
-        }
-        Ok(())
+        open_with_default_viewer(path)
     }
+}
+
+#[cfg(target_os = "macos")]
+fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
+    open_with_default_browser(path)
+}
+
+#[cfg(any(target_os = "freebsd", target_os = "linux"))]
+fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
+    Command::new("xdg-open").arg(path).spawn()?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
+    Command::new("cmd")
+        .args(["/C", "start"])
+        .arg(path)
+        .spawn()?;
+    Ok(())
+}
+
+#[cfg(not(any(
+    target_os = "freebsd",
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows"
+)))]
+fn open_with_default_viewer(_path: &Path) -> Result<(), ViewerError> {
+    Err(ViewerError::UnsupportedBrowser {
+        browser: "default browser".to_string(),
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -130,30 +147,40 @@ fn handler_bundle_id(handler: &serde_json::Value) -> Option<String> {
         .map(str::to_string)
 }
 
+#[cfg(target_os = "macos")]
 fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg("-a")
-            .arg(macos_browser_application_name(browser))
-            .arg(path)
-            .spawn()?;
-        Ok(())
-    }
+    Command::new("open")
+        .arg("-a")
+        .arg(macos_browser_application_name(browser))
+        .arg(path)
+        .spawn()?;
+    Ok(())
+}
 
-    #[cfg(any(target_os = "freebsd", target_os = "linux"))]
-    {
-        open_with_browser_candidates(path, browser, &browser_command_candidates(browser))
-    }
+#[cfg(any(target_os = "freebsd", target_os = "linux"))]
+fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
+    open_with_browser_candidates(path, browser, &browser_command_candidates(browser))
+}
 
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("cmd")
-            .args(["/C", "start", "", browser])
-            .arg(path)
-            .spawn()?;
-        Ok(())
-    }
+#[cfg(target_os = "windows")]
+fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
+    Command::new("cmd")
+        .args(["/C", "start", "", browser])
+        .arg(path)
+        .spawn()?;
+    Ok(())
+}
+
+#[cfg(not(any(
+    target_os = "freebsd",
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows"
+)))]
+fn open_with_browser(_path: &Path, browser: &str) -> Result<(), ViewerError> {
+    Err(ViewerError::UnsupportedBrowser {
+        browser: browser.to_string(),
+    })
 }
 
 #[cfg(any(target_os = "macos", test))]
