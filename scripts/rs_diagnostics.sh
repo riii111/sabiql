@@ -27,6 +27,7 @@ trap 'rm -f "$lua_script"' EXIT
 
 cat >"$lua_script" <<'LUA'
 local root = vim.env.RS_DIAGNOSTICS_ROOT
+local entry_file = vim.env.RS_DIAGNOSTICS_ENTRY_FILE
 local out_jsonl = vim.env.RS_DIAGNOSTICS_JSONL
 local out_txt = vim.env.RS_DIAGNOSTICS_TXT
 local timeout_ms = tonumber(vim.env.RS_DIAGNOSTICS_TIMEOUT_MS or "2000")
@@ -106,7 +107,7 @@ local function next_file()
   end, bufnr)
 end
 
-vim.cmd("silent edit " .. vim.fn.fnameescape(root .. "/" .. files[1]))
+vim.cmd("silent edit " .. vim.fn.fnameescape(root .. "/" .. entry_file))
 vim.wait(120000, function() return #vim.lsp.get_clients({ name = "rust-analyzer" }) > 0 end, 200)
 client = vim.lsp.get_clients({ name = "rust-analyzer" })[1]
 if not client then
@@ -118,6 +119,7 @@ vim.defer_fn(next_file, 1000)
 LUA
 
 RS_DIAGNOSTICS_ROOT="$root" \
+RS_DIAGNOSTICS_ENTRY_FILE="$entry_file" \
 RS_DIAGNOSTICS_JSONL="$out_jsonl" \
 RS_DIAGNOSTICS_TXT="$out_txt" \
 RS_DIAGNOSTICS_TIMEOUT_MS="$timeout_ms" \
