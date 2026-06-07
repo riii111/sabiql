@@ -36,13 +36,15 @@ pub struct SystemViewerLauncher;
 
 impl ViewerLauncher for SystemViewerLauncher {
     fn open_file(&self, path: &Path, browser: Option<&str>) -> Result<(), ViewerError> {
-        if let Some(browser) = browser.map(str::trim).filter(|value| !value.is_empty()) {
-            open_with_browser(path, browser)?;
-            return Ok(());
+        match requested_browser(browser) {
+            Some(browser) => open_with_browser(path, browser),
+            None => open_with_default_viewer(path),
         }
-
-        open_with_default_viewer(path)
     }
+}
+
+fn requested_browser(browser: Option<&str>) -> Option<&str> {
+    browser.map(str::trim).filter(|value| !value.is_empty())
 }
 
 #[cfg(target_os = "macos")]
@@ -52,17 +54,12 @@ fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
 
 #[cfg(any(target_os = "freebsd", target_os = "linux"))]
 fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
-    Command::new("xdg-open").arg(path).spawn()?;
-    Ok(())
+    spawn_viewer("xdg-open", &[], path)
 }
 
 #[cfg(target_os = "windows")]
 fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
-    Command::new("cmd")
-        .args(["/C", "start", ""])
-        .arg(path)
-        .spawn()?;
-    Ok(())
+    spawn_viewer("cmd", &["/C", "start", ""], path)
 }
 
 #[cfg(not(any(
@@ -80,15 +77,9 @@ fn open_with_default_viewer(_path: &Path) -> Result<(), ViewerError> {
 #[cfg(target_os = "macos")]
 fn open_with_default_browser(path: &Path) -> Result<(), ViewerError> {
     if let Some(bundle_id) = default_web_browser_bundle_id() {
-        Command::new("open")
-            .arg("-b")
-            .arg(bundle_id)
-            .arg(path)
-            .spawn()?;
-    } else {
-        Command::new("open").arg(path).spawn()?;
+        return spawn_viewer("open", &["-b", &bundle_id], path);
     }
-    Ok(())
+    spawn_viewer("open", &[], path)
 }
 
 #[cfg(target_os = "macos")]
@@ -149,12 +140,11 @@ fn handler_bundle_id(handler: &serde_json::Value) -> Option<String> {
 
 #[cfg(target_os = "macos")]
 fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
-    Command::new("open")
-        .arg("-a")
-        .arg(macos_browser_application_name(browser))
-        .arg(path)
-        .spawn()?;
-    Ok(())
+    spawn_viewer(
+        "open",
+        &["-a", macos_browser_application_name(browser)],
+        path,
+    )
 }
 
 #[cfg(any(target_os = "freebsd", target_os = "linux"))]
@@ -164,11 +154,7 @@ fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
 
 #[cfg(target_os = "windows")]
 fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
-    Command::new("cmd")
-        .args(["/C", "start", "", browser])
-        .arg(path)
-        .spawn()?;
-    Ok(())
+    spawn_viewer("cmd", &["/C", "start", "", browser], path)
 }
 
 #[cfg(not(any(
@@ -236,6 +222,11 @@ fn open_with_browser_candidates(
         browser: browser.to_string(),
         candidates: candidates.join(", "),
     })
+}
+
+fn spawn_viewer(program: &str, args: &[&str], path: &Path) -> Result<(), ViewerError> {
+    Command::new(program).args(args).arg(path).spawn()?;
+    Ok(())
 }
 
 pub struct DotExporter<G = SystemGraphvizRunner, V = SystemViewerLauncher> {
