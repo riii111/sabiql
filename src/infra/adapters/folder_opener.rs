@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::process::Command;
 
 use crate::app::ports::outbound::folder_opener::{FolderOpenError, FolderOpener};
 
@@ -12,19 +13,27 @@ impl FolderOpener for NativeFolderOpener {
 
 #[cfg(target_os = "macos")]
 fn open_folder(path: &Path) -> Result<(), FolderOpenError> {
-    std::process::Command::new("open").arg(path).spawn()?;
-    Ok(())
+    spawn_folder_opener("open", &[], path)
 }
 
 #[cfg(any(target_os = "freebsd", target_os = "linux"))]
 fn open_folder(path: &Path) -> Result<(), FolderOpenError> {
-    std::process::Command::new("xdg-open").arg(path).spawn()?;
-    Ok(())
+    spawn_folder_opener("xdg-open", &[], path)
 }
 
 #[cfg(target_os = "windows")]
 fn open_folder(path: &Path) -> Result<(), FolderOpenError> {
-    std::process::Command::new("explorer").arg(path).spawn()?;
+    spawn_folder_opener("explorer", &[], path)
+}
+
+#[cfg(any(
+    target_os = "freebsd",
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows"
+))]
+fn spawn_folder_opener(program: &str, args: &[&str], path: &Path) -> Result<(), FolderOpenError> {
+    Command::new(program).args(args).arg(path).spawn()?;
     Ok(())
 }
 
