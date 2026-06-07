@@ -36,11 +36,9 @@ pub fn render_horizontal_scroll_indicator(
     }
 
     let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
-    let percentage = if scrollable_range > 0 {
-        (params.position * 100) / scrollable_range
-    } else {
-        0
-    };
+    let percentage = (params.position * 100)
+        .checked_div(scrollable_range)
+        .unwrap_or(0);
     let position_text = format!("col {:>3}%", percentage.min(100));
 
     // Layout: [col XXX%][space][scrollbar with < and >][1-cell gap for border]
