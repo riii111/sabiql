@@ -6,8 +6,38 @@ on:
       - 'v*'
 
 jobs:
+  support-target-check:
+    name: Check ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-linux-android
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: support-${{ matrix.target }}
+
+      - name: Check target
+        run: cargo check --workspace --target ${{ matrix.target }}
+
   build:
     name: Build ${{ matrix.target }}
+    needs: support-target-check
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
