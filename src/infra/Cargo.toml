@@ -10,7 +10,6 @@ repository.workspace = true
 path = "lib.rs"
 
 [dependencies]
-arboard.workspace = true
 async-trait.workspace = true
 csv.workspace = true
 dirs.workspace = true
@@ -22,6 +21,9 @@ toml.workspace = true
 urlencoding.workspace = true
 sabiql-app.workspace = true
 sabiql-domain.workspace = true
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+arboard.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

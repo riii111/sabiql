@@ -1,8 +1,7 @@
 //! Port traits and their error types.
 //!
-//! Error variants carry source types (`std::io::Error`, `arboard::Error`, etc.)
-//! via `#[source]` to preserve `Error::source()` chains. Method signatures stay
-//! free of adapter-specific types; only error sources are exposed.
+//! Error variants may preserve `Error::source()` chains, but method signatures
+//! stay free of adapter-specific types.
 
 pub mod clipboard;
 pub mod config_writer;

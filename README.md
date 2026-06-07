@@ -89,6 +89,10 @@ Open Settings with `Ctrl+K` to switch themes and configure the ER diagram browse
 - `psql` CLI (PostgreSQL client)
 - Graphviz (optional, for ER diagrams): `brew install graphviz`
 
+### Android / Termux
+
+Android/Termux support is build-only, not full platform support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. `psql` is still required.
+
 ## Development
 
 With Nix:

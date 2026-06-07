@@ -31,14 +31,12 @@ pub fn reduce_yank(
                     .and_then(|row| row.get(col_idx))
                     .cloned();
                 if let Some(value) = content {
-                    state.result_interaction.yank_flash = Some(YankFlash {
-                        row: row_idx,
-                        col: Some(col_idx),
-                        until: now + Duration::from_millis(200),
-                    });
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: value,
-                        on_success: Some(Box::new(Action::CellCopied)),
+                        on_success: Some(Box::new(Action::ResultCellYankSuccess {
+                            row: row_idx,
+                            col: col_idx,
+                        })),
                         on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
@@ -60,10 +58,9 @@ pub fn reduce_yank(
                 && let Some(table) = state.session.table_detail().as_ref()
             {
                 let ddl = services.ddl_generator.generate_ddl(table);
-                state.flash_timers.set(FlashId::Ddl, now);
                 return DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: ddl,
-                    on_success: Some(Box::new(Action::CellCopied)),
+                    on_success: Some(Box::new(Action::DdlYankSuccess)),
                     on_failure: Some(Box::new(clipboard_unavailable())),
                 }]);
             }
@@ -86,14 +83,9 @@ pub fn reduce_yank(
                             .join("\t")
                     });
                 if let Some(tsv) = content {
-                    state.result_interaction.yank_flash = Some(YankFlash {
-                        row: row_idx,
-                        col: None,
-                        until: now + Duration::from_millis(200),
-                    });
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: tsv,
-                        on_success: Some(Box::new(Action::CellCopied)),
+                        on_success: Some(Box::new(Action::ResultRowYankSuccess { row: row_idx })),
                         on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
@@ -106,7 +98,26 @@ pub fn reduce_yank(
                 DispatchResult::handled()
             }
         }
-        Action::CellCopied => DispatchResult::handled(),
+        Action::ResultCellYankSuccess { row, col } => {
+            state.result_interaction.yank_flash = Some(YankFlash {
+                row: *row,
+                col: Some(*col),
+                until: now + Duration::from_millis(200),
+            });
+            DispatchResult::handled()
+        }
+        Action::ResultRowYankSuccess { row } => {
+            state.result_interaction.yank_flash = Some(YankFlash {
+                row: *row,
+                col: None,
+                until: now + Duration::from_millis(200),
+            });
+            DispatchResult::handled()
+        }
+        Action::DdlYankSuccess => {
+            state.flash_timers.set(FlashId::Ddl, now);
+            DispatchResult::handled()
+        }
         Action::CopyFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
             DispatchResult::handled()
@@ -204,11 +215,37 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
-                Effect::CopyToClipboard { content, .. } => {
+                Effect::CopyToClipboard {
+                    content,
+                    on_success,
+                    ..
+                } => {
                     assert_eq!(content, "r1c2");
+                    assert!(matches!(
+                        on_success.as_deref(),
+                        Some(Action::ResultCellYankSuccess { row: 1, col: 2 })
+                    ));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
+            assert!(state.result_interaction.yank_flash.is_none());
+        }
+
+        #[test]
+        fn success_sets_cell_flash() {
+            let mut state = state_with_grid(3, 3);
+            let now = Instant::now();
+
+            reduce_yank(
+                &mut state,
+                &Action::ResultCellYankSuccess { row: 1, col: 2 },
+                &AppServices::stub(),
+                now,
+            );
+
+            let flash = state.result_interaction.yank_flash.expect("flash set");
+            assert_eq!(flash.row, 1);
+            assert_eq!(flash.col, Some(2));
         }
 
         #[test]
@@ -312,11 +349,37 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
-                Effect::CopyToClipboard { content, .. } => {
+                Effect::CopyToClipboard {
+                    content,
+                    on_success,
+                    ..
+                } => {
                     assert_eq!(content, "v0\tv1\tv2");
+                    assert!(matches!(
+                        on_success.as_deref(),
+                        Some(Action::ResultRowYankSuccess { row: 0 })
+                    ));
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
+            assert!(state.result_interaction.yank_flash.is_none());
+        }
+
+        #[test]
+        fn success_sets_row_flash() {
+            let mut state = state_with_row(vec!["v0", "v1"]);
+            let now = Instant::now();
+
+            reduce_yank(
+                &mut state,
+                &Action::ResultRowYankSuccess { row: 0 },
+                &AppServices::stub(),
+                now,
+            );
+
+            let flash = state.result_interaction.yank_flash.expect("flash set");
+            assert_eq!(flash.row, 0);
+            assert_eq!(flash.col, None);
         }
 
         #[test]
@@ -480,17 +543,28 @@ mod tests {
 
             let effects = effects.into_effects().expect("should return Some");
             assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("CREATE TABLE"))
-            );
+            match &effects[0] {
+                Effect::CopyToClipboard {
+                    content,
+                    on_success,
+                    ..
+                } => {
+                    assert!(content.contains("CREATE TABLE"));
+                    assert!(matches!(
+                        on_success.as_deref(),
+                        Some(Action::DdlYankSuccess)
+                    ));
+                }
+                other => panic!("expected CopyToClipboard, got {other:?}"),
+            }
         }
 
         #[test]
-        fn sets_flash() {
+        fn success_sets_flash() {
             let mut state = state_with_ddl_tab();
             let now = Instant::now();
 
-            reduce_yank(&mut state, &Action::DdlYank, &fake_services(), now);
+            reduce_yank(&mut state, &Action::DdlYankSuccess, &fake_services(), now);
 
             assert!(state.flash_timers.is_active(FlashId::Ddl, now));
         }

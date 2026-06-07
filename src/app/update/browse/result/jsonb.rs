@@ -87,14 +87,18 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
 
         Action::JsonbYankAll => {
             let json = state.jsonb_detail.current_json_for_yank();
-            state.flash_timers.set(FlashId::JsonbDetail, now);
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content: json,
-                on_success: Some(Box::new(Action::CellCopied)),
+                on_success: Some(Box::new(Action::JsonbYankSuccess)),
                 on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
                     "Clipboard unavailable".into(),
                 )))),
             }])
+        }
+
+        Action::JsonbYankSuccess => {
+            state.flash_timers.set(FlashId::JsonbDetail, now);
+            DispatchResult::handled()
         }
 
         Action::JsonbEnterEdit => {
@@ -856,13 +860,36 @@ mod tests {
                 Instant::now(),
             );
 
-            let effects = reduce_jsonb(&mut state, &Action::JsonbYankAll, Instant::now());
+            let now = Instant::now();
+            let effects = reduce_jsonb(&mut state, &Action::JsonbYankAll, now);
 
             let effects = effects.into_effects().expect("should return effects");
             assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("theme"))
-            );
+            match &effects[0] {
+                Effect::CopyToClipboard {
+                    content,
+                    on_success,
+                    ..
+                } => {
+                    assert!(content.contains("theme"));
+                    assert!(matches!(
+                        on_success.as_deref(),
+                        Some(Action::JsonbYankSuccess)
+                    ));
+                }
+                other => panic!("expected CopyToClipboard, got {other:?}"),
+            }
+            assert!(!state.flash_timers.is_active(FlashId::JsonbDetail, now));
+        }
+
+        #[test]
+        fn success_sets_flash() {
+            let mut state = state_with_jsonb_cell();
+            let now = Instant::now();
+
+            reduce_jsonb(&mut state, &Action::JsonbYankSuccess, now);
+
+            assert!(state.flash_timers.is_active(FlashId::JsonbDetail, now));
         }
     }
 
