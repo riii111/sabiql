@@ -21,6 +21,18 @@
       ];
 
       forAllSystems = nixpkgs.lib.genAttrs systems;
+
+      rustVersion = "1.96.0";
+      mkRustToolchain =
+        pkgs:
+        pkgs.rust-bin.stable.${rustVersion}.default.override {
+          extensions = [
+            "clippy"
+            "rust-analyzer"
+            "rust-src"
+            "rustfmt"
+          ];
+        };
     in
     {
       packages = forAllSystems (
@@ -31,14 +43,7 @@
             overlays = [ rust-overlay.overlays.default ];
           };
 
-          rustToolchain = pkgs.rust-bin.stable."1.94.0".default.override {
-            extensions = [
-              "clippy"
-              "rust-analyzer"
-              "rust-src"
-              "rustfmt"
-            ];
-          };
+          rustToolchain = mkRustToolchain pkgs;
           rustPlatform = pkgs.makeRustPlatform {
             cargo = rustToolchain;
             rustc = rustToolchain;
@@ -86,14 +91,7 @@
             overlays = [ rust-overlay.overlays.default ];
           };
 
-          rustToolchain = pkgs.rust-bin.stable."1.94.0".default.override {
-            extensions = [
-              "clippy"
-              "rust-analyzer"
-              "rust-src"
-              "rustfmt"
-            ];
-          };
+          rustToolchain = mkRustToolchain pkgs;
         in
         {
           default = pkgs.mkShell {

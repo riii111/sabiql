@@ -696,12 +696,9 @@ impl SqlLexer {
                     alias = Some(name.clone());
                     *i += 1;
                 }
-                TokenKind::Keyword(kw) => {
-                    // Don't treat SQL keywords as aliases
-                    if !Self::is_clause_keyword(kw) {
-                        alias = Some(kw.clone());
-                        *i += 1;
-                    }
+                TokenKind::Keyword(kw) if !Self::is_clause_keyword(kw) => {
+                    alias = Some(kw.clone());
+                    *i += 1;
                 }
                 _ => {}
             }
