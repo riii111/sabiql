@@ -6,6 +6,22 @@ out_jsonl="${RS_DIAGNOSTICS_JSONL:-$root/rs-diagnostics.jsonl}"
 out_txt="${RS_DIAGNOSTICS_TXT:-$root/rs-diagnostics.txt}"
 timeout_ms="${RS_DIAGNOSTICS_TIMEOUT_MS:-2000}"
 
+if ! [[ "$timeout_ms" =~ ^[0-9]+$ ]] || [[ "$timeout_ms" -le 0 ]]; then
+  echo "RS_DIAGNOSTICS_TIMEOUT_MS must be a positive integer: $timeout_ms" >&2
+  exit 2
+fi
+
+if command -v fd >/dev/null 2>&1; then
+  entry_file="$(cd "$root" && fd -e rs -E target -t f | head -n 1 || true)"
+else
+  entry_file="$(git -C "$root" ls-files '*.rs' | head -n 1 || true)"
+fi
+
+if [[ -z "$entry_file" ]]; then
+  echo "No Rust files found under: $root" >&2
+  exit 1
+fi
+
 lua_script=$(mktemp "${TMPDIR:-/tmp}/rs-diagnostics.XXXXXX.lua")
 trap 'rm -f "$lua_script"' EXIT
 
@@ -17,7 +33,7 @@ local timeout_ms = tonumber(vim.env.RS_DIAGNOSTICS_TIMEOUT_MS or "2000")
 
 local files
 if vim.fn.executable("fd") == 1 then
-  files = vim.fn.systemlist("cd " .. vim.fn.shellescape(root) .. " && fd -e rs -E target")
+  files = vim.fn.systemlist("cd " .. vim.fn.shellescape(root) .. " && fd -e rs -E target -t f")
 else
   files = vim.fn.systemlist("git -C " .. vim.fn.shellescape(root) .. " ls-files '*.rs'")
 end
@@ -90,7 +106,7 @@ local function next_file()
   end, bufnr)
 end
 
-vim.cmd("silent edit " .. vim.fn.fnameescape(root .. "/" .. (files[1] or "src/main.rs")))
+vim.cmd("silent edit " .. vim.fn.fnameescape(root .. "/" .. files[1]))
 vim.wait(120000, function() return #vim.lsp.get_clients({ name = "rust-analyzer" }) > 0 end, 200)
 client = vim.lsp.get_clients({ name = "rust-analyzer" })[1]
 if not client then
@@ -105,4 +121,4 @@ RS_DIAGNOSTICS_ROOT="$root" \
 RS_DIAGNOSTICS_JSONL="$out_jsonl" \
 RS_DIAGNOSTICS_TXT="$out_txt" \
 RS_DIAGNOSTICS_TIMEOUT_MS="$timeout_ms" \
-nvim --headless "$root/src/main.rs" -S "$lua_script"
+nvim --headless "$root/$entry_file" -S "$lua_script"
