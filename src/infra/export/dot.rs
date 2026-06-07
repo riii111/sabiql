@@ -578,6 +578,16 @@ mod tests {
         }
 
         #[test]
+        fn requested_browser_ignores_whitespace_only_values() {
+            assert_eq!(requested_browser(Some("   ")), None);
+        }
+
+        #[test]
+        fn requested_browser_trims_browser_name() {
+            assert_eq!(requested_browser(Some("  Firefox  ")), Some("Firefox"));
+        }
+
+        #[test]
         fn browser_command_candidates_include_common_presets() {
             assert_eq!(
                 browser_command_candidates("microsoft edge"),
