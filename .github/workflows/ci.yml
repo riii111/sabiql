@@ -49,7 +49,7 @@ jobs:
         run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - id: test_no_default_features
         continue-on-error: true
-        run: cargo nextest run --workspace --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
+        run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - name: Summarize failed tests
         if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
         run: |
