@@ -355,7 +355,7 @@ fn sql_modal_confirming_high_matched() {
                 label: "DROP",
             },
             input,
-            target_name: Some("users".to_string()),
+            target_name: "users".to_string(),
         });
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -383,33 +383,7 @@ fn sql_modal_confirming_high_unmatched() {
                 label: "DROP",
             },
             input,
-            target_name: Some("users".to_string()),
-        });
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn sql_modal_confirming_high_no_target() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor
-        .set_content("DROP TABLE users".to_string());
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-            decision: AdhocRiskDecision {
-                risk_level: RiskLevel::High,
-                label: "DROP",
-            },
-            input: TextInputState::default(),
-            target_name: None,
+            target_name: "users".to_string(),
         });
 
     let output = render_to_string(&mut terminal, &mut state);

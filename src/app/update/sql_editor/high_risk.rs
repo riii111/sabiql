@@ -81,7 +81,7 @@ pub(super) fn reduce_high_risk_confirmation(
                     target_name,
                     input,
                     ..
-                } if target_name.as_ref().is_some_and(|n| input.content() == n)
+                } if input.content() == target_name.as_str()
             ) || matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingRisk { .. }

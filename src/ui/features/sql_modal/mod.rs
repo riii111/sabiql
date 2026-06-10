@@ -55,9 +55,7 @@ impl SqlModal {
                         " SQL \u{2500}\u{2500} \u{26a0} {} ",
                         decision.risk_level.as_str()
                     );
-                    let is_match = target_name
-                        .as_ref()
-                        .is_some_and(|name| input.content() == name);
+                    let is_match = input.content() == target_name.as_str();
                     let footer = if is_match {
                         FooterHintBar::new([("Enter", "Execute"), ("Esc", "Back")])
                     } else {
@@ -103,9 +101,7 @@ impl SqlModal {
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     input, target_name, ..
                 } => {
-                    let is_match = target_name
-                        .as_ref()
-                        .is_some_and(|name| input.content() == name);
+                    let is_match = input.content() == target_name.as_str();
                     if is_match {
                         FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")])
                     } else {

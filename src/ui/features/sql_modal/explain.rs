@@ -38,7 +38,7 @@ pub fn render(
         target_name,
     } = state.sql_modal.status()
     {
-        let lines = build_analyze_confirm_lines(area, query, input, target_name.as_deref(), theme);
+        let lines = build_analyze_confirm_lines(area, query, input, target_name, theme);
         render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
         return area.height;
     }
@@ -135,7 +135,7 @@ fn build_analyze_confirm_lines<'a>(
     area: Rect,
     query: &'a str,
     input: &'a crate::app::model::shared::text_input::TextInputState,
-    target_name: Option<&'a str>,
+    name: &'a str,
     theme: &ThemePalette,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
@@ -174,36 +174,26 @@ fn build_analyze_confirm_lines<'a>(
     }
     lines.push(Line::raw(""));
 
-    match target_name {
-        Some(name) => {
-            let is_match = input.content() == name;
-            let prompt = format!(" Type \"{name}\" to confirm: > ");
-            let mut prompt_spans = vec![Span::styled(
-                prompt,
-                Style::default().fg(theme.semantic.text.secondary),
-            )];
-            prompt_spans.extend(text_cursor_spans(
-                input.content(),
-                input.cursor(),
-                input.viewport_offset(),
-                HIGH_RISK_INPUT_VISIBLE_WIDTH,
-                theme,
-            ));
-            if is_match {
-                prompt_spans.push(Span::styled(
-                    " \u{2713}",
-                    Style::default().fg(theme.semantic.status.success),
-                ));
-            }
-            lines.push(Line::from(prompt_spans));
-        }
-        None => {
-            lines.push(Line::from(Span::styled(
-                " Cannot identify target object name.  Esc: Back",
-                Style::default().fg(theme.semantic.text.muted),
-            )));
-        }
+    let is_match = input.content() == name;
+    let prompt = format!(" Type \"{name}\" to confirm: > ");
+    let mut prompt_spans = vec![Span::styled(
+        prompt,
+        Style::default().fg(theme.semantic.text.secondary),
+    )];
+    prompt_spans.extend(text_cursor_spans(
+        input.content(),
+        input.cursor(),
+        input.viewport_offset(),
+        HIGH_RISK_INPUT_VISIBLE_WIDTH,
+        theme,
+    ));
+    if is_match {
+        prompt_spans.push(Span::styled(
+            " \u{2713}",
+            Style::default().fg(theme.semantic.status.success),
+        ));
     }
+    lines.push(Line::from(prompt_spans));
 
     lines
 }

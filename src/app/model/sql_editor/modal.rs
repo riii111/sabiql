@@ -55,15 +55,16 @@ pub enum SqlModalStatus {
     Normal,
     Editing,
     // HIGH risk confirmation requiring the user to type the target object name.
+    // When no target name can be extracted, ConfirmingRisk is used instead.
     ConfirmingHigh {
         decision: AdhocRiskDecision,
         input: TextInputState,
-        target_name: Option<String>,
+        target_name: String,
     },
     ConfirmingAnalyzeHigh {
         query: String,
         input: TextInputState,
-        target_name: Option<String>,
+        target_name: String,
     },
     // Single-keypress risk acknowledgment: no typed target name, Enter executes.
     ConfirmingRisk {
@@ -152,11 +153,7 @@ impl SqlModalContext {
         self.last_adhoc_error = None;
     }
 
-    pub fn begin_confirming_high(
-        &mut self,
-        decision: AdhocRiskDecision,
-        target_name: Option<String>,
-    ) {
+    pub fn begin_confirming_high(&mut self, decision: AdhocRiskDecision, target_name: String) {
         self.status = SqlModalStatus::ConfirmingHigh {
             decision,
             input: TextInputState::default(),
@@ -165,7 +162,7 @@ impl SqlModalContext {
         self.dismiss_completion();
     }
 
-    pub fn begin_confirming_analyze_high(&mut self, query: String, target_name: Option<String>) {
+    pub fn begin_confirming_analyze_high(&mut self, query: String, target_name: String) {
         self.status = SqlModalStatus::ConfirmingAnalyzeHigh {
             query,
             input: TextInputState::default(),
@@ -486,35 +483,12 @@ mod tests {
                     label: "DROP",
                 },
                 input: TextInputState::default(),
-                target_name: Some("users".to_string()),
+                target_name: "users".to_string(),
             };
 
             assert!(matches!(
                 status,
-                SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(_),
-                    ..
-                }
-            ));
-        }
-
-        #[test]
-        fn high_status_allows_missing_target_name() {
-            let status = SqlModalStatus::ConfirmingHigh {
-                decision: AdhocRiskDecision {
-                    risk_level: RiskLevel::High,
-                    label: "SQL",
-                },
-                input: TextInputState::default(),
-                target_name: None,
-            };
-
-            assert!(matches!(
-                status,
-                SqlModalStatus::ConfirmingHigh {
-                    target_name: None,
-                    ..
-                }
+                SqlModalStatus::ConfirmingHigh { ref target_name, .. } if target_name == "users"
             ));
         }
 
@@ -533,7 +507,7 @@ mod tests {
                     risk_level: RiskLevel::High,
                     label: "DROP",
                 },
-                Some("users".to_string()),
+                "users".to_string(),
             );
             ctx.cancel_confirmation();
             assert_eq!(ctx.status, SqlModalStatus::Normal);

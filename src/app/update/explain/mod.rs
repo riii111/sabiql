@@ -332,10 +332,7 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyzeHigh {
-                    target_name: Some(_),
-                    ..
-                }
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
             ));
         }
 
@@ -397,10 +394,7 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyzeHigh {
-                    target_name: Some(_),
-                    ..
-                }
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
             ));
         }
 
@@ -417,10 +411,7 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyzeHigh {
-                    target_name: Some(_),
-                    ..
-                }
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
             ));
         }
     }
@@ -519,7 +510,7 @@ mod tests {
                 .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
                     query: "DELETE FROM users".to_string(),
                     input,
-                    target_name: Some("users".to_string()),
+                    target_name: "users".to_string(),
                 });
 
             let effects =
@@ -542,7 +533,7 @@ mod tests {
                 .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
                     query: "DELETE FROM users".to_string(),
                     input,
-                    target_name: Some("users".to_string()),
+                    target_name: "users".to_string(),
                 });
 
             let effects =
@@ -565,7 +556,7 @@ mod tests {
                 .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
                     query: "DROP TABLE users".to_string(),
                     input: TextInputState::default(),
-                    target_name: Some("users".to_string()),
+                    target_name: "users".to_string(),
                 });
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeCancel, Instant::now());

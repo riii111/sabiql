@@ -67,9 +67,7 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
                             DispatchResult::handled()
                         }
                         ConfirmationType::TableNameInput { target } => {
-                            state
-                                .sql_modal
-                                .begin_confirming_high(decision, Some(target));
+                            state.sql_modal.begin_confirming_high(decision, target);
                             DispatchResult::handled()
                         }
                     }

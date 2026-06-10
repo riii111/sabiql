@@ -63,7 +63,7 @@ pub(super) fn reduce_analyze(
                 ConfirmationType::TableNameInput { target } => {
                     state
                         .sql_modal
-                        .begin_confirming_analyze_high(content, Some(target));
+                        .begin_confirming_analyze_high(content, target);
                 }
                 ConfirmationType::Acknowledge { reason, .. } => {
                     state
@@ -101,10 +101,7 @@ pub(super) fn reduce_analyze(
                     query,
                     input,
                     target_name,
-                } => target_name
-                    .as_ref()
-                    .is_some_and(|name| input.content() == name)
-                    .then(|| query.clone()),
+                } => (input.content() == target_name.as_str()).then(|| query.clone()),
                 SqlModalStatus::ConfirmingAnalyzeRisk { query, .. } => Some(query.clone()),
                 _ => None,
             };

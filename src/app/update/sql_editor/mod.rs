@@ -157,7 +157,7 @@ mod tests {
                         label: "DROP",
                     },
                     input: TextInputState::default(),
-                    target_name: Some("users".to_string()),
+                    target_name: "users".to_string(),
                 });
 
             reduce_sql_modal(
@@ -234,7 +234,7 @@ mod tests {
         use crate::policy::write::write_guardrails::AdhocRiskDecision;
         use crate::update::action::CursorMove;
 
-        fn confirming_high_state(content: &str, target: Option<&str>) -> AppState {
+        fn confirming_high_state(content: &str, target: &str) -> AppState {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content(content.to_string());
             state
@@ -245,7 +245,7 @@ mod tests {
                         label: "DROP",
                     },
                     input: TextInputState::default(),
-                    target_name: target.map(ToString::to_string),
+                    target_name: target.to_string(),
                 });
             state
         }
@@ -263,9 +263,9 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "users"
+                } if target_name == "users"
             ));
         }
 
@@ -364,7 +364,7 @@ mod tests {
 
         #[test]
         fn high_risk_input_appends_char() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
 
             reduce_sql_modal(
                 &mut state,
@@ -384,7 +384,7 @@ mod tests {
 
         #[test]
         fn high_risk_backspace_removes_char() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             reduce_sql_modal(
                 &mut state,
                 &Action::TextInput {
@@ -419,7 +419,7 @@ mod tests {
 
         #[test]
         fn high_risk_confirm_executes_on_match() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             state.session.dsn = Some("postgres://test".to_string());
             for c in "users".chars() {
                 reduce_sql_modal(
@@ -448,7 +448,7 @@ mod tests {
 
         #[test]
         fn high_risk_confirm_without_dsn_sets_error() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             for c in "users".chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -473,7 +473,7 @@ mod tests {
 
         #[test]
         fn high_risk_confirm_blocked_on_mismatch() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             reduce_sql_modal(
                 &mut state,
                 &Action::TextInput {
@@ -492,20 +492,8 @@ mod tests {
         }
 
         #[test]
-        fn high_risk_confirm_blocked_when_no_target() {
-            let mut state = confirming_high_state("DROP TABLE users", None);
-
-            reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
-
-            assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh { .. }
-            ));
-        }
-
-        #[test]
         fn cancel_from_confirming_high_returns_to_normal() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
 
             reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
 
@@ -514,7 +502,7 @@ mod tests {
 
         #[test]
         fn high_risk_move_cursor_works() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             for c in "ab".chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -555,9 +543,9 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "users"
+                } if target_name == "users"
             ));
         }
 
@@ -574,9 +562,9 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "users"
+                } if target_name == "users"
             ));
         }
 
@@ -593,9 +581,9 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "users"
+                } if target_name == "users"
             ));
         }
 
@@ -612,17 +600,16 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "my_schema.very_long_table_name"
+                } if target_name == "my_schema.very_long_table_name"
             ));
         }
 
         #[test]
         fn high_risk_confirm_matches_full_name_not_truncated() {
             let full_name = "my_schema.very_long_table_name";
-            let mut state =
-                confirming_high_state(&format!("DROP TABLE {full_name}"), Some(full_name));
+            let mut state = confirming_high_state(&format!("DROP TABLE {full_name}"), full_name);
             state.session.dsn = Some("postgres://test".to_string());
             for c in full_name.chars() {
                 reduce_sql_modal(

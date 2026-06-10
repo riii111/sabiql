@@ -17,7 +17,7 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
         target_name,
     } = state.sql_modal.status()
     {
-        render_confirming_high_status(frame, area, decision, input, target_name.as_deref(), theme);
+        render_confirming_high_status(frame, area, decision, input, target_name, theme);
         return;
     }
 
@@ -139,67 +139,54 @@ fn render_confirming_high_status(
     area: Rect,
     decision: &crate::app::policy::write::write_guardrails::AdhocRiskDecision,
     input: &crate::app::model::shared::text_input::TextInputState,
-    target_name: Option<&str>,
+    name: &str,
     theme: &ThemePalette,
 ) {
     let error_style = Style::default().fg(theme.semantic.status.error);
 
-    if let Some(name) = target_name {
-        let is_match = input.content() == name;
-        let warning_text = format!("\u{26a0} HIGH RISK  {}", decision.label);
-        let blocked_label = "Enter blocked";
-        let mut line1_spans = vec![Span::styled(warning_text.clone(), error_style)];
-        if !is_match {
-            let used = (warning_text.len() + blocked_label.len()) as u16;
-            let padding = area.width.saturating_sub(used).max(2);
-            line1_spans.push(Span::raw(" ".repeat(padding as usize)));
-            line1_spans.push(Span::styled(
-                blocked_label,
-                Style::default().fg(theme.semantic.text.muted),
-            ));
-        }
-        let line1 = Line::from(line1_spans);
-
-        let prompt_fixed_len = "Confirm \"\": > ".len();
-        let max_name_display = (area.width as usize)
-            .saturating_sub(prompt_fixed_len + HIGH_RISK_INPUT_VISIBLE_WIDTH + 2);
-        let display_name = truncate_with_ellipsis(name, max_name_display);
-        let prompt = format!("Confirm \"{display_name}\": > ");
-        let visible_width = HIGH_RISK_INPUT_VISIBLE_WIDTH;
-        let cursor_spans = text_cursor_spans(
-            input.content(),
-            input.cursor(),
-            input.viewport_offset(),
-            visible_width,
-            theme,
-        );
-        let mut line2_spans = vec![Span::styled(
-            prompt,
-            Style::default().fg(theme.semantic.text.secondary),
-        )];
-        line2_spans.extend(cursor_spans);
-        if is_match {
-            line2_spans.push(Span::styled(
-                " \u{2713}",
-                Style::default().fg(theme.semantic.status.success),
-            ));
-        }
-        let line2 = Line::from(line2_spans);
-
-        let paragraph = Paragraph::new(vec![line1, line2]);
-        frame.render_widget(paragraph, area);
-    } else {
-        let line1 = Line::from(Span::styled(
-            format!("\u{26a0} HIGH RISK  {}", decision.label),
-            error_style,
-        ));
-        let line2 = Line::from(Span::styled(
-            "Cannot identify target object name.  Esc: Back",
+    let is_match = input.content() == name;
+    let warning_text = format!("\u{26a0} HIGH RISK  {}", decision.label);
+    let blocked_label = "Enter blocked";
+    let mut line1_spans = vec![Span::styled(warning_text.clone(), error_style)];
+    if !is_match {
+        let used = (warning_text.len() + blocked_label.len()) as u16;
+        let padding = area.width.saturating_sub(used).max(2);
+        line1_spans.push(Span::raw(" ".repeat(padding as usize)));
+        line1_spans.push(Span::styled(
+            blocked_label,
             Style::default().fg(theme.semantic.text.muted),
         ));
-        let paragraph = Paragraph::new(vec![line1, line2]);
-        frame.render_widget(paragraph, area);
     }
+    let line1 = Line::from(line1_spans);
+
+    let prompt_fixed_len = "Confirm \"\": > ".len();
+    let max_name_display =
+        (area.width as usize).saturating_sub(prompt_fixed_len + HIGH_RISK_INPUT_VISIBLE_WIDTH + 2);
+    let display_name = truncate_with_ellipsis(name, max_name_display);
+    let prompt = format!("Confirm \"{display_name}\": > ");
+    let visible_width = HIGH_RISK_INPUT_VISIBLE_WIDTH;
+    let cursor_spans = text_cursor_spans(
+        input.content(),
+        input.cursor(),
+        input.viewport_offset(),
+        visible_width,
+        theme,
+    );
+    let mut line2_spans = vec![Span::styled(
+        prompt,
+        Style::default().fg(theme.semantic.text.secondary),
+    )];
+    line2_spans.extend(cursor_spans);
+    if is_match {
+        line2_spans.push(Span::styled(
+            " \u{2713}",
+            Style::default().fg(theme.semantic.status.success),
+        ));
+    }
+    let line2 = Line::from(line2_spans);
+
+    let paragraph = Paragraph::new(vec![line1, line2]);
+    frame.render_widget(paragraph, area);
 }
 
 fn render_confirming_risk_status(
