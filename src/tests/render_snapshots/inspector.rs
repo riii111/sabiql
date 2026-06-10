@@ -3,6 +3,26 @@ use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
 
 #[test]
+fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
+    let (mut state, _now) = harness::explorer_selected_state();
+    // Split-pane terminal: the comment column alone exceeds the pane width
+    let mut terminal = create_test_terminal_sized(110, 40);
+
+    let mut table = fixtures::sample_table_detail();
+    table.columns[0].comment = Some(
+        "Primary key, generated from the tenant sequence and never reused after deletion"
+            .to_string(),
+    );
+    let _ = state.session.set_table_detail(table, 0);
+    state.ui.inspector_tab = InspectorTab::Columns;
+    state.ui.focused_pane = FocusedPane::Inspector;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inspector_indexes_tab_with_data() {
     let (mut state, _now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
