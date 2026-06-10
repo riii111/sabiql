@@ -66,7 +66,6 @@ pub enum SqlModalStatus {
         input: TextInputState,
         target_name: String,
     },
-    // Single-keypress risk acknowledgment: no typed target name, Enter executes.
     ConfirmingRisk {
         reason: AcknowledgeReason,
         label: String,

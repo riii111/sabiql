@@ -41,7 +41,6 @@ pub(super) fn reduce_high_risk_confirmation(
             }
         }
 
-        // HIGH risk confirmation input (adhoc + EXPLAIN ANALYZE)
         Action::TextInput {
             target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
             ch: c,

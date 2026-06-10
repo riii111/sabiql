@@ -37,8 +37,7 @@ pub fn drop_subtype(sql: &str) -> Option<String> {
     lowers.get(drop_idx + 1).cloned()
 }
 
-// First top-level token of the statement, uppercased. Display label for
-// statements the classifier cannot assess.
+// Display label for statements the classifier cannot assess.
 pub fn first_keyword(sql: &str) -> Option<String> {
     let trimmed = sql.trim();
     let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
