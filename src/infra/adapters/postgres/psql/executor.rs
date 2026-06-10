@@ -233,6 +233,10 @@ impl PostgresAdapter {
         source: QuerySource,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures psql execution time at the I/O boundary"
+        )]
         let start = Instant::now();
 
         let output = self.run_psql(dsn, &["--csv"], query, read_only).await?;
@@ -269,6 +273,10 @@ impl PostgresAdapter {
         source: QuerySource,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures psql execution time at the I/O boundary"
+        )]
         let start = Instant::now();
 
         let marker = boundary_marker();
@@ -360,6 +368,10 @@ impl PostgresAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<WriteExecutionResult, DbOperationError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures psql execution time at the I/O boundary"
+        )]
         let start = Instant::now();
 
         let output = self.run_psql(dsn, &[], query, read_only).await?;

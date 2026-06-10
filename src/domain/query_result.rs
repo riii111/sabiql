@@ -22,6 +22,10 @@ pub struct QueryResult {
 }
 
 impl QueryResult {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "execution timestamp is recorded at construction, which happens at the infra I/O boundary"
+    )]
     pub fn success(
         query: String,
         columns: Vec<String>,
@@ -43,6 +47,10 @@ impl QueryResult {
         }
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "execution timestamp is recorded at construction, which happens at the infra I/O boundary"
+    )]
     pub fn error(
         query: String,
         error: String,
