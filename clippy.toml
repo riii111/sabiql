@@ -1,3 +1,7 @@
 msrv = "1.96"
 allow-dbg-in-tests = true
 too-many-arguments-threshold = 8
+
+disallowed-methods = [
+    { path = "std::time::Instant::now", reason = "reducers must receive `now` as a parameter; read the clock only at the runtime boundary (main loop / effect layer)" },
+]

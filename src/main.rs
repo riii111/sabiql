@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "the main loop is the time source: it reads the clock and injects `now` into reducers"
+)]
+
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
