@@ -222,10 +222,6 @@ mod tests {
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
 
-    fn begin_query_run(state: &mut AppState) -> u64 {
-        state.query.begin_running(Instant::now())
-    }
-
     fn csv_rows_counted_action(
         state: &mut AppState,
         row_count: Option<usize>,

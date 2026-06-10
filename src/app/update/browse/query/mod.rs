@@ -61,11 +61,32 @@ pub(super) mod tests {
         QuerySource, Table, Trigger, TriggerEvent, TriggerTiming,
     };
     use crate::model::app_state::AppState;
+    use crate::update::action::Action;
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
         state.session.dsn = Some("postgres://localhost/test".to_string());
         state
+    }
+
+    pub fn begin_query_run(state: &mut AppState) -> u64 {
+        state.query.begin_running(Instant::now())
+    }
+
+    pub fn query_completed_action(
+        state: &mut AppState,
+        result: Arc<QueryResult>,
+        generation: u64,
+        target_page: Option<usize>,
+    ) -> Action {
+        let run_id = begin_query_run(state);
+        Action::QueryCompleted {
+            dsn: "postgres://localhost/test".to_string(),
+            run_id,
+            result,
+            generation,
+            target_page,
+        }
     }
 
     pub fn preview_result(row_count: usize) -> Arc<QueryResult> {

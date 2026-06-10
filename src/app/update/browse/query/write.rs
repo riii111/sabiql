@@ -370,9 +370,7 @@ pub fn reduce_write(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
-    use crate::domain::QueryResult;
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
     };
@@ -382,10 +380,6 @@ mod tests {
     use crate::ports::outbound::DbOperationError;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
-
-    fn begin_query_run(state: &mut AppState) -> u64 {
-        state.query.begin_running(Instant::now())
-    }
 
     fn write_succeeded_action(state: &mut AppState, affected_rows: usize) -> Action {
         let run_id = begin_query_run(state);
@@ -402,22 +396,6 @@ mod tests {
             dsn: "postgres://localhost/test".to_string(),
             run_id,
             error,
-        }
-    }
-
-    fn query_completed_action(
-        state: &mut AppState,
-        result: Arc<QueryResult>,
-        generation: u64,
-        target_page: Option<usize>,
-    ) -> Action {
-        let run_id = begin_query_run(state);
-        Action::QueryCompleted {
-            dsn: "postgres://localhost/test".to_string(),
-            run_id,
-            result,
-            generation,
-            target_page,
         }
     }
 

@@ -293,26 +293,6 @@ mod tests {
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
 
-    fn begin_query_run(state: &mut AppState) -> u64 {
-        state.query.begin_running(Instant::now())
-    }
-
-    fn query_completed_action(
-        state: &mut AppState,
-        result: Arc<QueryResult>,
-        generation: u64,
-        target_page: Option<usize>,
-    ) -> Action {
-        let run_id = begin_query_run(state);
-        Action::QueryCompleted {
-            dsn: "postgres://localhost/test".to_string(),
-            run_id,
-            result,
-            generation,
-            target_page,
-        }
-    }
-
     fn query_failed_action(
         state: &mut AppState,
         error: DbOperationError,
