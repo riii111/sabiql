@@ -4,7 +4,9 @@ mod write;
 
 use std::time::Instant;
 
+use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
@@ -20,6 +22,35 @@ pub fn dispatch_query(
         .or_else(|| pagination::reduce_pagination(state, action, now, services))
 }
 
+/// Builds the preview effect for the table currently held in pagination state,
+/// issuing a fresh run_id. Returns `None` when no connection is active.
+///
+/// `generation` is the selection snapshot the eventual completion is validated
+/// against. Refreshes of the active selection pass
+/// `state.session.selection_generation()`; `Action::ExecutePreview` instead
+/// passes the generation captured at selection time, so that results for a
+/// selection cleared in the meantime (e.g. DROP TABLE + reload) are rejected.
+pub(super) fn preview_effect_for_current_table(
+    state: &mut AppState,
+    now: Instant,
+    target_page: usize,
+    generation: u64,
+) -> Option<Effect> {
+    let dsn = state.session.dsn.clone()?;
+    let run_id = state.query.begin_running(now);
+    Some(Effect::ExecutePreview {
+        dsn,
+        schema: state.query.pagination.schema.clone(),
+        table: state.query.pagination.table.clone(),
+        generation,
+        run_id,
+        limit: PREVIEW_PAGE_SIZE,
+        offset: target_page * PREVIEW_PAGE_SIZE,
+        target_page,
+        read_only: state.session.read_only,
+    })
+}
+
 #[cfg(test)]
 pub(super) mod tests {
     use std::sync::Arc;
@@ -30,11 +61,32 @@ pub(super) mod tests {
         QuerySource, Table, Trigger, TriggerEvent, TriggerTiming,
     };
     use crate::model::app_state::AppState;
+    use crate::update::action::Action;
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
         state.session.dsn = Some("postgres://localhost/test".to_string());
         state
+    }
+
+    pub fn begin_query_run(state: &mut AppState) -> u64 {
+        state.query.begin_running(Instant::now())
+    }
+
+    pub fn query_completed_action(
+        state: &mut AppState,
+        result: Arc<QueryResult>,
+        generation: u64,
+        target_page: Option<usize>,
+    ) -> Action {
+        let run_id = begin_query_run(state);
+        Action::QueryCompleted {
+            dsn: "postgres://localhost/test".to_string(),
+            run_id,
+            result,
+            generation,
+            target_page,
+        }
     }
 
     pub fn preview_result(row_count: usize) -> Arc<QueryResult> {
