@@ -49,6 +49,14 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
     effects
 }
 
+fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
+    state.result_interaction.reset_view();
+    state
+        .query
+        .set_result_highlight(now + Duration::from_millis(500));
+    state.query.exit_history();
+}
+
 pub fn reduce_execution(
     state: &mut AppState,
     action: &Action,
@@ -66,51 +74,45 @@ pub fn reduce_execution(
             if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
+            if *generation != 0 && *generation != state.session.selection_generation() {
+                return DispatchResult::handled();
+            }
 
-            if *generation == 0 || *generation == state.session.selection_generation() {
-                state.query.mark_idle();
-                let preserved_result_col = state.result_interaction.selection().cell();
-                let preserved_horizontal_offset = state.result_interaction.horizontal_offset;
+            state.query.mark_idle();
 
-                let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
-                if !is_adhoc_error {
-                    state.result_interaction.reset_view();
+            match (result.source, result.is_error()) {
+                // Adhoc errors stay inside the SQL modal; the existing preview
+                // result and its view state are kept untouched.
+                (QuerySource::Adhoc, true) => {
                     state
-                        .query
-                        .set_result_highlight(now + Duration::from_millis(500));
-                    state.query.exit_history();
+                        .sql_modal
+                        .finish_adhoc_error(result.error.clone().unwrap_or_default());
                 }
-
-                if result.source == QuerySource::Adhoc {
-                    if result.is_error() {
-                        state
-                            .sql_modal
-                            .finish_adhoc_error(result.error.clone().unwrap_or_default());
-                    } else {
-                        state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
-                            command_tag: result.command_tag.clone(),
-                            row_count: result.row_count,
-                            execution_time_ms: result.execution_time_ms,
-                        });
-                    }
-                }
-
-                if result.source == QuerySource::Adhoc && !result.is_error() {
+                (QuerySource::Adhoc, false) => {
+                    reset_view_for_new_result(state, now);
+                    state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
+                        command_tag: result.command_tag.clone(),
+                        row_count: result.row_count,
+                        execution_time_ms: result.execution_time_ms,
+                    });
                     state.query.push_history(Arc::clone(result));
-                }
-
-                if let Some(page) = target_page {
-                    state.query.pagination.current_page = *page;
-                    if result.rows.len() < PREVIEW_PAGE_SIZE {
-                        state.query.pagination.reached_end = true;
-                    }
-                }
-
-                if !result.is_error() || result.source != QuerySource::Adhoc {
                     state.query.set_current_result(Arc::clone(result));
                 }
+                // Preview errors arrive as error results and are shown in the
+                // Result pane like any other preview.
+                (QuerySource::Preview, _) => {
+                    let preserved_result_col = state.result_interaction.selection().cell();
+                    let preserved_horizontal_offset = state.result_interaction.horizontal_offset;
+                    reset_view_for_new_result(state, now);
 
-                if result.source == QuerySource::Preview {
+                    if let Some(page) = target_page {
+                        state.query.pagination.current_page = *page;
+                        if result.rows.len() < PREVIEW_PAGE_SIZE {
+                            state.query.pagination.reached_end = true;
+                        }
+                    }
+                    state.query.set_current_result(Arc::clone(result));
+
                     match state.query.post_delete_row_selection() {
                         PostDeleteRowSelection::Keep => {}
                         PostDeleteRowSelection::Clear => {
@@ -138,11 +140,9 @@ pub fn reduce_execution(
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                 }
-
-                DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
-            } else {
-                DispatchResult::handled()
             }
+
+            DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
         }
         Action::QueryFailed {
             dsn,
