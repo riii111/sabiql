@@ -72,7 +72,7 @@ pub(super) fn reduce_high_risk_confirmation(
             DispatchResult::handled()
         }
 
-        Action::SqlModalHighRiskConfirmExecute => {
+        Action::SqlModalConfirmExecute => {
             // `matches!` + flag instead of `if let` because the immutable borrow
             // from pattern matching must end before we can mutate `state.sql_modal.status`.
             let matched = matches!(

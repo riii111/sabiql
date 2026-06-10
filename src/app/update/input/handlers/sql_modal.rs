@@ -185,7 +185,7 @@ pub fn handle_sql_modal_keys_with_prefix(
                 target: InputTarget::SqlModalHighRisk,
                 direction: CursorMove::End,
             },
-            Key::Enter if plain => Action::SqlModalHighRiskConfirmExecute,
+            Key::Enter if plain => Action::SqlModalConfirmExecute,
             Key::Esc => Action::SqlModalCancelConfirm,
             _ => Action::None,
         };

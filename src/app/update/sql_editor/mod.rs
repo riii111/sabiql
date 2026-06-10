@@ -399,11 +399,8 @@ mod tests {
                 );
             }
 
-            let effects = reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(state.query.is_running());
@@ -430,11 +427,8 @@ mod tests {
                 );
             }
 
-            let effects = reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error));
             assert_eq!(
@@ -456,11 +450,7 @@ mod tests {
                 Instant::now(),
             );
 
-            reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
+            reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
@@ -472,11 +462,7 @@ mod tests {
         fn high_risk_confirm_blocked_when_no_target() {
             let mut state = confirming_high_state("DROP TABLE users", None);
 
-            reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
+            reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
@@ -616,11 +602,8 @@ mod tests {
                 );
             }
 
-            let effects = reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(
