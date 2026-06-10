@@ -79,10 +79,6 @@ impl QueryResult {
             format!("{} rows", self.row_count)
         }
     }
-
-    pub fn age_seconds(&self) -> u64 {
-        self.executed_at.elapsed().as_secs()
-    }
 }
 
 #[cfg(test)]

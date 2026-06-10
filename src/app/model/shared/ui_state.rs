@@ -384,10 +384,6 @@ pub fn help_viewport_layout_for(
     }
 }
 
-pub fn list_scroll_offset(selected: usize, viewport: usize) -> usize {
-    selected.saturating_sub(viewport.saturating_sub(1))
-}
-
 pub fn scroll_max_offset(total_items: usize, viewport_size: usize) -> usize {
     total_items.saturating_sub(viewport_size)
 }

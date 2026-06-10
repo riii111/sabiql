@@ -105,10 +105,6 @@ impl AppState {
         self.messages.set_success(msg);
     }
 
-    pub fn clear_expired_messages(&mut self) {
-        self.messages.clear_expired();
-    }
-
     pub fn clear_expired_timers(&mut self, now: Instant) {
         self.messages.clear_expired();
         self.query.clear_expired_highlight(now);
