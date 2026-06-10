@@ -312,7 +312,6 @@ async fn flush_effects(
         .await?;
     state.clear_dirty();
 
-    const MAX_DEPTH: usize = 16;
     let mut depth = 0;
     while !pending.is_empty() && depth < MAX_DEPTH {
         depth += 1;
@@ -341,23 +340,7 @@ async fn flush_effects(
         pending = next;
     }
     if depth >= MAX_DEPTH && !pending.is_empty() {
-        let deferred = pending.len();
-        let mut dropped = 0usize;
-        for action in pending {
-            if effect_runner.action_tx().try_send(action).is_err() {
-                dropped += 1;
-            }
-        }
-        let message = if dropped > 0 {
-            format!(
-                "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {dropped} actions dropped"
-            )
-        } else {
-            format!(
-                "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {deferred} actions deferred"
-            )
-        };
-        state.messages.set_error_at(message, Instant::now());
+        dispatch_overflow_fallback(state, effect_runner.action_tx(), pending, Instant::now());
         // Render immediately: the main loop's next wakeup is the message expiry
         // itself, so without this draw the message would never become visible.
         let mut tui_adapter = TuiAdapter::new(tui);
@@ -373,6 +356,36 @@ async fn flush_effects(
         state.clear_dirty();
     }
     Ok(())
+}
+
+const MAX_DEPTH: usize = 16;
+
+/// Last-resort handling when DispatchActions recursion exceeds the depth
+/// limit: re-queue through the action channel and surface the failure as a
+/// UI error message (stderr would corrupt the TUI-owned screen).
+fn dispatch_overflow_fallback(
+    state: &mut AppState,
+    action_tx: &mpsc::Sender<Action>,
+    pending: Vec<Action>,
+    now: Instant,
+) {
+    let deferred = pending.len();
+    let mut dropped = 0usize;
+    for action in pending {
+        if action_tx.try_send(action).is_err() {
+            dropped += 1;
+        }
+    }
+    let message = if dropped > 0 {
+        format!(
+            "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {dropped} actions dropped"
+        )
+    } else {
+        format!(
+            "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {deferred} actions deferred"
+        )
+    };
+    state.messages.set_error_at(message, now);
 }
 
 const MAX_DRAIN: usize = 32;
