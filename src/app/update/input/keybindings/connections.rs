@@ -1,78 +1,97 @@
-use super::{ExecBinding, KeyBinding, ModeRow};
-use super::{Key, KeyCombo};
-use crate::update::action::{
-    Action, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
-};
+use super::ModeRow;
+use crate::update::input::keybindings::KeyBinding;
 
 // =============================================================================
 // Connection Setup
 // =============================================================================
 
-pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
-    KeyBinding {
+pub mod conn_setup {
+    use crate::update::action::Action;
+    use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
+
+    pub const TAB_NAV: KeyBinding = KeyBinding {
         key_short: "Tab/⇧Tab",
         key: "Tab/⇧Tab",
         desc_short: "Next/Prev",
         description: "Next/Previous field",
         action: Action::None,
         combos: &[],
-    },
-    KeyBinding {
+    };
+
+    pub const TAB_NEXT: KeyBinding = KeyBinding {
         key_short: "Tab",
         key: "Tab",
         desc_short: "Next",
         description: "Next field",
         action: Action::None,
         combos: &[],
-    },
-    KeyBinding {
+    };
+
+    pub const TAB_PREV: KeyBinding = KeyBinding {
         key_short: "⇧Tab",
         key: "⇧Tab",
         desc_short: "Prev",
         description: "Previous field",
         action: Action::None,
         combos: &[],
-    },
-    KeyBinding {
+    };
+
+    pub const SAVE: KeyBinding = KeyBinding {
         key_short: "^S",
         key: "Ctrl+S",
         desc_short: "Connect",
         description: "Save and connect",
         action: Action::ConnectionSetupSave,
         combos: &[KeyCombo::ctrl(Key::Char('s'))],
-    },
-    KeyBinding {
+    };
+
+    pub const ESC_CANCEL: KeyBinding = KeyBinding {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Cancel",
         description: "Cancel",
         action: Action::ConnectionSetupCancel,
         combos: &[KeyCombo::plain(Key::Esc)],
-    },
-    KeyBinding {
+    };
+
+    pub const ENTER_DROPDOWN: KeyBinding = KeyBinding {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Toggle",
         description: "Toggle dropdown (SSL field)",
         action: Action::ConnectionSetupToggleDropdown,
         combos: &[KeyCombo::plain(Key::Enter)],
-    },
-    KeyBinding {
+    };
+
+    pub const DROPDOWN_NAV: KeyBinding = KeyBinding {
         key_short: "^N/^P/↑↓",
         key: "Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Select",
         description: "Dropdown navigation",
         action: Action::None,
         combos: &[],
-    },
+    };
+}
+
+pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
+    conn_setup::TAB_NAV,
+    conn_setup::TAB_NEXT,
+    conn_setup::TAB_PREV,
+    conn_setup::SAVE,
+    conn_setup::ESC_CANCEL,
+    conn_setup::ENTER_DROPDOWN,
+    conn_setup::DROPDOWN_NAV,
 ];
 
 // =============================================================================
 // Connection Error
 // =============================================================================
 
-pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
-    ModeRow {
+pub mod conn_error {
+    use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
+
+    pub const EDIT: ModeRow = ModeRow {
         key_short: "e",
         key: "e",
         desc_short: "Edit",
@@ -81,8 +100,9 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             action: Action::ReenterConnectionSetup,
             combos: &[KeyCombo::plain(Key::Char('e'))],
         }],
-    },
-    ModeRow {
+    };
+
+    pub const SWITCH: ModeRow = ModeRow {
         key_short: "s",
         key: "s",
         desc_short: "Switch",
@@ -91,8 +111,9 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             action: Action::OpenModal(ModalKind::ConnectionSelector),
             combos: &[KeyCombo::plain(Key::Char('s'))],
         }],
-    },
-    ModeRow {
+    };
+
+    pub const DETAILS: ModeRow = ModeRow {
         key_short: "d",
         key: "d",
         desc_short: "Details",
@@ -101,8 +122,9 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             action: Action::ToggleConnectionErrorDetails,
             combos: &[KeyCombo::plain(Key::Char('d'))],
         }],
-    },
-    ModeRow {
+    };
+
+    pub const COPY: ModeRow = ModeRow {
         key_short: "y",
         key: "y",
         desc_short: "Copy",
@@ -111,8 +133,9 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             action: Action::CopyConnectionError,
             combos: &[KeyCombo::plain(Key::Char('y'))],
         }],
-    },
-    ModeRow {
+    };
+
+    pub const SCROLL: ModeRow = ModeRow {
         key_short: "^N/^P/j/k/↑↓",
         key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
         desc_short: "Scroll",
@@ -143,8 +166,9 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
                 ],
             },
         ],
-    },
-    ModeRow {
+    };
+
+    pub const ESC_CLOSE: ModeRow = ModeRow {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Close",
@@ -153,8 +177,9 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             action: Action::CloseConnectionError,
             combos: &[KeyCombo::plain(Key::Esc)],
         }],
-    },
-    ModeRow {
+    };
+
+    pub const RETRY: ModeRow = ModeRow {
         key_short: "r",
         key: "r",
         desc_short: "Retry",
@@ -163,15 +188,28 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             action: Action::RetryServiceConnection,
             combos: &[KeyCombo::plain(Key::Char('r'))],
         }],
-    },
+    };
+}
+
+pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
+    conn_error::EDIT,
+    conn_error::SWITCH,
+    conn_error::DETAILS,
+    conn_error::COPY,
+    conn_error::SCROLL,
+    conn_error::ESC_CLOSE,
+    conn_error::RETRY,
 ];
 
 // =============================================================================
 // Connection Selector
 // =============================================================================
 
-pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
-    ModeRow {
+pub mod connection_selector {
+    use crate::update::action::{Action, ListMotion, ListTarget, ModalKind};
+    use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
+
+    pub const CONFIRM: ModeRow = ModeRow {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Confirm",
@@ -180,8 +218,9 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             action: Action::ConfirmConnectionSelection,
             combos: &[KeyCombo::plain(Key::Enter)],
         }],
-    },
-    ModeRow {
+    };
+
+    pub const SELECT: ModeRow = ModeRow {
         key_short: "^N/^P/↑↓",
         key: "Ctrl+N / Ctrl+P / ↑ / ↓ / j / k",
         desc_short: "Nav",
@@ -210,8 +249,9 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
                 ],
             },
         ],
-    },
-    ModeRow {
+    };
+
+    pub const NEW: ModeRow = ModeRow {
         key_short: "n",
         key: "n",
         desc_short: "New",
@@ -220,8 +260,9 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             action: Action::OpenModal(ModalKind::ConnectionSetup),
             combos: &[KeyCombo::plain(Key::Char('n'))],
         }],
-    },
-    ModeRow {
+    };
+
+    pub const EDIT: ModeRow = ModeRow {
         key_short: "e",
         key: "e",
         desc_short: "Edit",
@@ -230,8 +271,9 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             action: Action::RequestEditSelectedConnection,
             combos: &[KeyCombo::plain(Key::Char('e'))],
         }],
-    },
-    ModeRow {
+    };
+
+    pub const DELETE: ModeRow = ModeRow {
         key_short: "d",
         key: "d",
         desc_short: "Delete",
@@ -240,8 +282,9 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             action: Action::RequestDeleteSelectedConnection,
             combos: &[KeyCombo::plain(Key::Char('d'))],
         }],
-    },
-    ModeRow {
+    };
+
+    pub const CLOSE: ModeRow = ModeRow {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Close",
@@ -250,5 +293,14 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             action: Action::Escape,
             combos: &[KeyCombo::plain(Key::Esc)],
         }],
-    },
+    };
+}
+
+pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
+    connection_selector::CONFIRM,
+    connection_selector::SELECT,
+    connection_selector::NEW,
+    connection_selector::EDIT,
+    connection_selector::DELETE,
+    connection_selector::CLOSE,
 ];
