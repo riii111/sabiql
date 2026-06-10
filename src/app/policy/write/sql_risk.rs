@@ -19,7 +19,7 @@ pub enum AcknowledgeReason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmationType {
     Immediate,
-    // Single-keypress confirmation: Enter executes, Esc cancels.
+    // Fallback for statements that cannot offer typed-name confirmation.
     Acknowledge {
         reason: AcknowledgeReason,
         label: String,
@@ -208,14 +208,6 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
     }
 }
 
-fn confirmation_rank(confirmation: &ConfirmationType) -> u8 {
-    match confirmation {
-        ConfirmationType::Immediate => 0,
-        ConfirmationType::Acknowledge { .. } => 1,
-        ConfirmationType::TableNameInput { .. } => 2,
-    }
-}
-
 pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
     let statements = split_statements(sql);
 
@@ -233,19 +225,46 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         decisions.push((stmt.clone(), decision));
     }
 
-    // Aggregate: carry the highest risk level and the strongest confirmation
-    // type. Among statements sharing the strongest type, the first one wins.
+    let has_table_name_input = decisions
+        .iter()
+        .any(|(_, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
+    let has_acknowledge = decisions
+        .iter()
+        .any(|(_, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }));
+
+    // One dialog can only carry one consent: a typed-name confirmation must not
+    // silently approve statements that need their own acknowledgment.
+    if has_table_name_input && has_acknowledge {
+        return MultiStatementDecision::Block {
+            reason: "Statements require different confirmations; run them separately".to_string(),
+        };
+    }
+
     let max_risk = decisions.iter().map(|(_, d)| d.risk_level).max().unwrap();
-    let max_rank = decisions
-        .iter()
-        .map(|(_, d)| confirmation_rank(&d.confirmation))
-        .max()
-        .unwrap();
-    let confirmation = decisions
-        .iter()
-        .find(|(_, d)| confirmation_rank(&d.confirmation) == max_rank)
-        .map(|(_, d)| d.confirmation.clone())
-        .unwrap();
+    let confirmation = if has_table_name_input {
+        decisions
+            .iter()
+            .find(|(_, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
+            .map(|(_, d)| d.confirmation.clone())
+            .unwrap()
+    } else if has_acknowledge {
+        let max_acknowledged_risk = decisions
+            .iter()
+            .filter(|(_, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
+            .map(|(_, d)| d.risk_level)
+            .max()
+            .unwrap();
+        decisions
+            .iter()
+            .find(|(_, d)| {
+                matches!(d.confirmation, ConfirmationType::Acknowledge { .. })
+                    && d.risk_level == max_acknowledged_risk
+            })
+            .map(|(_, d)| d.confirmation.clone())
+            .unwrap()
+    } else {
+        ConfirmationType::Immediate
+    };
 
     MultiStatementDecision::Allow {
         statements,
@@ -643,16 +662,28 @@ mod tests {
             }
         }
 
+        #[rstest]
+        #[case::do_block_with_drop("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE users")]
+        #[case::drop_with_unextractable_drop("DROP TABLE users; DROP TABLE a, b")]
+        fn mixed_confirmations_are_blocked(#[case] sql: &str) {
+            let result = evaluate_multi_statement(sql);
+
+            assert!(matches!(result, MultiStatementDecision::Block { .. }));
+        }
+
         #[test]
-        fn table_name_input_outranks_acknowledgment() {
+        fn acknowledgments_aggregate_to_highest_risk_reason() {
             let result =
-                evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE users");
+                evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE a, b");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::High);
                     assert!(matches!(
                         risk.confirmation,
-                        ConfirmationType::TableNameInput { ref target } if target == "users"
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::TargetNameUnavailable,
+                            ..
+                        }
                     ));
                 }
                 _ => panic!("expected Allow"),
