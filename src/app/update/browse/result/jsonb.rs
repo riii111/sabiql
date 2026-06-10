@@ -148,7 +148,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 state.jsonb_detail.editor_mut().insert_char(*ch);
             }
             update_editor_scroll(state);
-            validate_editor_inline(state);
+            state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
 
@@ -157,7 +157,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
         } => {
             state.jsonb_detail.editor_mut().backspace();
             update_editor_scroll(state);
-            validate_editor_inline(state);
+            state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
 
@@ -166,7 +166,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
         } => {
             state.jsonb_detail.editor_mut().delete();
             update_editor_scroll(state);
-            validate_editor_inline(state);
+            state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
 
@@ -194,7 +194,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
         Action::Paste(text) if state.input_mode() == InputMode::JsonbEdit => {
             state.jsonb_detail.editor_mut().insert_str(text);
             update_editor_scroll(state);
-            validate_editor_inline(state);
+            state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
 
@@ -387,16 +387,6 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
             .result_interaction
             .cell_edit_input_mut()
             .set_content(compact_str);
-    }
-}
-
-fn validate_editor_inline(state: &mut AppState) {
-    let content = state.jsonb_detail.editor().content().to_string();
-    match serde_json::from_str::<serde_json::Value>(&content) {
-        Ok(_) => state.jsonb_detail.set_validation_error(None),
-        Err(e) => state
-            .jsonb_detail
-            .set_validation_error(Some(format!("Invalid JSON: {e}"))),
     }
 }
 

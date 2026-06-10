@@ -105,10 +105,6 @@ impl JsonbDetailState {
         self.validation_error.as_deref()
     }
 
-    pub fn set_validation_error(&mut self, error: Option<String>) {
-        self.validation_error = error;
-    }
-
     pub fn search(&self) -> &JsonbSearchState {
         &self.search
     }
@@ -164,19 +160,12 @@ impl JsonbDetailState {
         trimmed != self.original_json.trim() && trimmed != self.pretty_original.trim()
     }
 
-    pub fn validate_editor_content(&mut self) -> Result<String, String> {
-        let content = self.editor.content().to_string();
-        match serde_json::from_str::<serde_json::Value>(&content) {
-            Ok(_) => {
-                self.validation_error = None;
-                Ok(content)
-            }
-            Err(e) => {
-                let msg = format!("Invalid JSON: {e}");
-                self.validation_error = Some(msg.clone());
-                Err(msg)
-            }
-        }
+    pub fn validate_editor_content(&mut self) {
+        self.validation_error =
+            match serde_json::from_str::<serde_json::Value>(self.editor.content()) {
+                Ok(_) => None,
+                Err(e) => Some(format!("Invalid JSON: {e}")),
+            };
     }
 }
 
