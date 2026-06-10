@@ -37,7 +37,7 @@ pub fn palette_commands() -> impl Iterator<Item = &'static KeyBinding> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::input::keybindings::GLOBAL_KEYS;
+    use crate::update::input::keybindings::{GLOBAL_KEYS, same_payload_free_action};
 
     // Global keys deliberately kept out of the palette:
     // - COMMAND_LINE: command-line mode is a separate entry mechanism
@@ -52,8 +52,16 @@ mod tests {
         global::INSPECTOR_TABS,
     ];
 
+    // Compare the full structure: distinct global keys may share footer display
+    // strings, and display-only matching would mark an unclassified newcomer as
+    // already classified.
     fn same_entry(a: &KeyBinding, b: &KeyBinding) -> bool {
-        a.key_short == b.key_short && a.desc_short == b.desc_short
+        a.key_short == b.key_short
+            && a.key == b.key
+            && a.desc_short == b.desc_short
+            && a.description == b.description
+            && a.combos == b.combos
+            && same_payload_free_action(&a.action, &b.action)
     }
 
     #[test]

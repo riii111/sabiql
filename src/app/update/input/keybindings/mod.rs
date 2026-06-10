@@ -132,6 +132,19 @@ pub fn is_reload(combo: &KeyCombo) -> bool {
     global::RELOAD.combos.contains(combo)
 }
 
+// Action has payload variants without PartialEq, so tests compare by
+// discriminant — except modal actions, where several bindings differ only by
+// ModalKind and the kind must participate in equality.
+#[cfg(test)]
+pub fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
+    match (actual, expected) {
+        (Action::OpenModal(a), Action::OpenModal(b))
+        | (Action::CloseModal(a), Action::CloseModal(b))
+        | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
+        _ => std::mem::discriminant(actual) == std::mem::discriminant(expected),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,15 +245,6 @@ mod tests {
                     kb.description,
                     kb.action,
                 );
-            }
-
-            fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
-                match (actual, expected) {
-                    (Action::OpenModal(a), Action::OpenModal(b))
-                    | (Action::CloseModal(a), Action::CloseModal(b))
-                    | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
-                    _ => std::mem::discriminant(actual) == std::mem::discriminant(expected),
-                }
             }
         }
 
