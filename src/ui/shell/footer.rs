@@ -255,7 +255,11 @@ impl Footer {
                     ]
                 } else if matches!(
                     state.sql_modal.status(),
-                    SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
+                    SqlModalStatus::Normal
+                        | SqlModalStatus::Success
+                        | SqlModalStatus::Error
+                        | SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                        | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
                 ) {
                     // Hints are shown on the modal's bottom border, not the main footer.
                     vec![]
