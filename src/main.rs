@@ -292,10 +292,6 @@ async fn process_action(
     .await
 }
 
-#[allow(
-    clippy::print_stderr,
-    reason = "last-resort fallback when effect dispatch exceeds recursion limit"
-)]
 async fn flush_effects(
     effects: Vec<Effect>,
     state: &mut AppState,
@@ -345,16 +341,36 @@ async fn flush_effects(
         pending = next;
     }
     if depth >= MAX_DEPTH && !pending.is_empty() {
-        eprintln!(
-            "DispatchActions recursion depth exceeded ({MAX_DEPTH}), \
-             falling back to channel for {} remaining actions",
-            pending.len()
-        );
+        let deferred = pending.len();
+        let mut dropped = 0usize;
         for action in pending {
-            if let Err(e) = effect_runner.action_tx().try_send(action) {
-                eprintln!("DispatchActions fallback: channel full, dropping action: {e}");
+            if effect_runner.action_tx().try_send(action).is_err() {
+                dropped += 1;
             }
         }
+        let message = if dropped > 0 {
+            format!(
+                "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {dropped} actions dropped"
+            )
+        } else {
+            format!(
+                "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {deferred} actions deferred"
+            )
+        };
+        state.messages.set_error_at(message, Instant::now());
+        // Render immediately: the main loop's next wakeup is the message expiry
+        // itself, so without this draw the message would never become visible.
+        let mut tui_adapter = TuiAdapter::new(tui);
+        effect_runner
+            .run(
+                vec![Effect::Render],
+                &mut tui_adapter,
+                state,
+                completion_engine,
+                services,
+            )
+            .await?;
+        state.clear_dirty();
     }
     Ok(())
 }
