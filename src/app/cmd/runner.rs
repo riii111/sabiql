@@ -20,7 +20,6 @@ use crate::cmd::sql_editor::query_history as cmd_query_history;
 use crate::cmd::utility as cmd_utility;
 use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
-use crate::model::shared::ui_state::scroll_max_offset;
 use crate::ports::outbound::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
@@ -139,59 +138,7 @@ impl EffectRunner {
                 )]
                 let now = Instant::now();
                 let output = tui.draw(state, services, now)?;
-                if !state.ui.is_focus_mode() {
-                    state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
-                }
-                state.ui.result_viewport_plan = output.result_viewport_plan;
-                state.ui.result_widths_cache = output.result_widths_cache;
-                state.ui.explorer_pane_height = output.explorer_pane_height;
-                state.ui.explorer_content_width = output.explorer_content_width;
-                let max_name_width = state
-                    .tables()
-                    .iter()
-                    .map(|table| table.qualified_name().chars().count())
-                    .max()
-                    .unwrap_or(0);
-                let max_offset = scroll_max_offset(max_name_width, state.ui.explorer_content_width);
-                state.ui.explorer_horizontal_offset =
-                    state.ui.explorer_horizontal_offset.min(max_offset);
-                state.ui.inspector_pane_height = output.inspector_pane_height;
-                state.ui.result_pane_height = output.result_pane_height;
-                if let Some(width) = output.command_line_visible_width {
-                    state.command_line_visible_width = width;
-                }
-                if let Some(height) = output.connection_list_pane_height {
-                    state.ui.connection_list_pane_height = height;
-                }
-                if let Some(height) = output.table_picker_pane_height {
-                    state.ui.table_picker.pane_height = height;
-                }
-                if let Some(width) = output.table_picker_filter_visible_width {
-                    state.ui.table_picker.filter_visible_width = width;
-                }
-                if let Some(height) = output.er_picker_pane_height {
-                    state.ui.er_picker.pane_height = height;
-                }
-                if let Some(width) = output.er_picker_filter_visible_width {
-                    state.ui.er_picker.filter_visible_width = width;
-                }
-                if let Some(height) = output.query_history_picker_pane_height {
-                    state.query_history_picker.pane_height = height;
-                }
-                if let Some(width) = output.query_history_picker_filter_visible_width {
-                    state.query_history_picker.filter_visible_width = width;
-                }
-                if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
-                    state.ui.jsonb_detail_editor_visible_rows = visible_rows;
-                    state.jsonb_detail.editor_mut().update_scroll(visible_rows);
-                }
-                state.confirm_dialog.preview_viewport_height =
-                    output.confirm_preview_viewport_height;
-                state.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
-                state.confirm_dialog.preview_scroll = output.confirm_preview_scroll;
-                if let Some(height) = output.explain_compare_viewport_height {
-                    state.explain.compare_viewport_height = Some(height);
-                }
+                state.apply_render_output(output);
                 Ok(vec![])
             }
 
