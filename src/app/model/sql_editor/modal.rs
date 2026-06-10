@@ -358,12 +358,6 @@ impl SqlModalContext {
 
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
-    pub fn set_completion_for_test(&mut self, completion: CompletionState) {
-        self.completion = completion;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
     pub fn completion_mut_for_test(&mut self) -> &mut CompletionState {
         &mut self.completion
     }

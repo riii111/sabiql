@@ -28,10 +28,6 @@ impl DatabaseMetadata {
         }
         map
     }
-
-    pub fn age_seconds(&self) -> u64 {
-        self.fetched_at.elapsed().as_secs()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

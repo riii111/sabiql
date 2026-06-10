@@ -359,24 +359,12 @@ pub fn is_command_palette(combo: &KeyCombo) -> bool {
         .contains(combo)
 }
 
-pub fn is_settings(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::SETTINGS].combos.contains(combo)
-}
-
 pub fn is_focus_toggle(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::FOCUS].combos.contains(combo)
 }
 
 pub fn is_reload(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::RELOAD].combos.contains(combo)
-}
-
-pub fn is_open_sql(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::SQL].combos.contains(combo)
-}
-
-pub fn is_open_er(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::ER_DIAGRAM].combos.contains(combo)
 }
 
 #[cfg(test)]

@@ -15,10 +15,10 @@ license = "MIT"
 repository = "https://github.com/riii111/sabiql"
 
 [workspace.dependencies]
-sabiql-domain = { path = "src/domain", version = "1.12.0" }
-sabiql-app = { path = "src/app", version = "1.12.0" }
-sabiql-infra = { path = "src/infra", version = "1.12.0" }
-sabiql-ui = { path = "src/ui", version = "1.12.0" }
+sabiql-domain = { path = "src/domain", version = "1.12.3" }
+sabiql-app = { path = "src/app", version = "1.12.3" }
+sabiql-infra = { path = "src/infra", version = "1.12.3" }
+sabiql-ui = { path = "src/ui", version = "1.12.3" }
 arboard = "3"
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
@@ -29,7 +29,7 @@ dirs = "5"
 dotenvy = "0.15"
 futures = "0.3"
 insta = "1"
-lru = "0.16"
+lru = "0.18"
 mockall = "0.13"
 nucleo-matcher = "0.3"
 ratatui = "0.30"
@@ -80,10 +80,7 @@ sabiql-domain.workspace = true
 sabiql-app = { workspace = true, features = ["test-support"] }
 sabiql-ui = { workspace = true, features = ["test-support"] }
 ratatui.workspace = true
-rstest.workspace = true
-tempfile.workspace = true
 insta.workspace = true
-mockall.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
