@@ -25,7 +25,9 @@ use sabiql_app::cmd::cache::TtlCache;
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
-use sabiql_app::cmd::runner::EffectRunner;
+use sabiql_app::cmd::runner::{
+    ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
+};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::db_capabilities::DbCapabilities;
 use sabiql_app::model::shared::input_mode::InputMode;
@@ -105,22 +107,32 @@ async fn main() -> Result<()> {
     let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
         Arc::new(PgServiceFileReader::new());
 
-    let effect_runner = EffectRunner::builder()
-        .metadata_provider(Arc::clone(&adapter) as _)
-        .query_executor(Arc::clone(&adapter) as _)
-        .dsn_builder(Arc::clone(&adapter) as _)
-        .er_exporter(Arc::new(DotExporter::new()))
-        .config_writer(Arc::new(FileConfigWriter::new()))
-        .er_log_writer(Arc::new(FsErLogWriter))
-        .connection_store(Arc::clone(&connection_store) as _)
-        .pg_service_entry_reader(Arc::clone(&pg_service_entry_reader))
-        .clipboard(Arc::new(ArboardClipboard))
-        .folder_opener(Arc::new(NativeFolderOpener))
-        .query_history_store(Arc::new(FileQueryHistoryStore::new()))
-        .settings_store(Arc::clone(&settings_store) as _)
-        .metadata_cache(metadata_cache.clone())
-        .action_tx(action_tx.clone())
-        .build();
+    let effect_runner = EffectRunner::new(
+        Arc::clone(&adapter) as _,
+        ConnectionDeps {
+            dsn_builder: Arc::clone(&adapter) as _,
+            connection_store: Arc::clone(&connection_store) as _,
+            pg_service_entry_reader: Some(Arc::clone(&pg_service_entry_reader)),
+        },
+        QueryDeps {
+            query_executor: Arc::clone(&adapter) as _,
+            query_history_store: Arc::new(FileQueryHistoryStore::new()),
+        },
+        ErDeps {
+            er_exporter: Arc::new(DotExporter::new()),
+            config_writer: Arc::new(FileConfigWriter::new()),
+            er_log_writer: Arc::new(FsErLogWriter),
+        },
+        UtilityDeps {
+            clipboard: Arc::new(ArboardClipboard),
+            folder_opener: Arc::new(NativeFolderOpener),
+        },
+        SettingsDeps {
+            settings_store: Arc::clone(&settings_store) as _,
+        },
+        metadata_cache.clone(),
+        action_tx.clone(),
+    );
 
     let ddl_generator: Arc<dyn DdlGenerator> = adapter.clone();
     let sql_dialect: Arc<dyn SqlDialect> = adapter.clone();
@@ -280,10 +292,6 @@ async fn process_action(
     .await
 }
 
-#[allow(
-    clippy::print_stderr,
-    reason = "last-resort fallback when effect dispatch exceeds recursion limit"
-)]
 async fn flush_effects(
     effects: Vec<Effect>,
     state: &mut AppState,
@@ -304,7 +312,6 @@ async fn flush_effects(
         .await?;
     state.clear_dirty();
 
-    const MAX_DEPTH: usize = 16;
     let mut depth = 0;
     while !pending.is_empty() && depth < MAX_DEPTH {
         depth += 1;
@@ -333,18 +340,52 @@ async fn flush_effects(
         pending = next;
     }
     if depth >= MAX_DEPTH && !pending.is_empty() {
-        eprintln!(
-            "DispatchActions recursion depth exceeded ({MAX_DEPTH}), \
-             falling back to channel for {} remaining actions",
-            pending.len()
-        );
-        for action in pending {
-            if let Err(e) = effect_runner.action_tx().try_send(action) {
-                eprintln!("DispatchActions fallback: channel full, dropping action: {e}");
-            }
-        }
+        dispatch_overflow_fallback(state, effect_runner.action_tx(), pending, Instant::now());
+        // Render immediately: the main loop's next wakeup is the message expiry
+        // itself, so without this draw the message would never become visible.
+        let mut tui_adapter = TuiAdapter::new(tui);
+        effect_runner
+            .run(
+                vec![Effect::Render],
+                &mut tui_adapter,
+                state,
+                completion_engine,
+                services,
+            )
+            .await?;
+        state.clear_dirty();
     }
     Ok(())
+}
+
+const MAX_DEPTH: usize = 16;
+
+/// Last-resort handling when DispatchActions recursion exceeds the depth
+/// limit: re-queue through the action channel and surface the failure as a
+/// UI error message (stderr would corrupt the TUI-owned screen).
+fn dispatch_overflow_fallback(
+    state: &mut AppState,
+    action_tx: &mpsc::Sender<Action>,
+    pending: Vec<Action>,
+    now: Instant,
+) {
+    let deferred = pending.len();
+    let mut dropped = 0usize;
+    for action in pending {
+        if action_tx.try_send(action).is_err() {
+            dropped += 1;
+        }
+    }
+    let message = if dropped > 0 {
+        format!(
+            "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {dropped} actions dropped"
+        )
+    } else {
+        format!(
+            "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {deferred} actions deferred"
+        )
+    };
+    state.messages.set_error_at(message, now);
 }
 
 const MAX_DRAIN: usize = 32;

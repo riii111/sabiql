@@ -5,7 +5,9 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 
 use crate::cmd::cache::TtlCache;
-use crate::cmd::runner::{EffectRunner, EffectRunnerBuilder};
+use crate::cmd::runner::{
+    ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
+};
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};
@@ -118,38 +120,50 @@ pub fn make_runner(
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 ) -> EffectRunner {
-    make_runner_builder(
+    make_runner_with_dsn(
         metadata_provider,
         query_executor,
         connection_store,
         cache,
         action_tx,
+        Arc::new(NoopDsnBuilder),
     )
-    .build()
 }
 
-pub fn make_runner_builder(
+pub fn make_runner_with_dsn(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
-) -> EffectRunnerBuilder {
-    EffectRunner::builder()
-        .metadata_provider(metadata_provider)
-        .query_executor(query_executor)
-        .dsn_builder(Arc::new(NoopDsnBuilder))
-        .er_exporter(Arc::new(NoopErExporter))
-        .config_writer(Arc::new(NoopConfigWriter))
-        .er_log_writer(Arc::new(NoopErLogWriter))
-        .connection_store(connection_store)
-        .clipboard(Arc::new(NoopClipboardWriter))
-        .folder_opener(Arc::new(NoopFolderOpener))
-        .query_history_store(Arc::new(NoopQueryHistoryStore))
-        .settings_store(Arc::new(NoopSettingsStore))
-        .metadata_cache(cache)
-        .action_tx(action_tx)
-        .pg_service_entry_reader(Arc::new(NoopPgServiceEntryReader))
+    dsn_builder: Arc<dyn DsnBuilder>,
+) -> EffectRunner {
+    EffectRunner::new(
+        metadata_provider,
+        ConnectionDeps {
+            dsn_builder,
+            connection_store,
+            pg_service_entry_reader: Some(Arc::new(NoopPgServiceEntryReader)),
+        },
+        QueryDeps {
+            query_executor,
+            query_history_store: Arc::new(NoopQueryHistoryStore),
+        },
+        ErDeps {
+            er_exporter: Arc::new(NoopErExporter),
+            config_writer: Arc::new(NoopConfigWriter),
+            er_log_writer: Arc::new(NoopErLogWriter),
+        },
+        UtilityDeps {
+            clipboard: Arc::new(NoopClipboardWriter),
+            folder_opener: Arc::new(NoopFolderOpener),
+        },
+        SettingsDeps {
+            settings_store: Arc::new(NoopSettingsStore),
+        },
+        cache,
+        action_tx,
+    )
 }
 
 pub fn sample_metadata() -> DatabaseMetadata {

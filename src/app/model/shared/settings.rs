@@ -1,6 +1,6 @@
 use super::text_input::TextInputState;
 use super::theme_id::ThemeId;
-use crate::update::action::CursorMove;
+use crate::model::shared::cursor::CursorMove;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {

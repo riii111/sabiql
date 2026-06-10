@@ -2,10 +2,9 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::app::ports::outbound::{
-    ErDiagramExporter, ErExportResult, GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher,
-};
+use crate::app::ports::outbound::{ErDiagramExporter, ErExportResult};
 use crate::domain::ErTableInfo;
+use crate::export::graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 
 pub struct SystemGraphvizRunner;
 
