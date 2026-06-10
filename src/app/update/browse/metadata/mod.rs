@@ -434,7 +434,7 @@ mod tests {
             state.sql_modal.failed_prefetch_tables.insert(
                 qualified.clone(),
                 FailedPrefetchEntry {
-                    failed_at: Instant::now().checked_sub(Duration::from_secs(60)).unwrap(),
+                    failed_at: Instant::now().checked_sub(Duration::from_mins(1)).unwrap(),
                     error: "old error".to_string(),
                     retry_count: 1,
                 },

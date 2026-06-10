@@ -667,10 +667,7 @@ mod tests {
             assert_eq!(
                 max + viewport,
                 total_lines,
-                "max_scroll({}) + viewport({}) != total_lines({})",
-                max,
-                viewport,
-                total_lines
+                "max_scroll({max}) + viewport({viewport}) != total_lines({total_lines})"
             );
         }
 

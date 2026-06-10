@@ -30,6 +30,7 @@ impl ThemeId {
         }
     }
 
+    #[must_use]
     pub fn next(self) -> Self {
         let index = Self::ALL
             .iter()
@@ -38,6 +39,7 @@ impl ThemeId {
         Self::ALL[(index + 1).min(Self::ALL.len() - 1)]
     }
 
+    #[must_use]
     pub fn previous(self) -> Self {
         let index = Self::ALL
             .iter()

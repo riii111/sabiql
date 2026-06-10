@@ -84,7 +84,7 @@ impl ErBrowserChoice {
         match browser
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(|value| value.to_ascii_lowercase())
+            .map(str::to_ascii_lowercase)
             .as_deref()
         {
             None => Self::SystemDefault,

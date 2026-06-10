@@ -405,7 +405,7 @@ mod tests {
                 );
             }
             Expected::CloseModal(expected_kind) => {
-                assert!(matches!(result, Action::CloseModal(kind) if kind == expected_kind))
+                assert!(matches!(result, Action::CloseModal(kind) if kind == expected_kind));
             }
             Expected::SqlModalAppendInsert => {
                 assert!(matches!(result, Action::SqlModalAppendInsert));

@@ -3,7 +3,15 @@ use unicode_width::UnicodeWidthStr;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
-use crate::update::input::keybindings::*;
+use crate::update::input::keybindings::{
+    CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_ROWS, CONFIRM_DIALOG_KEYS,
+    CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, ER_PICKER_ROWS,
+    FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH, HELP_ROWS,
+    HISTORY_KEYS, INSPECTOR_DDL_KEYS, JSONB_DETAIL_ROWS, JSONB_EDIT_ROWS, JSONB_SEARCH_KEYS,
+    KeyBinding, ModeRow, NAVIGATION_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS,
+    RESULT_ACTIVE_KEYS, SETTINGS_ROWS, SQL_MODAL_COMPARE_KEYS, SQL_MODAL_CONFIRMING_KEYS,
+    SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelpDocument {
