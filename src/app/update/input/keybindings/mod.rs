@@ -340,31 +340,27 @@ pub const HELP_KEY_INDENT_WIDTH: usize = 2;
 pub const HELP_KEY_DESC_GAP: usize = 2;
 
 pub fn is_quit(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::QUIT].combos.contains(combo)
+    global::QUIT.combos.contains(combo)
 }
 
 pub fn is_help(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::HELP].combos.contains(combo)
+    global::HELP.combos.contains(combo)
 }
 
 pub fn is_command_line(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::COMMAND_LINE]
-        .combos
-        .contains(combo)
+    global::COMMAND_LINE.combos.contains(combo)
 }
 
 pub fn is_command_palette(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::COMMAND_PALETTE]
-        .combos
-        .contains(combo)
+    global::COMMAND_PALETTE.combos.contains(combo)
 }
 
 pub fn is_focus_toggle(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::FOCUS].combos.contains(combo)
+    global::FOCUS.combos.contains(combo)
 }
 
 pub fn is_reload(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::RELOAD].combos.contains(combo)
+    global::RELOAD.combos.contains(combo)
 }
 
 #[cfg(test)]
