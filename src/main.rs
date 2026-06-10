@@ -468,7 +468,7 @@ fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntry
         }
         Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
         Err(e) => {
-            state.messages.set_error(e.to_string());
+            state.messages.set_error_at(e.to_string(), Instant::now());
         }
     }
 }

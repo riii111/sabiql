@@ -33,18 +33,6 @@ impl MessageState {
         }
     }
 
-    pub fn set_error(&mut self, msg: String) {
-        self.set_error_at(msg, Instant::now());
-    }
-
-    pub fn set_success(&mut self, msg: String) {
-        self.set_success_at(msg, Instant::now());
-    }
-
-    pub fn clear_expired(&mut self) {
-        self.clear_expired_at(Instant::now());
-    }
-
     pub fn clear(&mut self) {
         self.last_error = None;
         self.last_success = None;
