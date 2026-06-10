@@ -14,7 +14,7 @@ use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
-    select_viewport_columns,
+    select_viewport_columns, widths_fingerprint,
 };
 use crate::domain::{QueryResult, QuerySource};
 use crate::primitives::utils::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
@@ -196,17 +196,8 @@ impl ResultPane {
             (&fresh_ideal[..], &fresh_min[..])
         };
 
-        let current_min_widths_sum: u16 = min_widths.iter().sum();
-        let current_ideal_widths_sum: u16 = ideal_widths.iter().sum();
-        let current_ideal_widths_max: u16 = ideal_widths.iter().copied().max().unwrap_or(0);
-
-        let plan = if stored_plan.needs_recalculation(
-            ideal_widths.len(),
-            inner.width,
-            current_min_widths_sum,
-            current_ideal_widths_sum,
-            current_ideal_widths_max,
-        ) {
+        let fingerprint = widths_fingerprint(ideal_widths, min_widths);
+        let plan = if stored_plan.needs_recalculation(inner.width, fingerprint) {
             ViewportPlan::calculate(ideal_widths, min_widths, inner.width)
         } else {
             stored_plan.clone()

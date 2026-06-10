@@ -310,50 +310,43 @@ pub fn calculate_viewport_column_count(ideal_widths: &[u16], available_width: u1
     1
 }
 
+// Order-sensitive: max_offset depends on suffix widths, so reordered columns
+// must produce a different fingerprint even when len/sum/max are unchanged.
+pub fn widths_fingerprint(ideal_widths: &[u16], min_widths: &[u16]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    ideal_widths.hash(&mut hasher);
+    min_widths.hash(&mut hasher);
+    hasher.finish()
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ViewportPlan {
     pub column_count: usize,
     pub max_offset: usize,
     pub total_columns: usize,
     pub available_width: u16,
-    pub min_widths_sum: u16,
-    pub ideal_widths_sum: u16,
-    pub ideal_widths_max: u16,
+    pub widths_fingerprint: u64,
 }
 
 impl ViewportPlan {
     pub fn calculate(ideal_widths: &[u16], min_widths: &[u16], available_width: u16) -> Self {
         let column_count = calculate_viewport_column_count(ideal_widths, available_width);
         let max_offset = calculate_max_offset(ideal_widths, column_count, available_width);
-        let min_widths_sum = min_widths.iter().sum();
-        let ideal_widths_sum = ideal_widths.iter().sum();
-        let ideal_widths_max = ideal_widths.iter().copied().max().unwrap_or(0);
 
         Self {
             column_count,
             max_offset,
             total_columns: ideal_widths.len(),
             available_width,
-            min_widths_sum,
-            ideal_widths_sum,
-            ideal_widths_max,
+            widths_fingerprint: widths_fingerprint(ideal_widths, min_widths),
         }
     }
 
-    pub fn needs_recalculation(
-        &self,
-        new_widths_len: usize,
-        new_available_width: u16,
-        new_min_widths_sum: u16,
-        new_ideal_widths_sum: u16,
-        new_ideal_widths_max: u16,
-    ) -> bool {
+    pub fn needs_recalculation(&self, new_available_width: u16, new_fingerprint: u64) -> bool {
         self.column_count == 0
             || self.available_width != new_available_width
-            || self.total_columns != new_widths_len
-            || self.min_widths_sum != new_min_widths_sum
-            || self.ideal_widths_sum != new_ideal_widths_sum
-            || self.ideal_widths_max != new_ideal_widths_max
+            || self.widths_fingerprint != new_fingerprint
     }
 }
 
@@ -526,7 +519,6 @@ mod tests {
 
     mod viewport_plan {
         use super::*;
-        use rstest::rstest;
 
         #[test]
         fn calculate_returns_valid_plan() {
@@ -537,90 +529,58 @@ mod tests {
 
             assert_eq!(plan.column_count, 2);
             assert_eq!(plan.max_offset, 3);
+            assert_eq!(plan.total_columns, 5);
             assert_eq!(plan.available_width, 80);
-            assert_eq!(plan.min_widths_sum, 50);
-            assert_eq!(plan.ideal_widths_sum, 150);
-            assert_eq!(plan.ideal_widths_max, 30);
+            assert_eq!(plan.widths_fingerprint, widths_fingerprint(&ideal, &min));
         }
 
-        fn make_plan() -> ViewportPlan {
-            ViewportPlan {
-                column_count: 2,
-                max_offset: 3,
-                total_columns: 5,
-                available_width: 80,
-                min_widths_sum: 50,
-                ideal_widths_sum: 150,
-                ideal_widths_max: 30,
-            }
+        #[test]
+        fn same_widths_skip_recalculation() {
+            let ideal = vec![10, 20, 30, 40, 50];
+            let min = vec![5, 5, 5, 5, 5];
+            let plan = ViewportPlan::calculate(&ideal, &min, 80);
+
+            assert!(!plan.needs_recalculation(80, widths_fingerprint(&ideal, &min)));
         }
 
-        #[rstest]
-        #[case(5, 100, 50, 150, 30, true)] // width changes
-        #[case(5, 80, 50, 150, 30, false)] // no change
-        #[case(10, 80, 50, 150, 30, true)] // widths_len changes
-        #[case(5, 80, 60, 150, 30, true)] // min_widths_sum changes
-        #[case(5, 80, 50, 200, 30, true)] // ideal_widths_sum changes
-        #[case(5, 80, 50, 150, 50, true)] // ideal_widths_max changes
-        fn recalculates_when_inputs_change(
-            #[case] len: usize,
-            #[case] width: u16,
-            #[case] min_sum: u16,
-            #[case] ideal_sum: u16,
-            #[case] ideal_max: u16,
-            #[case] expected: bool,
-        ) {
-            let plan = make_plan();
+        #[test]
+        fn recalculates_when_available_width_changes() {
+            let ideal = vec![10, 20, 30];
+            let min = vec![5, 5, 5];
+            let plan = ViewportPlan::calculate(&ideal, &min, 80);
 
-            let result = plan.needs_recalculation(len, width, min_sum, ideal_sum, ideal_max);
+            assert!(plan.needs_recalculation(100, widths_fingerprint(&ideal, &min)));
+        }
 
-            assert_eq!(result, expected);
+        #[test]
+        fn recalculates_when_a_width_changes() {
+            let ideal = vec![10, 20, 30, 40, 50];
+            let min = vec![5, 5, 5, 5, 5];
+            let plan = ViewportPlan::calculate(&ideal, &min, 80);
+
+            let changed = vec![10, 20, 30, 40, 60];
+
+            assert!(plan.needs_recalculation(80, widths_fingerprint(&changed, &min)));
+        }
+
+        #[test]
+        fn reordered_widths_trigger_recalculation() {
+            // max_offset depends on suffix widths, so a stale plan would point
+            // at the wrong scroll range even though len/sum/max are unchanged
+            let ideal = vec![10, 20, 30, 40, 50];
+            let min = vec![5, 5, 5, 5, 5];
+            let plan = ViewportPlan::calculate(&ideal, &min, 80);
+
+            let reordered = vec![50, 40, 30, 20, 10];
+
+            assert!(plan.needs_recalculation(80, widths_fingerprint(&reordered, &min)));
         }
 
         #[test]
         fn default_plan_needs_recalculation() {
             let plan = ViewportPlan::default();
 
-            let result = plan.needs_recalculation(5, 80, 50, 150, 30);
-
-            assert!(result);
-        }
-
-        #[test]
-        fn different_max_triggers_recalculation() {
-            // Scenario: Data in a column changed width
-            // Original: [10, 20, 30, 40, 50] sum=150, max=50
-            // Changed:  [10, 20, 30, 40, 60] sum=160, max=60
-            let original_ideal = vec![10, 20, 30, 40, 50];
-            let original_min = vec![5, 5, 5, 5, 5];
-            let plan = ViewportPlan::calculate(&original_ideal, &original_min, 80);
-
-            let changed = [10, 20, 30, 40, 60];
-            let sum: u16 = changed.iter().sum();
-            let max: u16 = changed.iter().copied().max().unwrap();
-
-            let result = plan.needs_recalculation(5, 80, 25, sum, max);
-
-            assert!(result);
-        }
-
-        #[test]
-        fn same_sum_and_max_skips_recalculation() {
-            // Edge case: reordering doesn't change sum or max
-            // Original: [10, 20, 30, 40, 50] sum=150, max=50
-            // Changed:  [50, 40, 30, 20, 10] sum=150, max=50
-            let original_ideal = vec![10, 20, 30, 40, 50];
-            let original_min = vec![5, 5, 5, 5, 5];
-            let plan = ViewportPlan::calculate(&original_ideal, &original_min, 80);
-
-            let reordered = [50, 40, 30, 20, 10];
-            let sum: u16 = reordered.iter().sum();
-            let max: u16 = reordered.iter().copied().max().unwrap();
-
-            let result = plan.needs_recalculation(5, 80, 25, sum, max);
-
-            // Known limitation: reordering with same sum+max is not detected
-            assert!(!result);
+            assert!(plan.needs_recalculation(80, widths_fingerprint(&[10], &[4])));
         }
     }
 
