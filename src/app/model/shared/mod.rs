@@ -12,6 +12,7 @@ pub mod message;
 pub mod modal;
 pub mod multi_line_input;
 pub mod picker;
+pub mod render_output;
 pub mod settings;
 pub mod text_input;
 pub mod theme_id;
