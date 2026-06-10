@@ -253,6 +253,10 @@ impl EffectRunner {
     ) -> Result<Vec<Action>> {
         match effect {
             Effect::Render => {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "the effect runner is the runtime boundary that reads the clock for rendering"
+                )]
                 let now = Instant::now();
                 let output = tui.draw(state, services, now)?;
                 if !state.ui.is_focus_mode() {

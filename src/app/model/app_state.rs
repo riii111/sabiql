@@ -97,16 +97,8 @@ impl AppState {
         self.render_dirty = false;
     }
 
-    pub fn set_error(&mut self, msg: String) {
-        self.messages.set_error(msg);
-    }
-
-    pub fn set_success(&mut self, msg: String) {
-        self.messages.set_success(msg);
-    }
-
     pub fn clear_expired_timers(&mut self, now: Instant) {
-        self.messages.clear_expired();
+        self.messages.clear_expired_at(now);
         self.query.clear_expired_highlight(now);
         self.result_interaction.clear_expired_flash(now);
         self.flash_timers.clear_expired(now);
@@ -212,6 +204,12 @@ impl AppState {
 
     pub fn can_request_csv_export(&self) -> bool {
         !self.query.is_history_mode() && self.query.visible_result().is_some_and(|r| !r.is_error())
+    }
+
+    /// True when a run-scoped async response no longer belongs to the active
+    /// connection and query run, and must be dropped without touching state.
+    pub fn is_stale_query_run(&self, dsn: &str, run_id: u64) -> bool {
+        self.session.dsn.as_deref() != Some(dsn) || !self.query.is_current_run(run_id)
     }
 }
 

@@ -12,6 +12,10 @@ pub struct DatabaseMetadata {
 }
 
 impl DatabaseMetadata {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "fetch timestamp is recorded at construction, which happens at the infra I/O boundary"
+    )]
     pub fn new(database_name: String) -> Self {
         Self {
             database_name,

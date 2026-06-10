@@ -11,7 +11,7 @@ use crate::model::er_state::ErStatus;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
+pub(super) fn check_er_completion(state: &mut AppState, now: Instant) -> Vec<Effect> {
     if state.er_preparation.status != ErStatus::Waiting || !state.er_preparation.is_complete() {
         return vec![];
     }
@@ -34,10 +34,13 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    state.set_error(format!(
-        "ER failed: {} table(s) failed. 'e' to retry.",
-        failed_data.len()
-    ));
+    state.messages.set_error_at(
+        format!(
+            "ER failed: {} table(s) failed. 'e' to retry.",
+            failed_data.len()
+        ),
+        now,
+    );
     vec![Effect::WriteErFailureLog {
         failed_tables: failed_data,
     }]
@@ -45,9 +48,9 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
 
 pub fn dispatch_metadata(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     loading::reduce_loading(state, action, now)
-        .or_else(|| table_detail::reduce_table_detail(state, action))
+        .or_else(|| table_detail::reduce_table_detail(state, action, now))
         .or_else(|| prefetch::reduce_prefetch(state, action, now))
-        .or_else(|| er_neighbors::reduce_er_neighbors(state, action))
+        .or_else(|| er_neighbors::reduce_er_neighbors(state, action, now))
 }
 
 #[cfg(test)]
@@ -876,7 +879,7 @@ mod tests {
             state.er_preparation.fk_expanded = false;
             // pending and fetching are empty → is_complete() = true
 
-            let effects = check_er_completion(&mut state);
+            let effects = check_er_completion(&mut state, Instant::now());
 
             assert!(effects.iter().any(|e| matches!(
                 e,
@@ -891,7 +894,7 @@ mod tests {
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.fk_expanded = true;
 
-            let effects = check_er_completion(&mut state);
+            let effects = check_er_completion(&mut state, Instant::now());
 
             assert!(effects.iter().any(|e| matches!(
                 e,

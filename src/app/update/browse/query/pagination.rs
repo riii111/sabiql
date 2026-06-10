@@ -4,10 +4,10 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::domain::QuerySource;
 use crate::model::app_state::AppState;
-use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 
 pub fn reduce_pagination(
@@ -68,7 +68,7 @@ pub fn reduce_pagination(
             export_query,
             file_name,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -116,7 +116,7 @@ pub fn reduce_pagination(
             file_name,
             row_count,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -136,7 +136,7 @@ pub fn reduce_pagination(
             path,
             row_count,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -153,7 +153,7 @@ pub fn reduce_pagination(
         }
 
         Action::CsvExportFailed { dsn, run_id, error } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -177,23 +177,14 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_next() {
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = state.session.dsn.clone() {
-                let next_page = state.query.pagination.current_page + 1;
-                let run_id = state.query.begin_running(now);
-                state.result_interaction.reset_view();
-                DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                    dsn,
-                    schema: state.query.pagination.schema.clone(),
-                    table: state.query.pagination.table.clone(),
-                    generation: state.session.selection_generation(),
-                    run_id,
-                    limit: PREVIEW_PAGE_SIZE,
-                    offset: next_page * PREVIEW_PAGE_SIZE,
-                    target_page: next_page,
-                    read_only: state.session.read_only,
-                }])
-            } else {
-                DispatchResult::handled()
+            let next_page = state.query.pagination.current_page + 1;
+            let generation = state.session.selection_generation();
+            match preview_effect_for_current_table(state, now, next_page, generation) {
+                Some(effect) => {
+                    state.result_interaction.reset_view();
+                    DispatchResult::handled_with(vec![effect])
+                }
+                None => DispatchResult::handled(),
             }
         }
 
@@ -204,24 +195,15 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_prev() {
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = state.session.dsn.clone() {
-                let prev_page = state.query.pagination.current_page - 1;
-                let run_id = state.query.begin_running(now);
-                state.result_interaction.reset_view();
-                state.query.pagination.reached_end = false;
-                DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                    dsn,
-                    schema: state.query.pagination.schema.clone(),
-                    table: state.query.pagination.table.clone(),
-                    generation: state.session.selection_generation(),
-                    run_id,
-                    limit: PREVIEW_PAGE_SIZE,
-                    offset: prev_page * PREVIEW_PAGE_SIZE,
-                    target_page: prev_page,
-                    read_only: state.session.read_only,
-                }])
-            } else {
-                DispatchResult::handled()
+            let prev_page = state.query.pagination.current_page - 1;
+            let generation = state.session.selection_generation();
+            match preview_effect_for_current_table(state, now, prev_page, generation) {
+                Some(effect) => {
+                    state.result_interaction.reset_view();
+                    state.query.pagination.reached_end = false;
+                    DispatchResult::handled_with(vec![effect])
+                }
+                None => DispatchResult::handled(),
             }
         }
 
@@ -236,13 +218,9 @@ mod tests {
     use crate::ports::outbound::DbOperationError;
     use std::sync::Arc;
 
-    use crate::model::browse::query_execution::PaginationState;
+    use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PaginationState};
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
-
-    fn begin_query_run(state: &mut AppState) -> u64 {
-        state.query.begin_running(Instant::now())
-    }
 
     fn csv_rows_counted_action(
         state: &mut AppState,
