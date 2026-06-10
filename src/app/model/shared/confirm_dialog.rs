@@ -50,10 +50,6 @@ impl ConfirmDialogState {
         }
     }
 
-    pub fn is_scrollable(&self) -> bool {
-        self.max_scroll() > 0
-    }
-
     pub fn title(&self) -> &str {
         &self.title
     }

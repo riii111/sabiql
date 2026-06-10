@@ -120,7 +120,7 @@ pub(super) fn reduce_prefetch(
                     state
                         .er_preparation
                         .on_table_failed(&qualified_name, entry.error.clone());
-                    let mut effects = check_er_completion(state);
+                    let mut effects = check_er_completion(state, now);
                     // No fetch started → no completion event to re-drive the queue.
                     if effects.is_empty() && state.er_preparation.status == ErStatus::Waiting {
                         effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
@@ -192,7 +192,7 @@ pub(super) fn reduce_prefetch(
                 effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
             }
 
-            effects.extend(check_er_completion(state));
+            effects.extend(check_er_completion(state, now));
 
             DispatchResult::handled_with(effects)
         }
@@ -241,7 +241,7 @@ pub(super) fn reduce_prefetch(
                 delay_secs: backoff_secs_for(prev_count + 1),
             });
 
-            effects.extend(check_er_completion(state));
+            effects.extend(check_er_completion(state, now));
 
             DispatchResult::handled_with(effects)
         }
@@ -271,7 +271,7 @@ pub(super) fn reduce_prefetch(
                 effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
             }
 
-            effects.extend(check_er_completion(state));
+            effects.extend(check_er_completion(state, now));
 
             DispatchResult::handled_with(effects)
         }
