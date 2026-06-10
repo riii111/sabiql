@@ -270,7 +270,7 @@ mod tests {
         }
 
         #[test]
-        fn submit_other_executes_immediately() {
+        fn submit_other_enters_risk_acknowledge() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -280,11 +280,17 @@ mod tests {
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk {
+                    reason: crate::policy::write::sql_risk::AcknowledgeReason::UnknownRisk,
+                    ..
+                }
+            ));
         }
 
         #[test]
-        fn submit_unsupported_executes_immediately() {
+        fn submit_unsupported_enters_risk_acknowledge() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -294,7 +300,34 @@ mod tests {
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk {
+                    reason: crate::policy::write::sql_risk::AcknowledgeReason::UnknownRisk,
+                    ..
+                }
+            ));
+        }
+
+        #[test]
+        fn submit_drop_without_target_enters_risk_acknowledge() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("DROP TABLE a, b".to_string());
+            state.session.dsn = Some("postgres://test".to_string());
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk {
+                    reason:
+                        crate::policy::write::sql_risk::AcknowledgeReason::TargetNameUnavailable,
+                    ..
+                }
+            ));
         }
 
         #[test]

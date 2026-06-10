@@ -340,6 +340,26 @@ mod tests {
         }
 
         #[test]
+        fn unsupported_statement_shows_risk_acknowledge() {
+            use crate::policy::write::sql_risk::AcknowledgeReason;
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content(
+                "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE".to_string(),
+            );
+            state.session.dsn = Some("dsn://test".to_string());
+
+            reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeRisk {
+                    reason: AcknowledgeReason::UnknownRisk,
+                    ..
+                }
+            ));
+        }
+
+        #[test]
         fn delete_with_where_executes_immediately() {
             let mut state = sql_modal_state();
             state
