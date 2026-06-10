@@ -348,6 +348,16 @@ impl ViewportPlan {
             || self.available_width != new_available_width
             || self.widths_fingerprint != new_fingerprint
     }
+
+    pub fn has_horizontal_scroll(&self) -> bool {
+        self.max_offset > 0
+    }
+
+    // Sized from max_offset rather than the displayed column count so the
+    // indicator reaches 100% at the last scroll position
+    pub fn indicator_viewport_size(&self) -> usize {
+        self.total_columns.saturating_sub(self.max_offset)
+    }
 }
 
 // Scrolling stops at the first offset where every remaining column fits at its
