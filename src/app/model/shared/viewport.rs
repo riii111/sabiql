@@ -376,7 +376,7 @@ pub fn calculate_max_offset(
 }
 
 pub fn calculate_next_column_offset(current_offset: usize, max_offset: usize) -> usize {
-    (current_offset + 1).min(max_offset)
+    current_offset.saturating_add(1).min(max_offset)
 }
 
 pub fn calculate_prev_column_offset(current_offset: usize) -> usize {
@@ -771,6 +771,11 @@ mod tests {
         #[test]
         fn next_clamps_to_max() {
             assert_eq!(calculate_next_column_offset(2, 2), 2);
+        }
+
+        #[test]
+        fn next_saturates_at_usize_max() {
+            assert_eq!(calculate_next_column_offset(usize::MAX, 2), 2);
         }
 
         #[test]
