@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "the main loop is the time source: it reads the clock and injects `now` into reducers"
+)]
+
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -468,7 +473,7 @@ fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntry
         }
         Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
         Err(e) => {
-            state.messages.set_error(e.to_string());
+            state.messages.set_error_at(e.to_string(), Instant::now());
         }
     }
 }

@@ -97,16 +97,8 @@ impl AppState {
         self.render_dirty = false;
     }
 
-    pub fn set_error(&mut self, msg: String) {
-        self.messages.set_error(msg);
-    }
-
-    pub fn set_success(&mut self, msg: String) {
-        self.messages.set_success(msg);
-    }
-
     pub fn clear_expired_timers(&mut self, now: Instant) {
-        self.messages.clear_expired();
+        self.messages.clear_expired_at(now);
         self.query.clear_expired_highlight(now);
         self.result_interaction.clear_expired_flash(now);
         self.flash_timers.clear_expired(now);

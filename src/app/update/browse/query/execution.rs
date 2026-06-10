@@ -179,7 +179,7 @@ pub fn reduce_execution(
                     )));
                 } else {
                     let user_message = error.user_message();
-                    state.set_error(user_message.clone());
+                    state.messages.set_error_at(user_message.clone(), now);
                     state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
