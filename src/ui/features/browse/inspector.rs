@@ -18,7 +18,9 @@ use crate::app::ports::outbound::DdlGenerator;
 use crate::app::services::AppServices;
 use crate::domain::Table;
 use crate::primitives::atoms::panel_block;
-use crate::primitives::utils::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
+use crate::primitives::utils::text_utils::{
+    MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
+};
 use crate::theme::ThemePalette;
 
 pub struct Inspector;
@@ -290,7 +292,7 @@ impl Inspector {
         } else {
             &data_rows
         };
-        let (all_ideal_widths, _) = calculate_column_widths(&headers, sample);
+        let all_ideal_widths = calculate_column_widths(&headers, sample);
         let fingerprint = widths_fingerprint(&all_ideal_widths, &header_min_widths);
         let plan = if stored_plan.needs_recalculation(available_width, fingerprint) {
             ViewportPlan::calculate(&all_ideal_widths, &header_min_widths, available_width)
@@ -358,7 +360,7 @@ impl Inspector {
                 Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
                     |(&col_idx, &col_width)| {
                         let text = row.get(col_idx).map_or("", String::as_str);
-                        let display = truncate_cell(text, col_width as usize);
+                        let display = truncate_to_width(text, col_width as usize);
 
                         // Special styling for PK and Comment columns
                         let cell_style = if col_idx == 3 && !text.is_empty() {
@@ -436,7 +438,7 @@ impl Inspector {
                 ]
             })
             .collect();
-        let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
+        let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
@@ -489,7 +491,7 @@ impl Inspector {
                 ]
             })
             .collect();
-        let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
+        let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
@@ -578,7 +580,7 @@ impl Inspector {
                         if let Some(qual) = &policy.qual {
                             lines.push(Line::from(format!(
                                 "    USING: {}",
-                                truncate_cell(qual, 50)
+                                truncate_to_width(qual, 50)
                             )));
                         }
                     }
@@ -715,35 +717,23 @@ impl Inspector {
     }
 }
 
-fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>, u16) {
-    let mut true_total: u16 = 0;
-    let clamped: Vec<u16> = headers
+fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<u16> {
+    use unicode_width::UnicodeWidthStr;
+
+    headers
         .iter()
         .enumerate()
         .map(|(col_idx, header)| {
-            let mut max_width = header.chars().count();
+            let mut max_width = UnicodeWidthStr::width(*header);
 
             for row in rows.iter().take(50) {
                 if let Some(cell) = row.get(col_idx) {
-                    max_width = max_width.max(cell.chars().count());
+                    max_width = max_width.max(UnicodeWidthStr::width(cell.as_str()));
                 }
             }
 
-            let true_width = max_width as u16 + PADDING;
-            true_total += true_width;
-            true_width.clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
+            let max_width = max_width.min(MAX_COL_WIDTH as usize) as u16;
+            (max_width + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
         })
-        .collect();
-
-    (clamped, true_total)
-}
-
-fn truncate_cell(s: &str, max_chars: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count <= max_chars {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
-        format!("{truncated}...")
-    }
+        .collect()
 }

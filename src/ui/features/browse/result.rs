@@ -17,7 +17,9 @@ use crate::app::model::shared::viewport::{
     select_viewport_columns, widths_fingerprint,
 };
 use crate::domain::{QueryResult, QuerySource};
-use crate::primitives::utils::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
+use crate::primitives::utils::text_utils::{
+    MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
+};
 use crate::theme::ThemePalette;
 
 pub struct ResultPane;
@@ -413,24 +415,26 @@ impl ResultPane {
 }
 
 pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
+    use unicode_width::UnicodeWidthStr;
+
     const SAMPLE_ROWS: usize = 50;
 
     headers
         .iter()
         .enumerate()
         .map(|(col_idx, header)| {
-            let mut max_width = header.chars().count();
+            let mut max_width = UnicodeWidthStr::width(header.as_str());
 
             let sample_size = rows.len().min(SAMPLE_ROWS);
             for row in rows.iter().take(sample_size) {
                 if let Some(cell) = row.get(col_idx) {
                     let first_line = cell.lines().next().unwrap_or(cell);
-                    let cell_width = first_line.chars().count();
-                    max_width = max_width.max(cell_width);
+                    max_width = max_width.max(UnicodeWidthStr::width(first_line));
                 }
             }
 
-            (max_width as u16 + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
+            let max_width = max_width.min(MAX_COL_WIDTH as usize) as u16;
+            (max_width + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
         })
         .collect()
 }
@@ -464,19 +468,9 @@ fn cell_edit_line_with_cursor(
     ))
 }
 
-fn truncate_cell(s: &str, max_chars: usize) -> String {
+fn truncate_cell(s: &str, max_width: usize) -> String {
     let first_line = s.lines().next().unwrap_or(s);
-    let char_count = first_line.chars().count();
-
-    if char_count <= max_chars {
-        first_line.to_string()
-    } else {
-        let truncated: String = first_line
-            .chars()
-            .take(max_chars.saturating_sub(3))
-            .collect();
-        format!("{truncated}...")
-    }
+    truncate_to_width(first_line, max_width)
 }
 
 #[cfg(test)]
@@ -547,8 +541,8 @@ mod tests {
             let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
-            // "日本語テスト" = 6 chars + 2 padding = 8
-            assert_eq!(result[0], 8);
+            // "日本語テスト" = 6 chars × 2 cells + 2 padding = 14
+            assert_eq!(result[0], 14);
         }
 
         #[test]
@@ -615,27 +609,29 @@ mod tests {
     }
 
     #[test]
-    fn multibyte_characters_count_correctly() {
+    fn multibyte_truncates_by_display_width() {
         let result = truncate_cell("こんにちは世界", 5);
 
-        assert_eq!(result, "こん...");
+        assert_eq!(result, "こ...");
     }
 
     #[rstest]
-    #[case("日本語テスト", 10, "日本語テスト")]
-    #[case("日本語テスト", 5, "日本...")]
-    #[case("日本語テスト", 4, "日...")]
-    #[case("日本語テスト", 3, "...")]
+    #[case("日本語テスト", 12, "日本語テスト")]
+    #[case("日本語テスト", 10, "日本語...")]
+    #[case("日本語テスト", 5, "日...")]
+    #[case("日本語テスト", 4, "...")]
     #[case("SELECT * FROM 日本語テーブル", 15, "SELECT * FRO...")]
     fn multibyte_truncation_is_safe(
         #[case] input: &str,
         #[case] max: usize,
         #[case] expected: &str,
     ) {
+        use unicode_width::UnicodeWidthStr;
+
         let result = truncate_cell(input, max);
 
         assert_eq!(result, expected);
-        assert!(result.chars().count() <= max);
+        assert!(UnicodeWidthStr::width(result.as_str()) <= max);
     }
 
     #[test]
