@@ -215,7 +215,7 @@ fn select_fixed_columns(
         let excess = total_needed - ctx.available_width;
         let at_right_edge = ctx.horizontal_offset >= ctx.max_offset && ctx.max_offset > 0;
 
-        let remaining = shrink_columns(
+        let mut remaining = shrink_columns(
             &mut widths,
             config.min_widths,
             &indices,
@@ -223,20 +223,31 @@ fn select_fixed_columns(
             at_right_edge,
         );
 
-        if at_right_edge && remaining > 0 && indices.len() > 1 {
-            indices.remove(0);
-            widths.remove(0);
+        if at_right_edge {
+            while remaining > 0 && indices.len() > 1 {
+                indices.remove(0);
+                widths.remove(0);
 
-            if let Some(last_idx) = indices.last()
-                && let Some(last_w) = widths.last_mut()
-            {
-                *last_w = config.ideal_widths[*last_idx];
+                if let Some(last_idx) = indices.last()
+                    && let Some(last_w) = widths.last_mut()
+                {
+                    *last_w = config.ideal_widths[*last_idx];
+                }
+
+                let new_total = total_width_with_separators(&widths);
+                remaining = new_total.saturating_sub(ctx.available_width);
+                if remaining > 0 {
+                    remaining =
+                        shrink_columns(&mut widths, config.min_widths, &indices, remaining, true);
+                }
             }
 
-            let new_total = total_width_with_separators(&widths);
-            if new_total > ctx.available_width {
-                let new_excess = new_total - ctx.available_width;
-                shrink_columns(&mut widths, config.min_widths, &indices, new_excess, true);
+            // Pane narrower than the last header itself: clamp so the cell
+            // truncates with an ellipsis instead of overflowing the pane
+            if remaining > 0
+                && let Some(last_w) = widths.last_mut()
+            {
+                *last_w = ctx.available_width;
             }
         }
     }
@@ -968,6 +979,37 @@ mod tests {
 
             assert_eq!(indices, vec![1, 2]);
             assert_eq!(widths, vec![8, 16]);
+        }
+
+        #[test]
+        fn single_column_clamps_to_available_when_header_overflows() {
+            let ideal = vec![30, 30];
+            let min = vec![20, 20];
+            let cfg = config(&ideal, &min);
+            let max_offset = 1;
+
+            // Pane narrower than the column's header min width (20 > 15)
+            let (indices, widths) =
+                select_viewport_columns(&cfg, &ctx(max_offset, 15, Some(1), max_offset));
+
+            assert_eq!(indices, vec![1]);
+            assert_eq!(widths, vec![15]);
+        }
+
+        #[test]
+        fn drops_columns_until_remaining_fits_then_clamps() {
+            let ideal = vec![30, 30, 30];
+            let min = vec![20, 20, 20];
+            let cfg = config(&ideal, &min);
+            let max_offset = 1;
+
+            // [1, 2] exceeds 15 even at min widths; col 1 is dropped and the
+            // surviving col 2 still overflows → clamped to the pane
+            let (indices, widths) =
+                select_viewport_columns(&cfg, &ctx(max_offset, 15, Some(2), max_offset));
+
+            assert_eq!(indices, vec![2]);
+            assert_eq!(widths, vec![15]);
         }
 
         #[test]
