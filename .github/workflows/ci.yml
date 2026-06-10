@@ -43,7 +43,7 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - uses: taiki-e/install-action@56545b37b57562edd73171cb6c62cc509db4c34e # v2
         with:
-          tool: nextest
+          tool: nextest,cargo-insta
       - id: test_all_features
         continue-on-error: true
         run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
@@ -59,6 +59,8 @@ jobs:
       - name: Fail job if tests failed
         if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
         run: exit 1
+      - name: Reject unreferenced snapshots
+        run: cargo insta test --unreferenced=reject -p sabiql
 
   build:
     name: Build
