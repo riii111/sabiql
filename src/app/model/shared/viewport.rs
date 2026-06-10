@@ -141,6 +141,37 @@ fn try_add_partial_column(
     }
 }
 
+// At the right edge no next column exists, so leftover width goes to a
+// truncated peek of the previous column instead. By max_offset minimality the
+// previous column never fits fully here, so a single partial prepend suffices.
+fn try_prepend_partial_column(
+    config: &ColumnWidthConfig,
+    indices: &mut Vec<usize>,
+    widths: &mut Vec<u16>,
+    available_width: u16,
+) {
+    let Some(&leftmost_idx) = indices.first() else {
+        return;
+    };
+    if leftmost_idx == 0 {
+        return;
+    }
+    let prev_idx = leftmost_idx - 1;
+
+    let current_total = total_width_with_separators(widths);
+    let remaining = available_width.saturating_sub(current_total + 1); // +1 for separator
+    let min_w = config
+        .min_widths
+        .get(prev_idx)
+        .copied()
+        .unwrap_or(MIN_COL_WIDTH);
+
+    if remaining >= min_w {
+        indices.insert(0, prev_idx);
+        widths.insert(0, remaining.min(config.ideal_widths[prev_idx]));
+    }
+}
+
 pub fn select_viewport_columns(
     config: &ColumnWidthConfig,
     ctx: &SelectionContext,
@@ -209,6 +240,10 @@ fn select_fixed_columns(
                 shrink_columns(&mut widths, config.min_widths, &indices, new_excess, true);
             }
         }
+    }
+
+    if ctx.max_offset > 0 && ctx.horizontal_offset >= ctx.max_offset {
+        try_prepend_partial_column(config, &mut indices, &mut widths, ctx.available_width);
     }
 
     (indices, widths)
@@ -811,17 +846,28 @@ mod tests {
 
             let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 80, Some(3), max_offset));
             let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 80, Some(3), max_offset));
-            let (idx2, _) = select_viewport_columns(&cfg, &ctx(2, 80, Some(3), max_offset));
 
             // First column shifts by 1 each scroll
             assert_eq!(idx0[0], 0);
             assert_eq!(idx1[0], 1);
-            assert_eq!(idx2[0], 2);
 
             // At least fixed count columns are shown
             assert!(idx0.len() >= 3);
             assert!(idx1.len() >= 3);
-            assert!(idx2.len() >= 3);
+        }
+
+        #[test]
+        fn right_edge_keeps_anchor_at_full_width_behind_prepended_peek() {
+            let ideal = vec![15, 20, 30, 10, 25];
+            let min = vec![8, 8, 8, 8, 8];
+            let cfg = config(&ideal, &min);
+            let max_offset = 2;
+
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(2, 80, Some(3), max_offset));
+
+            // Truncated peek of col 1 fills the leftover; anchor col 2 keeps ideal width
+            assert_eq!(indices, vec![1, 2, 3, 4]);
+            assert_eq!(widths, vec![12, 30, 10, 25]);
         }
 
         #[test]
@@ -937,6 +983,37 @@ mod tests {
         }
 
         #[test]
+        fn fills_leftover_with_truncated_previous_column() {
+            let ideal = vec![20, 8, 8];
+            let min = vec![6, 6, 6];
+            let cfg = config(&ideal, &min);
+            let max_offset = 1;
+
+            // Suffix [1, 2] = 17 fits in 25; col 0 (ideal 20) can't fit fully,
+            // so the leftover 7 shows it truncated
+            let (indices, widths) =
+                select_viewport_columns(&cfg, &ctx(max_offset, 25, Some(1), max_offset));
+
+            assert_eq!(indices, vec![0, 1, 2]);
+            assert_eq!(widths, vec![7, 8, 8]);
+        }
+
+        #[test]
+        fn keeps_slack_in_rightmost_when_previous_header_does_not_fit() {
+            let ideal = vec![20, 8, 8];
+            let min = vec![15, 6, 6];
+            let cfg = config(&ideal, &min);
+            let max_offset = 1;
+
+            // Leftover 7 < col 0 min 15 → absorbed by rightmost instead
+            let (indices, widths) =
+                select_viewport_columns(&cfg, &ctx(max_offset, 25, Some(1), max_offset));
+
+            assert_eq!(indices, vec![1, 2]);
+            assert_eq!(widths, vec![8, 16]);
+        }
+
+        #[test]
         fn drops_leftmost_when_shrinking_not_enough() {
             let ideal = vec![30, 30, 30];
             let min = vec![20, 20, 20];
@@ -1010,11 +1087,9 @@ mod tests {
 
             let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 60, Some(3), max_offset));
             let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 60, Some(3), max_offset));
-            let (idx2, _) = select_viewport_columns(&cfg, &ctx(2, 60, Some(3), max_offset));
 
             assert_eq!(idx0[0], 0);
             assert_eq!(idx1[0], 1);
-            assert_eq!(idx2[0], 2);
         }
     }
 
@@ -1208,8 +1283,8 @@ mod tests {
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            // At offset 1, showing cols [1, 2], no col 3 exists
-            let (indices, _) = select_viewport_columns(&cfg, &ctx(1, 50, Some(2), 1));
+            // At offset 1 (not right edge), showing cols [1, 2], no col 3 exists
+            let (indices, _) = select_viewport_columns(&cfg, &ctx(1, 50, Some(2), 2));
 
             assert_eq!(indices.len(), 2, "No bonus when no more columns exist");
         }

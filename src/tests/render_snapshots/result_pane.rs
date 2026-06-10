@@ -99,6 +99,52 @@ fn result_pane_scrolled_past_wide_column_fills_width() {
 }
 
 #[test]
+fn result_pane_right_edge_peeks_truncated_previous_column() {
+    let (mut state, now) = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    // At the right edge the trailing narrow columns leave leftover width;
+    // the hidden wide description column shows up truncated instead of blank
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "SELECT * FROM events".to_string(),
+        columns: ["id", "description", "status", "kind", "actor", "note"]
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        rows: vec![
+            vec![
+                "1".to_string(),
+                "x".repeat(100),
+                "active".to_string(),
+                "create".to_string(),
+                "alice".to_string(),
+                "first".to_string(),
+            ],
+            vec![
+                "2".to_string(),
+                "y".repeat(100),
+                "suspended".to_string(),
+                "update".to_string(),
+                "bob".to_string(),
+                "second".to_string(),
+            ],
+        ],
+        row_count: 2,
+        execution_time_ms: 3,
+        executed_at: now,
+        source: QuerySource::Preview,
+        error: None,
+        command_tag: None,
+    }));
+    state.ui.focused_pane = FocusedPane::Result;
+    state.result_interaction.horizontal_offset = 2;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn result_pane_first_cell_active_mode() {
     let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
