@@ -177,7 +177,8 @@ pub mod idx {
     }
 
     pub mod sql_modal_confirming {
-        pub const CANCEL_CONFIRM: usize = 0;
+        pub const ENTER_EXECUTE: usize = 0;
+        pub const CANCEL_CONFIRM: usize = 1;
     }
 
     pub mod overlay {
@@ -447,6 +448,7 @@ mod tests {
             assert!(idx::sql_modal_compare::CLOSE < SQL_MODAL_COMPARE_KEYS.len());
 
             // SQL_MODAL_CONFIRMING_KEYS
+            assert!(idx::sql_modal_confirming::ENTER_EXECUTE < SQL_MODAL_CONFIRMING_KEYS.len());
             assert!(idx::sql_modal_confirming::CANCEL_CONFIRM < SQL_MODAL_CONFIRMING_KEYS.len());
 
             // OVERLAY_KEYS

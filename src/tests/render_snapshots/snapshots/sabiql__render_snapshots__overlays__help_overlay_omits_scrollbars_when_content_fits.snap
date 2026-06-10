@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 426
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                                           
@@ -104,6 +103,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  :                                    Open command line                                                                    │                          │
 │                          │  Esc                                  Exit to Cell Active (draft preserved)                                                │                          │
 │                          │  Home / End                           Line start/end                                                                       │                          │
+│                          │  Enter                                Execute the confirmed statement                                                      │                          │
 │                          │  Esc                                  Cancel and return to editor                                                          │                          │
 │                          │                                                                                                                            │                          │
 │                          │▸ Search / Filter                                                                                                           │                          │
@@ -151,9 +151,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  Enter                                View error details                                                                   │                          │
 │                          │  Enter                                Confirm                                                                              │                          │
 │                          │  Ctrl+N / j / ↓ / Ctrl+P / k / ↑      Scroll down / up                                                                     │                          │
-│                          │  Esc                                  Cancel                                                                               │                          │
-│                          │  Ctrl+N / Ctrl+P / ↑ / ↓              Scroll down / up                                                                     │──────────────────────────┘
-│                          │  Home / End                           Jump to top / bottom                                                                 │──────────────────────────┐
+│                          │  Esc                                  Cancel                                                                               │──────────────────────────┘
+│                          │  Ctrl+N / Ctrl+P / ↑ / ↓              Scroll down / up                                                                     │──────────────────────────┐
+│                          │  Home / End                           Jump to top / bottom                                                                 │                          │
 │                          │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                                           │                          │
 │                          │  Ctrl+F / Ctrl+B / PageDown / PageUp  Scroll full page down / up                                                           │                          │
 │                          │  ← / →                                Scroll left / right                                                                  │                          │
@@ -186,7 +186,6 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          │  0 / $ / w / b / Home / End           Move by word or line boundary                                                        │                          │
 │                          │  gg / G / H / M / L                   Jump by buffer or viewport                                                           │                          │
 │                          │  Esc / q                              Close JSONB detail                                                                   │                          │
-│                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │
 │                          │                                                                                                                            │                          │

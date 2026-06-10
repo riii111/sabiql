@@ -109,7 +109,7 @@ impl SqlModal {
                     }
                 }
                 SqlModalStatus::ConfirmingAnalyzeRisk { .. } => {
-                    FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")])
+                    FooterHintBar::new([("Enter", "Execute"), ("Esc", "Cancel")])
                 }
                 _ => {
                     let compare_can_yank =

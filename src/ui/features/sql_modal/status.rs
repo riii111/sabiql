@@ -90,13 +90,22 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
                     .add_modifier(Modifier::BOLD),
             )
         }
-        SqlModalStatus::ConfirmingAnalyzeHigh { .. }
-        | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => (
+        SqlModalStatus::ConfirmingAnalyzeHigh { .. } => (
             "[CONFIRM]",
             Style::default()
                 .fg(theme.semantic.status.error)
                 .add_modifier(Modifier::BOLD),
             "Confirm ANALYZE".to_string(),
+            Style::default()
+                .fg(theme.semantic.status.error)
+                .add_modifier(Modifier::BOLD),
+        ),
+        SqlModalStatus::ConfirmingAnalyzeRisk { .. } => (
+            "[CONFIRM]",
+            Style::default()
+                .fg(theme.semantic.status.error)
+                .add_modifier(Modifier::BOLD),
+            "Execute ANALYZE".to_string(),
             Style::default()
                 .fg(theme.semantic.status.error)
                 .add_modifier(Modifier::BOLD),
