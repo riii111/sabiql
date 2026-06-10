@@ -16,7 +16,7 @@ use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalSta
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
-    SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
+    sql_modal, sql_modal_compare, sql_modal_normal, sql_modal_plan,
 };
 use crate::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::primitives::molecules::{FooterHintBar, render_modal_with_border_color};
@@ -252,69 +252,50 @@ impl SqlModal {
             SqlModalTab::Sql if services.db_capabilities.supported_sql_modal_tabs().len() == 1 => {
                 if services.db_capabilities.supports_explain() {
                     FooterHintBar::new([
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
-                        SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+                        sql_modal_normal::RUN.as_hint(),
+                        sql_modal_plan::EXPLAIN.as_hint(),
+                        sql_modal_normal::ENTER_INSERT.as_hint(),
+                        sql_modal_normal::CLOSE.as_hint(),
                     ])
                 } else {
                     FooterHintBar::new([
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+                        sql_modal_normal::RUN.as_hint(),
+                        sql_modal_normal::ENTER_INSERT.as_hint(),
+                        sql_modal_normal::CLOSE.as_hint(),
                     ])
                 }
             }
             SqlModalTab::Plan => FooterHintBar::new([
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::YANK].as_hint(),
-                (
-                    "Tab/⇧Tab",
-                    SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
-                ),
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::CLOSE].as_hint(),
+                sql_modal_plan::YANK.as_hint(),
+                ("Tab/⇧Tab", sql_modal_plan::TAB.as_hint().1),
+                sql_modal_plan::CLOSE.as_hint(),
             ]),
             SqlModalTab::Compare if compare_can_yank => FooterHintBar::new([
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK].as_hint(),
-                (
-                    "Tab/⇧Tab",
-                    SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
-                        .as_hint()
-                        .1,
-                ),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE].as_hint(),
+                sql_modal_compare::EDIT_QUERY.as_hint(),
+                sql_modal_compare::YANK.as_hint(),
+                ("Tab/⇧Tab", sql_modal_compare::TAB.as_hint().1),
+                sql_modal_compare::CLOSE.as_hint(),
             ]),
             SqlModalTab::Compare => FooterHintBar::new([
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
-                (
-                    "Tab/⇧Tab",
-                    SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
-                        .as_hint()
-                        .1,
-                ),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE].as_hint(),
+                sql_modal_compare::EDIT_QUERY.as_hint(),
+                ("Tab/⇧Tab", sql_modal_compare::TAB.as_hint().1),
+                sql_modal_compare::CLOSE.as_hint(),
             ]),
             SqlModalTab::Sql => {
                 if services.db_capabilities.supports_explain() {
                     FooterHintBar::new([
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
-                        SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
-                        (
-                            "Tab/⇧Tab",
-                            SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
-                        ),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+                        sql_modal_normal::RUN.as_hint(),
+                        sql_modal_plan::EXPLAIN.as_hint(),
+                        sql_modal_normal::ENTER_INSERT.as_hint(),
+                        ("Tab/⇧Tab", sql_modal_plan::TAB.as_hint().1),
+                        sql_modal_normal::CLOSE.as_hint(),
                     ])
                 } else {
                     FooterHintBar::new([
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
-                        (
-                            "Tab/⇧Tab",
-                            SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
-                        ),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+                        sql_modal_normal::RUN.as_hint(),
+                        sql_modal_normal::ENTER_INSERT.as_hint(),
+                        ("Tab/⇧Tab", sql_modal_plan::TAB.as_hint().1),
+                        sql_modal_normal::CLOSE.as_hint(),
                     ])
                 }
             }
@@ -324,18 +305,18 @@ impl SqlModal {
     fn editing_hint(services: &AppServices) -> FooterHintBar {
         if services.db_capabilities.supports_explain() {
             FooterHintBar::new([
-                SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::CLEAR].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
+                sql_modal::RUN.as_hint(),
+                sql_modal_plan::EXPLAIN.as_hint(),
+                sql_modal::CLEAR.as_hint(),
+                sql_modal::QUERY_HISTORY.as_hint(),
+                sql_modal::ESC_NORMAL.as_hint(),
             ])
         } else {
             FooterHintBar::new([
-                SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::CLEAR].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
+                sql_modal::RUN.as_hint(),
+                sql_modal::CLEAR.as_hint(),
+                sql_modal::QUERY_HISTORY.as_hint(),
+                sql_modal::ESC_NORMAL.as_hint(),
             ])
         }
     }
