@@ -100,6 +100,13 @@ impl PostgresAdapter {
         ) || s == "START TRANSACTION"
     }
 
+    // Distinguishes a command-tag block ("UPDATE 1", "BEGIN", ...) from a
+    // result-set block (CSV header + data rows) in psql output. Empty input
+    // is not a command-tag block.
+    pub(in crate::adapters::postgres) fn is_command_tags_only(block: &str) -> bool {
+        Self::parse_all_tags(block).is_some()
+    }
+
     fn parse_all_tags(stdout: &str) -> Option<Vec<CommandTag>> {
         let mut tags = Vec::new();
         for line in stdout.lines() {
@@ -456,6 +463,30 @@ mod tests {
             assert!(!PostgresAdapter::is_known_tcl_tag("UPDATE 1"));
             assert!(!PostgresAdapter::is_known_tcl_tag("id,name"));
             assert!(!PostgresAdapter::is_known_tcl_tag("VACUUM"));
+        }
+    }
+
+    mod is_command_tags_only {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case::single_dml("UPDATE 3")]
+        #[case::ddl("CREATE TABLE")]
+        #[case::txn_sequence("BEGIN\nUPDATE 1\nCOMMIT")]
+        #[case::trailing_newline("INSERT 0 1\n")]
+        fn tag_block_returns_true(#[case] block: &str) {
+            assert!(PostgresAdapter::is_command_tags_only(block));
+        }
+
+        #[rstest]
+        #[case::csv_with_rows("id,name\n1,Alice")]
+        #[case::csv_header_only("id,name")]
+        #[case::single_column_header("count")]
+        #[case::empty("")]
+        #[case::tag_then_csv("UPDATE 1\nid,name\n1,Alice")]
+        fn result_set_or_empty_returns_false(#[case] block: &str) {
+            assert!(!PostgresAdapter::is_command_tags_only(block));
         }
     }
 
