@@ -241,12 +241,9 @@ pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
             direction: ScrollDirection::Right,
             amount: ScrollAmount::Line,
         } => {
-            let plan = &state.ui.result_viewport_plan;
-            let all_widths_len = plan.max_offset + plan.column_count;
             state.result_interaction.horizontal_offset = calculate_next_column_offset(
-                all_widths_len,
                 state.result_interaction.horizontal_offset,
-                plan.column_count,
+                state.ui.result_viewport_plan.max_offset,
             );
             DispatchResult::handled()
         }

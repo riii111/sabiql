@@ -273,6 +273,7 @@ pub fn calculate_viewport_column_count(
 pub struct ViewportPlan {
     pub column_count: usize,
     pub max_offset: usize,
+    pub total_columns: usize,
     pub available_width: u16,
     pub min_widths_sum: u16,
     pub ideal_widths_sum: u16,
@@ -297,6 +298,7 @@ impl ViewportPlan {
         Self {
             column_count,
             max_offset,
+            total_columns: ideal_widths.len(),
             available_width,
             min_widths_sum,
             ideal_widths_sum,
@@ -315,7 +317,7 @@ impl ViewportPlan {
     ) -> bool {
         self.column_count == 0
             || self.available_width != new_available_width
-            || self.max_offset + self.column_count != new_widths_len
+            || self.total_columns != new_widths_len
             || self.min_widths_sum != new_min_widths_sum
             || self.ideal_widths_sum != new_ideal_widths_sum
             || self.ideal_widths_max != new_ideal_widths_max
@@ -326,12 +328,7 @@ pub fn calculate_max_offset(all_widths_len: usize, viewport_column_count: usize)
     all_widths_len.saturating_sub(viewport_column_count)
 }
 
-pub fn calculate_next_column_offset(
-    all_widths_len: usize,
-    current_offset: usize,
-    viewport_column_count: usize,
-) -> usize {
-    let max_offset = calculate_max_offset(all_widths_len, viewport_column_count);
+pub fn calculate_next_column_offset(current_offset: usize, max_offset: usize) -> usize {
     (current_offset + 1).min(max_offset)
 }
 
@@ -509,6 +506,7 @@ mod tests {
             ViewportPlan {
                 column_count: 2,
                 max_offset: 3,
+                total_columns: 5,
                 available_width: 80,
                 min_widths_sum: 50,
                 ideal_widths_sum: 150,
@@ -738,12 +736,12 @@ mod tests {
 
         #[test]
         fn next_increments() {
-            assert_eq!(calculate_next_column_offset(5, 1, 3), 2);
+            assert_eq!(calculate_next_column_offset(1, 2), 2);
         }
 
         #[test]
         fn next_clamps_to_max() {
-            assert_eq!(calculate_next_column_offset(5, 2, 3), 2);
+            assert_eq!(calculate_next_column_offset(2, 2), 2);
         }
 
         #[test]
