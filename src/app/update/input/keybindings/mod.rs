@@ -140,6 +140,110 @@ mod tests {
         use super::*;
         use crate::update::input::keymap;
 
+        mod action_mapping {
+            use super::*;
+            use crate::update::action::{ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
+            use rstest::rstest;
+
+            #[rstest]
+            #[case(global::QUIT, Action::Quit)]
+            #[case(global::HELP, Action::ToggleModal(ModalKind::Help))]
+            #[case(global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
+            #[case(global::SETTINGS, Action::OpenModal(ModalKind::Settings))]
+            #[case(global::COMMAND_LINE, Action::EnterCommandLine)]
+            #[case(global::COMMAND_PALETTE, Action::OpenModal(ModalKind::CommandPalette))]
+            #[case(global::RELOAD, Action::ReloadMetadata)]
+            #[case(global::SQL, Action::OpenModal(ModalKind::SqlModal))]
+            #[case(global::ER_DIAGRAM, Action::OpenModal(ModalKind::ErTablePicker))]
+            #[case(global::CONNECTIONS, Action::OpenModal(ModalKind::ConnectionSelector))]
+            #[case(global::CSV_EXPORT, Action::RequestCsvExport)]
+            #[case(global::READ_ONLY, Action::ToggleReadOnly)]
+            #[case(global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
+            #[case(
+                global::QUERY_HISTORY,
+                Action::OpenModal(ModalKind::QueryHistoryPicker)
+            )]
+            fn global_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
+                assert_payload_free_action_eq(&kb, &expected);
+            }
+
+            #[rstest]
+            #[case(sql_modal_plan::EXPLAIN, Action::ExplainRequest)]
+            #[case(sql_modal_plan::ANALYZE, Action::ExplainAnalyzeRequest)]
+            #[case(sql_modal_plan::YANK, Action::SqlModalYank)]
+            #[case(sql_modal_plan::TAB, Action::SqlModalNextTab)]
+            #[case(sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
+            #[case(sql_modal_plan::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
+            fn plan_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
+                assert_payload_free_action_eq(&kb, &expected);
+            }
+
+            #[rstest]
+            #[case(sql_modal_compare::EXPLAIN, Action::ExplainRequest)]
+            #[case(sql_modal_compare::ANALYZE, Action::ExplainAnalyzeRequest)]
+            #[case(sql_modal_compare::EDIT_QUERY, Action::CompareEditQuery)]
+            #[case(sql_modal_compare::YANK, Action::SqlModalYank)]
+            #[case(sql_modal_compare::TAB, Action::SqlModalNextTab)]
+            #[case(sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
+            #[case(sql_modal_compare::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
+            fn compare_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
+                assert_payload_free_action_eq(&kb, &expected);
+            }
+
+            #[test]
+            fn confirm_yes_action_matches() {
+                assert!(matches!(confirm::YES.action, Action::ConfirmDialogConfirm));
+            }
+
+            #[test]
+            fn confirm_scroll_down_action_matches() {
+                assert!(matches!(
+                    confirm::SCROLL_DOWN.action,
+                    Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line,
+                    }
+                ));
+            }
+
+            #[test]
+            fn confirm_scroll_up_action_matches() {
+                assert!(matches!(
+                    confirm::SCROLL_UP.action,
+                    Action::Scroll {
+                        target: ScrollTarget::ConfirmDialog,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::Line,
+                    }
+                ));
+            }
+
+            #[test]
+            fn confirm_no_action_matches() {
+                assert!(matches!(confirm::NO.action, Action::ConfirmDialogCancel));
+            }
+
+            fn assert_payload_free_action_eq(kb: &KeyBinding, expected: &Action) {
+                assert!(
+                    same_payload_free_action(&kb.action, expected),
+                    "binding '{}' ({}) has action {:?}, expected {expected:?}",
+                    kb.key,
+                    kb.description,
+                    kb.action,
+                );
+            }
+
+            fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
+                match (actual, expected) {
+                    (Action::OpenModal(a), Action::OpenModal(b))
+                    | (Action::CloseModal(a), Action::CloseModal(b))
+                    | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
+                    _ => std::mem::discriminant(actual) == std::mem::discriminant(expected),
+                }
+            }
+        }
+
         mod binding_shape {
             use super::*;
 

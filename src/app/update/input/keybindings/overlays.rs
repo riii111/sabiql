@@ -1,6 +1,4 @@
-use super::{Key, KeyCombo};
 use super::{KeyBinding, ModeRow};
-use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 
 // =============================================================================
 // Overlays (common display hints)
@@ -776,16 +774,20 @@ pub const SETTINGS_ROWS: &[ModeRow] = &[
 // Confirm Dialog
 // =============================================================================
 
-pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
-    KeyBinding {
+pub mod confirm {
+    use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
+
+    pub const YES: KeyBinding = KeyBinding {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Confirm",
         description: "Confirm",
         action: Action::ConfirmDialogConfirm,
         combos: &[KeyCombo::plain(Key::Enter)],
-    },
-    KeyBinding {
+    };
+
+    pub const SCROLL_DOWN: KeyBinding = KeyBinding {
         key_short: "^N/j/↓",
         key: "Ctrl+N / j / ↓",
         desc_short: "Down",
@@ -800,8 +802,9 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
             KeyCombo::plain(Key::Down),
             KeyCombo::ctrl(Key::Char('n')),
         ],
-    },
-    KeyBinding {
+    };
+
+    pub const SCROLL_UP: KeyBinding = KeyBinding {
         key_short: "^P/k/↑",
         key: "Ctrl+P / k / ↑",
         desc_short: "Up",
@@ -816,15 +819,23 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
             KeyCombo::plain(Key::Up),
             KeyCombo::ctrl(Key::Char('p')),
         ],
-    },
-    KeyBinding {
+    };
+
+    pub const NO: KeyBinding = KeyBinding {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Cancel",
         description: "Cancel",
         action: Action::ConfirmDialogCancel,
         combos: &[KeyCombo::plain(Key::Esc)],
-    },
+    };
+}
+
+pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
+    confirm::YES,
+    confirm::SCROLL_DOWN,
+    confirm::SCROLL_UP,
+    confirm::NO,
 ];
 
 // =============================================================================
