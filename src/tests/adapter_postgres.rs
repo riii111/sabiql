@@ -109,6 +109,125 @@ mod query_execution {
     }
 }
 
+mod multi_statement_boundaries {
+    use super::*;
+    use sabiql_domain::CommandTag;
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn returns_last_result_set() {
+        let adapter = PostgresAdapter::new();
+        let dsn = test_dsn();
+
+        let result = adapter
+            .execute_adhoc(&dsn, "SELECT 1 AS a; SELECT 2 AS b, 3 AS c", false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.columns, vec!["b", "c"]);
+        assert_eq!(result.rows, vec![vec!["2", "3"]]);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn data_rows_identical_to_header_are_preserved() {
+        let adapter = PostgresAdapter::new();
+        let dsn = test_dsn();
+
+        let sql = "SELECT 1 AS id, 'Alice' AS name; \
+                   SELECT 'id' AS id, 'name' AS name";
+        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+
+        assert_eq!(result.columns, vec!["id", "name"]);
+        assert_eq!(result.rows, vec![vec!["id", "name"]]);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn empty_leading_result_set_returns_last() {
+        let adapter = PostgresAdapter::new();
+        let dsn = test_dsn();
+
+        let sql = "SELECT 1 AS a WHERE false; SELECT 2 AS b";
+        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+
+        assert_eq!(result.columns, vec!["b"]);
+        assert_eq!(result.rows, vec![vec!["2"]]);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn empty_trailing_result_set_returns_zero_rows() {
+        let adapter = PostgresAdapter::new();
+        let dsn = test_dsn();
+
+        let sql = "SELECT 1 AS a; SELECT 2 AS b WHERE false";
+        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+
+        assert_eq!(result.columns, vec!["b"]);
+        assert!(result.rows.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn statements_share_one_session_and_transaction() {
+        let adapter = PostgresAdapter::new();
+        let dsn = test_dsn();
+
+        // Temp tables are session-local: this only works if all
+        // statements run in a single psql invocation.
+        let sql = "CREATE TEMP TABLE boundary_probe(v int); \
+                   INSERT INTO boundary_probe VALUES (7); \
+                   SELECT v FROM boundary_probe";
+        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+
+        assert_eq!(result.columns, vec!["v"]);
+        assert_eq!(result.rows, vec![vec!["7"]]);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn write_only_statements_report_aggregate_tag() {
+        let adapter = PostgresAdapter::new();
+        let dsn = test_dsn();
+
+        let sql = "CREATE TEMP TABLE tag_probe(v int); \
+                   INSERT INTO tag_probe VALUES (1), (2)";
+        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+
+        assert!(result.rows.is_empty());
+        assert_eq!(
+            result.command_tag,
+            Some(CommandTag::Create("TABLE".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PostgreSQL, tracked: #133"]
+    async fn error_in_later_statement_rolls_back_earlier_writes() {
+        let adapter = PostgresAdapter::new();
+        let dsn = test_dsn();
+        adapter
+            .execute_adhoc(&dsn, "DROP TABLE IF EXISTS boundary_rollback_probe", false)
+            .await
+            .unwrap();
+
+        let failing = "CREATE TABLE boundary_rollback_probe(v int); SELECT no_such_column";
+        let result = adapter.execute_adhoc(&dsn, failing, false).await;
+        assert!(result.is_err(), "expected mid-script error, got {result:?}");
+
+        let check = adapter
+            .execute_adhoc(
+                &dsn,
+                "SELECT to_regclass('boundary_rollback_probe') IS NULL AS rolled_back",
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(check.rows, vec![vec!["t"]]);
+    }
+}
+
 mod error_paths {
     use super::*;
 
