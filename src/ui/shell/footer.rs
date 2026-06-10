@@ -11,11 +11,10 @@ use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
-    CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
-    CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
-    INSPECTOR_DDL_KEYS, JSONB_DETAIL_ROWS, JSONB_EDIT_ROWS, JSONB_SEARCH_KEYS, OVERLAY_KEYS,
-    QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
-    SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
+    cell_edit, command_palette, connection_error, connection_selector, connection_setup, er_picker,
+    footer_nav, global, help, history, inspector_ddl, jsonb_detail, jsonb_edit, jsonb_search,
+    overlay, query_history_picker, result_active, sql_modal, sql_modal_confirming, sql_modal_plan,
+    table_picker,
 };
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
@@ -89,9 +88,9 @@ impl Footer {
             InputMode::Normal => {
                 if state.query.is_history_mode() {
                     return vec![
-                        HISTORY_KEYS[idx::history::NAV].as_hint(),
-                        GLOBAL_KEYS[idx::global::HELP].as_hint(),
-                        HISTORY_KEYS[idx::history::EXIT].as_hint(),
+                        history::NAV.as_hint(),
+                        global::HELP.as_hint(),
+                        history::EXIT.as_hint(),
                     ];
                 }
 
@@ -102,50 +101,49 @@ impl Footer {
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
                     if state.result_interaction.cell_edit().has_pending_draft() {
                         vec![
-                            RESULT_ACTIVE_KEYS[idx::result_active::EDIT].as_hint(),
-                            CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),
-                            GLOBAL_KEYS[idx::global::HELP].as_hint(),
-                            RESULT_ACTIVE_KEYS[idx::result_active::DRAFT_DISCARD].as_hint(),
-                            GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                            result_active::EDIT.as_hint(),
+                            cell_edit::WRITE.as_hint(),
+                            global::HELP.as_hint(),
+                            result_active::DRAFT_DISCARD.as_hint(),
+                            global::QUIT.as_hint(),
                         ]
                     } else if state.result_interaction.staged_delete_rows().is_empty() {
                         vec![
-                            RESULT_ACTIVE_KEYS[idx::result_active::EDIT].as_hint(),
-                            RESULT_ACTIVE_KEYS[idx::result_active::YANK].as_hint(),
-                            RESULT_ACTIVE_KEYS[idx::result_active::ROW_YANK].as_hint(),
-                            RESULT_ACTIVE_KEYS[idx::result_active::STAGE_DELETE].as_hint(),
-                            GLOBAL_KEYS[idx::global::HELP].as_hint(),
-                            RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
-                            GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                            result_active::EDIT.as_hint(),
+                            result_active::YANK.as_hint(),
+                            result_active::ROW_YANK.as_hint(),
+                            result_active::STAGE_DELETE.as_hint(),
+                            global::HELP.as_hint(),
+                            result_active::ESC_BACK.as_hint(),
+                            global::QUIT.as_hint(),
                         ]
                     } else {
                         vec![
-                            RESULT_ACTIVE_KEYS[idx::result_active::STAGE_DELETE].as_hint(),
-                            RESULT_ACTIVE_KEYS[idx::result_active::UNSTAGE_DELETE].as_hint(),
-                            CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),
-                            GLOBAL_KEYS[idx::global::HELP].as_hint(),
-                            RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
-                            GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                            result_active::STAGE_DELETE.as_hint(),
+                            result_active::UNSTAGE_DELETE.as_hint(),
+                            cell_edit::WRITE.as_hint(),
+                            global::HELP.as_hint(),
+                            result_active::ESC_BACK.as_hint(),
+                            global::QUIT.as_hint(),
                         ]
                     }
                 } else if state.ui.is_focus_mode() {
                     // Actions → Navigation → Help → Close/Cancel → Quit
-                    let mut list =
-                        vec![RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint()];
+                    let mut list = vec![result_active::ENTER_DEEPEN.as_hint()];
                     if !state.result_interaction.staged_delete_rows().is_empty() {
-                        list.push(RESULT_ACTIVE_KEYS[idx::result_active::UNSTAGE_DELETE].as_hint());
-                        list.push(CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint());
+                        list.push(result_active::UNSTAGE_DELETE.as_hint());
+                        list.push(cell_edit::WRITE.as_hint());
                     }
                     if state.can_request_csv_export() {
-                        list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
+                        list.push(global::CSV_EXPORT.as_hint());
                     }
                     if state.query.can_paginate_visible_result() {
-                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
+                        list.push(footer_nav::PAGE_NAV.as_hint());
                     }
-                    list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
-                    list.push(GLOBAL_KEYS[idx::global::SETTINGS].as_hint());
-                    list.push(GLOBAL_KEYS[idx::global::EXIT_FOCUS].as_hint());
-                    list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
+                    list.push(global::HELP.as_hint());
+                    list.push(global::SETTINGS.as_hint());
+                    list.push(global::EXIT_FOCUS.as_hint());
+                    list.push(global::QUIT.as_hint());
                     list
                 } else {
                     // Actions → Navigation → Help → Close/Cancel → Quit
@@ -153,85 +151,80 @@ impl Footer {
                         .db_capabilities
                         .normalize_inspector_tab(state.ui.inspector_tab);
                     let mut list = vec![
-                        GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
-                        GLOBAL_KEYS[idx::global::SQL].as_hint(),
-                        GLOBAL_KEYS[idx::global::ER_DIAGRAM].as_hint(),
+                        global::RELOAD.as_hint(),
+                        global::SQL.as_hint(),
+                        global::ER_DIAGRAM.as_hint(),
                     ];
                     if state.ui.focused_pane == FocusedPane::Explorer {
-                        list.push(GLOBAL_KEYS[idx::global::CONNECTIONS].as_hint());
+                        list.push(global::CONNECTIONS.as_hint());
                     }
-                    list.push(GLOBAL_KEYS[idx::global::TABLE_PICKER].as_hint());
-                    list.push(GLOBAL_KEYS[idx::global::QUERY_HISTORY].as_hint());
+                    list.push(global::TABLE_PICKER.as_hint());
+                    list.push(global::QUERY_HISTORY.as_hint());
                     if state.connection_error.error_info.is_some() {
-                        list.push(OVERLAY_KEYS[idx::overlay::ERROR_OPEN].as_hint());
+                        list.push(overlay::ERROR_OPEN.as_hint());
                     }
                     if state.session.read_only {
-                        list.push(GLOBAL_KEYS[idx::global::EXIT_READ_ONLY].as_hint());
+                        list.push(global::EXIT_READ_ONLY.as_hint());
                     } else {
-                        list.push(GLOBAL_KEYS[idx::global::READ_ONLY].as_hint());
+                        list.push(global::READ_ONLY.as_hint());
                     }
-                    list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
+                    list.push(global::FOCUS.as_hint());
                     if state.can_request_csv_export() {
-                        list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
+                        list.push(global::CSV_EXPORT.as_hint());
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         use crate::app::model::shared::inspector_tab::InspectorTab;
                         if active_inspector_tab == InspectorTab::Ddl {
-                            list.push(INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK].as_hint());
+                            list.push(inspector_ddl::YANK.as_hint());
                         }
                     }
                     // Navigation
                     if state.ui.focused_pane == FocusedPane::Result {
-                        list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());
+                        list.push(result_active::ENTER_DEEPEN.as_hint());
                         if !state.result_interaction.staged_delete_rows().is_empty() {
-                            list.push(
-                                RESULT_ACTIVE_KEYS[idx::result_active::UNSTAGE_DELETE].as_hint(),
-                            );
-                            list.push(CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint());
+                            list.push(result_active::UNSTAGE_DELETE.as_hint());
+                            list.push(cell_edit::WRITE.as_hint());
                         }
                         if state.query.can_paginate_visible_result() {
-                            list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
+                            list.push(footer_nav::PAGE_NAV.as_hint());
                         }
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector
                         && services.db_capabilities.supported_inspector_tabs().len() > 1
                     {
-                        list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
+                        list.push(global::INSPECTOR_TABS.as_hint());
                     }
-                    list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
-                    list.push(GLOBAL_KEYS[idx::global::COMMAND_PALETTE].as_hint());
-                    list.push(GLOBAL_KEYS[idx::global::SETTINGS].as_hint());
-                    list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
+                    list.push(global::HELP.as_hint());
+                    list.push(global::COMMAND_PALETTE.as_hint());
+                    list.push(global::SETTINGS.as_hint());
+                    list.push(global::QUIT.as_hint());
                     list
                 }
             }
             InputMode::CommandLine => vec![
-                OVERLAY_KEYS[idx::overlay::ENTER_EXECUTE].as_hint(),
-                OVERLAY_KEYS[idx::overlay::ESC_CANCEL].as_hint(),
+                overlay::ENTER_EXECUTE.as_hint(),
+                overlay::ESC_CANCEL.as_hint(),
             ],
             InputMode::CellEdit => vec![
-                CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),
-                CELL_EDIT_KEYS[idx::cell_edit::TYPE].as_hint(),
-                CELL_EDIT_KEYS[idx::cell_edit::MOVE].as_hint(),
-                GLOBAL_KEYS[idx::global::HELP].as_hint(),
-                CELL_EDIT_KEYS[idx::cell_edit::ESC_CANCEL].as_hint(),
-                GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                cell_edit::WRITE.as_hint(),
+                cell_edit::TYPE.as_hint(),
+                cell_edit::MOVE.as_hint(),
+                global::HELP.as_hint(),
+                cell_edit::ESC_CANCEL.as_hint(),
+                global::QUIT.as_hint(),
             ],
             InputMode::TablePicker => vec![
-                TABLE_PICKER_ROWS[idx::table_picker::ENTER_SELECT].as_hint(),
-                TABLE_PICKER_ROWS[idx::table_picker::TYPE_FILTER].as_hint(),
-                TABLE_PICKER_ROWS[idx::table_picker::ESC_CLOSE].as_hint(),
+                table_picker::ENTER_SELECT.as_hint(),
+                table_picker::TYPE_FILTER.as_hint(),
+                table_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::CommandPalette => {
                 vec![
-                    COMMAND_PALETTE_ROWS[idx::cmd_palette::ENTER_EXECUTE].as_hint(),
-                    COMMAND_PALETTE_ROWS[idx::cmd_palette::ESC_CLOSE].as_hint(),
+                    command_palette::ENTER_EXECUTE.as_hint(),
+                    command_palette::ESC_CLOSE.as_hint(),
                 ]
             }
-            InputMode::Help => vec![
-                HELP_ROWS[idx::help::H_SCROLL].as_hint(),
-                HELP_ROWS[idx::help::CLOSE].as_hint(),
-            ],
+            InputMode::Help => vec![help::H_SCROLL.as_hint(), help::CLOSE.as_hint()],
             InputMode::Settings => settings_hints(state),
             InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {
@@ -239,10 +232,7 @@ impl Footer {
                     state.sql_modal.status(),
                     SqlModalStatus::ConfirmingHigh { .. }
                 ) {
-                    vec![
-                        SQL_MODAL_CONFIRMING_KEYS[idx::sql_modal_confirming::CANCEL_CONFIRM]
-                            .as_hint(),
-                    ]
+                    vec![sql_modal_confirming::CANCEL_CONFIRM.as_hint()]
                 } else if matches!(
                     state.sql_modal.status(),
                     SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
@@ -252,89 +242,85 @@ impl Footer {
                 } else {
                     // Editing / Running
                     let mut hints = vec![
-                        SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
-                        SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
-                        SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
+                        sql_modal::RUN.as_hint(),
+                        sql_modal::MOVE.as_hint(),
+                        sql_modal::ESC_NORMAL.as_hint(),
                     ];
                     if services.db_capabilities.supports_explain()
                         && state.sql_modal.status() == &SqlModalStatus::Editing
                     {
-                        hints.insert(
-                            1,
-                            SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
-                        );
+                        hints.insert(1, sql_modal_plan::EXPLAIN.as_hint());
                     }
                     hints
                 }
             }
             InputMode::ConnectionSetup => vec![
-                CONNECTION_SETUP_KEYS[idx::conn_setup::SAVE].as_hint(),
-                CONNECTION_SETUP_KEYS[idx::conn_setup::TAB_NEXT].as_hint(),
-                CONNECTION_SETUP_KEYS[idx::conn_setup::TAB_PREV].as_hint(),
-                CONNECTION_SETUP_KEYS[idx::conn_setup::ESC_CANCEL].as_hint(),
+                connection_setup::SAVE.as_hint(),
+                connection_setup::TAB_NEXT.as_hint(),
+                connection_setup::TAB_PREV.as_hint(),
+                connection_setup::ESC_CANCEL.as_hint(),
             ],
             InputMode::ConnectionError => {
                 let first = if state.session.is_service_connection() {
-                    CONNECTION_ERROR_ROWS[idx::conn_error::RETRY].as_hint()
+                    connection_error::RETRY.as_hint()
                 } else {
-                    CONNECTION_ERROR_ROWS[idx::conn_error::EDIT].as_hint()
+                    connection_error::EDIT.as_hint()
                 };
                 vec![
                     first,
-                    CONNECTION_ERROR_ROWS[idx::conn_error::SWITCH].as_hint(),
-                    CONNECTION_ERROR_ROWS[idx::conn_error::DETAILS].as_hint(),
-                    CONNECTION_ERROR_ROWS[idx::conn_error::COPY].as_hint(),
-                    CONNECTION_ERROR_ROWS[idx::conn_error::ESC_CLOSE].as_hint(),
+                    connection_error::SWITCH.as_hint(),
+                    connection_error::DETAILS.as_hint(),
+                    connection_error::COPY.as_hint(),
+                    connection_error::ESC_CLOSE.as_hint(),
                 ]
             }
             InputMode::ErTablePicker => vec![
-                ER_PICKER_ROWS[idx::er_picker::ENTER_GENERATE].as_hint(),
-                ER_PICKER_ROWS[idx::er_picker::SELECT].as_hint(),
-                ER_PICKER_ROWS[idx::er_picker::SELECT_ALL].as_hint(),
-                ER_PICKER_ROWS[idx::er_picker::TYPE_FILTER].as_hint(),
-                ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
+                er_picker::ENTER_GENERATE.as_hint(),
+                er_picker::SELECT.as_hint(),
+                er_picker::SELECT_ALL.as_hint(),
+                er_picker::TYPE_FILTER.as_hint(),
+                er_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::QueryHistoryPicker => vec![
-                QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ENTER_SELECT].as_hint(),
-                QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::TYPE_FILTER].as_hint(),
-                QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ESC_CLOSE].as_hint(),
+                query_history_picker::ENTER_SELECT.as_hint(),
+                query_history_picker::TYPE_FILTER.as_hint(),
+                query_history_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::JsonbDetail => {
                 if state.jsonb_detail.search().active {
                     vec![
-                        JSONB_SEARCH_KEYS[idx::jsonb_search::TYPE_SEARCH].as_hint(),
-                        JSONB_SEARCH_KEYS[idx::jsonb_search::CONFIRM].as_hint(),
-                        JSONB_SEARCH_KEYS[idx::jsonb_search::CANCEL].as_hint(),
+                        jsonb_search::TYPE_SEARCH.as_hint(),
+                        jsonb_search::CONFIRM.as_hint(),
+                        jsonb_search::CANCEL.as_hint(),
                     ]
                 } else {
                     vec![
-                        JSONB_DETAIL_ROWS[idx::jsonb_detail::YANK].as_hint(),
-                        JSONB_DETAIL_ROWS[idx::jsonb_detail::INSERT].as_hint(),
-                        JSONB_DETAIL_ROWS[idx::jsonb_detail::SEARCH].as_hint(),
-                        JSONB_DETAIL_ROWS[idx::jsonb_detail::NEXT_PREV].as_hint(),
-                        JSONB_DETAIL_ROWS[idx::jsonb_detail::MOVE].as_hint(),
-                        JSONB_DETAIL_ROWS[idx::jsonb_detail::CLOSE].as_hint(),
+                        jsonb_detail::YANK.as_hint(),
+                        jsonb_detail::INSERT.as_hint(),
+                        jsonb_detail::SEARCH.as_hint(),
+                        jsonb_detail::NEXT_PREV.as_hint(),
+                        jsonb_detail::MOVE.as_hint(),
+                        jsonb_detail::CLOSE.as_hint(),
                     ]
                 }
             }
             InputMode::JsonbEdit => vec![
-                JSONB_EDIT_ROWS[idx::jsonb_edit::ESC_NORMAL].as_hint(),
-                JSONB_EDIT_ROWS[idx::jsonb_edit::MOVE].as_hint(),
-                JSONB_EDIT_ROWS[idx::jsonb_edit::HOME_END].as_hint(),
+                jsonb_edit::ESC_NORMAL.as_hint(),
+                jsonb_edit::MOVE.as_hint(),
+                jsonb_edit::HOME_END.as_hint(),
             ],
             InputMode::ConnectionSelector => {
-                let r = CONNECTION_SELECTOR_ROWS;
-                use idx::connection_selector as cs;
+                use connection_selector as cs;
                 let is_service_selected = crate::app::model::connection::list::is_service_selected(
                     state.connection_list_items(),
                     state.ui.connection_list_selected,
                 );
-                let mut list = vec![r[cs::CONFIRM].as_hint(), r[cs::NEW].as_hint()];
+                let mut list = vec![cs::CONFIRM.as_hint(), cs::NEW.as_hint()];
                 if !is_service_selected {
-                    list.push(r[cs::EDIT].as_hint());
-                    list.push(r[cs::DELETE].as_hint());
+                    list.push(cs::EDIT.as_hint());
+                    list.push(cs::DELETE.as_hint());
                 }
-                list.push(r[cs::CLOSE].as_hint());
+                list.push(cs::CLOSE.as_hint());
                 list
             }
         }
@@ -375,7 +361,7 @@ mod tests {
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::inspector_tab::InspectorTab;
     use crate::app::services::AppServices;
-    use crate::app::update::input::keybindings::{GLOBAL_KEYS, idx};
+    use crate::app::update::input::keybindings::global;
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -402,7 +388,7 @@ mod tests {
         let hints = Footer::get_context_hints(&state, &services);
 
         assert_eq!(
-            hints.contains(&GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint()),
+            hints.contains(&global::INSPECTOR_TABS.as_hint()),
             expected_visible
         );
     }

@@ -101,237 +101,6 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("JSONB_EDIT", &JSONB_EDIT),
 ];
 
-pub mod idx {
-    pub mod global {
-        pub const QUIT: usize = 0;
-        pub const HELP: usize = 1;
-        pub const TABLE_PICKER: usize = 2;
-        pub const SETTINGS: usize = 3;
-        pub const COMMAND_LINE: usize = 4;
-        pub const COMMAND_PALETTE: usize = 5;
-        pub const FOCUS: usize = 6;
-        pub const EXIT_FOCUS: usize = 7;
-        pub const PANE_SWITCH: usize = 8;
-        pub const INSPECTOR_TABS: usize = 9;
-        pub const RELOAD: usize = 10;
-        pub const SQL: usize = 11;
-        pub const ER_DIAGRAM: usize = 12;
-        pub const CONNECTIONS: usize = 13;
-        pub const CSV_EXPORT: usize = 14;
-        pub const READ_ONLY: usize = 15;
-        pub const EXIT_READ_ONLY: usize = 16;
-        pub const QUERY_HISTORY: usize = 17;
-    }
-
-    pub mod footer_nav {
-        pub const SCROLL: usize = 0;
-        pub const SCROLL_SHORT: usize = 1;
-        pub const TOP_BOTTOM: usize = 2;
-        pub const H_SCROLL: usize = 3;
-        pub const PAGE_NAV: usize = 4;
-    }
-
-    pub mod sql_modal_normal {
-        pub const RUN: usize = 0;
-        pub const YANK: usize = 1;
-        pub const ENTER_INSERT: usize = 2;
-        pub const APPEND: usize = 3;
-        pub const MOVE: usize = 4;
-        pub const HOME_END: usize = 5;
-        pub const VIEWPORT: usize = 6;
-        pub const CLOSE: usize = 7;
-        pub const CLEAR: usize = 8;
-        pub const QUERY_HISTORY: usize = 9;
-    }
-
-    pub mod sql_modal {
-        pub const RUN: usize = 0;
-        pub const ESC_NORMAL: usize = 1;
-        pub const MOVE: usize = 2;
-        pub const HOME_END: usize = 3;
-        pub const TAB: usize = 4;
-        pub const COMPLETION_TRIGGER: usize = 5;
-        pub const CLEAR: usize = 6;
-        pub const QUERY_HISTORY: usize = 7;
-    }
-
-    pub mod sql_modal_plan {
-        pub const EXPLAIN: usize = 0;
-        pub const ANALYZE: usize = 1;
-        pub const YANK: usize = 2;
-        pub const SCROLL: usize = 3;
-        pub const TAB: usize = 4;
-        pub const BACKTAB: usize = 5;
-        pub const CLOSE: usize = 6;
-    }
-
-    pub mod sql_modal_compare {
-        pub const EXPLAIN: usize = 0;
-        pub const ANALYZE: usize = 1;
-        pub const EDIT_QUERY: usize = 2;
-        pub const YANK: usize = 3;
-        pub const SCROLL: usize = 4;
-        pub const TAB: usize = 5;
-        pub const BACKTAB: usize = 6;
-        pub const CLOSE: usize = 7;
-    }
-
-    pub mod sql_modal_confirming {
-        pub const CANCEL_CONFIRM: usize = 0;
-    }
-
-    pub mod overlay {
-        pub const ESC_CANCEL: usize = 0;
-        pub const ESC_CLOSE: usize = 1;
-        pub const ENTER_EXECUTE: usize = 2;
-        pub const ENTER_SELECT: usize = 3;
-        pub const NAVIGATE_JK: usize = 4;
-        pub const TYPE_FILTER: usize = 5;
-        pub const ERROR_OPEN: usize = 6;
-    }
-
-    pub mod conn_setup {
-        pub const TAB_NAV: usize = 0;
-        pub const TAB_NEXT: usize = 1;
-        pub const TAB_PREV: usize = 2;
-        pub const SAVE: usize = 3;
-        pub const ESC_CANCEL: usize = 4;
-        pub const ENTER_DROPDOWN: usize = 5;
-        pub const DROPDOWN_NAV: usize = 6;
-    }
-
-    pub mod conn_error {
-        pub const EDIT: usize = 0;
-        pub const SWITCH: usize = 1;
-        pub const DETAILS: usize = 2;
-        pub const COPY: usize = 3;
-        pub const SCROLL: usize = 4;
-        pub const ESC_CLOSE: usize = 5;
-        pub const RETRY: usize = 6;
-    }
-
-    pub mod confirm {
-        pub const YES: usize = 0;
-        pub const SCROLL_DOWN: usize = 1;
-        pub const SCROLL_UP: usize = 2;
-        pub const NO: usize = 3;
-    }
-
-    pub mod table_picker {
-        pub const ENTER_SELECT: usize = 0;
-        pub const NAVIGATE: usize = 1;
-        pub const TYPE_FILTER: usize = 2;
-        pub const ESC_CLOSE: usize = 3;
-    }
-
-    pub mod er_picker {
-        pub const ENTER_GENERATE: usize = 0;
-        pub const SELECT: usize = 1;
-        pub const SELECT_ALL: usize = 2;
-        pub const NAVIGATE: usize = 3;
-        pub const TYPE_FILTER: usize = 4;
-        pub const ESC_CLOSE: usize = 5;
-    }
-
-    pub mod qh_picker {
-        pub const ENTER_SELECT: usize = 0;
-        pub const NAVIGATE: usize = 1;
-        pub const TYPE_FILTER: usize = 2;
-        pub const ESC_CLOSE: usize = 3;
-    }
-
-    pub mod cmd_palette {
-        pub const ENTER_EXECUTE: usize = 0;
-        pub const NAVIGATE_JK: usize = 1;
-        pub const ESC_CLOSE: usize = 2;
-    }
-
-    pub mod settings {
-        pub const APPLY: usize = 0;
-        pub const SELECT: usize = 1;
-        pub const EDIT: usize = 2;
-        pub const SECTION: usize = 3;
-        pub const CANCEL: usize = 4;
-    }
-
-    pub mod help {
-        pub const SCROLL: usize = 0;
-        pub const TOP_BOTTOM: usize = 1;
-        pub const HALF_PAGE: usize = 2;
-        pub const FULL_PAGE: usize = 3;
-        pub const H_SCROLL: usize = 4;
-        pub const TYPE_FILTER: usize = 5;
-        pub const EDIT_FILTER: usize = 6;
-        pub const ESC_CLOSE: usize = 7;
-        pub const CLOSE: usize = 8;
-    }
-
-    pub mod result_active {
-        pub const ENTER_DEEPEN: usize = 0;
-        pub const YANK: usize = 1;
-        pub const STAGE_DELETE: usize = 2;
-        pub const UNSTAGE_DELETE: usize = 3;
-        pub const CELL_NAV: usize = 4;
-        pub const ROW_NAV: usize = 5;
-        pub const TOP_BOTTOM: usize = 6;
-        pub const ESC_BACK: usize = 7;
-        pub const EDIT: usize = 8;
-        pub const DRAFT_DISCARD: usize = 9;
-        pub const ROW_YANK: usize = 10;
-    }
-
-    pub mod cell_edit {
-        pub const WRITE: usize = 0;
-        pub const TYPE: usize = 1;
-        pub const MOVE: usize = 2;
-        pub const HOME_END: usize = 3;
-        pub const COMMAND: usize = 4;
-        pub const ESC_CANCEL: usize = 5;
-    }
-
-    pub mod connection_selector {
-        pub const CONFIRM: usize = 0;
-        pub const SELECT: usize = 1;
-        pub const NEW: usize = 2;
-        pub const EDIT: usize = 3;
-        pub const DELETE: usize = 4;
-        pub const CLOSE: usize = 5;
-    }
-
-    pub mod inspector_ddl {
-        pub const YANK: usize = 0;
-    }
-
-    pub mod jsonb_detail {
-        pub const YANK: usize = 0;
-        pub const INSERT: usize = 1;
-        pub const SEARCH: usize = 2;
-        pub const NEXT_PREV: usize = 3;
-        pub const MOVE: usize = 4;
-        pub const JUMP: usize = 5;
-        pub const VIEW: usize = 6;
-        pub const CLOSE: usize = 7;
-    }
-
-    pub mod jsonb_search {
-        pub const TYPE_SEARCH: usize = 0;
-        pub const CONFIRM: usize = 1;
-        pub const CANCEL: usize = 2;
-    }
-
-    pub mod jsonb_edit {
-        pub const ESC_NORMAL: usize = 0;
-        pub const MOVE: usize = 1;
-        pub const HOME_END: usize = 2;
-    }
-
-    pub mod history {
-        pub const OPEN: usize = 0;
-        pub const NAV: usize = 1;
-        pub const EXIT: usize = 2;
-    }
-}
-
 // =============================================================================
 // Help Overlay Layout
 // =============================================================================
@@ -340,248 +109,45 @@ pub const HELP_KEY_INDENT_WIDTH: usize = 2;
 pub const HELP_KEY_DESC_GAP: usize = 2;
 
 pub fn is_quit(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::QUIT].combos.contains(combo)
+    global::QUIT.combos.contains(combo)
 }
 
 pub fn is_help(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::HELP].combos.contains(combo)
+    global::HELP.combos.contains(combo)
 }
 
 pub fn is_command_line(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::COMMAND_LINE]
-        .combos
-        .contains(combo)
+    global::COMMAND_LINE.combos.contains(combo)
 }
 
 pub fn is_command_palette(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::COMMAND_PALETTE]
-        .combos
-        .contains(combo)
+    global::COMMAND_PALETTE.combos.contains(combo)
 }
 
 pub fn is_focus_toggle(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::FOCUS].combos.contains(combo)
+    global::FOCUS.combos.contains(combo)
 }
 
 pub fn is_reload(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::RELOAD].combos.contains(combo)
+    global::RELOAD.combos.contains(combo)
+}
+
+// Action has payload variants without PartialEq, so tests compare by
+// discriminant — except modal actions, where several bindings differ only by
+// ModalKind and the kind must participate in equality.
+#[cfg(test)]
+pub fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
+    match (actual, expected) {
+        (Action::OpenModal(a), Action::OpenModal(b))
+        | (Action::CloseModal(a), Action::CloseModal(b))
+        | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
+        _ => std::mem::discriminant(actual) == std::mem::discriminant(expected),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::action::ModalKind;
-    use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
-
-    mod structure {
-        use super::*;
-
-        #[test]
-        fn idx_constants_are_within_bounds() {
-            // GLOBAL_KEYS
-            assert!(idx::global::QUIT < GLOBAL_KEYS.len());
-            assert!(idx::global::HELP < GLOBAL_KEYS.len());
-            assert!(idx::global::TABLE_PICKER < GLOBAL_KEYS.len());
-            assert!(idx::global::SETTINGS < GLOBAL_KEYS.len());
-            assert!(idx::global::COMMAND_LINE < GLOBAL_KEYS.len());
-            assert!(idx::global::COMMAND_PALETTE < GLOBAL_KEYS.len());
-            assert!(idx::global::FOCUS < GLOBAL_KEYS.len());
-            assert!(idx::global::EXIT_FOCUS < GLOBAL_KEYS.len());
-            assert!(idx::global::PANE_SWITCH < GLOBAL_KEYS.len());
-            assert!(idx::global::INSPECTOR_TABS < GLOBAL_KEYS.len());
-            assert!(idx::global::RELOAD < GLOBAL_KEYS.len());
-            assert!(idx::global::SQL < GLOBAL_KEYS.len());
-            assert!(idx::global::ER_DIAGRAM < GLOBAL_KEYS.len());
-            assert!(idx::global::CONNECTIONS < GLOBAL_KEYS.len());
-            assert!(idx::global::CSV_EXPORT < GLOBAL_KEYS.len());
-            assert!(idx::global::READ_ONLY < GLOBAL_KEYS.len());
-            assert!(idx::global::EXIT_READ_ONLY < GLOBAL_KEYS.len());
-            assert!(idx::global::QUERY_HISTORY < GLOBAL_KEYS.len());
-
-            // FOOTER_NAV_KEYS
-            assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());
-            assert!(idx::footer_nav::SCROLL_SHORT < FOOTER_NAV_KEYS.len());
-            assert!(idx::footer_nav::TOP_BOTTOM < FOOTER_NAV_KEYS.len());
-            assert!(idx::footer_nav::H_SCROLL < FOOTER_NAV_KEYS.len());
-            assert!(idx::footer_nav::PAGE_NAV < FOOTER_NAV_KEYS.len());
-
-            // SQL_MODAL_NORMAL_KEYS
-            assert!(idx::sql_modal_normal::RUN < SQL_MODAL_NORMAL_KEYS.len());
-            assert!(idx::sql_modal_normal::YANK < SQL_MODAL_NORMAL_KEYS.len());
-            assert!(idx::sql_modal_normal::ENTER_INSERT < SQL_MODAL_NORMAL_KEYS.len());
-            assert!(idx::sql_modal_normal::APPEND < SQL_MODAL_NORMAL_KEYS.len());
-            assert!(idx::sql_modal_normal::MOVE < SQL_MODAL_NORMAL_KEYS.len());
-            assert!(idx::sql_modal_normal::HOME_END < SQL_MODAL_NORMAL_KEYS.len());
-            assert!(idx::sql_modal_normal::VIEWPORT < SQL_MODAL_NORMAL_KEYS.len());
-            assert!(idx::sql_modal_normal::CLOSE < SQL_MODAL_NORMAL_KEYS.len());
-            assert!(idx::sql_modal_normal::CLEAR < SQL_MODAL_NORMAL_KEYS.len());
-            assert!(idx::sql_modal_normal::QUERY_HISTORY < SQL_MODAL_NORMAL_KEYS.len());
-
-            // SQL_MODAL_KEYS
-            assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());
-            assert!(idx::sql_modal::ESC_NORMAL < SQL_MODAL_KEYS.len());
-            assert!(idx::sql_modal::MOVE < SQL_MODAL_KEYS.len());
-            assert!(idx::sql_modal::HOME_END < SQL_MODAL_KEYS.len());
-            assert!(idx::sql_modal::TAB < SQL_MODAL_KEYS.len());
-            assert!(idx::sql_modal::COMPLETION_TRIGGER < SQL_MODAL_KEYS.len());
-            assert!(idx::sql_modal::CLEAR < SQL_MODAL_KEYS.len());
-            assert!(idx::sql_modal::QUERY_HISTORY < SQL_MODAL_KEYS.len());
-
-            // SQL_MODAL_PLAN_KEYS
-            assert!(idx::sql_modal_plan::EXPLAIN < SQL_MODAL_PLAN_KEYS.len());
-            assert!(idx::sql_modal_plan::ANALYZE < SQL_MODAL_PLAN_KEYS.len());
-            assert!(idx::sql_modal_plan::YANK < SQL_MODAL_PLAN_KEYS.len());
-            assert!(idx::sql_modal_plan::SCROLL < SQL_MODAL_PLAN_KEYS.len());
-            assert!(idx::sql_modal_plan::TAB < SQL_MODAL_PLAN_KEYS.len());
-            assert!(idx::sql_modal_plan::BACKTAB < SQL_MODAL_PLAN_KEYS.len());
-            assert!(idx::sql_modal_plan::CLOSE < SQL_MODAL_PLAN_KEYS.len());
-
-            // SQL_MODAL_COMPARE_KEYS
-            assert!(idx::sql_modal_compare::EXPLAIN < SQL_MODAL_COMPARE_KEYS.len());
-            assert!(idx::sql_modal_compare::ANALYZE < SQL_MODAL_COMPARE_KEYS.len());
-            assert!(idx::sql_modal_compare::EDIT_QUERY < SQL_MODAL_COMPARE_KEYS.len());
-            assert!(idx::sql_modal_compare::YANK < SQL_MODAL_COMPARE_KEYS.len());
-            assert!(idx::sql_modal_compare::SCROLL < SQL_MODAL_COMPARE_KEYS.len());
-            assert!(idx::sql_modal_compare::TAB < SQL_MODAL_COMPARE_KEYS.len());
-            assert!(idx::sql_modal_compare::BACKTAB < SQL_MODAL_COMPARE_KEYS.len());
-            assert!(idx::sql_modal_compare::CLOSE < SQL_MODAL_COMPARE_KEYS.len());
-
-            // SQL_MODAL_CONFIRMING_KEYS
-            assert!(idx::sql_modal_confirming::CANCEL_CONFIRM < SQL_MODAL_CONFIRMING_KEYS.len());
-
-            // OVERLAY_KEYS
-            assert!(idx::overlay::ESC_CANCEL < OVERLAY_KEYS.len());
-            assert!(idx::overlay::ESC_CLOSE < OVERLAY_KEYS.len());
-            assert!(idx::overlay::ENTER_EXECUTE < OVERLAY_KEYS.len());
-            assert!(idx::overlay::ENTER_SELECT < OVERLAY_KEYS.len());
-            assert!(idx::overlay::NAVIGATE_JK < OVERLAY_KEYS.len());
-            assert!(idx::overlay::TYPE_FILTER < OVERLAY_KEYS.len());
-            assert!(idx::overlay::ERROR_OPEN < OVERLAY_KEYS.len());
-
-            // CONNECTION_SETUP_KEYS
-            assert!(idx::conn_setup::TAB_NAV < CONNECTION_SETUP_KEYS.len());
-            assert!(idx::conn_setup::TAB_NEXT < CONNECTION_SETUP_KEYS.len());
-            assert!(idx::conn_setup::TAB_PREV < CONNECTION_SETUP_KEYS.len());
-            assert!(idx::conn_setup::SAVE < CONNECTION_SETUP_KEYS.len());
-            assert!(idx::conn_setup::ESC_CANCEL < CONNECTION_SETUP_KEYS.len());
-            assert!(idx::conn_setup::ENTER_DROPDOWN < CONNECTION_SETUP_KEYS.len());
-            assert!(idx::conn_setup::DROPDOWN_NAV < CONNECTION_SETUP_KEYS.len());
-
-            // CONNECTION_ERROR_ROWS
-            assert!(idx::conn_error::EDIT < CONNECTION_ERROR_ROWS.len());
-            assert!(idx::conn_error::SWITCH < CONNECTION_ERROR_ROWS.len());
-            assert!(idx::conn_error::DETAILS < CONNECTION_ERROR_ROWS.len());
-            assert!(idx::conn_error::COPY < CONNECTION_ERROR_ROWS.len());
-            assert!(idx::conn_error::SCROLL < CONNECTION_ERROR_ROWS.len());
-            assert!(idx::conn_error::ESC_CLOSE < CONNECTION_ERROR_ROWS.len());
-
-            // CONFIRM_DIALOG_KEYS
-            assert!(idx::confirm::YES < CONFIRM_DIALOG_KEYS.len());
-            assert!(idx::confirm::SCROLL_DOWN < CONFIRM_DIALOG_KEYS.len());
-            assert!(idx::confirm::SCROLL_UP < CONFIRM_DIALOG_KEYS.len());
-            assert!(idx::confirm::NO < CONFIRM_DIALOG_KEYS.len());
-
-            // TABLE_PICKER_ROWS
-            assert!(idx::table_picker::ENTER_SELECT < TABLE_PICKER_ROWS.len());
-            assert!(idx::table_picker::NAVIGATE < TABLE_PICKER_ROWS.len());
-            assert!(idx::table_picker::TYPE_FILTER < TABLE_PICKER_ROWS.len());
-            assert!(idx::table_picker::ESC_CLOSE < TABLE_PICKER_ROWS.len());
-
-            // ER_PICKER_ROWS
-            assert!(idx::er_picker::ENTER_GENERATE < ER_PICKER_ROWS.len());
-            assert!(idx::er_picker::SELECT < ER_PICKER_ROWS.len());
-            assert!(idx::er_picker::SELECT_ALL < ER_PICKER_ROWS.len());
-            assert!(idx::er_picker::NAVIGATE < ER_PICKER_ROWS.len());
-            assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_ROWS.len());
-            assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_ROWS.len());
-
-            // QUERY_HISTORY_PICKER_ROWS
-            assert!(idx::qh_picker::ENTER_SELECT < QUERY_HISTORY_PICKER_ROWS.len());
-            assert!(idx::qh_picker::NAVIGATE < QUERY_HISTORY_PICKER_ROWS.len());
-            assert!(idx::qh_picker::TYPE_FILTER < QUERY_HISTORY_PICKER_ROWS.len());
-            assert!(idx::qh_picker::ESC_CLOSE < QUERY_HISTORY_PICKER_ROWS.len());
-
-            // COMMAND_PALETTE_ROWS
-            assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_ROWS.len());
-            assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_ROWS.len());
-            assert!(idx::cmd_palette::ESC_CLOSE < COMMAND_PALETTE_ROWS.len());
-
-            // SETTINGS_ROWS
-            assert!(idx::settings::APPLY < SETTINGS_ROWS.len());
-            assert!(idx::settings::SELECT < SETTINGS_ROWS.len());
-            assert!(idx::settings::EDIT < SETTINGS_ROWS.len());
-            assert!(idx::settings::SECTION < SETTINGS_ROWS.len());
-            assert!(idx::settings::CANCEL < SETTINGS_ROWS.len());
-
-            // HELP_ROWS
-            assert!(idx::help::SCROLL < HELP_ROWS.len());
-            assert!(idx::help::TOP_BOTTOM < HELP_ROWS.len());
-            assert!(idx::help::HALF_PAGE < HELP_ROWS.len());
-            assert!(idx::help::FULL_PAGE < HELP_ROWS.len());
-            assert!(idx::help::H_SCROLL < HELP_ROWS.len());
-            assert!(idx::help::TYPE_FILTER < HELP_ROWS.len());
-            assert!(idx::help::EDIT_FILTER < HELP_ROWS.len());
-            assert!(idx::help::ESC_CLOSE < HELP_ROWS.len());
-            assert!(idx::help::CLOSE < HELP_ROWS.len());
-
-            // RESULT_ACTIVE_KEYS
-            assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::YANK < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::STAGE_DELETE < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::UNSTAGE_DELETE < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::CELL_NAV < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::ROW_NAV < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::ESC_BACK < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::DRAFT_DISCARD < RESULT_ACTIVE_KEYS.len());
-            assert!(idx::result_active::ROW_YANK < RESULT_ACTIVE_KEYS.len());
-
-            // HISTORY_KEYS
-            assert!(idx::history::OPEN < HISTORY_KEYS.len());
-            assert!(idx::history::NAV < HISTORY_KEYS.len());
-            assert!(idx::history::EXIT < HISTORY_KEYS.len());
-
-            // INSPECTOR_DDL_KEYS
-            assert!(idx::inspector_ddl::YANK < INSPECTOR_DDL_KEYS.len());
-
-            // CELL_EDIT_KEYS
-            assert!(idx::cell_edit::WRITE < CELL_EDIT_KEYS.len());
-            assert!(idx::cell_edit::TYPE < CELL_EDIT_KEYS.len());
-            assert!(idx::cell_edit::MOVE < CELL_EDIT_KEYS.len());
-            assert!(idx::cell_edit::HOME_END < CELL_EDIT_KEYS.len());
-            assert!(idx::cell_edit::COMMAND < CELL_EDIT_KEYS.len());
-            assert!(idx::cell_edit::ESC_CANCEL < CELL_EDIT_KEYS.len());
-
-            // CONNECTION_SELECTOR_ROWS
-            assert!(idx::connection_selector::CONFIRM < CONNECTION_SELECTOR_ROWS.len());
-            assert!(idx::connection_selector::SELECT < CONNECTION_SELECTOR_ROWS.len());
-            assert!(idx::connection_selector::NEW < CONNECTION_SELECTOR_ROWS.len());
-            assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_ROWS.len());
-            assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
-            assert!(idx::connection_selector::CLOSE < CONNECTION_SELECTOR_ROWS.len());
-
-            // JSONB_DETAIL_ROWS
-            assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_ROWS.len());
-            assert!(idx::jsonb_detail::INSERT < JSONB_DETAIL_ROWS.len());
-            assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_ROWS.len());
-            assert!(idx::jsonb_detail::NEXT_PREV < JSONB_DETAIL_ROWS.len());
-            assert!(idx::jsonb_detail::MOVE < JSONB_DETAIL_ROWS.len());
-            assert!(idx::jsonb_detail::JUMP < JSONB_DETAIL_ROWS.len());
-            assert!(idx::jsonb_detail::VIEW < JSONB_DETAIL_ROWS.len());
-            assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_ROWS.len());
-
-            // JSONB_SEARCH_KEYS
-            assert!(idx::jsonb_search::TYPE_SEARCH < JSONB_SEARCH_KEYS.len());
-            assert!(idx::jsonb_search::CONFIRM < JSONB_SEARCH_KEYS.len());
-            assert!(idx::jsonb_search::CANCEL < JSONB_SEARCH_KEYS.len());
-
-            // JSONB_EDIT_ROWS
-            assert!(idx::jsonb_edit::ESC_NORMAL < JSONB_EDIT_ROWS.len());
-            assert!(idx::jsonb_edit::MOVE < JSONB_EDIT_ROWS.len());
-            assert!(idx::jsonb_edit::HOME_END < JSONB_EDIT_ROWS.len());
-        }
-    }
 
     mod catalog_semantics {
         use super::*;
@@ -589,48 +155,63 @@ mod tests {
 
         mod action_mapping {
             use super::*;
+            use crate::update::action::{ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
             use rstest::rstest;
 
             #[rstest]
-            #[case(idx::global::QUIT, Action::Quit)]
-            #[case(idx::global::HELP, Action::ToggleModal(ModalKind::Help))]
-            #[case(idx::global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
-            #[case(idx::global::SETTINGS, Action::OpenModal(ModalKind::Settings))]
-            #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
+            #[case(global::QUIT, Action::Quit)]
+            #[case(global::HELP, Action::ToggleModal(ModalKind::Help))]
+            #[case(global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
+            #[case(global::SETTINGS, Action::OpenModal(ModalKind::Settings))]
+            #[case(global::COMMAND_LINE, Action::EnterCommandLine)]
+            #[case(global::COMMAND_PALETTE, Action::OpenModal(ModalKind::CommandPalette))]
+            #[case(global::RELOAD, Action::ReloadMetadata)]
+            #[case(global::SQL, Action::OpenModal(ModalKind::SqlModal))]
+            #[case(global::ER_DIAGRAM, Action::OpenModal(ModalKind::ErTablePicker))]
+            #[case(global::CONNECTIONS, Action::OpenModal(ModalKind::ConnectionSelector))]
+            #[case(global::CSV_EXPORT, Action::RequestCsvExport)]
+            #[case(global::READ_ONLY, Action::ToggleReadOnly)]
+            #[case(global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
             #[case(
-                idx::global::COMMAND_PALETTE,
-                Action::OpenModal(ModalKind::CommandPalette)
-            )]
-            #[case(idx::global::RELOAD, Action::ReloadMetadata)]
-            #[case(idx::global::SQL, Action::OpenModal(ModalKind::SqlModal))]
-            #[case(idx::global::ER_DIAGRAM, Action::OpenModal(ModalKind::ErTablePicker))]
-            #[case(
-                idx::global::CONNECTIONS,
-                Action::OpenModal(ModalKind::ConnectionSelector)
-            )]
-            #[case(idx::global::CSV_EXPORT, Action::RequestCsvExport)]
-            #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
-            #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
-            #[case(
-                idx::global::QUERY_HISTORY,
+                global::QUERY_HISTORY,
                 Action::OpenModal(ModalKind::QueryHistoryPicker)
             )]
-            fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-                assert_payload_free_action_eq(&GLOBAL_KEYS[i].action, &expected, "GLOBAL_KEYS", i);
+            fn global_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
+                assert_payload_free_action_eq(&kb, &expected);
+            }
+
+            #[rstest]
+            #[case(sql_modal_plan::EXPLAIN, Action::ExplainRequest)]
+            #[case(sql_modal_plan::ANALYZE, Action::ExplainAnalyzeRequest)]
+            #[case(sql_modal_plan::YANK, Action::SqlModalYank)]
+            #[case(sql_modal_plan::TAB, Action::SqlModalNextTab)]
+            #[case(sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
+            #[case(sql_modal_plan::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
+            fn plan_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
+                assert_payload_free_action_eq(&kb, &expected);
+            }
+
+            #[rstest]
+            #[case(sql_modal_compare::EXPLAIN, Action::ExplainRequest)]
+            #[case(sql_modal_compare::ANALYZE, Action::ExplainAnalyzeRequest)]
+            #[case(sql_modal_compare::EDIT_QUERY, Action::CompareEditQuery)]
+            #[case(sql_modal_compare::YANK, Action::SqlModalYank)]
+            #[case(sql_modal_compare::TAB, Action::SqlModalNextTab)]
+            #[case(sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
+            #[case(sql_modal_compare::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
+            fn compare_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
+                assert_payload_free_action_eq(&kb, &expected);
             }
 
             #[test]
             fn confirm_yes_action_matches() {
-                assert!(matches!(
-                    CONFIRM_DIALOG_KEYS[idx::confirm::YES].action,
-                    Action::ConfirmDialogConfirm
-                ));
+                assert!(matches!(confirm::YES.action, Action::ConfirmDialogConfirm));
             }
 
             #[test]
             fn confirm_scroll_down_action_matches() {
                 assert!(matches!(
-                    CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_DOWN].action,
+                    confirm::SCROLL_DOWN.action,
                     Action::Scroll {
                         target: ScrollTarget::ConfirmDialog,
                         direction: ScrollDirection::Down,
@@ -642,7 +223,7 @@ mod tests {
             #[test]
             fn confirm_scroll_up_action_matches() {
                 assert!(matches!(
-                    CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_UP].action,
+                    confirm::SCROLL_UP.action,
                     Action::Scroll {
                         target: ScrollTarget::ConfirmDialog,
                         direction: ScrollDirection::Up,
@@ -653,64 +234,17 @@ mod tests {
 
             #[test]
             fn confirm_no_action_matches() {
-                assert!(matches!(
-                    CONFIRM_DIALOG_KEYS[idx::confirm::NO].action,
-                    Action::ConfirmDialogCancel
-                ));
+                assert!(matches!(confirm::NO.action, Action::ConfirmDialogCancel));
             }
 
-            #[rstest]
-            #[case(idx::sql_modal_plan::EXPLAIN, Action::ExplainRequest)]
-            #[case(idx::sql_modal_plan::ANALYZE, Action::ExplainAnalyzeRequest)]
-            #[case(idx::sql_modal_plan::YANK, Action::SqlModalYank)]
-            #[case(idx::sql_modal_plan::TAB, Action::SqlModalNextTab)]
-            #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
-            #[case(idx::sql_modal_plan::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
-            fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-                assert_payload_free_action_eq(
-                    &SQL_MODAL_PLAN_KEYS[i].action,
-                    &expected,
-                    "SQL_MODAL_PLAN_KEYS",
-                    i,
-                );
-            }
-
-            #[rstest]
-            #[case(idx::sql_modal_compare::EXPLAIN, Action::ExplainRequest)]
-            #[case(idx::sql_modal_compare::ANALYZE, Action::ExplainAnalyzeRequest)]
-            #[case(idx::sql_modal_compare::EDIT_QUERY, Action::CompareEditQuery)]
-            #[case(idx::sql_modal_compare::YANK, Action::SqlModalYank)]
-            #[case(idx::sql_modal_compare::TAB, Action::SqlModalNextTab)]
-            #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
-            #[case(idx::sql_modal_compare::CLOSE, Action::CloseModal(ModalKind::SqlModal))]
-            fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-                assert_payload_free_action_eq(
-                    &SQL_MODAL_COMPARE_KEYS[i].action,
-                    &expected,
-                    "SQL_MODAL_COMPARE_KEYS",
-                    i,
-                );
-            }
-
-            fn assert_payload_free_action_eq(
-                actual: &Action,
-                expected: &Action,
-                label: &str,
-                i: usize,
-            ) {
+            fn assert_payload_free_action_eq(kb: &KeyBinding, expected: &Action) {
                 assert!(
-                    same_payload_free_action(actual, expected),
-                    "{label}[{i}] has action {actual:?}, expected {expected:?}",
+                    same_payload_free_action(&kb.action, expected),
+                    "binding '{}' ({}) has action {:?}, expected {expected:?}",
+                    kb.key,
+                    kb.description,
+                    kb.action,
                 );
-            }
-
-            fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
-                match (actual, expected) {
-                    (Action::OpenModal(a), Action::OpenModal(b))
-                    | (Action::CloseModal(a), Action::CloseModal(b))
-                    | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
-                    _ => std::mem::discriminant(actual) == std::mem::discriminant(expected),
-                }
             }
         }
 
