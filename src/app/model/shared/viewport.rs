@@ -1,13 +1,6 @@
 pub const MIN_COL_WIDTH: u16 = 4;
 pub const MAX_COL_WIDTH: u16 = 200;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum SlackPolicy {
-    #[default]
-    None,
-    RightmostLimited,
-}
-
 pub struct ColumnWidthConfig<'a> {
     pub ideal_widths: &'a [u16],
     pub min_widths: &'a [u16],
@@ -18,7 +11,6 @@ pub struct SelectionContext {
     pub available_width: u16,
     pub fixed_count: Option<usize>,
     pub max_offset: usize,
-    pub slack_policy: SlackPolicy,
 }
 
 fn total_width_with_separators(widths: &[u16]) -> u16 {
@@ -82,7 +74,6 @@ fn apply_slack_to_rightmost(widths: &mut [u16], available_width: u16) {
         return;
     }
 
-    // No upper limit: only called when max_offset == 0 (no scroll needed)
     let slack = available_width - current_total;
     if let Some(rightmost) = widths.last_mut() {
         *rightmost += slack;
@@ -119,6 +110,37 @@ fn try_add_bonus_column(
     false
 }
 
+// When the next column's ideal width doesn't fit, show it truncated as long as
+// its header (min width) still fits — leaving the space blank helps no one.
+fn try_add_partial_column(
+    config: &ColumnWidthConfig,
+    indices: &mut Vec<usize>,
+    widths: &mut Vec<u16>,
+    available_width: u16,
+) {
+    let Some(&rightmost_idx) = indices.last() else {
+        return;
+    };
+    let next_idx = rightmost_idx + 1;
+
+    if next_idx >= config.ideal_widths.len() {
+        return;
+    }
+
+    let current_total = total_width_with_separators(widths);
+    let remaining = available_width.saturating_sub(current_total + 1); // +1 for separator
+    let min_w = config
+        .min_widths
+        .get(next_idx)
+        .copied()
+        .unwrap_or(MIN_COL_WIDTH);
+
+    if remaining >= min_w {
+        indices.push(next_idx);
+        widths.push(remaining);
+    }
+}
+
 pub fn select_viewport_columns(
     config: &ColumnWidthConfig,
     ctx: &SelectionContext,
@@ -132,9 +154,7 @@ pub fn select_viewport_columns(
         None => select_dynamic_columns(config, ctx.horizontal_offset, ctx.available_width),
     };
 
-    if ctx.slack_policy == SlackPolicy::RightmostLimited {
-        apply_slack_to_rightmost(&mut widths, ctx.available_width);
-    }
+    apply_slack_to_rightmost(&mut widths, ctx.available_width);
 
     (indices, widths)
 }
@@ -153,9 +173,10 @@ fn select_fixed_columns(
 
     let mut widths: Vec<u16> = indices.iter().map(|&i| config.ideal_widths[i]).collect();
 
-    // Add bonus column when scrolling is needed (max_offset > 0)
+    // Add bonus columns when scrolling is needed (max_offset > 0)
     if ctx.max_offset > 0 {
-        try_add_bonus_column(config, &mut indices, &mut widths, ctx.available_width);
+        while try_add_bonus_column(config, &mut indices, &mut widths, ctx.available_width) {}
+        try_add_partial_column(config, &mut indices, &mut widths, ctx.available_width);
     }
 
     let total_needed = total_width_with_separators(&widths);
@@ -278,7 +299,6 @@ pub struct ViewportPlan {
     pub min_widths_sum: u16,
     pub ideal_widths_sum: u16,
     pub ideal_widths_max: u16,
-    pub slack_policy: SlackPolicy,
 }
 
 impl ViewportPlan {
@@ -289,11 +309,6 @@ impl ViewportPlan {
         let min_widths_sum = min_widths.iter().sum();
         let ideal_widths_sum = ideal_widths.iter().sum();
         let ideal_widths_max = ideal_widths.iter().copied().max().unwrap_or(0);
-        let slack_policy = if max_offset == 0 {
-            SlackPolicy::RightmostLimited
-        } else {
-            SlackPolicy::None
-        };
 
         Self {
             column_count,
@@ -303,7 +318,6 @@ impl ViewportPlan {
             min_widths_sum,
             ideal_widths_sum,
             ideal_widths_max,
-            slack_policy,
         }
     }
 
@@ -383,7 +397,6 @@ mod tests {
             available_width: width,
             fixed_count: fixed,
             max_offset: max,
-            slack_policy: SlackPolicy::None,
         }
     }
 
@@ -588,13 +601,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn basic_fit() {
+        fn basic_fit_absorbs_remainder_into_rightmost() {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
             let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 35, None, 0));
             assert_eq!(indices, vec![0, 1, 2]);
-            assert_eq!(selected, vec![10, 10, 10]);
+            // 10+10+10 + 2 sep = 32, remainder 3 absorbed by rightmost
+            assert_eq!(selected, vec![10, 10, 13]);
         }
 
         #[test]
@@ -636,10 +650,10 @@ mod tests {
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
             // max_offset=1, available=100, fixed=3
-            // 3 cols: 32, slack=68, bonus col needs 11 → bonus added
+            // 3 cols: 32, slack=68, bonus col needs 11 → bonus added, remainder absorbed
             let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 100, Some(3), 1));
             assert_eq!(indices, vec![0, 1, 2, 3]); // 3 fixed + 1 bonus
-            assert_eq!(selected, vec![10, 10, 10, 10]);
+            assert_eq!(selected, vec![10, 10, 10, 67]);
         }
 
         #[test]
@@ -648,10 +662,10 @@ mod tests {
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
             // max_offset=2, available=100, fixed=2
-            // 2 cols: 21, slack=79, bonus col needs 11 → bonus added
+            // 2 cols: 21, slack=79, bonus col needs 11 → bonus added, remainder absorbed
             let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 100, Some(2), 2));
             assert_eq!(indices, vec![1, 2, 3]); // 2 fixed + 1 bonus
-            assert_eq!(selected, vec![10, 10, 10]);
+            assert_eq!(selected, vec![10, 10, 78]);
         }
 
         #[test]
@@ -909,28 +923,13 @@ mod tests {
 
             assert_eq!(indices.len(), 1, "Should drop to 1 column");
             assert_eq!(indices[0], 2, "Should keep rightmost column");
-            assert_eq!(widths[0], 30, "Rightmost should have ideal width");
+            // 30 ideal + 5 absorbed slack
+            assert_eq!(widths[0], 35, "Rightmost should fill available width");
         }
     }
 
     mod slack_absorption {
         use super::*;
-
-        fn ctx_with_slack(
-            offset: usize,
-            width: u16,
-            fixed: Option<usize>,
-            max: usize,
-            policy: SlackPolicy,
-        ) -> SelectionContext {
-            SelectionContext {
-                horizontal_offset: offset,
-                available_width: width,
-                fixed_count: fixed,
-                max_offset: max,
-                slack_policy: policy,
-            }
-        }
 
         #[test]
         fn absorbs_slack_when_max_offset_zero() {
@@ -939,29 +938,12 @@ mod tests {
             let cfg = config(&ideal, &min);
 
             // 10+10+10 + 2sep = 32, available = 50, slack = 18
-            let (indices, widths) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 50, Some(3), 0, SlackPolicy::RightmostLimited),
-            );
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 50, Some(3), 0));
 
             assert_eq!(indices, vec![0, 1, 2]);
             assert_eq!(widths[0], 10);
             assert_eq!(widths[1], 10);
             assert_eq!(widths[2], 28); // 10 + 18 absorbed
-        }
-
-        #[test]
-        fn no_absorption_when_policy_none() {
-            let ideal = vec![10, 10, 10];
-            let min = vec![4, 4, 4];
-            let cfg = config(&ideal, &min);
-
-            let (_, widths) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 50, Some(3), 0, SlackPolicy::None),
-            );
-
-            assert_eq!(widths, vec![10, 10, 10]);
         }
 
         #[test]
@@ -971,54 +953,40 @@ mod tests {
             let cfg = config(&ideal, &min);
 
             // 40+40 + 1sep = 81, available = 120, slack = 39
-            let (_, widths) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 120, Some(2), 0, SlackPolicy::RightmostLimited),
-            );
+            let (_, widths) = select_viewport_columns(&cfg, &ctx(0, 120, Some(2), 0));
 
             assert_eq!(widths[0], 40);
             assert_eq!(widths[1], 79); // 40 + 39 (all slack absorbed)
         }
 
         #[test]
-        fn viewport_plan_sets_policy_based_on_max_offset() {
-            let ideal = vec![10, 10, 10];
-            let min = vec![4, 4, 4];
+        fn absorbs_residual_slack_when_scrolling() {
+            let ideal = vec![10, 10, 10, 20, 10];
+            let min = vec![4, 4, 4, 15, 4];
+            let cfg = config(&ideal, &min);
 
-            // All columns fit → max_offset = 0 → RightmostLimited
-            let plan = ViewportPlan::calculate(&ideal, &min, 100);
-            assert_eq!(plan.max_offset, 0);
-            assert_eq!(plan.slack_policy, SlackPolicy::RightmostLimited);
+            // 3 cols: 32; col 3 gets neither bonus (needs 21 > slack 8)
+            // nor partial (remaining 7 < min 15) → leftover goes to rightmost
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 40, Some(3), 2));
 
-            // Need scroll → max_offset > 0 → None
-            let plan2 = ViewportPlan::calculate(&ideal, &min, 25);
-            assert!(plan2.max_offset > 0);
-            assert_eq!(plan2.slack_policy, SlackPolicy::None);
+            assert_eq!(indices, vec![0, 1, 2]);
+            assert_eq!(widths, vec![10, 10, 18]);
         }
 
         #[test]
-        fn one_scroll_still_changes_one_column_with_slack_none() {
+        fn one_scroll_still_changes_one_column_with_absorption() {
             let ideal = vec![15, 15, 15, 15, 15];
             let min = vec![8, 8, 8, 8, 8];
             let cfg = config(&ideal, &min);
             let max_offset = 2;
 
-            let (idx0, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 60, Some(3), max_offset, SlackPolicy::None),
-            );
-            let (idx1, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(1, 60, Some(3), max_offset, SlackPolicy::None),
-            );
-            let (idx2, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(2, 60, Some(3), max_offset, SlackPolicy::None),
-            );
+            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 60, Some(3), max_offset));
+            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 60, Some(3), max_offset));
+            let (idx2, _) = select_viewport_columns(&cfg, &ctx(2, 60, Some(3), max_offset));
 
-            assert_eq!(idx0, vec![0, 1, 2]);
-            assert_eq!(idx1, vec![1, 2, 3]);
-            assert_eq!(idx2, vec![2, 3, 4]);
+            assert_eq!(idx0[0], 0);
+            assert_eq!(idx1[0], 1);
+            assert_eq!(idx2[0], 2);
         }
     }
 
@@ -1043,7 +1011,6 @@ mod tests {
                 available_width,
                 fixed_count: Some(plan.column_count),
                 max_offset: plan.max_offset,
-                slack_policy: plan.slack_policy,
             };
 
             select_viewport_columns(&cfg, &ctx)
@@ -1061,16 +1028,17 @@ mod tests {
             // At right edge (max offset)
             let (indices, widths) = run_full_pipeline(&ideal, &min, available, max_offset);
 
-            // Rightmost column should have its ideal width (40)
+            // Rightmost column should have at least its ideal width (40);
+            // residual slack may widen it further
             let last_idx = indices.len() - 1;
             assert_eq!(
                 indices[last_idx],
                 ideal.len() - 1,
                 "Should include the last column at right edge"
             );
-            assert_eq!(
-                widths[last_idx], ideal[indices[last_idx]],
-                "Rightmost column should have ideal width at right edge"
+            assert!(
+                widths[last_idx] >= ideal[indices[last_idx]],
+                "Rightmost column should not be truncated at right edge"
             );
         }
 
@@ -1129,7 +1097,6 @@ mod tests {
 
             let plan = ViewportPlan::calculate(&ideal, &min, available);
             assert_eq!(plan.max_offset, 0, "Should fit all columns");
-            assert_eq!(plan.slack_policy, SlackPolicy::RightmostLimited);
 
             let (_, widths) = run_full_pipeline(&ideal, &min, available, 0);
 
@@ -1156,8 +1123,8 @@ mod tests {
             for offset in 0..=plan.max_offset {
                 let (indices, widths) = run_full_pipeline(&ideal, &min, available, offset);
 
-                // Column count should be stable
-                assert_eq!(indices.len(), plan.column_count);
+                // At least the guaranteed count; bonus/partial columns may add more
+                assert!(indices.len() >= plan.column_count);
 
                 // Total width should not exceed available
                 let total: u16 =
@@ -1179,59 +1146,32 @@ mod tests {
     mod bonus_column {
         use super::*;
 
-        fn ctx_with_slack(
-            offset: usize,
-            width: u16,
-            fixed: Option<usize>,
-            max: usize,
-            policy: SlackPolicy,
-        ) -> SelectionContext {
-            SelectionContext {
-                horizontal_offset: offset,
-                available_width: width,
-                fixed_count: fixed,
-                max_offset: max,
-                slack_policy: policy,
-            }
-        }
-
         #[test]
-        fn adds_bonus_when_slack_sufficient() {
-            // 3 fixed columns + bonus potential
+        fn adds_bonus_columns_while_they_fit() {
             let ideal = vec![10, 10, 10, 10, 10];
             let min = vec![4, 4, 4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            // Fixed count = 3, max_offset = 2
-            // 3 cols: 10+10+10 + 2 sep = 32
-            // Available: 50, slack: 18
-            // Next col needs: 10 + 1 sep = 11
-            // 18 >= 11, so bonus added
-            let (indices, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 50, Some(3), 2, SlackPolicy::None),
-            );
+            // Fixed count = 2 (21), bonus cols 2,3,4 each need 11 → all added
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 70, Some(2), 3));
 
-            assert_eq!(indices.len(), 4, "Should add 1 bonus column");
-            assert_eq!(indices, vec![0, 1, 2, 3]);
+            assert_eq!(indices, vec![0, 1, 2, 3, 4]);
+            let total = total_width_with_separators(&widths);
+            assert!(total <= 70);
         }
 
         #[test]
-        fn no_bonus_when_slack_insufficient() {
+        fn adds_partial_column_when_ideal_does_not_fit() {
             let ideal = vec![10, 10, 10, 20, 10];
             let min = vec![4, 4, 4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            // 3 cols: 10+10+10 + 2 sep = 32
-            // Available: 40, slack: 8
-            // Next col needs: 20 + 1 sep = 21
-            // 8 < 21, no bonus
-            let (indices, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 40, Some(3), 2, SlackPolicy::None),
-            );
+            // 3 cols: 32; col 3 needs 21 > slack 8 → no bonus,
+            // but remaining 7 >= min 4 → shown truncated
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 40, Some(3), 2));
 
-            assert_eq!(indices.len(), 3, "Should not add bonus column");
+            assert_eq!(indices, vec![0, 1, 2, 3]);
+            assert_eq!(widths, vec![10, 10, 10, 7]);
         }
 
         #[test]
@@ -1241,10 +1181,7 @@ mod tests {
             let cfg = config(&ideal, &min);
 
             // At offset 1, showing cols [1, 2], no col 3 exists
-            let (indices, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(1, 50, Some(2), 1, SlackPolicy::None),
-            );
+            let (indices, _) = select_viewport_columns(&cfg, &ctx(1, 50, Some(2), 1));
 
             assert_eq!(indices.len(), 2, "No bonus when no more columns exist");
         }
@@ -1256,11 +1193,7 @@ mod tests {
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            // max_offset = 0 means all columns fit, bonus logic should not apply
-            let (indices, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 100, Some(3), 0, SlackPolicy::RightmostLimited),
-            );
+            let (indices, _) = select_viewport_columns(&cfg, &ctx(0, 100, Some(3), 0));
 
             // Only 3 columns (fixed count), not 4
             assert_eq!(indices.len(), 3);
@@ -1274,14 +1207,8 @@ mod tests {
             // Fixed count = 3, max_offset = 3
             // With bonus, might show 4 columns
 
-            let (idx0, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 70, Some(3), 3, SlackPolicy::None),
-            );
-            let (idx1, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(1, 70, Some(3), 3, SlackPolicy::None),
-            );
+            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 70, Some(3), 3));
+            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 70, Some(3), 3));
 
             // Scroll should still move by 1 (fixed count behavior)
             // idx0 starts at 0, idx1 starts at 1
@@ -1299,10 +1226,7 @@ mod tests {
             // Available: 80, slack: 18
             // Next col needs: 15 + 1 sep = 16
             // 18 >= 16, bonus added
-            let (indices, widths) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 80, Some(3), 1, SlackPolicy::None),
-            );
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 80, Some(3), 1));
 
             assert_eq!(indices.len(), 4);
             let total = total_width_with_separators(&widths);
