@@ -194,7 +194,9 @@ impl SqlHelpMode {
         match state.sql_modal.status() {
             SqlModalStatus::Editing => Self::Insert,
             SqlModalStatus::ConfirmingHigh { .. }
-            | SqlModalStatus::ConfirmingAnalyzeHigh { .. } => Self::Confirm,
+            | SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+            | SqlModalStatus::ConfirmingRisk { .. }
+            | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => Self::Confirm,
             SqlModalStatus::Running => Self::Running,
             SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error => {
                 match state.sql_modal.active_tab() {

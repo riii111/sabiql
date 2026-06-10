@@ -5,10 +5,28 @@ use crate::policy::sql::statement_classifier::{
     skip_line_comment,
 };
 
+// Why the statement cannot be confirmed via typed target name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcknowledgeReason {
+    // The classifier cannot assess the statement (Unsupported / unparseable
+    // input), so the worst case cannot be ruled out.
+    UnknownRisk,
+    // Risk is known to be high, but no target name could be extracted for
+    // typed-name confirmation.
+    TargetNameUnavailable,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmationType {
     Immediate,
-    TableNameInput { target: String },
+    // Single-keypress confirmation: Enter executes, Esc cancels.
+    Acknowledge {
+        reason: AcknowledgeReason,
+        label: String,
+    },
+    TableNameInput {
+        target: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

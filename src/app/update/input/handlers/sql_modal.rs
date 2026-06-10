@@ -233,6 +233,34 @@ pub fn handle_sql_modal_keys_with_prefix(
         };
     }
 
+    if matches!(status, SqlModalStatus::ConfirmingRisk { .. }) {
+        let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
+        return match combo.key {
+            Key::Enter if plain => Action::SqlModalConfirmExecute,
+            Key::Esc => Action::SqlModalCancelConfirm,
+            _ => Action::None,
+        };
+    }
+
+    if matches!(status, SqlModalStatus::ConfirmingAnalyzeRisk { .. }) {
+        let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
+        return match combo.key {
+            Key::Up if plain => Action::Scroll {
+                target: ScrollTarget::ExplainConfirm,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::Line,
+            },
+            Key::Down if plain => Action::Scroll {
+                target: ScrollTarget::ExplainConfirm,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line,
+            },
+            Key::Enter if plain => Action::ExplainAnalyzeConfirm,
+            Key::Esc => Action::ExplainAnalyzeCancel,
+            _ => Action::None,
+        };
+    }
+
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
     let alt = combo.modifiers.contains(Modifiers::ALT);
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
@@ -1267,6 +1295,114 @@ mod tests {
             assert_action(scroll, Expected::ExplainCompareScrollDown);
             assert_action(close, Expected::CloseModal(ModalKind::SqlModal));
             assert_action(explain, Expected::ExplainRequest);
+        }
+    }
+
+    mod risk_acknowledge {
+        use super::*;
+        use crate::policy::write::sql_risk::AcknowledgeReason;
+
+        fn confirming_risk() -> SqlModalStatus {
+            SqlModalStatus::ConfirmingRisk {
+                reason: AcknowledgeReason::UnknownRisk,
+                label: "DO".to_string(),
+            }
+        }
+
+        fn confirming_analyze_risk() -> SqlModalStatus {
+            SqlModalStatus::ConfirmingAnalyzeRisk {
+                query: "MERGE INTO t USING s ON t.id = s.id".to_string(),
+                reason: AcknowledgeReason::UnknownRisk,
+            }
+        }
+
+        #[test]
+        fn enter_acknowledges_execution() {
+            let result = handle_sql_modal_keys(
+                combo(Key::Enter),
+                false,
+                &confirming_risk(),
+                SqlModalTab::Sql,
+            );
+
+            assert!(matches!(result, Action::SqlModalConfirmExecute));
+        }
+
+        #[test]
+        fn esc_cancels_confirmation() {
+            let result =
+                handle_sql_modal_keys(combo(Key::Esc), false, &confirming_risk(), SqlModalTab::Sql);
+
+            assert!(matches!(result, Action::SqlModalCancelConfirm));
+        }
+
+        #[rstest]
+        #[case(Key::Char('a'))]
+        #[case(Key::Char('y'))]
+        #[case(Key::Tab)]
+        #[case(Key::Backspace)]
+        fn other_keys_are_unbound(#[case] code: Key) {
+            let result =
+                handle_sql_modal_keys(combo(code), false, &confirming_risk(), SqlModalTab::Sql);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn analyze_enter_confirms() {
+            let result = handle_sql_modal_keys(
+                combo(Key::Enter),
+                false,
+                &confirming_analyze_risk(),
+                SqlModalTab::Plan,
+            );
+
+            assert!(matches!(result, Action::ExplainAnalyzeConfirm));
+        }
+
+        #[test]
+        fn analyze_esc_cancels() {
+            let result = handle_sql_modal_keys(
+                combo(Key::Esc),
+                false,
+                &confirming_analyze_risk(),
+                SqlModalTab::Plan,
+            );
+
+            assert!(matches!(result, Action::ExplainAnalyzeCancel));
+        }
+
+        #[rstest]
+        #[case(Key::Up, ScrollDirection::Up)]
+        #[case(Key::Down, ScrollDirection::Down)]
+        fn analyze_arrow_keys_scroll_confirm(#[case] code: Key, #[case] expected: ScrollDirection) {
+            let result = handle_sql_modal_keys(
+                combo(code),
+                false,
+                &confirming_analyze_risk(),
+                SqlModalTab::Plan,
+            );
+
+            assert!(matches!(
+                result,
+                Action::Scroll {
+                    target: ScrollTarget::ExplainConfirm,
+                    direction,
+                    amount: ScrollAmount::Line,
+                } if direction == expected
+            ));
+        }
+
+        #[test]
+        fn analyze_text_input_is_unbound() {
+            let result = handle_sql_modal_keys(
+                combo(Key::Char('x')),
+                false,
+                &confirming_analyze_risk(),
+                SqlModalTab::Plan,
+            );
+
+            assert!(matches!(result, Action::None));
         }
     }
 

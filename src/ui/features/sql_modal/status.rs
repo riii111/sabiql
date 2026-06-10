@@ -6,6 +6,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
+use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::primitives::atoms::{spinner_char, text_cursor_spans};
 use crate::theme::ThemePalette;
 
@@ -17,6 +18,11 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
     } = state.sql_modal.status()
     {
         render_confirming_high_status(frame, area, decision, input, target_name.as_deref(), theme);
+        return;
+    }
+
+    if let SqlModalStatus::ConfirmingRisk { reason, label } = state.sql_modal.status() {
+        render_confirming_risk_status(frame, area, reason, label, theme);
         return;
     }
 
@@ -84,7 +90,8 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
                     .add_modifier(Modifier::BOLD),
             )
         }
-        SqlModalStatus::ConfirmingAnalyzeHigh { .. } => (
+        SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+        | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => (
             "[CONFIRM]",
             Style::default()
                 .fg(theme.semantic.status.error)
@@ -94,7 +101,9 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
                 .fg(theme.semantic.status.error)
                 .add_modifier(Modifier::BOLD),
         ),
-        SqlModalStatus::ConfirmingHigh { .. } => unreachable!(),
+        SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. } => {
+            unreachable!()
+        }
     };
 
     let badge_display = format!(" {badge_text}");
@@ -191,6 +200,34 @@ fn render_confirming_high_status(
         let paragraph = Paragraph::new(vec![line1, line2]);
         frame.render_widget(paragraph, area);
     }
+}
+
+fn render_confirming_risk_status(
+    frame: &mut Frame,
+    area: Rect,
+    reason: &AcknowledgeReason,
+    label: &str,
+    theme: &ThemePalette,
+) {
+    let (badge_text, badge_style, explanation) = match reason {
+        AcknowledgeReason::UnknownRisk => (
+            format!("\u{26a0} UNKNOWN RISK  {label}"),
+            Style::default().fg(theme.semantic.status.medium_risk),
+            "sabiql can't assess this statement's risk",
+        ),
+        AcknowledgeReason::TargetNameUnavailable => (
+            format!("\u{26a0} HIGH RISK  {label}"),
+            Style::default().fg(theme.semantic.status.error),
+            "Can't identify target name \u{2014} review before executing",
+        ),
+    };
+
+    let line1 = Line::from(Span::styled(badge_text, badge_style));
+    let line2 = Line::from(Span::styled(
+        explanation,
+        Style::default().fg(theme.semantic.text.muted),
+    ));
+    frame.render_widget(Paragraph::new(vec![line1, line2]), area);
 }
 
 fn success_status_message(state: &AppState) -> String {

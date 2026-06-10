@@ -9,6 +9,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
+use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::services::AppServices;
 use crate::primitives::atoms::text_cursor_spans;
 use crate::theme::ThemePalette;
@@ -38,6 +39,12 @@ pub fn render(
     } = state.sql_modal.status()
     {
         let lines = build_analyze_confirm_lines(area, query, input, target_name.as_deref(), theme);
+        render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
+        return area.height;
+    }
+
+    if let SqlModalStatus::ConfirmingAnalyzeRisk { query, reason } = state.sql_modal.status() {
+        let lines = build_analyze_acknowledge_lines(area, query, reason, theme);
         render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
         return area.height;
     }
@@ -197,6 +204,66 @@ fn build_analyze_confirm_lines<'a>(
             )));
         }
     }
+
+    lines
+}
+
+fn build_analyze_acknowledge_lines<'a>(
+    area: Rect,
+    query: &'a str,
+    reason: &AcknowledgeReason,
+    theme: &ThemePalette,
+) -> Vec<Line<'a>> {
+    let mut lines = Vec::new();
+
+    let (header_color, explanation) = match reason {
+        AcknowledgeReason::UnknownRisk => (
+            theme.semantic.status.medium_risk,
+            [
+                " sabiql can't assess this statement's risk.",
+                " EXPLAIN ANALYZE will execute it.",
+            ],
+        ),
+        AcknowledgeReason::TargetNameUnavailable => (
+            theme.semantic.status.error,
+            [
+                " This is a destructive statement. EXPLAIN ANALYZE will",
+                " execute it and data loss may occur.",
+            ],
+        ),
+    };
+    let header_style = Style::default()
+        .fg(header_color)
+        .add_modifier(Modifier::BOLD);
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(Span::styled(
+        " \u{26a0} EXPLAIN ANALYZE",
+        header_style,
+    )));
+    lines.push(Line::raw(""));
+
+    let sep = "\u{2500}".repeat(area.width.saturating_sub(2) as usize);
+    lines.push(Line::styled(format!(" {sep}"), theme.modal_border_style()));
+    lines.push(Line::raw(""));
+
+    for text in explanation {
+        lines.push(Line::from(Span::styled(text, header_style)));
+    }
+    lines.push(Line::raw(""));
+
+    for line in query.lines() {
+        lines.push(Line::from(Span::styled(
+            format!("  {line}"),
+            Style::default().fg(theme.semantic.text.dim),
+        )));
+    }
+    lines.push(Line::raw(""));
+
+    lines.push(Line::from(Span::styled(
+        " Press Enter to execute  Esc: Cancel",
+        Style::default().fg(theme.semantic.text.secondary),
+    )));
 
     lines
 }

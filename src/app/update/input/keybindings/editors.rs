@@ -294,7 +294,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
     },
 ];
 
-// Keys active only while SqlModalStatus::ConfirmingHigh — mutually exclusive with SQL_MODAL_KEYS.
+// Keys active only while SqlModalStatus::ConfirmingHigh / ConfirmingRisk — mutually exclusive with SQL_MODAL_KEYS.
 pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[KeyBinding {
     key_short: "Esc",
     key: "Esc",

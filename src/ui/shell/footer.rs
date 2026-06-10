@@ -237,7 +237,7 @@ impl Footer {
             InputMode::SqlModal => {
                 if matches!(
                     state.sql_modal.status(),
-                    SqlModalStatus::ConfirmingHigh { .. }
+                    SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
                 ) {
                     vec![
                         SQL_MODAL_CONFIRMING_KEYS[idx::sql_modal_confirming::CANCEL_CONFIRM]

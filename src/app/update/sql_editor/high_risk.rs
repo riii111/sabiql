@@ -31,7 +31,7 @@ pub(super) fn reduce_high_risk_confirmation(
         Action::SqlModalCancelConfirm => {
             if matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh { .. }
+                SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
             ) {
                 state.sql_modal.cancel_confirmation();
                 state.ui.key_sequence = KeySequenceState::Idle;
@@ -82,6 +82,9 @@ pub(super) fn reduce_high_risk_confirmation(
                     input,
                     ..
                 } if target_name.as_ref().is_some_and(|n| input.content() == n)
+            ) || matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk { .. }
             );
             if matched {
                 let query = state.sql_modal.editor.content().trim().to_string();

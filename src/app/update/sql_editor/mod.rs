@@ -688,6 +688,50 @@ mod tests {
         }
     }
 
+    mod risk_acknowledge_flow {
+        use super::*;
+        use crate::policy::write::sql_risk::AcknowledgeReason;
+
+        fn confirming_risk_state(content: &str) -> AppState {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content(content.to_string());
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state
+                .sql_modal
+                .set_status_for_test(SqlModalStatus::ConfirmingRisk {
+                    reason: AcknowledgeReason::UnknownRisk,
+                    label: "DO".to_string(),
+                });
+            state
+        }
+
+        #[test]
+        fn enter_executes_acknowledged_statement() {
+            let mut state = confirming_risk_state("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now())
+                    .into_effects()
+                    .expect("reducer should handle action");
+
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecuteAdhoc { .. }))
+            );
+        }
+
+        #[test]
+        fn cancel_returns_to_normal() {
+            let mut state = confirming_risk_state("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
+
+            reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
+
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
+        }
+    }
+
     mod confirmation_flow {
         use super::*;
         use crate::policy::write::write_guardrails::RiskLevel;

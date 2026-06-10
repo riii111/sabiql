@@ -13,6 +13,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
+use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
     SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
@@ -37,7 +38,7 @@ impl SqlModal {
     ) -> Option<u16> {
         let is_confirming = matches!(
             state.sql_modal.status(),
-            SqlModalStatus::ConfirmingHigh { .. }
+            SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
         );
         let active_tab = services
             .db_capabilities
@@ -72,6 +73,27 @@ impl SqlModal {
                         theme,
                     )
                 }
+                SqlModalStatus::ConfirmingRisk { reason, .. } => {
+                    let (title, border_color) = match reason {
+                        AcknowledgeReason::UnknownRisk => (
+                            " SQL \u{2500}\u{2500} \u{26a0} UNKNOWN RISK ",
+                            theme.semantic.status.medium_risk,
+                        ),
+                        AcknowledgeReason::TargetNameUnavailable => (
+                            " SQL \u{2500}\u{2500} \u{26a0} HIGH ",
+                            theme.semantic.status.error,
+                        ),
+                    };
+                    render_modal_with_border_color(
+                        frame,
+                        Constraint::Percentage(80),
+                        Constraint::Percentage(SQL_MODAL_HEIGHT_PERCENT),
+                        title,
+                        FooterHintBar::new([("Enter", "Execute"), ("Esc", "Back")]),
+                        border_color,
+                        theme,
+                    )
+                }
                 _ => unreachable!(),
             }
         } else {
@@ -89,6 +111,9 @@ impl SqlModal {
                     } else {
                         FooterHintBar::new([("Esc", "Cancel")])
                     }
+                }
+                SqlModalStatus::ConfirmingAnalyzeRisk { .. } => {
+                    FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")])
                 }
                 _ => {
                     let compare_can_yank =
@@ -108,7 +133,7 @@ impl SqlModal {
 
         let status_height = if matches!(
             state.sql_modal.status(),
-            SqlModalStatus::ConfirmingHigh { .. }
+            SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
         ) {
             3
         } else {

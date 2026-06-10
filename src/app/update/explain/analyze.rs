@@ -65,6 +65,11 @@ pub(super) fn reduce_analyze(
                         .sql_modal
                         .begin_confirming_analyze_high(content, Some(target));
                 }
+                ConfirmationType::Acknowledge { reason, .. } => {
+                    state
+                        .sql_modal
+                        .begin_confirming_analyze_risk(content, reason);
+                }
                 ConfirmationType::Immediate => {
                     let Some(explain_query) =
                         services.sql_dialect.build_explain_analyze_sql(&content)
@@ -100,6 +105,7 @@ pub(super) fn reduce_analyze(
                     .as_ref()
                     .is_some_and(|name| input.content() == name)
                     .then(|| query.clone()),
+                SqlModalStatus::ConfirmingAnalyzeRisk { query, .. } => Some(query.clone()),
                 _ => None,
             };
             if let Some(query) = query
@@ -127,6 +133,7 @@ pub(super) fn reduce_analyze(
             if matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                    | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
             ) {
                 state.sql_modal.cancel_confirmation();
             }

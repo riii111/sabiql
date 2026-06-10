@@ -5,6 +5,7 @@ use crate::domain::CommandTag;
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::{TextInputLike, TextInputState};
+use crate::policy::write::sql_risk::AcknowledgeReason;
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
 
 use super::completion::{CompletionCandidate, CompletionState};
@@ -63,6 +64,15 @@ pub enum SqlModalStatus {
         query: String,
         input: TextInputState,
         target_name: Option<String>,
+    },
+    // Single-keypress risk acknowledgment: no typed target name, Enter executes.
+    ConfirmingRisk {
+        reason: AcknowledgeReason,
+        label: String,
+    },
+    ConfirmingAnalyzeRisk {
+        query: String,
+        reason: AcknowledgeReason,
     },
     Running,
     Success,
@@ -165,10 +175,24 @@ impl SqlModalContext {
         self.dismiss_completion();
     }
 
+    pub fn begin_confirming_risk(&mut self, reason: AcknowledgeReason, label: String) {
+        self.status = SqlModalStatus::ConfirmingRisk { reason, label };
+        self.dismiss_completion();
+    }
+
+    pub fn begin_confirming_analyze_risk(&mut self, query: String, reason: AcknowledgeReason) {
+        self.status = SqlModalStatus::ConfirmingAnalyzeRisk { query, reason };
+        self.active_tab = SqlModalTab::Plan;
+        self.dismiss_completion();
+    }
+
     pub fn cancel_confirmation(&mut self) {
         if matches!(
             self.status,
-            SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+            SqlModalStatus::ConfirmingHigh { .. }
+                | SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                | SqlModalStatus::ConfirmingRisk { .. }
+                | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
         ) {
             self.status = SqlModalStatus::Normal;
         }
@@ -512,6 +536,62 @@ mod tests {
                 Some("users".to_string()),
             );
             ctx.cancel_confirmation();
+            assert_eq!(ctx.status, SqlModalStatus::Normal);
+        }
+
+        #[test]
+        fn begin_confirming_risk_sets_status_and_dismisses_completion() {
+            let mut ctx = SqlModalContext::default();
+            ctx.completion.visible = true;
+
+            ctx.begin_confirming_risk(AcknowledgeReason::UnknownRisk, "DO".to_string());
+
+            assert!(matches!(
+                ctx.status,
+                SqlModalStatus::ConfirmingRisk {
+                    reason: AcknowledgeReason::UnknownRisk,
+                    ref label,
+                } if label == "DO"
+            ));
+            assert!(!ctx.completion.visible);
+        }
+
+        #[test]
+        fn begin_confirming_analyze_risk_switches_to_plan_tab() {
+            let mut ctx = SqlModalContext::default();
+
+            ctx.begin_confirming_analyze_risk(
+                "MERGE INTO t USING s ON t.id = s.id".to_string(),
+                AcknowledgeReason::UnknownRisk,
+            );
+
+            assert!(matches!(
+                ctx.status,
+                SqlModalStatus::ConfirmingAnalyzeRisk { .. }
+            ));
+            assert_eq!(ctx.active_tab, SqlModalTab::Plan);
+        }
+
+        #[test]
+        fn cancel_resets_risk_confirmation_to_normal() {
+            let mut ctx = SqlModalContext::default();
+            ctx.begin_confirming_risk(AcknowledgeReason::TargetNameUnavailable, "DROP".to_string());
+
+            ctx.cancel_confirmation();
+
+            assert_eq!(ctx.status, SqlModalStatus::Normal);
+        }
+
+        #[test]
+        fn cancel_resets_analyze_risk_confirmation_to_normal() {
+            let mut ctx = SqlModalContext::default();
+            ctx.begin_confirming_analyze_risk(
+                "GRANT SELECT ON users TO role1".to_string(),
+                AcknowledgeReason::UnknownRisk,
+            );
+
+            ctx.cancel_confirmation();
+
             assert_eq!(ctx.status, SqlModalStatus::Normal);
         }
     }

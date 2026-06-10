@@ -62,6 +62,10 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
                     }
                     match risk.confirmation {
                         ConfirmationType::Immediate => start_adhoc_if_connected(state, query, now),
+                        ConfirmationType::Acknowledge { reason, label } => {
+                            state.sql_modal.begin_confirming_risk(reason, label);
+                            DispatchResult::handled()
+                        }
                         ConfirmationType::TableNameInput { target } => {
                             state
                                 .sql_modal
