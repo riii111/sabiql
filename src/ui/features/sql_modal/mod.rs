@@ -75,7 +75,7 @@ impl SqlModal {
                     let (title, border_color) = match reason {
                         AcknowledgeReason::UnknownRisk => (
                             " SQL \u{2500}\u{2500} \u{26a0} UNKNOWN RISK ",
-                            theme.semantic.status.medium_risk,
+                            theme.semantic.status.warning,
                         ),
                         AcknowledgeReason::TargetNameUnavailable => (
                             " SQL \u{2500}\u{2500} \u{26a0} HIGH ",

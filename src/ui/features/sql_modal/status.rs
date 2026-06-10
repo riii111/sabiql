@@ -208,7 +208,7 @@ fn render_confirming_risk_status(
     let (badge_text, badge_style, explanation) = match reason {
         AcknowledgeReason::UnknownRisk => (
             format!("\u{26a0} UNKNOWN RISK  {label}"),
-            Style::default().fg(theme.semantic.status.medium_risk),
+            Style::default().fg(theme.semantic.status.warning),
             "sabiql can't assess this statement's risk",
         ),
         AcknowledgeReason::TargetNameUnavailable => (

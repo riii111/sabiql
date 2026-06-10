@@ -208,7 +208,7 @@ fn build_analyze_acknowledge_lines<'a>(
 
     let (header_color, explanation) = match reason {
         AcknowledgeReason::UnknownRisk => (
-            theme.semantic.status.medium_risk,
+            theme.semantic.status.warning,
             [
                 " sabiql can't assess this statement's risk.",
                 " EXPLAIN ANALYZE will execute it.",
