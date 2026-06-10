@@ -10,6 +10,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::services::AppServices;
 use crate::update::action::{Action, ModalKind, TableTarget};
+use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::command::{command_to_action, parse_command};
 
@@ -39,18 +40,10 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
         effects.push(Effect::FetchMetadata { dsn, run_id });
     } else if !state.query.pagination.table.is_empty() {
         let page = state.query.pagination.current_page;
-        let run_id = state.query.begin_running(now);
-        effects.push(Effect::ExecutePreview {
-            dsn,
-            schema: state.query.pagination.schema.clone(),
-            table: state.query.pagination.table.clone(),
-            generation: state.session.selection_generation(),
-            run_id,
-            limit: PREVIEW_PAGE_SIZE,
-            offset: page * PREVIEW_PAGE_SIZE,
-            target_page: page,
-            read_only: state.session.read_only,
-        });
+        let generation = state.session.selection_generation();
+        effects.extend(preview_effect_for_current_table(
+            state, now, page, generation,
+        ));
     }
 
     effects
@@ -242,41 +235,35 @@ pub fn reduce_execution(
             table,
             generation,
         }) => {
-            if let Some(dsn) = &state.session.dsn {
-                let run_id = state.query.begin_running(now);
+            if state.session.dsn.is_none() {
+                return DispatchResult::handled();
+            }
 
-                state.query.pagination.reset();
-                state.query.pagination.schema.clone_from(schema);
-                state.query.pagination.table.clone_from(table);
+            state.query.pagination.reset();
+            state.query.pagination.schema.clone_from(schema);
+            state.query.pagination.table.clone_from(table);
 
-                let row_estimate = state
-                    .session
-                    .table_detail()
-                    .and_then(|d| d.row_count_estimate)
-                    .or_else(|| {
-                        state.tables().iter().find_map(|t| {
-                            if t.schema == *schema && t.name == *table {
-                                t.row_count_estimate
-                            } else {
-                                None
-                            }
-                        })
-                    });
-                state.query.pagination.total_rows_estimate = row_estimate;
+            let row_estimate = state
+                .session
+                .table_detail()
+                .and_then(|d| d.row_count_estimate)
+                .or_else(|| {
+                    state.tables().iter().find_map(|t| {
+                        if t.schema == *schema && t.name == *table {
+                            t.row_count_estimate
+                        } else {
+                            None
+                        }
+                    })
+                });
+            state.query.pagination.total_rows_estimate = row_estimate;
 
-                DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                    dsn: dsn.clone(),
-                    schema: schema.clone(),
-                    table: table.clone(),
-                    generation: *generation,
-                    run_id,
-                    limit: PREVIEW_PAGE_SIZE,
-                    offset: 0,
-                    target_page: 0,
-                    read_only: state.session.read_only,
-                }])
-            } else {
-                DispatchResult::handled()
+            // Keep the generation captured at selection time, not the current
+            // one: the selection may have been cleared between dispatch and
+            // now, and such a completion must fail the stale check.
+            match preview_effect_for_current_table(state, now, 0, *generation) {
+                Some(effect) => DispatchResult::handled_with(vec![effect]),
+                None => DispatchResult::handled(),
             }
         }
 

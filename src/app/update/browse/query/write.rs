@@ -2,9 +2,7 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::browse::query_execution::{
-    DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection,
-};
+use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::write::write_guardrails::{
@@ -15,6 +13,7 @@ use crate::policy::write::write_update::{
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
     EditGuardrailError, build_bulk_delete_preview, editable_preview_base,
@@ -284,22 +283,11 @@ pub fn reduce_write(
                     state.result_interaction.clear_cell_edit();
                     state.modal.set_mode(InputMode::Normal);
 
-                    if let Some(dsn) = &state.session.dsn {
-                        let page = state.query.pagination.current_page;
-                        let run_id = state.query.begin_running(now);
-                        DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                            dsn: dsn.clone(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
-                            generation: state.session.selection_generation(),
-                            run_id,
-                            limit: PREVIEW_PAGE_SIZE,
-                            offset: page * PREVIEW_PAGE_SIZE,
-                            target_page: page,
-                            read_only: state.session.read_only,
-                        }])
-                    } else {
-                        DispatchResult::handled()
+                    let page = state.query.pagination.current_page;
+                    let generation = state.session.selection_generation();
+                    match preview_effect_for_current_table(state, now, page, generation) {
+                        Some(effect) => DispatchResult::handled_with(vec![effect]),
+                        None => DispatchResult::handled(),
                     }
                 }
                 WriteOperation::Delete => {
@@ -343,22 +331,13 @@ pub fn reduce_write(
                         PostDeleteRowSelection::Select,
                     ));
 
-                    if let Some(dsn) = &state.session.dsn {
-                        let run_id = state.query.begin_running(now);
-                        state.query.pagination.reached_end = false;
-                        DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                            dsn: dsn.clone(),
-                            schema: state.query.pagination.schema.clone(),
-                            table: state.query.pagination.table.clone(),
-                            generation: state.session.selection_generation(),
-                            run_id,
-                            limit: PREVIEW_PAGE_SIZE,
-                            offset: target_page * PREVIEW_PAGE_SIZE,
-                            target_page,
-                            read_only: state.session.read_only,
-                        }])
-                    } else {
-                        DispatchResult::handled()
+                    let generation = state.session.selection_generation();
+                    match preview_effect_for_current_table(state, now, target_page, generation) {
+                        Some(effect) => {
+                            state.query.pagination.reached_end = false;
+                            DispatchResult::handled_with(vec![effect])
+                        }
+                        None => DispatchResult::handled(),
                     }
                 }
             }
@@ -395,7 +374,7 @@ mod tests {
 
     use crate::domain::QueryResult;
     use crate::model::browse::query_execution::{
-        DeleteRefreshTarget, PostDeleteRowSelection, QueryStatus,
+        DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
     };
     use crate::policy::write::write_guardrails::{
         GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
