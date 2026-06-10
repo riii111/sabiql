@@ -25,7 +25,9 @@ use sabiql_app::cmd::cache::TtlCache;
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
-use sabiql_app::cmd::runner::EffectRunner;
+use sabiql_app::cmd::runner::{
+    ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
+};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::db_capabilities::DbCapabilities;
 use sabiql_app::model::shared::input_mode::InputMode;
@@ -105,22 +107,32 @@ async fn main() -> Result<()> {
     let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
         Arc::new(PgServiceFileReader::new());
 
-    let effect_runner = EffectRunner::builder()
-        .metadata_provider(Arc::clone(&adapter) as _)
-        .query_executor(Arc::clone(&adapter) as _)
-        .dsn_builder(Arc::clone(&adapter) as _)
-        .er_exporter(Arc::new(DotExporter::new()))
-        .config_writer(Arc::new(FileConfigWriter::new()))
-        .er_log_writer(Arc::new(FsErLogWriter))
-        .connection_store(Arc::clone(&connection_store) as _)
-        .pg_service_entry_reader(Arc::clone(&pg_service_entry_reader))
-        .clipboard(Arc::new(ArboardClipboard))
-        .folder_opener(Arc::new(NativeFolderOpener))
-        .query_history_store(Arc::new(FileQueryHistoryStore::new()))
-        .settings_store(Arc::clone(&settings_store) as _)
-        .metadata_cache(metadata_cache.clone())
-        .action_tx(action_tx.clone())
-        .build();
+    let effect_runner = EffectRunner::new(
+        Arc::clone(&adapter) as _,
+        ConnectionDeps {
+            dsn_builder: Arc::clone(&adapter) as _,
+            connection_store: Arc::clone(&connection_store) as _,
+            pg_service_entry_reader: Some(Arc::clone(&pg_service_entry_reader)),
+        },
+        QueryDeps {
+            query_executor: Arc::clone(&adapter) as _,
+            query_history_store: Arc::new(FileQueryHistoryStore::new()),
+        },
+        ErDeps {
+            er_exporter: Arc::new(DotExporter::new()),
+            config_writer: Arc::new(FileConfigWriter::new()),
+            er_log_writer: Arc::new(FsErLogWriter),
+        },
+        UtilityDeps {
+            clipboard: Arc::new(ArboardClipboard),
+            folder_opener: Arc::new(NativeFolderOpener),
+        },
+        SettingsDeps {
+            settings_store: Arc::clone(&settings_store) as _,
+        },
+        metadata_cache.clone(),
+        action_tx.clone(),
+    );
 
     let ddl_generator: Arc<dyn DdlGenerator> = adapter.clone();
     let sql_dialect: Arc<dyn SqlDialect> = adapter.clone();

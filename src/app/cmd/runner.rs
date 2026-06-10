@@ -29,30 +29,30 @@ use crate::ports::outbound::{
 use crate::services::AppServices;
 use crate::update::action::Action;
 
-struct ConnectionDeps {
-    dsn_builder: Arc<dyn DsnBuilder>,
-    connection_store: Arc<dyn ConnectionStore>,
-    pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
+pub struct ConnectionDeps {
+    pub dsn_builder: Arc<dyn DsnBuilder>,
+    pub connection_store: Arc<dyn ConnectionStore>,
+    pub pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
 }
 
-struct QueryDeps {
-    query_executor: Arc<dyn QueryExecutor>,
-    query_history_store: Arc<dyn QueryHistoryStore>,
+pub struct QueryDeps {
+    pub query_executor: Arc<dyn QueryExecutor>,
+    pub query_history_store: Arc<dyn QueryHistoryStore>,
 }
 
-struct ErDeps {
-    er_exporter: Arc<dyn ErDiagramExporter>,
-    config_writer: Arc<dyn ConfigWriter>,
-    er_log_writer: Arc<dyn ErLogWriter>,
+pub struct ErDeps {
+    pub er_exporter: Arc<dyn ErDiagramExporter>,
+    pub config_writer: Arc<dyn ConfigWriter>,
+    pub er_log_writer: Arc<dyn ErLogWriter>,
 }
 
-struct UtilityDeps {
-    clipboard: Arc<dyn ClipboardWriter>,
-    folder_opener: Arc<dyn FolderOpener>,
+pub struct UtilityDeps {
+    pub clipboard: Arc<dyn ClipboardWriter>,
+    pub folder_opener: Arc<dyn FolderOpener>,
 }
 
-struct SettingsDeps {
-    settings_store: Arc<dyn SettingsStore>,
+pub struct SettingsDeps {
+    pub settings_store: Arc<dyn SettingsStore>,
 }
 
 pub struct EffectRunner {
@@ -66,151 +66,31 @@ pub struct EffectRunner {
     action_tx: mpsc::Sender<Action>,
 }
 
-pub struct EffectRunnerBuilder {
-    metadata_provider: Option<Arc<dyn MetadataProvider>>,
-    query_executor: Option<Arc<dyn QueryExecutor>>,
-    dsn_builder: Option<Arc<dyn DsnBuilder>>,
-    er_exporter: Option<Arc<dyn ErDiagramExporter>>,
-    config_writer: Option<Arc<dyn ConfigWriter>>,
-    er_log_writer: Option<Arc<dyn ErLogWriter>>,
-    connection_store: Option<Arc<dyn ConnectionStore>>,
-    pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
-    clipboard: Option<Arc<dyn ClipboardWriter>>,
-    folder_opener: Option<Arc<dyn FolderOpener>>,
-    query_history_store: Option<Arc<dyn QueryHistoryStore>>,
-    settings_store: Option<Arc<dyn SettingsStore>>,
-    metadata_cache: Option<TtlCache<String, Arc<DatabaseMetadata>>>,
-    action_tx: Option<mpsc::Sender<Action>>,
-}
-
-impl EffectRunnerBuilder {
-    #[must_use]
-    pub fn metadata_provider(mut self, v: Arc<dyn MetadataProvider>) -> Self {
-        self.metadata_provider = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn query_executor(mut self, v: Arc<dyn QueryExecutor>) -> Self {
-        self.query_executor = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn dsn_builder(mut self, v: Arc<dyn DsnBuilder>) -> Self {
-        self.dsn_builder = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn er_exporter(mut self, v: Arc<dyn ErDiagramExporter>) -> Self {
-        self.er_exporter = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn config_writer(mut self, v: Arc<dyn ConfigWriter>) -> Self {
-        self.config_writer = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn er_log_writer(mut self, v: Arc<dyn ErLogWriter>) -> Self {
-        self.er_log_writer = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn connection_store(mut self, v: Arc<dyn ConnectionStore>) -> Self {
-        self.connection_store = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn pg_service_entry_reader(mut self, v: Arc<dyn PgServiceEntryReader>) -> Self {
-        self.pg_service_entry_reader = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn clipboard(mut self, v: Arc<dyn ClipboardWriter>) -> Self {
-        self.clipboard = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn folder_opener(mut self, v: Arc<dyn FolderOpener>) -> Self {
-        self.folder_opener = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn query_history_store(mut self, v: Arc<dyn QueryHistoryStore>) -> Self {
-        self.query_history_store = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn settings_store(mut self, v: Arc<dyn SettingsStore>) -> Self {
-        self.settings_store = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn metadata_cache(mut self, v: TtlCache<String, Arc<DatabaseMetadata>>) -> Self {
-        self.metadata_cache = Some(v);
-        self
-    }
-    #[must_use]
-    pub fn action_tx(mut self, v: mpsc::Sender<Action>) -> Self {
-        self.action_tx = Some(v);
-        self
-    }
-
-    pub fn build(self) -> EffectRunner {
-        EffectRunner {
-            metadata_provider: self
-                .metadata_provider
-                .expect("metadata_provider is required"),
-            connection: ConnectionDeps {
-                dsn_builder: self.dsn_builder.expect("dsn_builder is required"),
-                connection_store: self.connection_store.expect("connection_store is required"),
-                pg_service_entry_reader: self.pg_service_entry_reader,
-            },
-            query: QueryDeps {
-                query_executor: self.query_executor.expect("query_executor is required"),
-                query_history_store: self
-                    .query_history_store
-                    .expect("query_history_store is required"),
-            },
-            er: ErDeps {
-                er_exporter: self.er_exporter.expect("er_exporter is required"),
-                config_writer: self.config_writer.expect("config_writer is required"),
-                er_log_writer: self.er_log_writer.expect("er_log_writer is required"),
-            },
-            utility: UtilityDeps {
-                clipboard: self.clipboard.expect("clipboard is required"),
-                folder_opener: self.folder_opener.expect("folder_opener is required"),
-            },
-            settings: SettingsDeps {
-                settings_store: self.settings_store.expect("settings_store is required"),
-            },
-            metadata_cache: self.metadata_cache.expect("metadata_cache is required"),
-            action_tx: self.action_tx.expect("action_tx is required"),
+impl EffectRunner {
+    pub fn new(
+        metadata_provider: Arc<dyn MetadataProvider>,
+        connection: ConnectionDeps,
+        query: QueryDeps,
+        er: ErDeps,
+        utility: UtilityDeps,
+        settings: SettingsDeps,
+        metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
+        action_tx: mpsc::Sender<Action>,
+    ) -> Self {
+        Self {
+            metadata_provider,
+            connection,
+            query,
+            er,
+            utility,
+            settings,
+            metadata_cache,
+            action_tx,
         }
     }
-}
 
-impl EffectRunner {
     pub fn action_tx(&self) -> &mpsc::Sender<Action> {
         &self.action_tx
-    }
-
-    pub fn builder() -> EffectRunnerBuilder {
-        EffectRunnerBuilder {
-            metadata_provider: None,
-            query_executor: None,
-            dsn_builder: None,
-            er_exporter: None,
-            config_writer: None,
-            er_log_writer: None,
-            connection_store: None,
-            pg_service_entry_reader: None,
-            clipboard: None,
-            folder_opener: None,
-            query_history_store: None,
-            settings_store: None,
-            metadata_cache: None,
-            action_tx: None,
-        }
     }
 
     pub async fn run<T: Renderer>(
