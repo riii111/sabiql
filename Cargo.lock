@@ -2624,7 +2624,6 @@ version = "1.12.3"
 dependencies = [
  "async-trait",
  "color-eyre",
- "crossterm",
  "csv",
  "dirs",
  "lru 0.16.4",
@@ -2637,12 +2636,9 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "tokio-util",
  "toml",
  "unicode-casefold",
  "unicode-width",
- "urlencoding",
- "uuid",
 ]
 
 [[package]]

@@ -16,7 +16,6 @@ test-support = []
 [dependencies]
 async-trait.workspace = true
 color-eyre.workspace = true
-crossterm.workspace = true
 csv.workspace = true
 lru.workspace = true
 nucleo-matcher.workspace = true
@@ -24,12 +23,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
 toml.workspace = true
 unicode-casefold.workspace = true
 unicode-width.workspace = true
-urlencoding.workspace = true
-uuid.workspace = true
 dirs.workspace = true
 sabiql-domain.workspace = true
 
