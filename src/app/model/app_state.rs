@@ -262,6 +262,12 @@ impl AppState {
     pub fn can_request_csv_export(&self) -> bool {
         !self.query.is_history_mode() && self.query.visible_result().is_some_and(|r| !r.is_error())
     }
+
+    /// True when a run-scoped async response no longer belongs to the active
+    /// connection and query run, and must be dropped without touching state.
+    pub fn is_stale_query_run(&self, dsn: &str, run_id: u64) -> bool {
+        self.session.dsn.as_deref() != Some(dsn) || !self.query.is_current_run(run_id)
+    }
 }
 
 #[cfg(test)]
