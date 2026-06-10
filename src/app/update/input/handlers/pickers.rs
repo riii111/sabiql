@@ -140,7 +140,7 @@ mod tests {
 
             match expected {
                 Expected::Close => {
-                    assert!(matches!(result, Action::CloseModal(ModalKind::TablePicker)))
+                    assert!(matches!(result, Action::CloseModal(ModalKind::TablePicker)));
                 }
                 Expected::Confirm => assert!(matches!(result, Action::ConfirmSelection)),
                 Expected::SelectPrev => {
