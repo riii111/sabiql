@@ -25,7 +25,6 @@ sabiql-app.workspace = true
 sabiql-domain.workspace = true
 
 [dev-dependencies]
-insta.workspace = true
 rstest.workspace = true
 sabiql-app = { workspace = true, features = ["test-support"] }
 

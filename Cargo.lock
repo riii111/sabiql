@@ -2606,15 +2606,12 @@ dependencies = [
  "crossterm",
  "dotenvy",
  "insta",
- "mockall",
  "ratatui",
- "rstest",
  "sabiql-app",
  "sabiql-domain",
  "sabiql-infra",
  "sabiql-ui",
  "self_update",
- "tempfile",
  "tokio",
 ]
 
@@ -2679,7 +2676,6 @@ dependencies = [
  "color-eyre",
  "crossterm",
  "futures",
- "insta",
  "ratatui",
  "rstest",
  "sabiql-app",
