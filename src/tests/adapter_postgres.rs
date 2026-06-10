@@ -1,17 +1,18 @@
 //! Integration tests for PostgresAdapter (Tier 2).
 //!
 //! All tests require a running PostgreSQL instance and are marked `#[ignore]`.
-//! Run with: `cargo test -- --ignored` or `mise run test:ignored`
+//! Start one with `docker compose up -d --wait`, then run:
+//! `cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)'`
 //!
 //! DSN is read from `SABIQL_TEST_DSN` env var.
-//! Default: `postgres://postgres:postgres@localhost:5432/sabiql_test`
+//! Default: `postgres://dev:dev@localhost:5433/testdb` (matches compose.yml)
 
 use sabiql_app::ports::outbound::{DbOperationError, MetadataProvider, QueryExecutor};
 use sabiql_infra::adapters::postgres::PostgresAdapter;
 
 fn test_dsn() -> String {
     std::env::var("SABIQL_TEST_DSN")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/sabiql_test".to_string())
+        .unwrap_or_else(|_| "postgres://dev:dev@localhost:5433/testdb".to_string())
 }
 
 mod metadata_fetch {
