@@ -41,7 +41,7 @@ def rerun_command(profile: str, test_name: str) -> str:
         )
     if profile == "ci-no-default":
         return (
-            "cargo nextest run --workspace --profile ci-no-default --no-default-features"
+            "cargo nextest run -p sabiql --profile ci-no-default --no-default-features"
             f" -- {quoted_test_name} --exact"
         )
     return (
