@@ -5,7 +5,7 @@ use crate::update::input::keybindings::KeyBinding;
 // Connection Setup
 // =============================================================================
 
-pub mod conn_setup {
+pub mod connection_setup {
     use crate::update::action::Action;
     use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
 
@@ -74,20 +74,20 @@ pub mod conn_setup {
 }
 
 pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
-    conn_setup::TAB_NAV,
-    conn_setup::TAB_NEXT,
-    conn_setup::TAB_PREV,
-    conn_setup::SAVE,
-    conn_setup::ESC_CANCEL,
-    conn_setup::ENTER_DROPDOWN,
-    conn_setup::DROPDOWN_NAV,
+    connection_setup::TAB_NAV,
+    connection_setup::TAB_NEXT,
+    connection_setup::TAB_PREV,
+    connection_setup::SAVE,
+    connection_setup::ESC_CANCEL,
+    connection_setup::ENTER_DROPDOWN,
+    connection_setup::DROPDOWN_NAV,
 ];
 
 // =============================================================================
 // Connection Error
 // =============================================================================
 
-pub mod conn_error {
+pub mod connection_error {
     use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
 
@@ -192,13 +192,13 @@ pub mod conn_error {
 }
 
 pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
-    conn_error::EDIT,
-    conn_error::SWITCH,
-    conn_error::DETAILS,
-    conn_error::COPY,
-    conn_error::SCROLL,
-    conn_error::ESC_CLOSE,
-    conn_error::RETRY,
+    connection_error::EDIT,
+    connection_error::SWITCH,
+    connection_error::DETAILS,
+    connection_error::COPY,
+    connection_error::SCROLL,
+    connection_error::ESC_CLOSE,
+    connection_error::RETRY,
 ];
 
 // =============================================================================

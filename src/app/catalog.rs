@@ -296,7 +296,7 @@ fn reference_sections() -> Vec<HelpSection> {
                 rows_from_mode_row_refs(&[
                     &table_picker::TYPE_FILTER,
                     &er_picker::TYPE_FILTER,
-                    &qh_picker::TYPE_FILTER,
+                    &query_history_picker::TYPE_FILTER,
                 ]),
                 rows_from_bindings(JSONB_SEARCH_KEYS),
                 rows_from_mode_rows(HELP_ROWS),

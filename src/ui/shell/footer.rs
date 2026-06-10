@@ -11,9 +11,10 @@ use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
-    cell_edit, cmd_palette, conn_error, conn_setup, connection_selector, er_picker, footer_nav,
-    global, help, history, inspector_ddl, jsonb_detail, jsonb_edit, jsonb_search, overlay,
-    qh_picker, result_active, sql_modal, sql_modal_confirming, sql_modal_plan, table_picker,
+    cell_edit, command_palette, connection_error, connection_selector, connection_setup, er_picker,
+    footer_nav, global, help, history, inspector_ddl, jsonb_detail, jsonb_edit, jsonb_search,
+    overlay, query_history_picker, result_active, sql_modal, sql_modal_confirming, sql_modal_plan,
+    table_picker,
 };
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
@@ -219,8 +220,8 @@ impl Footer {
             ],
             InputMode::CommandPalette => {
                 vec![
-                    cmd_palette::ENTER_EXECUTE.as_hint(),
-                    cmd_palette::ESC_CLOSE.as_hint(),
+                    command_palette::ENTER_EXECUTE.as_hint(),
+                    command_palette::ESC_CLOSE.as_hint(),
                 ]
             }
             InputMode::Help => vec![help::H_SCROLL.as_hint(), help::CLOSE.as_hint()],
@@ -254,23 +255,23 @@ impl Footer {
                 }
             }
             InputMode::ConnectionSetup => vec![
-                conn_setup::SAVE.as_hint(),
-                conn_setup::TAB_NEXT.as_hint(),
-                conn_setup::TAB_PREV.as_hint(),
-                conn_setup::ESC_CANCEL.as_hint(),
+                connection_setup::SAVE.as_hint(),
+                connection_setup::TAB_NEXT.as_hint(),
+                connection_setup::TAB_PREV.as_hint(),
+                connection_setup::ESC_CANCEL.as_hint(),
             ],
             InputMode::ConnectionError => {
                 let first = if state.session.is_service_connection() {
-                    conn_error::RETRY.as_hint()
+                    connection_error::RETRY.as_hint()
                 } else {
-                    conn_error::EDIT.as_hint()
+                    connection_error::EDIT.as_hint()
                 };
                 vec![
                     first,
-                    conn_error::SWITCH.as_hint(),
-                    conn_error::DETAILS.as_hint(),
-                    conn_error::COPY.as_hint(),
-                    conn_error::ESC_CLOSE.as_hint(),
+                    connection_error::SWITCH.as_hint(),
+                    connection_error::DETAILS.as_hint(),
+                    connection_error::COPY.as_hint(),
+                    connection_error::ESC_CLOSE.as_hint(),
                 ]
             }
             InputMode::ErTablePicker => vec![
@@ -281,9 +282,9 @@ impl Footer {
                 er_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::QueryHistoryPicker => vec![
-                qh_picker::ENTER_SELECT.as_hint(),
-                qh_picker::TYPE_FILTER.as_hint(),
-                qh_picker::ESC_CLOSE.as_hint(),
+                query_history_picker::ENTER_SELECT.as_hint(),
+                query_history_picker::TYPE_FILTER.as_hint(),
+                query_history_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::JsonbDetail => {
                 if state.jsonb_detail.search().active {

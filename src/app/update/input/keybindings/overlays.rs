@@ -518,7 +518,7 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
 // Query History Picker
 // =============================================================================
 
-pub mod qh_picker {
+pub mod query_history_picker {
     use crate::update::action::{
         Action, CursorMove, InputTarget, ListMotion, ListTarget, ModalKind,
     };
@@ -614,17 +614,17 @@ pub mod qh_picker {
 }
 
 pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
-    qh_picker::ENTER_SELECT,
-    qh_picker::NAVIGATE,
-    qh_picker::TYPE_FILTER,
-    qh_picker::ESC_CLOSE,
+    query_history_picker::ENTER_SELECT,
+    query_history_picker::NAVIGATE,
+    query_history_picker::TYPE_FILTER,
+    query_history_picker::ESC_CLOSE,
 ];
 
 // =============================================================================
 // Command Palette
 // =============================================================================
 
-pub mod cmd_palette {
+pub mod command_palette {
     use crate::update::action::{Action, ListMotion, ListTarget, ModalKind};
     use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
 
@@ -683,9 +683,9 @@ pub mod cmd_palette {
 }
 
 pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
-    cmd_palette::ENTER_EXECUTE,
-    cmd_palette::NAVIGATE_JK,
-    cmd_palette::ESC_CLOSE,
+    command_palette::ENTER_EXECUTE,
+    command_palette::NAVIGATE_JK,
+    command_palette::ESC_CLOSE,
 ];
 
 // =============================================================================
