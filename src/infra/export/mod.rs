@@ -1,4 +1,4 @@
 pub mod dot;
-pub mod graphviz;
+pub(crate) mod graphviz;
 
 pub use dot::DotExporter;
