@@ -23,6 +23,27 @@ fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
 }
 
 #[test]
+fn inspector_columns_narrow_pane_scrolled_fills_width() {
+    let (mut state, _now) = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal_sized(110, 40);
+
+    let mut table = fixtures::sample_table_detail();
+    table.columns[0].comment = Some(
+        "Primary key, generated from the tenant sequence and never reused after deletion"
+            .to_string(),
+    );
+    let _ = state.session.set_table_detail(table, 0);
+    state.ui.inspector_tab = InspectorTab::Columns;
+    state.ui.focused_pane = FocusedPane::Inspector;
+    // Scrolled mid-way: the over-wide comment column fills the remaining width
+    state.ui.inspector_horizontal_offset = 2;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inspector_indexes_tab_with_data() {
     let (mut state, _now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
