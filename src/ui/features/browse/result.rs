@@ -439,6 +439,8 @@ pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -
         .collect()
 }
 
+// TODO: cursor windowing is char-based; editing a CJK cell can render wider
+// than the column until text_cursor_spans becomes display-width aware
 fn cell_edit_line_with_cursor(
     text: &str,
     cursor: usize,
@@ -656,19 +658,19 @@ mod tests {
     }
 
     #[test]
-    fn zero_max_chars_returns_ellipsis_only() {
+    fn zero_width_returns_empty() {
         let result = truncate_cell("hello", 0);
 
-        assert_eq!(result, "...");
+        assert_eq!(result, "");
     }
 
     #[rstest]
-    #[case(1, "...")]
-    #[case(2, "...")]
+    #[case(1, ".")]
+    #[case(2, "..")]
     #[case(3, "...")]
     #[case(4, "h...")]
     #[case(5, "he...")]
-    fn small_max_chars_handles_edge_cases(#[case] max: usize, #[case] expected: &str) {
+    fn small_widths_stay_within_contract(#[case] max: usize, #[case] expected: &str) {
         let result = truncate_cell("hello world", max);
 
         assert_eq!(result, expected);

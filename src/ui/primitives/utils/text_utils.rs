@@ -19,7 +19,12 @@ pub fn truncate_to_width(s: &str, max_width: usize) -> String {
         return s.to_string();
     }
 
-    let budget = max_width.saturating_sub(3); // "..." occupies 3 cells
+    // The ellipsis itself must respect the width contract
+    if max_width < 3 {
+        return ".".repeat(max_width);
+    }
+
+    let budget = max_width - 3; // "..." occupies 3 cells
     let mut truncated = String::new();
     let mut used = 0;
     for ch in s.chars() {
@@ -89,7 +94,10 @@ mod tests {
         #[rstest]
         #[case("hello", 10, "hello")]
         #[case("hello world", 8, "hello...")]
-        #[case("hello", 0, "...")]
+        #[case("hello", 0, "")]
+        #[case("hello", 1, ".")]
+        #[case("hello", 2, "..")]
+        #[case("hello", 3, "...")]
         #[case("こんにちは", 10, "こんにちは")]
         #[case("こんにちは世界", 5, "こ...")]
         #[case("日本語テスト", 10, "日本語...")]
@@ -101,9 +109,7 @@ mod tests {
             let result = truncate_to_width(input, max);
 
             assert_eq!(result, expected);
-            if max >= 3 {
-                assert!(UnicodeWidthStr::width(result.as_str()) <= max);
-            }
+            assert!(UnicodeWidthStr::width(result.as_str()) <= max);
         }
     }
 
