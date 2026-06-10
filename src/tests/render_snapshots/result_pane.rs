@@ -145,6 +145,37 @@ fn result_pane_right_edge_peeks_truncated_previous_column() {
 }
 
 #[test]
+fn result_pane_narrow_pane_keeps_horizontal_scroll() {
+    let (mut state, now) = table_detail_loaded_state();
+    // Split-pane terminal: payload alone exceeds the pane width, which must
+    // not disable the scrollbar
+    let mut terminal = create_test_terminal_sized(110, 40);
+
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "SELECT * FROM events".to_string(),
+        columns: ["id", "payload", "status"]
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        rows: vec![
+            vec!["1".to_string(), "x".repeat(100), "active".to_string()],
+            vec!["2".to_string(), "y".repeat(100), "done".to_string()],
+        ],
+        row_count: 2,
+        execution_time_ms: 3,
+        executed_at: now,
+        source: QuerySource::Preview,
+        error: None,
+        command_tag: None,
+    }));
+    state.ui.focused_pane = FocusedPane::Result;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn result_pane_first_cell_active_mode() {
     let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();

@@ -1230,15 +1230,15 @@ mod tests {
         }
 
         #[test]
-        fn no_bonus_at_last_column() {
+        fn no_append_past_last_column_when_not_at_right_edge() {
             let ideal = vec![10, 10, 10];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            // At offset 1 (not right edge), showing cols [1, 2], no col 3 exists
+            // Showing cols [1, 2]; nothing exists after col 2 to append
             let (indices, _) = select_viewport_columns(&cfg, &ctx(1, 50, Some(2), 2));
 
-            assert_eq!(indices.len(), 2, "No bonus when no more columns exist");
+            assert_eq!(indices.len(), 2);
         }
 
         #[test]
