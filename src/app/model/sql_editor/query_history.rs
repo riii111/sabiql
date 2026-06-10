@@ -2,9 +2,9 @@ use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
 use crate::domain::query_history::QueryHistoryEntry;
+use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::picker::{clamp_scroll_offset, sanitize_filter_text};
 use crate::model::shared::text_input::TextInputState;
-use crate::update::action::CursorMove;
 
 #[derive(Debug, Clone, Default)]
 pub struct QueryHistoryPickerState {

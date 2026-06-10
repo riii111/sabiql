@@ -44,26 +44,7 @@ pub enum ErLogError {
     Config(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CursorMove {
-    Left,
-    Right,
-    Up,
-    Down,
-    Home,
-    End,
-    LineStart,
-    LineEnd,
-    WordForward,
-    WordBackward,
-    BufferStart,
-    BufferEnd,
-    FirstLine,
-    LastLine,
-    ViewportTop,
-    ViewportMiddle,
-    ViewportBottom,
-}
+pub use crate::model::shared::cursor::CursorMove;
 
 // ---------------------------------------------------------------------------
 // Parametric Action types

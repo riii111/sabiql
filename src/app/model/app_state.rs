@@ -17,8 +17,9 @@ use crate::model::shared::flash_timer::FlashTimerStore;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
+use crate::model::shared::render_output::RenderOutput;
 use crate::model::shared::settings::SettingsState;
-use crate::model::shared::ui_state::UiState;
+use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 
@@ -102,6 +103,62 @@ impl AppState {
         self.query.clear_expired_highlight(now);
         self.result_interaction.clear_expired_flash(now);
         self.flash_timers.clear_expired(now);
+    }
+
+    /// Writes back the pane geometry measured during a draw. Inspector viewport
+    /// plans are skipped in focus mode to keep the pre-focus plan restorable.
+    pub fn apply_render_output(&mut self, output: RenderOutput) {
+        if !self.ui.is_focus_mode() {
+            self.ui.inspector_viewport_plan = output.inspector_viewport_plan;
+        }
+        self.ui.result_viewport_plan = output.result_viewport_plan;
+        self.ui.result_widths_cache = output.result_widths_cache;
+        self.ui.explorer_pane_height = output.explorer_pane_height;
+        self.ui.explorer_content_width = output.explorer_content_width;
+        let max_name_width = self
+            .tables()
+            .iter()
+            .map(|table| table.qualified_name().chars().count())
+            .max()
+            .unwrap_or(0);
+        let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width);
+        self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
+        self.ui.inspector_pane_height = output.inspector_pane_height;
+        self.ui.result_pane_height = output.result_pane_height;
+        if let Some(width) = output.command_line_visible_width {
+            self.command_line_visible_width = width;
+        }
+        if let Some(height) = output.connection_list_pane_height {
+            self.ui.connection_list_pane_height = height;
+        }
+        if let Some(height) = output.table_picker_pane_height {
+            self.ui.table_picker.pane_height = height;
+        }
+        if let Some(width) = output.table_picker_filter_visible_width {
+            self.ui.table_picker.filter_visible_width = width;
+        }
+        if let Some(height) = output.er_picker_pane_height {
+            self.ui.er_picker.pane_height = height;
+        }
+        if let Some(width) = output.er_picker_filter_visible_width {
+            self.ui.er_picker.filter_visible_width = width;
+        }
+        if let Some(height) = output.query_history_picker_pane_height {
+            self.query_history_picker.pane_height = height;
+        }
+        if let Some(width) = output.query_history_picker_filter_visible_width {
+            self.query_history_picker.filter_visible_width = width;
+        }
+        if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
+            self.ui.jsonb_detail_editor_visible_rows = visible_rows;
+            self.jsonb_detail.editor_mut().update_scroll(visible_rows);
+        }
+        self.confirm_dialog.preview_viewport_height = output.confirm_preview_viewport_height;
+        self.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
+        self.confirm_dialog.preview_scroll = output.confirm_preview_scroll;
+        if let Some(height) = output.explain_compare_viewport_height {
+            self.explain.compare_viewport_height = Some(height);
+        }
     }
 
     pub fn result_visible_rows(&self) -> usize {
