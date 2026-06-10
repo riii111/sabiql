@@ -392,7 +392,7 @@ impl Inspector {
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
             render_vertical_scroll_indicator_bar,
         };
-        let has_h_scroll = headers.len() > plan.column_count;
+        let has_h_scroll = plan.max_offset > 0;
         render_vertical_scroll_indicator_bar(
             frame,
             area,
@@ -409,7 +409,9 @@ impl Inspector {
             area,
             HorizontalScrollParams {
                 position: clamped_offset,
-                viewport_size: plan.column_count, // Use fixed count, not actual displayed (may include bonus)
+                // Derived from max_offset (not displayed count) so the
+                // indicator reaches 100% at the last scroll position
+                viewport_size: headers.len().saturating_sub(plan.max_offset),
                 total_items: headers.len(),
             },
             theme,

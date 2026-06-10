@@ -305,7 +305,7 @@ impl ViewportPlan {
     pub fn calculate(ideal_widths: &[u16], min_widths: &[u16], available_width: u16) -> Self {
         let column_count =
             calculate_viewport_column_count(ideal_widths, min_widths, available_width);
-        let max_offset = calculate_max_offset(ideal_widths.len(), column_count);
+        let max_offset = calculate_max_offset(ideal_widths, column_count, available_width);
         let min_widths_sum = min_widths.iter().sum();
         let ideal_widths_sum = ideal_widths.iter().sum();
         let ideal_widths_max = ideal_widths.iter().copied().max().unwrap_or(0);
@@ -338,8 +338,19 @@ impl ViewportPlan {
     }
 }
 
-pub fn calculate_max_offset(all_widths_len: usize, viewport_column_count: usize) -> usize {
-    all_widths_len.saturating_sub(viewport_column_count)
+// Scrolling stops at the first offset where every remaining column fits at its
+// ideal width — going further would only reveal blank space. When even the
+// suffix of guaranteed columns overflows (min-width fallback), keep the
+// count-based bound so the last column stays reachable.
+pub fn calculate_max_offset(
+    ideal_widths: &[u16],
+    viewport_column_count: usize,
+    available_width: u16,
+) -> usize {
+    let count_based = ideal_widths.len().saturating_sub(viewport_column_count);
+    (0..=count_based)
+        .find(|&offset| total_width_with_separators(&ideal_widths[offset..]) <= available_width)
+        .unwrap_or(count_based)
 }
 
 pub fn calculate_next_column_offset(current_offset: usize, max_offset: usize) -> usize {
@@ -439,7 +450,7 @@ mod tests {
             let available = 80;
 
             let count = calculate_viewport_column_count(&ideal, &min, available);
-            let max_offset = calculate_max_offset(5, count);
+            let max_offset = calculate_max_offset(&ideal, count, available);
 
             // 30+30+1sep = 61 <= 80 → 2 columns fit
             assert_eq!(count, 2);
@@ -524,7 +535,6 @@ mod tests {
                 min_widths_sum: 50,
                 ideal_widths_sum: 150,
                 ideal_widths_max: 30,
-                ..Default::default()
             }
         }
 
@@ -730,18 +740,36 @@ mod tests {
         use super::*;
 
         #[test]
-        fn basic() {
-            assert_eq!(calculate_max_offset(5, 3), 2);
+        fn ends_where_remaining_columns_fit() {
+            let ideal = vec![10, 10, 10, 10, 10];
+            // suffix from 2: 10+10+10 + 2 sep = 32 <= 32
+            assert_eq!(calculate_max_offset(&ideal, 2, 32), 2);
         }
 
         #[test]
-        fn all_fit() {
-            assert_eq!(calculate_max_offset(3, 3), 0);
+        fn zero_when_all_fit() {
+            let ideal = vec![10, 10, 10];
+            assert_eq!(calculate_max_offset(&ideal, 3, 100), 0);
         }
 
         #[test]
         fn more_viewport_than_columns() {
-            assert_eq!(calculate_max_offset(2, 5), 0);
+            let ideal = vec![10, 10];
+            assert_eq!(calculate_max_offset(&ideal, 5, 100), 0);
+        }
+
+        #[test]
+        fn stops_before_count_bound_when_tail_is_narrow() {
+            let ideal = vec![30, 30, 10, 10, 10];
+            // count 1 → count-based bound 4, but suffix from 2 (32) fits in 60
+            assert_eq!(calculate_max_offset(&ideal, 1, 60), 2);
+        }
+
+        #[test]
+        fn caps_at_count_bound_when_suffix_never_fits() {
+            // Last column alone exceeds the viewport (min-width fallback case)
+            let ideal = vec![10, 200];
+            assert_eq!(calculate_max_offset(&ideal, 1, 80), 1);
         }
     }
 
@@ -855,7 +883,7 @@ mod tests {
             let available = 50;
 
             let count = calculate_viewport_column_count(&ideal, &min, available);
-            let max_offset = calculate_max_offset(ideal.len(), count);
+            let max_offset = calculate_max_offset(&ideal, count, available);
 
             for offset in 0..=max_offset {
                 let cfg = config(&ideal, &min);

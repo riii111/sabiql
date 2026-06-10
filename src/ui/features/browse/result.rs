@@ -370,7 +370,7 @@ impl ResultPane {
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
             render_vertical_scroll_indicator_bar,
         };
-        let has_h_scroll = total_cols > plan.column_count;
+        let has_h_scroll = plan.max_offset > 0;
         render_vertical_scroll_indicator_bar(
             frame,
             inner,
@@ -411,7 +411,9 @@ impl ResultPane {
             h_scroll_area,
             HorizontalScrollParams {
                 position: clamped_offset,
-                viewport_size: plan.column_count,
+                // Derived from max_offset (not displayed count) so the
+                // indicator reaches 100% at the last scroll position
+                viewport_size: total_cols.saturating_sub(plan.max_offset),
                 total_items: total_cols,
             },
             theme,
