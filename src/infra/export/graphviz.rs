@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use crate::app::ports::outbound::ErExportError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum GraphvizError {
     #[error(
@@ -22,6 +24,18 @@ pub enum ViewerError {
     UnsupportedBrowser { browser: String },
     #[error("Browser command not found for {browser}. Tried: {candidates}")]
     BrowserCommandNotFound { browser: String, candidates: String },
+}
+
+impl From<GraphvizError> for ErExportError {
+    fn from(e: GraphvizError) -> Self {
+        Self::Export(e.to_string())
+    }
+}
+
+impl From<ViewerError> for ErExportError {
+    fn from(e: ViewerError) -> Self {
+        Self::Export(e.to_string())
+    }
 }
 
 pub trait GraphvizRunner: Send + Sync {
