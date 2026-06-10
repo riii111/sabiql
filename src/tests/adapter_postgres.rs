@@ -109,8 +109,6 @@ mod query_execution {
     }
 }
 
-// Result-set boundary contract for multi-statement adhoc SQL:
-// the displayed result is the last statement that produced a result set.
 mod multi_statement_boundaries {
     use super::*;
     use sabiql_domain::CommandTag;
@@ -136,8 +134,6 @@ mod multi_statement_boundaries {
         let adapter = PostgresAdapter::new();
         let dsn = test_dsn();
 
-        // The data row of the second result set spells out "id,name",
-        // identical to its own header and to the first result set's header.
         let sql = "SELECT 1 AS id, 'Alice' AS name; \
                    SELECT 'id' AS id, 'name' AS name";
         let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();

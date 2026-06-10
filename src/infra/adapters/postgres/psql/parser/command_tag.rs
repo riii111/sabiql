@@ -100,9 +100,6 @@ impl PostgresAdapter {
         ) || s == "START TRANSACTION"
     }
 
-    // Distinguishes a command-tag block ("UPDATE 1", "BEGIN", ...) from a
-    // result-set block (CSV header + data rows) in psql output. Empty input
-    // is not a command-tag block.
     pub(in crate::adapters::postgres) fn is_command_tags_only(block: &str) -> bool {
         Self::parse_all_tags(block).is_some()
     }

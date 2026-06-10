@@ -12,12 +12,8 @@ use super::super::PostgresAdapter;
 use super::error::classify_query_error;
 use super::parser::{ParseCommandTagError, split_sql_statements};
 
-// psql --csv concatenates multiple result sets without separators.
-// Multi-statement input is sent as one -c per statement, each preceded
-// by an `\echo` boundary marker, so result-set boundaries are
-// deterministic instead of inferred from the data shape. Statements
-// stay server-side SQL (never psql script input), so backslash
-// metacommands in user SQL are not interpreted.
+// Keep user SQL server-side: stdin scripts would let psql interpret
+// line-leading backslash metacommands before the server sees them.
 
 fn boundary_marker() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -33,8 +29,7 @@ fn boundary_marker() -> String {
     )
 }
 
-// --single-transaction preserves the all-or-nothing semantics that a
-// single multi-statement -c gets from the implicit transaction.
+// Match the implicit all-or-nothing behavior of a single multi-statement -c.
 fn segmented_query_args(statements: &[&str], marker: &str) -> Vec<String> {
     let echo = format!("\\echo {marker}");
     let mut args = Vec::with_capacity(statements.len() * 4 + 1);
@@ -48,8 +43,6 @@ fn segmented_query_args(statements: &[&str], marker: &str) -> Vec<String> {
     args
 }
 
-// One segment per marker line, marker lines excluded. Text before the
-// first marker is dropped.
 fn split_marker_segments<'a>(stdout: &'a str, marker: &str) -> Vec<&'a str> {
     let mut segments = Vec::new();
     let mut seg_start: Option<usize> = None;
@@ -69,9 +62,6 @@ fn split_marker_segments<'a>(stdout: &'a str, marker: &str) -> Vec<&'a str> {
     segments
 }
 
-// The result set to display is the last segment that is not a bare
-// command-tag block (statements without a result set emit only their
-// command tag, e.g. "UPDATE 3").
 fn select_result_segment<'a>(segments: &[&'a str]) -> Option<&'a str> {
     segments
         .iter()
@@ -223,9 +213,8 @@ impl PostgresAdapter {
             .await
     }
 
-    // Single statement: at most one result set, no boundary handling.
-    // Also keeps non-transaction-capable statements (VACUUM etc.)
-    // outside the --single-transaction wrapping of the segmented path.
+    // Keep non-transaction-capable statements outside the segmented
+    // --single-transaction path.
     async fn execute_single_statement(
         &self,
         dsn: &str,
@@ -293,8 +282,8 @@ impl PostgresAdapter {
         }
 
         let segments = split_marker_segments(&output.stdout, &marker);
-        // psql emits every marker once it exits successfully; a surplus
-        // means a data line collided with the marker. Refuse to guess.
+        // A mismatch implies a marker collision in data; guessing would
+        // reintroduce silent result-set misattribution.
         if segments.len() != statements.len() {
             return Err(DbOperationError::QueryFailed(format!(
                 "result-set boundary mismatch: expected {} segments, found {}",
@@ -628,8 +617,6 @@ mod tests {
 
         #[test]
         fn empty_leading_result_set_returns_last() {
-            // Header-only segment (0-row SELECT) followed by a real result;
-            // the old field-count heuristic could not detect this boundary.
             let segments = vec!["id,name", "age,email\n30,alice@example.com"];
             assert_eq!(
                 select_result_segment(&segments),
@@ -645,8 +632,6 @@ mod tests {
 
         #[test]
         fn data_rows_identical_to_header_stay_in_segment() {
-            // The old heuristic treated a data row equal to a known header
-            // as a new result-set boundary and silently dropped rows.
             let segments = vec!["id,name\n1,Alice", "id,name\nid,name"];
             assert_eq!(select_result_segment(&segments), Some("id,name\nid,name"));
         }
