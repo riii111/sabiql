@@ -2,6 +2,7 @@
 name = "sabiql-ui"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "UI layer for sabiql"
 license.workspace = true
 repository.workspace = true
@@ -27,3 +28,6 @@ sabiql-domain.workspace = true
 insta.workspace = true
 rstest.workspace = true
 sabiql-app = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

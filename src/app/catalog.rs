@@ -3,6 +3,10 @@ use unicode_width::UnicodeWidthStr;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
+#[allow(
+    clippy::wildcard_imports,
+    reason = "help catalog enumerates nearly every keybindings table; explicit list is churn"
+)]
 use crate::update::input::keybindings::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -31,7 +31,7 @@ pub(super) fn reduce_prefetch(
                 let qualified_names: Vec<String> = metadata
                     .table_summaries
                     .iter()
-                    .map(|table| table.qualified_name())
+                    .map(crate::domain::TableSummary::qualified_name)
                     .collect();
                 state
                     .er_preparation

@@ -32,6 +32,7 @@ impl DispatchResult {
         }
     }
 
+    #[must_use]
     pub fn or_else<F>(self, f: F) -> Self
     where
         F: FnOnce() -> Self,

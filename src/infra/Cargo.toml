@@ -2,6 +2,7 @@
 name = "sabiql-infra"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Infrastructure layer for sabiql"
 license.workspace = true
 repository.workspace = true
@@ -29,3 +30,6 @@ arboard.workspace = true
 rstest.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

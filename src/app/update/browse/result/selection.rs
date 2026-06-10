@@ -15,8 +15,11 @@ fn ensure_cell_visible(state: &mut AppState) {
         if col < h_offset {
             state.result_interaction.horizontal_offset = col;
         } else if col >= h_offset + plan.column_count {
-            state.result_interaction.horizontal_offset =
-                col.saturating_sub(plan.column_count.saturating_sub(1));
+            // At max_offset every remaining column is visible, so clamping
+            // never hides the active cell
+            state.result_interaction.horizontal_offset = col
+                .saturating_sub(plan.column_count.saturating_sub(1))
+                .min(plan.max_offset);
         }
     }
 }

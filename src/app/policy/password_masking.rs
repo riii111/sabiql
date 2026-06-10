@@ -1,4 +1,4 @@
-pub(crate) fn mask_password(text: &str) -> String {
+pub fn mask_password(text: &str) -> String {
     let result = mask_url_passwords(text);
     let result = mask_kv_passwords(&result);
     mask_env_passwords(&result)
@@ -99,14 +99,14 @@ fn password_assignment_prefix_len(text: &str, pos: usize) -> Option<usize> {
 
     let bytes = text.as_bytes();
     let mut i = pos + key.len();
-    while bytes.get(i).is_some_and(|byte| byte.is_ascii_whitespace()) {
+    while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
         i += 1;
     }
     if bytes.get(i) != Some(&b'=') {
         return None;
     }
     i += 1;
-    while bytes.get(i).is_some_and(|byte| byte.is_ascii_whitespace()) {
+    while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
         i += 1;
     }
 

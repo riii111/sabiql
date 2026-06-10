@@ -52,6 +52,130 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
 }
 
 #[test]
+fn result_pane_scrolled_past_wide_column_fills_width() {
+    let (mut state, now) = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    // payload's ideal width nearly fills the pane; scrolled past it, the
+    // remaining narrow columns must fill the viewport instead of leaving
+    // most of the pane blank
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "SELECT * FROM events".to_string(),
+        columns: ["id", "payload", "status", "kind", "actor", "note"]
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        rows: vec![
+            vec![
+                "1".to_string(),
+                "x".repeat(100),
+                "active_pending_validation".to_string(),
+                "user_account_registration".to_string(),
+                "alice.anderson@example.com".to_string(),
+                "created via admin console".to_string(),
+            ],
+            vec![
+                "2".to_string(),
+                "y".repeat(100),
+                "suspended_awaiting_review".to_string(),
+                "service_account_creation".to_string(),
+                "bob.brown@example.com".to_string(),
+                "imported from legacy system".to_string(),
+            ],
+        ],
+        row_count: 2,
+        execution_time_ms: 3,
+        executed_at: now,
+        source: QuerySource::Preview,
+        error: None,
+        command_tag: None,
+    }));
+    state.ui.focused_pane = FocusedPane::Result;
+    state.result_interaction.horizontal_offset = 2;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_right_edge_peeks_truncated_previous_column() {
+    let (mut state, now) = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    // At the right edge the trailing narrow columns leave leftover width;
+    // the hidden wide description column shows up truncated instead of blank
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "SELECT * FROM events".to_string(),
+        columns: ["id", "description", "status", "kind", "actor", "note"]
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        rows: vec![
+            vec![
+                "1".to_string(),
+                "x".repeat(100),
+                "active".to_string(),
+                "create".to_string(),
+                "alice".to_string(),
+                "first".to_string(),
+            ],
+            vec![
+                "2".to_string(),
+                "y".repeat(100),
+                "suspended".to_string(),
+                "update".to_string(),
+                "bob".to_string(),
+                "second".to_string(),
+            ],
+        ],
+        row_count: 2,
+        execution_time_ms: 3,
+        executed_at: now,
+        source: QuerySource::Preview,
+        error: None,
+        command_tag: None,
+    }));
+    state.ui.focused_pane = FocusedPane::Result;
+    state.result_interaction.horizontal_offset = 2;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_narrow_pane_keeps_horizontal_scroll() {
+    let (mut state, now) = table_detail_loaded_state();
+    // Split-pane terminal: payload alone exceeds the pane width, which must
+    // not disable the scrollbar
+    let mut terminal = create_test_terminal_sized(110, 40);
+
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "SELECT * FROM events".to_string(),
+        columns: ["id", "payload", "status"]
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        rows: vec![
+            vec!["1".to_string(), "x".repeat(100), "active".to_string()],
+            vec!["2".to_string(), "y".repeat(100), "done".to_string()],
+        ],
+        row_count: 2,
+        execution_time_ms: 3,
+        executed_at: now,
+        source: QuerySource::Preview,
+        error: None,
+        command_tag: None,
+    }));
+    state.ui.focused_pane = FocusedPane::Result;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn result_pane_first_cell_active_mode() {
     let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
