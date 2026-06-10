@@ -2,6 +2,7 @@
 name = "sabiql-app"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Application layer for sabiql"
 license.workspace = true
 repository.workspace = true
@@ -37,3 +38,6 @@ mockall.workspace = true
 rstest.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
