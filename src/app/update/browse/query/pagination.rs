@@ -68,7 +68,7 @@ pub fn reduce_pagination(
             export_query,
             file_name,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -116,7 +116,7 @@ pub fn reduce_pagination(
             file_name,
             row_count,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -136,7 +136,7 @@ pub fn reduce_pagination(
             path,
             row_count,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -153,7 +153,7 @@ pub fn reduce_pagination(
         }
 
         Action::CsvExportFailed { dsn, run_id, error } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 

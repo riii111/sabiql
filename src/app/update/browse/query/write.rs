@@ -256,7 +256,7 @@ pub fn reduce_write(
             run_id,
             affected_rows,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -344,7 +344,7 @@ pub fn reduce_write(
         }
 
         Action::ExecuteWriteFailed { dsn, run_id, error } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 

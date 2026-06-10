@@ -71,7 +71,7 @@ pub fn reduce_execution(
             generation,
             target_page,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
             if *generation != 0 && *generation != state.session.selection_generation() {
@@ -151,7 +151,7 @@ pub fn reduce_execution(
             generation,
             source,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
