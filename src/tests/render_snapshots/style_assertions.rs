@@ -70,12 +70,12 @@ fn jsonb_detail_state() -> (AppState, Instant) {
                 "settings".to_string(),
             ],
             vec![vec![
-            "1".to_string(),
-            "Alice".to_string(),
-            "alice@example.com".to_string(),
-            r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
-                .to_string(),
-        ]],
+                "1".to_string(),
+                "Alice".to_string(),
+                "alice@example.com".to_string(),
+                r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
+                    .to_string(),
+            ]],
             1,
             QuerySource::Preview,
         )));
