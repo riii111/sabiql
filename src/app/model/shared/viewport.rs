@@ -1155,17 +1155,20 @@ mod tests {
 
             let plan = ViewportPlan::calculate(&ideal, &min, available);
             let cfg = config(&ideal, &min);
-            let rightmost: Vec<usize> = (0..=plan.max_offset)
+            let visible: Vec<Vec<usize>> = (0..=plan.max_offset)
                 .map(|offset| {
                     let (indices, _) = select_viewport_columns(
                         &cfg,
                         &ctx(offset, available, Some(plan.column_count), plan.max_offset),
                     );
-                    *indices.last().unwrap()
+                    indices
                 })
                 .collect();
 
-            assert_eq!(rightmost, vec![4, 5, 5]);
+            assert_eq!(
+                visible,
+                vec![vec![0, 1, 2, 3, 4], vec![1, 2, 3, 4, 5], vec![2, 3, 4, 5]]
+            );
         }
 
         #[test]
