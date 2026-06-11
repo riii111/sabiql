@@ -399,12 +399,11 @@ fn mode_label(is_analyze: bool) -> &'static str {
 pub(super) fn pad_or_truncate(s: &str, width: usize) -> String {
     use unicode_width::UnicodeWidthStr;
 
-    let display_width = UnicodeWidthStr::width(s);
-    if display_width > width {
-        truncate_to_width_with(s, width, "\u{2026}")
-    } else {
-        format!("{s}{}", " ".repeat(width - display_width))
-    }
+    // Truncation can land short of `width` (a 2-cell char may not fit the
+    // last cell), so pad the remainder to keep side-by-side columns aligned
+    let truncated = truncate_to_width_with(s, width, "\u{2026}");
+    let pad = width.saturating_sub(UnicodeWidthStr::width(truncated.as_str()));
+    format!("{truncated}{}", " ".repeat(pad))
 }
 
 #[cfg(test)]
@@ -413,6 +412,28 @@ mod tests {
     use crate::app::model::explain_context::SlotSource;
     use crate::domain::explain_plan::ExplainPlan;
     use crate::theme::DEFAULT_THEME;
+
+    mod pad_or_truncate_tests {
+        use super::super::pad_or_truncate;
+        use rstest::rstest;
+        use unicode_width::UnicodeWidthStr;
+
+        #[rstest]
+        #[case("abc", 5, "abc  ")]
+        #[case("abcdef", 5, "abcd\u{2026}")]
+        #[case("日本語テスト", 5, "日本\u{2026}")]
+        #[case("日本語", 4, "日\u{2026} ")]
+        fn fills_exact_display_width(
+            #[case] input: &str,
+            #[case] width: usize,
+            #[case] expected: &str,
+        ) {
+            let result = pad_or_truncate(input, width);
+
+            assert_eq!(result, expected);
+            assert_eq!(UnicodeWidthStr::width(result.as_str()), width);
+        }
+    }
 
     fn sample_slot(label: SlotSource, plan: &str) -> CompareSlot {
         CompareSlot {
