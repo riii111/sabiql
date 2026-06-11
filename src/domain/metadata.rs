@@ -10,6 +10,7 @@ pub struct DatabaseMetadata {
 }
 
 impl DatabaseMetadata {
+    #[must_use]
     pub fn new(database_name: String) -> Self {
         Self {
             database_name,

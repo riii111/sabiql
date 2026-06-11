@@ -19,6 +19,7 @@ pub struct QueryResult {
 }
 
 impl QueryResult {
+    #[must_use]
     pub fn success(
         query: String,
         columns: Vec<String>,
@@ -39,6 +40,7 @@ impl QueryResult {
         }
     }
 
+    #[must_use]
     pub fn error(
         query: String,
         error: String,
