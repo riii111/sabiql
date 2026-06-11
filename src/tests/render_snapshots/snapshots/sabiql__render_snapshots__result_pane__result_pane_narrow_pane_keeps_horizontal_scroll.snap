@@ -23,9 +23,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          ││                                                                                │
 │                          │└────────────────────────────────────────────────────────────────────────────────┘
 │                          │┌ [3] Result (2 rows, 3ms) ──────────────────────────────────────────────────────┐
-│                          ││id   payload                                                                    │
-│                          ││1    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...│
-│                          ││2    yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy...│
+│                          ││id   payload                                          details                   │
+│                          ││1    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... zzzzzzzzzzzzzzzzzzzzzzz...│
+│                          ││2    yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy... wwwwwwwwwwwwwwwwwwwwwww...│
 │                          ││                                                                                │
 │                          ││                                                                                │
 │                          ││                                                                                │
