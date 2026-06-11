@@ -1,5 +1,46 @@
+use std::borrow::Cow;
+
 pub const MIN_COL_WIDTH: u16 = 4;
 pub const MAX_COL_WIDTH: u16 = 200;
+
+// An over-wide column may claim at most this share of the pane while
+// scrolling. Without the cap it monopolizes the viewport: scrolling past it
+// reveals nothing new until max_offset, where the right-edge logic dumps
+// every remaining column at once.
+const WIDE_COLUMN_PANE_RATIO: (u32, u32) = (3, 5);
+
+// Skipped when everything already fits — capping would only shrink content
+// without enabling anything. Header min widths still win over the cap so
+// headers stay intact.
+fn cap_wide_columns<'a>(
+    ideal_widths: &'a [u16],
+    min_widths: &[u16],
+    available_width: u16,
+) -> Cow<'a, [u16]> {
+    let (num, den) = WIDE_COLUMN_PANE_RATIO;
+    let cap = (u32::from(available_width) * num / den) as u16;
+
+    if total_width_with_separators(ideal_widths) <= available_width
+        || !ideal_widths.iter().any(|&w| w > cap)
+    {
+        return Cow::Borrowed(ideal_widths);
+    }
+
+    Cow::Owned(
+        ideal_widths
+            .iter()
+            .enumerate()
+            .map(|(i, &w)| {
+                if w > cap {
+                    let min_w = min_widths.get(i).copied().unwrap_or(MIN_COL_WIDTH);
+                    cap.max(min_w)
+                } else {
+                    w
+                }
+            })
+            .collect(),
+    )
+}
 
 pub struct ColumnWidthConfig<'a> {
     pub ideal_widths: &'a [u16],
@@ -180,6 +221,12 @@ pub fn select_viewport_columns(
         return (Vec::new(), Vec::new());
     }
 
+    let capped = cap_wide_columns(config.ideal_widths, config.min_widths, ctx.available_width);
+    let config = &ColumnWidthConfig {
+        ideal_widths: &capped,
+        min_widths: config.min_widths,
+    };
+
     let (indices, mut widths) = match ctx.fixed_count {
         Some(count) => select_fixed_columns(config, ctx, count),
         None => select_dynamic_columns(config, ctx.horizontal_offset, ctx.available_width),
@@ -342,14 +389,17 @@ pub struct ViewportPlan {
 
 impl ViewportPlan {
     pub fn calculate(ideal_widths: &[u16], min_widths: &[u16], available_width: u16) -> Self {
-        let column_count = calculate_viewport_column_count(ideal_widths, available_width);
-        let max_offset = calculate_max_offset(ideal_widths, column_count, available_width);
+        let capped = cap_wide_columns(ideal_widths, min_widths, available_width);
+        let column_count = calculate_viewport_column_count(&capped, available_width);
+        let max_offset = calculate_max_offset(&capped, column_count, available_width);
 
         Self {
             column_count,
             max_offset,
             total_columns: ideal_widths.len(),
             available_width,
+            // From raw widths: callers compare against fingerprints of the
+            // uncapped cache, and a mismatch would recalculate every frame
             widths_fingerprint: widths_fingerprint(ideal_widths, min_widths),
         }
     }
@@ -691,10 +741,10 @@ mod tests {
             let ideal = vec![20, 20, 20];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
-            // 2 cols of 20 + 1 sep = 41, available = 31, excess = 10
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 31, Some(2), 1));
+            // 2 cols of 20 + 1 sep = 41, available = 34, excess = 7
+            let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 34, Some(2), 1));
             assert_eq!(indices, vec![1, 2]);
-            assert_eq!(selected, vec![10, 20]); // left shrinks, right preserved
+            assert_eq!(selected, vec![13, 20]); // left shrinks, right preserved
         }
 
         #[test]
@@ -702,9 +752,9 @@ mod tests {
             let ideal = vec![20, 20, 20];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 30, Some(3), 1));
+            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 34, Some(3), 1));
             assert_eq!(indices, vec![0, 1, 2]);
-            assert_eq!(selected, vec![20, 4, 4]);
+            assert_eq!(selected, vec![20, 8, 4]);
         }
 
         #[test]
@@ -719,7 +769,7 @@ mod tests {
         #[test]
         fn one_column_scroll_changes_one_column() {
             let ideal = vec![10, 10, 50, 10, 10];
-            let min = vec![4, 4, 4, 4, 4];
+            let min = vec![8, 8, 8, 8, 8];
             let cfg = config(&ideal, &min);
             let max_offset = 2;
 
@@ -939,9 +989,9 @@ mod tests {
             let cfg = config(&ideal, &min);
             let max_offset = 1;
 
-            // 2 cols of 20 + 1 sep = 41, available = 31, excess = 10
+            // 2 cols of 20 + 1 sep = 41, available = 34, excess = 7
             let (_, selected) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 31, Some(2), max_offset));
+                select_viewport_columns(&cfg, &ctx(max_offset, 34, Some(2), max_offset));
 
             assert!(
                 selected[0] < ideal[1],
@@ -1089,6 +1139,83 @@ mod tests {
 
             assert_eq!(idx0[0], 0);
             assert_eq!(idx1[0], 1);
+        }
+    }
+
+    mod wide_column_cap {
+        use super::*;
+
+        #[test]
+        fn scroll_past_wide_column_reveals_one_column_per_step() {
+            // Uncapped, col 2 (200) monopolizes the pane: scrolling reveals
+            // nothing new until max_offset dumps the remaining columns at once
+            let ideal = vec![6, 12, 200, 14, 10, 16];
+            let min = vec![4, 6, 8, 12, 8, 8];
+            let available = 120;
+
+            let plan = ViewportPlan::calculate(&ideal, &min, available);
+            let cfg = config(&ideal, &min);
+            let rightmost: Vec<usize> = (0..=plan.max_offset)
+                .map(|offset| {
+                    let (indices, _) = select_viewport_columns(
+                        &cfg,
+                        &ctx(offset, available, Some(plan.column_count), plan.max_offset),
+                    );
+                    *indices.last().unwrap()
+                })
+                .collect();
+
+            assert_eq!(rightmost, vec![4, 5, 5]);
+        }
+
+        #[test]
+        fn plan_counts_use_capped_widths() {
+            let ideal = vec![6, 12, 200, 14, 10, 16];
+            let min = vec![4, 6, 8, 12, 8, 8];
+
+            let plan = ViewportPlan::calculate(&ideal, &min, 120);
+
+            assert_eq!(plan.column_count, 4);
+            assert_eq!(plan.max_offset, 2);
+        }
+
+        #[test]
+        fn raw_fingerprint_still_matches_capped_plan() {
+            let ideal = vec![6, 12, 200, 14, 10, 16];
+            let min = vec![4, 6, 8, 12, 8, 8];
+
+            let plan = ViewportPlan::calculate(&ideal, &min, 120);
+
+            assert!(!plan.needs_recalculation(120, widths_fingerprint(&ideal, &min)));
+        }
+
+        #[test]
+        fn no_cap_when_all_columns_fit() {
+            let ideal = vec![10, 80];
+            let min = vec![4, 4];
+            let cfg = config(&ideal, &min);
+
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 120, Some(2), 0));
+
+            assert_eq!(indices, vec![0, 1]);
+            assert_eq!(widths, vec![10, 109]);
+        }
+
+        #[test]
+        fn capped_width_never_below_header_min() {
+            let ideal = vec![100, 100];
+            let min = vec![70, 4];
+            let available = 100; // cap (60) is below col 0's header width
+
+            let plan = ViewportPlan::calculate(&ideal, &min, available);
+            let cfg = config(&ideal, &min);
+            let (indices, widths) = select_viewport_columns(
+                &cfg,
+                &ctx(0, available, Some(plan.column_count), plan.max_offset),
+            );
+
+            assert_eq!(indices, vec![0, 1]);
+            assert!(widths[0] >= 70);
         }
     }
 
