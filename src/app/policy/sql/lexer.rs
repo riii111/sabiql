@@ -143,6 +143,11 @@ const SQL_KEYWORDS: &[&str] = &[
     "ROLLBACK",
     "EXPLAIN",
     "ANALYZE",
+    "SHOW",
+    "SAVEPOINT",
+    "START",
+    "TRANSACTION",
+    "RELEASE",
 ];
 
 pub struct SqlLexer;
@@ -1034,12 +1039,27 @@ mod tests {
         }
 
         #[test]
-        fn statement_starting_keywords_tokenize_as_keywords() {
+        fn statement_keywords_tokenize_as_keywords() {
             let l = lexer();
 
             for kw in [
-                "DO", "GRANT", "REVOKE", "COPY", "CALL", "MERGE", "TRUNCATE", "BEGIN", "COMMIT",
-                "ROLLBACK", "EXPLAIN", "ANALYZE",
+                "DO",
+                "GRANT",
+                "REVOKE",
+                "COPY",
+                "CALL",
+                "MERGE",
+                "TRUNCATE",
+                "BEGIN",
+                "COMMIT",
+                "ROLLBACK",
+                "EXPLAIN",
+                "ANALYZE",
+                "SHOW",
+                "SAVEPOINT",
+                "START",
+                "TRANSACTION",
+                "RELEASE",
             ] {
                 let sql = format!("{kw} x");
                 let tokens = l.tokenize(&sql, sql.chars().count());
