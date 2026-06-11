@@ -149,20 +149,15 @@ mod tests {
                     (0..cols).map(|c| format!("{row_prefix}c{c}")).collect()
                 })
                 .collect();
-            let row_count = result_rows.len();
             state
                 .query
-                .set_current_result(Arc::new(crate::domain::QueryResult {
-                    query: String::new(),
+                .set_current_result(Arc::new(crate::domain::QueryResult::success(
+                    String::new(),
                     columns,
-                    rows: result_rows,
-                    row_count,
-                    execution_time_ms: 1,
-                    executed_at: Instant::now(),
-                    source: crate::domain::QuerySource::Preview,
-                    error: None,
-                    command_tag: None,
-                }));
+                    result_rows,
+                    1,
+                    crate::domain::QuerySource::Preview,
+                )));
             state
         }
 
@@ -320,17 +315,13 @@ mod tests {
             let rows = vec![values.iter().map(ToString::to_string).collect()];
             state
                 .query
-                .set_current_result(Arc::new(crate::domain::QueryResult {
-                    query: String::new(),
+                .set_current_result(Arc::new(crate::domain::QueryResult::success(
+                    String::new(),
                     columns,
                     rows,
-                    row_count: 1,
-                    execution_time_ms: 1,
-                    executed_at: Instant::now(),
-                    source: crate::domain::QuerySource::Preview,
-                    error: None,
-                    command_tag: None,
-                }));
+                    1,
+                    crate::domain::QuerySource::Preview,
+                )));
             state
         }
 

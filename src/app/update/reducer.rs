@@ -931,7 +931,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
-                fetched_at: Instant::now(),
             };
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state, metadata);
@@ -955,7 +954,6 @@ mod tests {
                     None,
                     false,
                 )],
-                fetched_at: Instant::now(),
             };
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state, metadata);
@@ -1166,7 +1164,7 @@ mod tests {
             }
         }
 
-        fn users_metadata(now: Instant) -> Arc<DatabaseMetadata> {
+        fn users_metadata() -> Arc<DatabaseMetadata> {
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1176,7 +1174,6 @@ mod tests {
                     Some(100),
                     false,
                 )],
-                fetched_at: now,
             })
         }
 
@@ -1184,7 +1181,7 @@ mod tests {
         fn confirm_selection_in_normal_mode_clears_stale_table_detail() {
             let now = Instant::now();
             let mut state = create_test_state();
-            state.session.set_metadata(Some(users_metadata(now)));
+            state.session.set_metadata(Some(users_metadata()));
             state
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
@@ -1206,7 +1203,7 @@ mod tests {
         fn confirm_selection_in_table_picker_mode_clears_stale_table_detail() {
             let now = Instant::now();
             let mut state = create_test_state();
-            state.session.set_metadata(Some(users_metadata(now)));
+            state.session.set_metadata(Some(users_metadata()));
             state
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
@@ -1315,7 +1312,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
-                fetched_at: now,
             };
             let action = Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
@@ -1371,7 +1367,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
-                fetched_at: Instant::now(),
             })));
             let _ = state.sql_modal.begin_prefetch();
             state
@@ -1396,7 +1391,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
-                fetched_at: Instant::now(),
             })));
             let _ = state.sql_modal.begin_prefetch();
             let now = Instant::now();
@@ -1416,7 +1410,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
-                fetched_at: Instant::now(),
             })));
             let now = Instant::now();
 
@@ -2049,7 +2042,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
-                fetched_at: Instant::now(),
             };
             let now = Instant::now();
 
@@ -2279,7 +2271,6 @@ mod tests {
                     database_name: "cached_db".to_string(),
                     schemas: vec![],
                     table_summaries: vec![],
-                    fetched_at: Instant::now(),
                 })),
                 ..Default::default()
             };
@@ -2322,7 +2313,6 @@ mod tests {
                     TableSummary::new("public".to_string(), "users".to_string(), None, false),
                     TableSummary::new("public".to_string(), "posts".to_string(), None, false),
                 ],
-                fetched_at: Instant::now(),
             })));
             state
         }
@@ -2378,7 +2368,6 @@ mod tests {
                     Some(100),
                     false,
                 )],
-                fetched_at: Instant::now(),
             })
         }
 
@@ -2620,7 +2609,6 @@ mod tests {
                     Some(1200),
                     false,
                 )],
-                fetched_at: now,
             };
             let run_id = state.session.begin_metadata_refresh();
             reduce(
@@ -2660,17 +2648,13 @@ mod tests {
 
             // Simulate QueryCompleted with a full page of results
             let current_gen = state.session.selection_generation();
-            let result = Arc::new(QueryResult {
-                columns: vec!["id".to_string()],
-                rows: vec![vec!["1".to_string()]; PREVIEW_PAGE_SIZE],
-                execution_time_ms: 10,
-                source: QuerySource::Preview,
-                row_count: PREVIEW_PAGE_SIZE,
-                query: String::new(),
-                executed_at: now,
-                error: None,
-                command_tag: None,
-            });
+            let result = Arc::new(QueryResult::success(
+                String::new(),
+                vec!["id".to_string()],
+                vec![vec!["1".to_string()]; PREVIEW_PAGE_SIZE],
+                10,
+                QuerySource::Preview,
+            ));
             let run_id = state.query.begin_running(now);
             reduce(
                 &mut state,

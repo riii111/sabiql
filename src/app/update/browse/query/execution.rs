@@ -574,10 +574,10 @@ mod tests {
         #[test]
         fn preview_delete_reselection_preserves_active_column_and_offset() {
             let mut state = create_test_state();
-            let result = Arc::new(QueryResult {
-                query: "SELECT * FROM users".to_string(),
-                columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
-                rows: vec![
+            let result = Arc::new(QueryResult::success(
+                "SELECT * FROM users".to_string(),
+                vec!["id".to_string(), "name".to_string(), "email".to_string()],
+                vec![
                     vec![
                         "1".to_string(),
                         "Alice".to_string(),
@@ -589,13 +589,9 @@ mod tests {
                         "b@example.com".to_string(),
                     ],
                 ],
-                row_count: 2,
-                execution_time_ms: 10,
-                executed_at: Instant::now(),
-                source: QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            });
+                10,
+                QuerySource::Preview,
+            ));
             state
                 .query
                 .set_post_delete_selection(PostDeleteRowSelection::Select(1));
@@ -877,17 +873,13 @@ mod tests {
         #[test]
         fn no_command_tag_emits_no_effects() {
             let mut state = state_with_table("public", "users");
-            let result = Arc::new(crate::domain::QueryResult {
-                query: "SELECT 1".to_string(),
-                columns: vec!["?column?".to_string()],
-                rows: vec![vec!["1".to_string()]],
-                row_count: 1,
-                execution_time_ms: 5,
-                executed_at: Instant::now(),
-                source: QuerySource::Adhoc,
-                error: None,
-                command_tag: None,
-            });
+            let result = Arc::new(crate::domain::QueryResult::success(
+                "SELECT 1".to_string(),
+                vec!["?column?".to_string()],
+                vec![vec!["1".to_string()]],
+                5,
+                QuerySource::Adhoc,
+            ));
             let action = query_completed_action(&mut state, result, 0, None);
 
             let effects =
@@ -912,7 +904,6 @@ mod tests {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)
                     })
                     .collect(),
-                fetched_at: Instant::now(),
             })
         }
 

@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
 
 use tokio::sync::mpsc;
 
@@ -171,20 +170,15 @@ pub fn sample_metadata() -> DatabaseMetadata {
         database_name: "testdb".to_string(),
         schemas: vec![],
         table_summaries: vec![],
-        fetched_at: Instant::now(),
     }
 }
 
 pub fn sample_query_result() -> QueryResult {
-    QueryResult {
-        query: "SELECT 1".to_string(),
-        columns: vec!["id".to_string()],
-        rows: vec![vec!["1".to_string()]],
-        row_count: 1,
-        execution_time_ms: 5,
-        executed_at: Instant::now(),
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }
+    QueryResult::success(
+        "SELECT 1".to_string(),
+        vec!["id".to_string()],
+        vec![vec!["1".to_string()]],
+        5,
+        QuerySource::Preview,
+    )
 }

@@ -254,7 +254,6 @@ pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Instant;
 
     use super::*;
     use crate::model::shared::key_sequence::Prefix;
@@ -263,20 +262,15 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         state.ui.result_pane_height = pane_height;
         let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
-        let row_count = result_rows.len();
         state
             .query
-            .set_current_result(Arc::new(crate::domain::QueryResult {
-                query: String::new(),
-                columns: vec!["id".to_string()],
-                rows: result_rows,
-                row_count,
-                execution_time_ms: 1,
-                executed_at: Instant::now(),
-                source: crate::domain::QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
+            .set_current_result(Arc::new(crate::domain::QueryResult::success(
+                String::new(),
+                vec!["id".to_string()],
+                result_rows,
+                1,
+                crate::domain::QuerySource::Preview,
+            )));
         state
     }
 
@@ -783,18 +777,13 @@ mod tests {
             source: crate::domain::QuerySource,
         ) -> Arc<crate::domain::QueryResult> {
             let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
-            let row_count = result_rows.len();
-            Arc::new(crate::domain::QueryResult {
-                query: String::new(),
-                columns: vec!["id".to_string()],
-                rows: result_rows,
-                row_count,
-                execution_time_ms: 1,
-                executed_at: Instant::now(),
+            Arc::new(crate::domain::QueryResult::success(
+                String::new(),
+                vec!["id".to_string()],
+                result_rows,
+                1,
                 source,
-                error: None,
-                command_tag: None,
-            })
+            ))
         }
 
         #[test]

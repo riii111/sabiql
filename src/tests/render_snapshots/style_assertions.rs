@@ -48,7 +48,7 @@ fn jsonb_detail_state() -> (AppState, Instant) {
     let mut state = create_test_state();
     state
         .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
     let mut table = fixtures::sample_table_detail();
     table.columns.push(Column {
         name: "settings".to_string(),
@@ -59,28 +59,26 @@ fn jsonb_detail_state() -> (AppState, Instant) {
         ordinal_position: 4,
     });
     let _ = state.session.set_table_detail(table, 0);
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
-        columns: vec![
-            "id".to_string(),
-            "name".to_string(),
-            "email".to_string(),
-            "settings".to_string(),
-        ],
-        rows: vec![vec![
-            "1".to_string(),
-            "Alice".to_string(),
-            "alice@example.com".to_string(),
-            r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
-                .to_string(),
-        ]],
-        row_count: 1,
-        execution_time_ms: 1,
-        executed_at: now,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }));
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
+            vec![
+                "id".to_string(),
+                "name".to_string(),
+                "email".to_string(),
+                "settings".to_string(),
+            ],
+            vec![vec![
+                "1".to_string(),
+                "Alice".to_string(),
+                "alice@example.com".to_string(),
+                r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
+                    .to_string(),
+            ]],
+            1,
+            QuerySource::Preview,
+        )));
     state.query.pagination.schema = "public".to_string();
     state.query.pagination.table = "users".to_string();
     state.ui.focused_pane = FocusedPane::Result;
@@ -102,10 +100,10 @@ fn jsonb_detail_state() -> (AppState, Instant) {
 
 #[test]
 fn pending_draft_cell_uses_orange_fg() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
@@ -130,10 +128,10 @@ fn pending_draft_cell_uses_orange_fg() {
 
 #[test]
 fn active_cell_edit_uses_yellow_fg() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -158,10 +156,10 @@ fn active_cell_edit_uses_yellow_fg() {
 
 #[test]
 fn staged_delete_row_uses_dark_red_bg() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
@@ -179,7 +177,7 @@ fn staged_delete_row_uses_dark_red_bg() {
 
 #[test]
 fn scrim_applies_dim_modifier() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -196,10 +194,11 @@ fn scrim_applies_dim_modifier() {
 
 #[test]
 fn result_highlight_respects_injected_now() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
+    let now = test_instant();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     // Unfocused so highlight border is distinguishable from focus border
     state.ui.focused_pane = FocusedPane::Explorer;
 
@@ -233,7 +232,7 @@ fn result_highlight_respects_injected_now() {
 
 #[test]
 fn modal_border_uses_theme_color() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -299,7 +298,7 @@ fn header_status_uses_success_warning_and_error_colors() {
         .begin_connecting("postgres://localhost/test");
     connected
         .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
     let connected_buffer = render_and_get_buffer_at(&mut terminal, &mut connected, now);
     assert_header_status_color(
         &connected_buffer,
@@ -329,7 +328,8 @@ fn header_status_uses_success_warning_and_error_colors() {
 
 #[test]
 fn help_overlay_uses_section_header_and_scrollbar_colors() {
-    let (mut state, now) = connected_state();
+    let mut state = connected_state();
+    let now = test_instant();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -365,7 +365,7 @@ fn help_overlay_uses_section_header_and_scrollbar_colors() {
 
 #[test]
 fn help_overlay_omits_scrollbars_when_content_fits() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal_sized(180, 300);
 
     state.modal.set_mode(InputMode::Help);
@@ -388,7 +388,8 @@ fn help_overlay_omits_scrollbars_when_content_fits() {
 
 #[test]
 fn test_contrast_theme_applies_help_overlay_navigation_colors() {
-    let (mut state, now) = connected_state();
+    let mut state = connected_state();
+    let now = test_instant();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -830,7 +831,8 @@ fn sql_modal_unterminated_block_comment_keeps_comment_highlight() {
 
 #[test]
 fn injected_palette_changes_shell_modal_and_picker_styles() {
-    let (mut state, now) = connected_state();
+    let mut state = connected_state();
+    let now = test_instant();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
         semantic: SemanticTokens {
@@ -900,7 +902,7 @@ mod settings_theme {
 
     #[test]
     fn preview_uses_selected_theme_while_chrome_keeps_current() {
-        let (mut state, _now) = connected_state();
+        let mut state = connected_state();
         let mut terminal = create_test_terminal();
 
         state.settings.open(ThemeId::Default);
@@ -942,10 +944,11 @@ mod settings_theme {
 
 #[test]
 fn test_contrast_theme_applies_result_pane_table_colors() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
+    let now = test_instant();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
@@ -990,7 +993,8 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
 
 #[test]
 fn sql_completion_popup_uses_injected_theme_styles() {
-    let (mut state, now) = connected_state();
+    let mut state = connected_state();
+    let now = test_instant();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
         component: ComponentTokens {
@@ -1093,7 +1097,8 @@ fn sql_completion_popup_uses_injected_theme_styles() {
 
 #[test]
 fn light_theme_applies_shell_and_sql_colors() {
-    let (mut state, now) = connected_state();
+    let mut state = connected_state();
+    let now = test_instant();
     let mut terminal = create_test_terminal();
 
     state.ui.focused_pane = FocusedPane::Explorer;

@@ -99,7 +99,6 @@ mod tests {
                     None,
                     false,
                 )],
-                fetched_at: Instant::now(),
             })
         }
 
@@ -659,7 +658,6 @@ mod tests {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)
                     })
                     .collect(),
-                fetched_at: Instant::now(),
             })
         }
 
@@ -763,7 +761,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: tables,
-                fetched_at: Instant::now(),
             })
         }
 

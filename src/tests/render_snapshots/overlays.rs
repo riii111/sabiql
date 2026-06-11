@@ -10,7 +10,7 @@ use sabiql_domain::{ConnectionId, QueryResult};
 
 #[test]
 fn sql_modal_with_completion() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -27,7 +27,7 @@ fn sql_modal_with_completion() {
 
 #[test]
 fn sql_modal_completion_popup_with_scroll() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -96,7 +96,7 @@ fn sql_modal_completion_popup_with_scroll() {
 
 #[test]
 fn sql_modal_unknown_risk_acknowledge() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -118,7 +118,7 @@ fn sql_modal_unknown_risk_acknowledge() {
 
 #[test]
 fn sql_modal_high_risk_without_target_acknowledge() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -140,7 +140,7 @@ fn sql_modal_high_risk_without_target_acknowledge() {
 
 #[test]
 fn sql_modal_analyze_unknown_risk_acknowledge() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -215,7 +215,6 @@ fn sql_modal_normal_cursor_at_tail() {
 
 #[test]
 fn sql_modal_success_select() {
-    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -229,20 +228,18 @@ fn sql_modal_success_select() {
         row_count: 2,
         execution_time_ms: 15,
     });
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT * FROM users".to_string(),
-        columns: vec!["id".to_string(), "name".to_string()],
-        rows: vec![
-            vec!["1".to_string(), "Alice".to_string()],
-            vec!["2".to_string(), "Bob".to_string()],
-        ],
-        row_count: 2,
-        execution_time_ms: 15,
-        executed_at: now,
-        source: QuerySource::Adhoc,
-        error: None,
-        command_tag: None,
-    }));
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT * FROM users".to_string(),
+            vec!["id".to_string(), "name".to_string()],
+            vec![
+                vec!["1".to_string(), "Alice".to_string()],
+                vec!["2".to_string(), "Bob".to_string()],
+            ],
+            15,
+            QuerySource::Adhoc,
+        )));
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -251,7 +248,6 @@ fn sql_modal_success_select() {
 
 #[test]
 fn sql_modal_success_dml_with_command_tag() {
-    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -265,17 +261,18 @@ fn sql_modal_success_dml_with_command_tag() {
         row_count: 3,
         execution_time_ms: 12,
     });
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "DELETE FROM users WHERE id = 1".to_string(),
-        columns: vec![],
-        rows: vec![],
-        row_count: 3,
-        execution_time_ms: 12,
-        executed_at: now,
-        source: QuerySource::Adhoc,
-        error: None,
-        command_tag: Some(CommandTag::Delete(3)),
-    }));
+    // DML: row_count carries affected rows, not result rows (executor's command-tag path)
+    let mut result = QueryResult::success(
+        "DELETE FROM users WHERE id = 1".to_string(),
+        vec![],
+        vec![],
+        12,
+        QuerySource::Adhoc,
+    );
+    result.row_count = 3;
+    state
+        .query
+        .set_current_result(Arc::new(result.with_command_tag(CommandTag::Delete(3))));
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -284,7 +281,6 @@ fn sql_modal_success_dml_with_command_tag() {
 
 #[test]
 fn sql_modal_success_ddl_create_table() {
-    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -298,17 +294,16 @@ fn sql_modal_success_ddl_create_table() {
         row_count: 0,
         execution_time_ms: 45,
     });
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
-        columns: vec![],
-        rows: vec![],
-        row_count: 0,
-        execution_time_ms: 45,
-        executed_at: now,
-        source: QuerySource::Adhoc,
-        error: None,
-        command_tag: Some(CommandTag::Create("TABLE".to_string())),
-    }));
+    state.query.set_current_result(Arc::new(
+        QueryResult::success(
+            "CREATE TABLE backup AS SELECT * FROM users".to_string(),
+            vec![],
+            vec![],
+            45,
+            QuerySource::Adhoc,
+        )
+        .with_command_tag(CommandTag::Create("TABLE".to_string())),
+    ));
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -393,7 +388,7 @@ fn sql_modal_confirming_high_unmatched() {
 
 #[test]
 fn help_overlay() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -405,7 +400,7 @@ fn help_overlay() {
 
 #[test]
 fn help_overlay_filtered_current_result() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.ui.focused_pane = FocusedPane::Result;
@@ -423,7 +418,7 @@ fn help_overlay_filtered_current_result() {
 
 #[test]
 fn help_overlay_long_key_rows() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -436,7 +431,7 @@ fn help_overlay_long_key_rows() {
 
 #[test]
 fn help_overlay_narrow_horizontal_scroll() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal_sized(50, 24);
 
     state.modal.set_mode(InputMode::Help);
@@ -452,7 +447,7 @@ fn help_overlay_narrow_horizontal_scroll() {
 
 #[test]
 fn command_palette_overlay() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::CommandPalette);
@@ -464,7 +459,7 @@ fn command_palette_overlay() {
 
 #[test]
 fn settings_overlay() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.settings.open(state.ui.theme_id());
@@ -477,7 +472,7 @@ fn settings_overlay() {
 
 #[test]
 fn settings_overlay_er_diagram() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.settings.open(state.ui.theme_id());
@@ -491,7 +486,7 @@ fn settings_overlay_er_diagram() {
 
 #[test]
 fn settings_overlay_er_diagram_custom_browser() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state
@@ -508,7 +503,7 @@ fn settings_overlay_er_diagram_custom_browser() {
 
 #[test]
 fn table_picker_overlay() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::TablePicker);
@@ -521,7 +516,7 @@ fn table_picker_overlay() {
 
 #[test]
 fn command_line_input() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::CommandLine);

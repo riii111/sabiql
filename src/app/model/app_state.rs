@@ -303,7 +303,6 @@ mod tests {
             database_name: "test".to_string(),
             schemas: vec![],
             table_summaries,
-            fetched_at: Instant::now(),
         })
     }
 

@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    allow(
-        clippy::disallowed_methods,
-        reason = "tests construct fixtures with real clock readings; purity is enforced on production code via the lib target"
-    )
-)]
-
 // Domain models - fields/methods defined to match DB schema
 
 pub mod column;

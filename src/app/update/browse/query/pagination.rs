@@ -261,17 +261,13 @@ mod tests {
         let rows: Vec<Vec<String>> = (0..row_count)
             .map(|i| vec![i.to_string(), format!("name_{i}")])
             .collect();
-        Arc::new(QueryResult {
-            query: "SELECT * FROM users".to_string(),
-            columns: vec!["id".to_string(), "name".to_string()],
+        Arc::new(QueryResult::success(
+            "SELECT * FROM users".to_string(),
+            vec!["id".to_string(), "name".to_string()],
             rows,
-            row_count,
-            execution_time_ms: 10,
-            executed_at: Instant::now(),
-            source: QuerySource::Preview,
-            error: None,
-            command_tag: None,
-        })
+            10,
+            QuerySource::Preview,
+        ))
     }
 
     mod next_page {

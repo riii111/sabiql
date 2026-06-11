@@ -105,31 +105,30 @@ fn buffer_to_string(buffer: &Buffer) -> String {
     result
 }
 
-pub fn connected_state() -> (AppState, Instant) {
-    let now = test_instant();
+pub fn connected_state() -> AppState {
     let mut state = create_test_state();
     state
         .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    (state, now)
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
+    state
 }
 
-pub fn explorer_selected_state() -> (AppState, Instant) {
-    let (mut state, now) = connected_state();
+pub fn explorer_selected_state() -> AppState {
+    let mut state = connected_state();
     state.ui.set_explorer_selection(Some(0));
-    (state, now)
+    state
 }
 
-pub fn table_detail_loaded_state() -> (AppState, Instant) {
-    let (mut state, now) = explorer_selected_state();
+pub fn table_detail_loaded_state() -> AppState {
+    let mut state = explorer_selected_state();
     let _ = state
         .session
         .set_table_detail(fixtures::sample_table_detail(), 0);
-    (state, now)
+    state
 }
 
-pub fn with_current_result(state: &mut AppState, now: Instant) {
+pub fn with_current_result(state: &mut AppState) {
     state
         .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+        .set_current_result(Arc::new(fixtures::sample_query_result()));
 }
