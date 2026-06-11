@@ -131,6 +131,23 @@ const SQL_KEYWORDS: &[&str] = &[
     "FOLLOWING",
     "CURRENT",
     "ROW",
+    "DO",
+    "GRANT",
+    "REVOKE",
+    "COPY",
+    "CALL",
+    "MERGE",
+    "TRUNCATE",
+    "BEGIN",
+    "COMMIT",
+    "ROLLBACK",
+    "EXPLAIN",
+    "ANALYZE",
+    "SHOW",
+    "SAVEPOINT",
+    "START",
+    "TRANSACTION",
+    "RELEASE",
 ];
 
 pub struct SqlLexer;
@@ -1019,6 +1036,39 @@ mod tests {
                 })
                 .collect();
             assert_eq!(keywords, vec!["SELECT", "FROM"]);
+        }
+
+        #[test]
+        fn statement_keywords_tokenize_as_keywords() {
+            let l = lexer();
+
+            for kw in [
+                "DO",
+                "GRANT",
+                "REVOKE",
+                "COPY",
+                "CALL",
+                "MERGE",
+                "TRUNCATE",
+                "BEGIN",
+                "COMMIT",
+                "ROLLBACK",
+                "EXPLAIN",
+                "ANALYZE",
+                "SHOW",
+                "SAVEPOINT",
+                "START",
+                "TRANSACTION",
+                "RELEASE",
+            ] {
+                let sql = format!("{kw} x");
+                let tokens = l.tokenize(&sql, sql.chars().count());
+
+                assert!(
+                    matches!(&tokens[0].kind, TokenKind::Keyword(k) if k == kw),
+                    "{kw} should tokenize as a keyword"
+                );
+            }
         }
 
         #[test]
