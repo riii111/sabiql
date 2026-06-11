@@ -103,8 +103,8 @@ fn result_pane_right_edge_peeks_truncated_previous_column() {
     let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    // At the right edge the trailing narrow columns leave leftover width;
-    // the hidden wide description column shows up truncated instead of blank
+    // At the right edge the trailing columns leave leftover width; the
+    // hidden wide description column shows up truncated instead of blank
     state.query.set_current_result(Arc::new(QueryResult {
         query: "SELECT * FROM events".to_string(),
         columns: ["id", "description", "status", "kind", "actor", "note"]
@@ -115,18 +115,18 @@ fn result_pane_right_edge_peeks_truncated_previous_column() {
             vec![
                 "1".to_string(),
                 "x".repeat(100),
-                "active".to_string(),
-                "create".to_string(),
-                "alice".to_string(),
-                "first".to_string(),
+                "active_validation".to_string(),
+                "create_operation".to_string(),
+                "alice.anderson".to_string(),
+                "first_revision".to_string(),
             ],
             vec![
                 "2".to_string(),
                 "y".repeat(100),
-                "suspended".to_string(),
-                "update".to_string(),
-                "bob".to_string(),
-                "second".to_string(),
+                "suspended_review".to_string(),
+                "update_operation".to_string(),
+                "bob.brownfield".to_string(),
+                "second_revision".to_string(),
             ],
         ],
         row_count: 2,
@@ -147,19 +147,29 @@ fn result_pane_right_edge_peeks_truncated_previous_column() {
 #[test]
 fn result_pane_narrow_pane_keeps_horizontal_scroll() {
     let (mut state, now) = table_detail_loaded_state();
-    // Split-pane terminal: payload alone exceeds the pane width, which must
-    // not disable the scrollbar
+    // Split-pane terminal: the two payload columns exceed the pane width even
+    // after capping, which must not disable the scrollbar
     let mut terminal = create_test_terminal_sized(110, 40);
 
     state.query.set_current_result(Arc::new(QueryResult {
         query: "SELECT * FROM events".to_string(),
-        columns: ["id", "payload", "status"]
+        columns: ["id", "payload", "details", "status"]
             .iter()
             .map(ToString::to_string)
             .collect(),
         rows: vec![
-            vec!["1".to_string(), "x".repeat(100), "active".to_string()],
-            vec!["2".to_string(), "y".repeat(100), "done".to_string()],
+            vec![
+                "1".to_string(),
+                "x".repeat(100),
+                "z".repeat(100),
+                "active".to_string(),
+            ],
+            vec![
+                "2".to_string(),
+                "y".repeat(100),
+                "w".repeat(100),
+                "done".to_string(),
+            ],
         ],
         row_count: 2,
         execution_time_ms: 3,

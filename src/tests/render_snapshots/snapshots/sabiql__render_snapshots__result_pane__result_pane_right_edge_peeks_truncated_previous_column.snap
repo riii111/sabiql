@@ -28,9 +28,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       │└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 │                                       │┌ [3] Result (2 rows, 3ms) ────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       ││description                                                                          status      kind     actor   note    │
-│                                       ││xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... active      create   alice   first   │
-│                                       ││yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy... suspended   update   bob     second  │
+│                                       ││description                                      status              kind               actor            note             │
+│                                       ││xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... active_validation   create_operation   alice.anderson   first_revision   │
+│                                       ││yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy... suspended_review    update_operation   bob.brownfield   second_revision  │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

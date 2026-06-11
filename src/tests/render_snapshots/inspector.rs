@@ -23,7 +23,7 @@ fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
 }
 
 #[test]
-fn inspector_columns_narrow_pane_scrolled_fills_width() {
+fn inspector_columns_narrow_pane_caps_wide_comment() {
     let (mut state, _now) = harness::explorer_selected_state();
     let mut terminal = create_test_terminal_sized(110, 40);
 
@@ -35,8 +35,9 @@ fn inspector_columns_narrow_pane_scrolled_fills_width() {
     let _ = state.session.set_table_detail(table, 0);
     state.ui.inspector_tab = InspectorTab::Columns;
     state.ui.focused_pane = FocusedPane::Inspector;
-    // Scrolled mid-way: the over-wide comment column fills the remaining width
-    state.ui.inspector_horizontal_offset = 2;
+    // Scrolled to the comment column: its width is capped so the preceding
+    // columns stay visible instead of the comment monopolizing the pane
+    state.ui.inspector_horizontal_offset = 1;
 
     let output = render_to_string(&mut terminal, &mut state);
 
