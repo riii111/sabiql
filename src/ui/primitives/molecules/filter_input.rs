@@ -12,7 +12,7 @@ const FILTER_PREFIX: &str = "  > ";
 
 // The block cursor at end-of-content occupies one cell beyond the text,
 // so the text viewport must shrink by one to keep the cursor visible.
-pub fn filter_visible_width(raw_width: usize, cursor: usize, char_count: usize) -> usize {
+fn filter_visible_width(raw_width: usize, cursor: usize, char_count: usize) -> usize {
     if cursor == char_count {
         raw_width.saturating_sub(1)
     } else {
