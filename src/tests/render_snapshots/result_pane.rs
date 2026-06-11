@@ -52,7 +52,7 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
 
 #[test]
 fn result_pane_scrolled_past_wide_column_fills_width() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     // payload's ideal width nearly fills the pane; scrolled past it, the
@@ -98,7 +98,7 @@ fn result_pane_scrolled_past_wide_column_fills_width() {
 
 #[test]
 fn result_pane_right_edge_peeks_truncated_previous_column() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     // At the right edge the trailing columns leave leftover width; the
@@ -143,7 +143,7 @@ fn result_pane_right_edge_peeks_truncated_previous_column() {
 
 #[test]
 fn result_pane_narrow_pane_keeps_horizontal_scroll() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     // Split-pane terminal: the two payload columns exceed the pane width even
     // after capping, which must not disable the scrollbar
     let mut terminal = create_test_terminal_sized(110, 40);
@@ -183,7 +183,7 @@ fn result_pane_narrow_pane_keeps_horizontal_scroll() {
 
 #[test]
 fn result_pane_first_cell_active_mode() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
@@ -197,7 +197,7 @@ fn result_pane_first_cell_active_mode() {
 
 #[test]
 fn result_pane_cell_active_mode() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
@@ -211,7 +211,7 @@ fn result_pane_cell_active_mode() {
 
 #[test]
 fn result_pane_cell_edit_mode() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
@@ -233,7 +233,7 @@ fn result_pane_cell_edit_mode() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_head() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
@@ -252,7 +252,7 @@ fn result_pane_cell_edit_cursor_at_head() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_middle() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
@@ -271,7 +271,7 @@ fn result_pane_cell_edit_cursor_at_middle() {
 
 #[test]
 fn result_pane_cell_active_pending_draft() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
@@ -293,7 +293,7 @@ fn result_pane_cell_active_pending_draft() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_tail() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
@@ -316,7 +316,7 @@ fn result_pane_cell_edit_cursor_at_tail() {
 
 #[test]
 fn result_pane_staged_delete_row() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);

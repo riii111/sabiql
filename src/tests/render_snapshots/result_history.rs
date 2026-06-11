@@ -18,7 +18,7 @@ fn adhoc_result(query: &str) -> QueryResult {
 
 #[test]
 fn preview_with_history_hint() {
-    let (mut state, _) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     // Current result is Preview, but history has adhoc entries
@@ -33,7 +33,7 @@ fn preview_with_history_hint() {
 
 #[test]
 fn result_pane_history_mode() {
-    let (mut state, _) = explorer_selected_state();
+    let mut state = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
     // Push 3 adhoc results
@@ -68,7 +68,7 @@ fn wide_adhoc_result(query: &str) -> QueryResult {
 
 #[test]
 fn history_mode_with_horizontal_scroll() {
-    let (mut state, _) = explorer_selected_state();
+    let mut state = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
     let long_query = "SELECT column_1, column_2, column_3, column_4, column_5 FROM very_long_table_name WHERE id > 100";
@@ -90,7 +90,7 @@ fn history_mode_with_horizontal_scroll() {
 
 #[test]
 fn result_query_with_history_hint() {
-    let (mut state, _) = explorer_selected_state();
+    let mut state = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
     // Push history but do NOT enter history mode (history_index = None)
@@ -111,7 +111,7 @@ fn result_query_with_history_hint() {
 
 #[test]
 fn focus_mode_history_mode() {
-    let (mut state, _) = explorer_selected_state();
+    let mut state = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
     for i in 1..=3 {

@@ -57,7 +57,7 @@ fn confirm_dialog() {
 
 #[test]
 fn confirm_dialog_update_preview() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
@@ -80,7 +80,7 @@ fn confirm_dialog_update_preview() {
 
 #[test]
 fn confirm_dialog_update_preview_rich() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
@@ -118,7 +118,7 @@ fn confirm_dialog_update_preview_rich() {
 
 #[test]
 fn confirm_dialog_delete_preview_low_risk() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
@@ -151,7 +151,7 @@ fn confirm_dialog_delete_preview_low_risk() {
 
 #[test]
 fn confirm_dialog_update_preview_long_jsonb() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
@@ -189,7 +189,7 @@ fn confirm_dialog_update_preview_long_jsonb() {
 
 #[test]
 fn confirm_dialog_update_preview_jsonb_key_order_normalized() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
@@ -237,7 +237,7 @@ fn confirm_dialog_update_preview_jsonb_key_order_normalized() {
 
 #[test]
 fn confirm_dialog_update_preview_scrollable() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
@@ -295,7 +295,7 @@ fn confirm_dialog_update_preview_scrollable() {
 
 #[test]
 fn confirm_dialog_update_preview_narrow_terminal() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal_sized(40, 12);
 
     let _ = state
@@ -333,7 +333,7 @@ fn confirm_dialog_update_preview_narrow_terminal() {
 
 #[test]
 fn confirm_dialog_update_preview_multi_column() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
@@ -370,7 +370,7 @@ fn confirm_dialog_update_preview_multi_column() {
 
 #[test]
 fn confirm_dialog_update_preview_jsonb_structured_diff_with_ellipsis() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
@@ -412,7 +412,7 @@ fn confirm_dialog_update_preview_jsonb_structured_diff_with_ellipsis() {
 
 #[test]
 fn confirm_dialog_update_preview_jsonb_and_string_mixed() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state
