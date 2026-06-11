@@ -93,10 +93,10 @@ pub fn sample_table_detail() -> Table {
 }
 
 pub fn sample_query_result() -> QueryResult {
-    QueryResult {
-        query: "SELECT * FROM users LIMIT 100".to_string(),
-        columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
-        rows: vec![
+    QueryResult::success(
+        "SELECT * FROM users LIMIT 100".to_string(),
+        vec!["id".to_string(), "name".to_string(), "email".to_string()],
+        vec![
             vec![
                 "1".to_string(),
                 "Alice".to_string(),
@@ -108,23 +108,17 @@ pub fn sample_query_result() -> QueryResult {
                 "bob@example.com".to_string(),
             ],
         ],
-        row_count: 2,
-        execution_time_ms: 15,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }
+        15,
+        QuerySource::Preview,
+    )
 }
 
 pub fn empty_query_result() -> QueryResult {
-    QueryResult {
-        query: "SELECT * FROM users WHERE 1=0".to_string(),
-        columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
-        rows: vec![],
-        row_count: 0,
-        execution_time_ms: 5,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }
+    QueryResult::success(
+        "SELECT * FROM users WHERE 1=0".to_string(),
+        vec!["id".to_string(), "name".to_string(), "email".to_string()],
+        vec![],
+        5,
+        QuerySource::Preview,
+    )
 }

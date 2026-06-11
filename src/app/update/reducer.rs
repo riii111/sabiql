@@ -2648,16 +2648,13 @@ mod tests {
 
             // Simulate QueryCompleted with a full page of results
             let current_gen = state.session.selection_generation();
-            let result = Arc::new(QueryResult {
-                columns: vec!["id".to_string()],
-                rows: vec![vec!["1".to_string()]; PREVIEW_PAGE_SIZE],
-                execution_time_ms: 10,
-                source: QuerySource::Preview,
-                row_count: PREVIEW_PAGE_SIZE,
-                query: String::new(),
-                error: None,
-                command_tag: None,
-            });
+            let result = Arc::new(QueryResult::success(
+                String::new(),
+                vec!["id".to_string()],
+                vec![vec!["1".to_string()]; PREVIEW_PAGE_SIZE],
+                10,
+                QuerySource::Preview,
+            ));
             let run_id = state.query.begin_running(now);
             reduce(
                 &mut state,

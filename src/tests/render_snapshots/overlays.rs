@@ -228,19 +228,18 @@ fn sql_modal_success_select() {
         row_count: 2,
         execution_time_ms: 15,
     });
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT * FROM users".to_string(),
-        columns: vec!["id".to_string(), "name".to_string()],
-        rows: vec![
-            vec!["1".to_string(), "Alice".to_string()],
-            vec!["2".to_string(), "Bob".to_string()],
-        ],
-        row_count: 2,
-        execution_time_ms: 15,
-        source: QuerySource::Adhoc,
-        error: None,
-        command_tag: None,
-    }));
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT * FROM users".to_string(),
+            vec!["id".to_string(), "name".to_string()],
+            vec![
+                vec!["1".to_string(), "Alice".to_string()],
+                vec!["2".to_string(), "Bob".to_string()],
+            ],
+            15,
+            QuerySource::Adhoc,
+        )));
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -293,16 +292,16 @@ fn sql_modal_success_ddl_create_table() {
         row_count: 0,
         execution_time_ms: 45,
     });
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
-        columns: vec![],
-        rows: vec![],
-        row_count: 0,
-        execution_time_ms: 45,
-        source: QuerySource::Adhoc,
-        error: None,
-        command_tag: Some(CommandTag::Create("TABLE".to_string())),
-    }));
+    state.query.set_current_result(Arc::new(
+        QueryResult::success(
+            "CREATE TABLE backup AS SELECT * FROM users".to_string(),
+            vec![],
+            vec![],
+            45,
+            QuerySource::Adhoc,
+        )
+        .with_command_tag(CommandTag::Create("TABLE".to_string())),
+    ));
 
     let output = render_to_string(&mut terminal, &mut state);
 

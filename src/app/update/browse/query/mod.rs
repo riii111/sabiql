@@ -91,42 +91,33 @@ pub(super) mod tests {
 
     pub fn preview_result(row_count: usize) -> Arc<QueryResult> {
         let rows: Vec<Vec<String>> = (0..row_count).map(|i| vec![i.to_string()]).collect();
-        Arc::new(QueryResult {
-            query: "SELECT * FROM users".to_string(),
-            columns: vec!["id".to_string()],
+        Arc::new(QueryResult::success(
+            "SELECT * FROM users".to_string(),
+            vec!["id".to_string()],
             rows,
-            row_count,
-            execution_time_ms: 10,
-            source: QuerySource::Preview,
-            error: None,
-            command_tag: None,
-        })
+            10,
+            QuerySource::Preview,
+        ))
     }
 
     pub fn adhoc_result() -> Arc<QueryResult> {
-        Arc::new(QueryResult {
-            query: "SELECT 1".to_string(),
-            columns: vec!["id".to_string()],
-            rows: vec![vec!["1".to_string()]],
-            row_count: 1,
-            execution_time_ms: 10,
-            source: QuerySource::Adhoc,
-            error: None,
-            command_tag: None,
-        })
+        Arc::new(QueryResult::success(
+            "SELECT 1".to_string(),
+            vec!["id".to_string()],
+            vec![vec!["1".to_string()]],
+            10,
+            QuerySource::Adhoc,
+        ))
     }
 
     pub fn editable_preview_result() -> Arc<QueryResult> {
-        Arc::new(QueryResult {
-            query: "SELECT * FROM users".to_string(),
-            columns: vec!["id".to_string(), "name".to_string()],
-            rows: vec![vec!["1".to_string(), "Alice".to_string()]],
-            row_count: 1,
-            execution_time_ms: 10,
-            source: QuerySource::Preview,
-            error: None,
-            command_tag: None,
-        })
+        Arc::new(QueryResult::success(
+            "SELECT * FROM users".to_string(),
+            vec!["id".to_string(), "name".to_string()],
+            vec![vec!["1".to_string(), "Alice".to_string()]],
+            10,
+            QuerySource::Preview,
+        ))
     }
 
     pub fn users_table_detail() -> Table {
@@ -188,33 +179,24 @@ pub(super) mod tests {
     }
 
     pub fn editable_preview_result_with_jsonb() -> Arc<QueryResult> {
-        Arc::new(QueryResult {
-            query: "SELECT * FROM users".to_string(),
-            columns: vec!["id".to_string(), "name".to_string(), "metadata".to_string()],
-            rows: vec![vec![
+        Arc::new(QueryResult::success(
+            "SELECT * FROM users".to_string(),
+            vec!["id".to_string(), "name".to_string(), "metadata".to_string()],
+            vec![vec![
                 "1".to_string(),
                 "Alice".to_string(),
                 r#"{"role":"admin"}"#.to_string(),
             ]],
-            row_count: 1,
-            execution_time_ms: 10,
-            source: QuerySource::Preview,
-            error: None,
-            command_tag: None,
-        })
+            10,
+            QuerySource::Preview,
+        ))
     }
 
     pub fn adhoc_result_with_tag(tag: CommandTag) -> Arc<QueryResult> {
-        Arc::new(QueryResult {
-            query: String::new(),
-            columns: vec![],
-            rows: vec![],
-            row_count: 0,
-            execution_time_ms: 5,
-            source: QuerySource::Adhoc,
-            error: None,
-            command_tag: Some(tag),
-        })
+        Arc::new(
+            QueryResult::success(String::new(), vec![], vec![], 5, QuerySource::Adhoc)
+                .with_command_tag(tag),
+        )
     }
 
     pub fn adhoc_error_result() -> Arc<QueryResult> {

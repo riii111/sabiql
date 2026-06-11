@@ -112,19 +112,17 @@ mod tests {
             state.query.pagination.current_page = current_page;
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.query.set_current_result(Arc::new(QueryResult {
-                query: "SELECT * FROM public.users".to_string(),
-                columns: vec!["id".to_string(), "name".to_string()],
-                row_count: rows.len(),
-                rows: rows
-                    .into_iter()
-                    .map(|r| r.into_iter().map(ToString::to_string).collect())
-                    .collect(),
-                execution_time_ms: 1,
-                source: QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT * FROM public.users".to_string(),
+                    vec!["id".to_string(), "name".to_string()],
+                    rows.into_iter()
+                        .map(|r| r.into_iter().map(ToString::to_string).collect())
+                        .collect(),
+                    1,
+                    QuerySource::Preview,
+                )));
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),

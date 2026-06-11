@@ -148,16 +148,13 @@ mod tests {
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
 
-        let query_result = QueryResult {
-            query: "SELECT * FROM users".to_string(),
-            columns: vec!["id".to_string(), "name".to_string()],
-            rows: vec![vec!["1".to_string(), "Alice".to_string()]],
-            row_count: 1,
-            execution_time_ms: 10,
-            source: QuerySource::Preview,
-            error: None,
-            command_tag: None,
-        };
+        let query_result = QueryResult::success(
+            "SELECT * FROM users".to_string(),
+            vec!["id".to_string(), "name".to_string()],
+            vec![vec!["1".to_string(), "Alice".to_string()]],
+            10,
+            QuerySource::Preview,
+        );
 
         let cache = ConnectionCache {
             query_result: Some(Arc::new(query_result)),

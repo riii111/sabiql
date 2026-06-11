@@ -22,27 +22,26 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
         ordinal_position: 4,
     });
     let _ = state.session.set_table_detail(table, 0);
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
-        columns: vec![
-            "id".to_string(),
-            "name".to_string(),
-            "email".to_string(),
-            "settings".to_string(),
-        ],
-        rows: vec![vec![
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
+            vec![
+                "id".to_string(),
+                "name".to_string(),
+                "email".to_string(),
+                "settings".to_string(),
+            ],
+            vec![vec![
             "1".to_string(),
             "Alice".to_string(),
             "alice@example.com".to_string(),
             r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
                 .to_string(),
         ]],
-        row_count: 1,
-        execution_time_ms: 1,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }));
+            1,
+            QuerySource::Preview,
+        )));
     state.query.pagination.schema = "public".to_string();
     state.query.pagination.table = "users".to_string();
     state.ui.focused_pane = FocusedPane::Result;
@@ -58,36 +57,35 @@ fn result_pane_scrolled_past_wide_column_fills_width() {
     // payload's ideal width nearly fills the pane; scrolled past it, the
     // remaining narrow columns must fill the viewport instead of leaving
     // most of the pane blank
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT * FROM events".to_string(),
-        columns: ["id", "payload", "status", "kind", "actor", "note"]
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
-        rows: vec![
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT * FROM events".to_string(),
+            ["id", "payload", "status", "kind", "actor", "note"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
             vec![
-                "1".to_string(),
-                "x".repeat(100),
-                "active_pending_validation".to_string(),
-                "user_account_registration".to_string(),
-                "alice.anderson@example.com".to_string(),
-                "created via admin console".to_string(),
+                vec![
+                    "1".to_string(),
+                    "x".repeat(100),
+                    "active_pending_validation".to_string(),
+                    "user_account_registration".to_string(),
+                    "alice.anderson@example.com".to_string(),
+                    "created via admin console".to_string(),
+                ],
+                vec![
+                    "2".to_string(),
+                    "y".repeat(100),
+                    "suspended_awaiting_review".to_string(),
+                    "service_account_creation".to_string(),
+                    "bob.brown@example.com".to_string(),
+                    "imported from legacy system".to_string(),
+                ],
             ],
-            vec![
-                "2".to_string(),
-                "y".repeat(100),
-                "suspended_awaiting_review".to_string(),
-                "service_account_creation".to_string(),
-                "bob.brown@example.com".to_string(),
-                "imported from legacy system".to_string(),
-            ],
-        ],
-        row_count: 2,
-        execution_time_ms: 3,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }));
+            3,
+            QuerySource::Preview,
+        )));
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.horizontal_offset = 2;
 
@@ -103,36 +101,35 @@ fn result_pane_right_edge_peeks_truncated_previous_column() {
 
     // At the right edge the trailing columns leave leftover width; the
     // hidden wide description column shows up truncated instead of blank
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT * FROM events".to_string(),
-        columns: ["id", "description", "status", "kind", "actor", "note"]
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
-        rows: vec![
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT * FROM events".to_string(),
+            ["id", "description", "status", "kind", "actor", "note"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
             vec![
-                "1".to_string(),
-                "x".repeat(100),
-                "active_validation".to_string(),
-                "create_operation".to_string(),
-                "alice.anderson".to_string(),
-                "first_revision".to_string(),
+                vec![
+                    "1".to_string(),
+                    "x".repeat(100),
+                    "active_validation".to_string(),
+                    "create_operation".to_string(),
+                    "alice.anderson".to_string(),
+                    "first_revision".to_string(),
+                ],
+                vec![
+                    "2".to_string(),
+                    "y".repeat(100),
+                    "suspended_review".to_string(),
+                    "update_operation".to_string(),
+                    "bob.brownfield".to_string(),
+                    "second_revision".to_string(),
+                ],
             ],
-            vec![
-                "2".to_string(),
-                "y".repeat(100),
-                "suspended_review".to_string(),
-                "update_operation".to_string(),
-                "bob.brownfield".to_string(),
-                "second_revision".to_string(),
-            ],
-        ],
-        row_count: 2,
-        execution_time_ms: 3,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }));
+            3,
+            QuerySource::Preview,
+        )));
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.horizontal_offset = 2;
 
@@ -148,32 +145,31 @@ fn result_pane_narrow_pane_keeps_horizontal_scroll() {
     // after capping, which must not disable the scrollbar
     let mut terminal = create_test_terminal_sized(110, 40);
 
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT * FROM events".to_string(),
-        columns: ["id", "payload", "details", "status"]
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
-        rows: vec![
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT * FROM events".to_string(),
+            ["id", "payload", "details", "status"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
             vec![
-                "1".to_string(),
-                "x".repeat(100),
-                "z".repeat(100),
-                "active".to_string(),
+                vec![
+                    "1".to_string(),
+                    "x".repeat(100),
+                    "z".repeat(100),
+                    "active".to_string(),
+                ],
+                vec![
+                    "2".to_string(),
+                    "y".repeat(100),
+                    "w".repeat(100),
+                    "done".to_string(),
+                ],
             ],
-            vec![
-                "2".to_string(),
-                "y".repeat(100),
-                "w".repeat(100),
-                "done".to_string(),
-            ],
-        ],
-        row_count: 2,
-        execution_time_ms: 3,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }));
+            3,
+            QuerySource::Preview,
+        )));
     state.ui.focused_pane = FocusedPane::Result;
 
     let output = render_to_string(&mut terminal, &mut state);

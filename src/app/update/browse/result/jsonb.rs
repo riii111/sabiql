@@ -437,16 +437,15 @@ mod tests {
 
     fn state_with_jsonb_value(cell_value: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.query.set_current_result(Arc::new(QueryResult {
-            query: String::new(),
-            columns: vec!["id".to_string(), "settings".to_string()],
-            rows: vec![vec!["1".to_string(), cell_value.to_string()]],
-            row_count: 1,
-            execution_time_ms: 1,
-            source: QuerySource::Preview,
-            error: None,
-            command_tag: None,
-        }));
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                String::new(),
+                vec!["id".to_string(), "settings".to_string()],
+                vec![vec!["1".to_string(), cell_value.to_string()]],
+                1,
+                QuerySource::Preview,
+            )));
         state.query.pagination.schema = "public".to_string();
         state.query.pagination.table = "users".to_string();
         state.session.set_table_detail_raw(Some(jsonb_table()));
@@ -516,16 +515,15 @@ mod tests {
         #[test]
         fn blocked_on_null_cell() {
             let mut state = state_with_jsonb_cell();
-            state.query.set_current_result(Arc::new(QueryResult {
-                query: String::new(),
-                columns: vec!["id".to_string(), "settings".to_string()],
-                rows: vec![vec!["1".to_string(), String::new()]],
-                row_count: 1,
-                execution_time_ms: 1,
-                source: QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    String::new(),
+                    vec!["id".to_string(), "settings".to_string()],
+                    vec![vec!["1".to_string(), String::new()]],
+                    1,
+                    QuerySource::Preview,
+                )));
 
             reduce_jsonb(
                 &mut state,
@@ -539,16 +537,15 @@ mod tests {
         #[test]
         fn blocked_on_adhoc_result() {
             let mut state = state_with_jsonb_cell();
-            state.query.set_current_result(Arc::new(QueryResult {
-                query: String::new(),
-                columns: vec!["id".to_string(), "settings".to_string()],
-                rows: vec![vec!["1".to_string(), r#"{"theme":"dark"}"#.to_string()]],
-                row_count: 1,
-                execution_time_ms: 1,
-                source: QuerySource::Adhoc,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    String::new(),
+                    vec!["id".to_string(), "settings".to_string()],
+                    vec![vec!["1".to_string(), r#"{"theme":"dark"}"#.to_string()]],
+                    1,
+                    QuerySource::Adhoc,
+                )));
 
             reduce_jsonb(
                 &mut state,

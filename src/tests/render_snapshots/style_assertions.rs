@@ -59,27 +59,26 @@ fn jsonb_detail_state() -> (AppState, Instant) {
         ordinal_position: 4,
     });
     let _ = state.session.set_table_detail(table, 0);
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
-        columns: vec![
-            "id".to_string(),
-            "name".to_string(),
-            "email".to_string(),
-            "settings".to_string(),
-        ],
-        rows: vec![vec![
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
+            vec![
+                "id".to_string(),
+                "name".to_string(),
+                "email".to_string(),
+                "settings".to_string(),
+            ],
+            vec![vec![
             "1".to_string(),
             "Alice".to_string(),
             "alice@example.com".to_string(),
             r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
                 .to_string(),
         ]],
-        row_count: 1,
-        execution_time_ms: 1,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }));
+            1,
+            QuerySource::Preview,
+        )));
     state.query.pagination.schema = "public".to_string();
     state.query.pagination.table = "users".to_string();
     state.ui.focused_pane = FocusedPane::Result;

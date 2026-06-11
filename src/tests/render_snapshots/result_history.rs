@@ -4,16 +4,13 @@ use sabiql_app::model::shared::ui_state::FocusMode;
 use sabiql_domain::{QueryResult, QuerySource};
 
 fn adhoc_result(query: &str) -> QueryResult {
-    QueryResult {
-        query: query.to_string(),
-        columns: vec!["count".to_string()],
-        rows: vec![vec!["42".to_string()]],
-        row_count: 1,
-        execution_time_ms: 5,
-        source: QuerySource::Adhoc,
-        error: None,
-        command_tag: None,
-    }
+    QueryResult::success(
+        query.to_string(),
+        vec!["count".to_string()],
+        vec![vec!["42".to_string()]],
+        5,
+        QuerySource::Adhoc,
+    )
 }
 
 #[test]
@@ -54,16 +51,13 @@ fn result_pane_history_mode() {
 }
 
 fn wide_adhoc_result(query: &str) -> QueryResult {
-    QueryResult {
-        query: query.to_string(),
-        columns: (1..=10).map(|i| format!("column_{i}")).collect(),
-        rows: vec![(1..=10).map(|i| format!("value_{i}")).collect()],
-        row_count: 1,
-        execution_time_ms: 12,
-        source: QuerySource::Adhoc,
-        error: None,
-        command_tag: None,
-    }
+    QueryResult::success(
+        query.to_string(),
+        (1..=10).map(|i| format!("column_{i}")).collect(),
+        vec![(1..=10).map(|i| format!("value_{i}")).collect()],
+        12,
+        QuerySource::Adhoc,
+    )
 }
 
 #[test]

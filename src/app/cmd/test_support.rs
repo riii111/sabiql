@@ -174,14 +174,11 @@ pub fn sample_metadata() -> DatabaseMetadata {
 }
 
 pub fn sample_query_result() -> QueryResult {
-    QueryResult {
-        query: "SELECT 1".to_string(),
-        columns: vec!["id".to_string()],
-        rows: vec![vec!["1".to_string()]],
-        row_count: 1,
-        execution_time_ms: 5,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }
+    QueryResult::success(
+        "SELECT 1".to_string(),
+        vec!["id".to_string()],
+        vec![vec!["1".to_string()]],
+        5,
+        QuerySource::Preview,
+    )
 }
