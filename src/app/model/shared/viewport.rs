@@ -7,7 +7,7 @@ pub const MAX_COL_WIDTH: u16 = 200;
 // scrolling. Without the cap it monopolizes the viewport: scrolling past it
 // reveals nothing new until max_offset, where the right-edge logic dumps
 // every remaining column at once.
-const WIDE_COLUMN_PANE_RATIO: (u32, u32) = (3, 5);
+const MAX_WIDE_COLUMN_PANE_SHARE: (u32, u32) = (3, 5);
 
 // Skipped when everything already fits — capping would only shrink content
 // without enabling anything. Header min widths still win over the cap so
@@ -17,7 +17,7 @@ fn cap_wide_columns<'a>(
     min_widths: &[u16],
     available_width: u16,
 ) -> Cow<'a, [u16]> {
-    let (num, den) = WIDE_COLUMN_PANE_RATIO;
+    let (num, den) = MAX_WIDE_COLUMN_PANE_SHARE;
     let cap = (u32::from(available_width) * num / den) as u16;
 
     if total_width_with_separators(ideal_widths) <= available_width
