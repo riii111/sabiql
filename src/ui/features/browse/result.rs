@@ -24,6 +24,29 @@ use crate::theme::ThemePalette;
 
 pub struct ResultPane;
 
+struct EditingCellView<'a> {
+    row: usize,
+    col: usize,
+    draft: &'a str,
+    actively_editing: bool,
+    cursor: usize,
+}
+
+struct ResultTableParams<'a> {
+    scroll_offset: usize,
+    horizontal_offset: usize,
+    stored_plan: &'a ViewportPlan,
+    stored_cache: &'a ColumnWidthsCache,
+    result_generation: u64,
+    history_index: Option<usize>,
+    selection: &'a ResultSelection,
+    editing_cell: Option<EditingCellView<'a>>,
+    staged_delete_rows: &'a BTreeSet<usize>,
+    history_bar: Option<(usize, usize)>,
+    yank_flash: Option<YankFlash>,
+    now: Instant,
+}
+
 impl ResultPane {
     pub fn render(
         frame: &mut Frame,
@@ -53,35 +76,34 @@ impl ResultPane {
                 Self::render_empty(frame, area, block, theme);
                 default_result()
             } else {
-                let history_bar = state.query.history_bar();
+                let cell_edit = state.result_interaction.cell_edit();
+                let editing_cell = cell_edit.is_active().then(|| EditingCellView {
+                    row: cell_edit.row.unwrap_or_default(),
+                    col: cell_edit.col.unwrap_or_default(),
+                    draft: cell_edit.draft_value(),
+                    actively_editing: state.input_mode()
+                        == crate::app::model::shared::input_mode::InputMode::CellEdit,
+                    cursor: cell_edit.input.cursor(),
+                });
                 Self::render_table(
                     frame,
                     area,
                     result,
                     block,
-                    state.result_interaction.scroll_offset,
-                    state.result_interaction.horizontal_offset,
-                    &state.ui.result_viewport_plan,
-                    &state.ui.result_widths_cache,
-                    state.query.result_generation(),
-                    state.query.history_index(),
-                    state.result_interaction.selection(),
-                    if state.result_interaction.cell_edit().is_active() {
-                        Some((
-                            state.result_interaction.cell_edit().row.unwrap_or_default(),
-                            state.result_interaction.cell_edit().col.unwrap_or_default(),
-                            state.result_interaction.cell_edit().draft_value(),
-                            state.input_mode()
-                                == crate::app::model::shared::input_mode::InputMode::CellEdit,
-                            state.result_interaction.cell_edit().input.cursor(),
-                        ))
-                    } else {
-                        None
+                    ResultTableParams {
+                        scroll_offset: state.result_interaction.scroll_offset,
+                        horizontal_offset: state.result_interaction.horizontal_offset,
+                        stored_plan: &state.ui.result_viewport_plan,
+                        stored_cache: &state.ui.result_widths_cache,
+                        result_generation: state.query.result_generation(),
+                        history_index: state.query.history_index(),
+                        selection: state.result_interaction.selection(),
+                        editing_cell,
+                        staged_delete_rows: state.result_interaction.staged_delete_rows(),
+                        history_bar: state.query.history_bar(),
+                        yank_flash: state.result_interaction.yank_flash,
+                        now,
                     },
-                    state.result_interaction.staged_delete_rows(),
-                    history_bar,
-                    state.result_interaction.yank_flash,
-                    now,
                     theme,
                 )
             }
@@ -154,29 +176,28 @@ impl ResultPane {
         frame.render_widget(content, area);
     }
 
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "render function requires full viewport context (16 params)"
-    )]
     fn render_table(
         frame: &mut Frame,
         area: Rect,
         result: &QueryResult,
         block: Block,
-        scroll_offset: usize,
-        horizontal_offset: usize,
-        stored_plan: &ViewportPlan,
-        stored_cache: &ColumnWidthsCache,
-        result_generation: u64,
-        history_index: Option<usize>,
-        selection: &ResultSelection,
-        editing_cell: Option<(usize, usize, &str, bool, usize)>,
-        staged_delete_rows: &BTreeSet<usize>,
-        history_bar: Option<(usize, usize)>,
-        yank_flash: Option<YankFlash>,
-        now: Instant,
+        params: ResultTableParams,
         theme: &ThemePalette,
     ) -> (ViewportPlan, ColumnWidthsCache) {
+        let ResultTableParams {
+            scroll_offset,
+            horizontal_offset,
+            stored_plan,
+            stored_cache,
+            result_generation,
+            history_index,
+            selection,
+            editing_cell,
+            staged_delete_rows,
+            history_bar,
+            yank_flash,
+            now,
+        } = params;
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
@@ -290,15 +311,16 @@ impl ResultPane {
                     .map(|(&orig_idx, &col_width)| {
                         let val = row.get(orig_idx).map_or("", String::as_str).to_string();
                         let is_editing_cell = editing_cell
-                            .is_some_and(|(er, ec, _, _, _)| er == abs_row_idx && ec == orig_idx);
+                            .as_ref()
+                            .is_some_and(|e| e.row == abs_row_idx && e.col == orig_idx);
                         let mut cell;
-                        if let Some((_, _, draft, actively_editing, cursor_pos)) = editing_cell
+                        if let Some(e) = &editing_cell
                             && is_editing_cell
                         {
-                            if actively_editing {
+                            if e.actively_editing {
                                 let line = cell_edit_line_with_cursor(
-                                    draft,
-                                    cursor_pos,
+                                    e.draft,
+                                    e.cursor,
                                     col_width as usize,
                                     theme,
                                 );
@@ -308,7 +330,7 @@ impl ResultPane {
                                         .fg(theme.component.table.cell_edit_fg),
                                 );
                             } else {
-                                let display = truncate_cell(draft, col_width as usize);
+                                let display = truncate_cell(e.draft, col_width as usize);
                                 cell = Cell::from(display).style(
                                     Style::default()
                                         .bg(theme.component.table.result_cell_active_bg)
