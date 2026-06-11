@@ -309,7 +309,7 @@ impl ResultPane {
                     .iter()
                     .zip(viewport_widths.iter())
                     .map(|(&orig_idx, &col_width)| {
-                        let val = row.get(orig_idx).map_or("", String::as_str).to_string();
+                        let val = row.get(orig_idx).map_or("", String::as_str);
                         let is_editing_cell = editing_cell
                             .as_ref()
                             .is_some_and(|e| e.row == abs_row_idx && e.col == orig_idx);
@@ -338,7 +338,7 @@ impl ResultPane {
                                 );
                             }
                         } else {
-                            let display = truncate_cell(&val, col_width as usize);
+                            let display = truncate_cell(val, col_width as usize);
                             cell = Cell::from(display);
                         }
                         if !is_editing_cell {
