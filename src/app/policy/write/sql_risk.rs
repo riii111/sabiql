@@ -228,13 +228,21 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
     let has_table_name_input = decisions
         .iter()
         .any(|(_, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
-    let has_acknowledge = decisions
+    let ack_reasons: Vec<&AcknowledgeReason> = decisions
         .iter()
-        .any(|(_, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }));
+        .filter_map(|(_, d)| match &d.confirmation {
+            ConfirmationType::Acknowledge { reason, .. } => Some(reason),
+            _ => None,
+        })
+        .collect();
+    let has_acknowledge = !ack_reasons.is_empty();
+    let mixed_ack_reasons = ack_reasons.windows(2).any(|w| w[0] != w[1]);
 
     // One dialog can only carry one consent: a typed-name confirmation must not
-    // silently approve statements that need their own acknowledgment.
-    if has_table_name_input && has_acknowledge {
+    // silently approve statements that need their own acknowledgment, and one
+    // acknowledgment must not cover statements flagged for a different reason
+    // (the dialog would hide the other reason from the user).
+    if (has_table_name_input && has_acknowledge) || mixed_ack_reasons {
         return MultiStatementDecision::Block {
             reason: "Statements require different confirmations; run them separately".to_string(),
         };
@@ -248,18 +256,11 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
             .map(|(_, d)| d.confirmation.clone())
             .unwrap()
     } else if has_acknowledge {
-        let max_acknowledged_risk = decisions
-            .iter()
-            .filter(|(_, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
-            .map(|(_, d)| d.risk_level)
-            .max()
-            .unwrap();
+        // Mixed reasons are blocked above, so every remaining Acknowledge
+        // carries the same reason; the first one's label is representative.
         decisions
             .iter()
-            .find(|(_, d)| {
-                matches!(d.confirmation, ConfirmationType::Acknowledge { .. })
-                    && d.risk_level == max_acknowledged_risk
-            })
+            .find(|(_, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
             .map(|(_, d)| d.confirmation.clone())
             .unwrap()
     } else {
@@ -665,25 +666,43 @@ mod tests {
         #[rstest]
         #[case::do_block_with_drop("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE users")]
         #[case::drop_with_unextractable_drop("DROP TABLE users; DROP TABLE a, b")]
+        #[case::mixed_acknowledge_reasons("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE a, b")]
         fn mixed_confirmations_are_blocked(#[case] sql: &str) {
             let result = evaluate_multi_statement(sql);
 
             assert!(matches!(result, MultiStatementDecision::Block { .. }));
         }
 
-        #[test]
-        fn acknowledgments_aggregate_to_highest_risk_reason() {
-            let result =
-                evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE a, b");
+        #[rstest]
+        #[case::unknown_risk(
+            "COPY users FROM '/tmp/a.csv'; CALL refresh()",
+            RiskLevel::Low,
+            AcknowledgeReason::UnknownRisk,
+            "COPY"
+        )]
+        #[case::target_name_unavailable(
+            "DROP TABLE a, b; TRUNCATE c, d",
+            RiskLevel::High,
+            AcknowledgeReason::TargetNameUnavailable,
+            "DROP"
+        )]
+        fn same_reason_acknowledgments_allow_single_dialog(
+            #[case] sql: &str,
+            #[case] expected_risk: RiskLevel,
+            #[case] expected_reason: AcknowledgeReason,
+            #[case] expected_label: &str,
+        ) {
+            let result = evaluate_multi_statement(sql);
+
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert_eq!(risk.risk_level, expected_risk);
                     assert!(matches!(
                         risk.confirmation,
                         ConfirmationType::Acknowledge {
-                            reason: AcknowledgeReason::TargetNameUnavailable,
-                            ..
-                        }
+                            ref reason,
+                            ref label,
+                        } if *reason == expected_reason && label == expected_label
                     ));
                 }
                 _ => panic!("expected Allow"),
