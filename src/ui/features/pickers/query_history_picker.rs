@@ -7,8 +7,11 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wra
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::query_history::GroupedEntry;
 use crate::domain::query_history::{Iso8601Timestamp, QueryResultStatus};
+use unicode_width::UnicodeWidthStr;
+
 use crate::features::pickers::PickerRenderMetrics;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
+use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::{StatusTone, ThemePalette};
 
 const TIMESTAMP_WIDTH: usize = 18;
@@ -213,13 +216,7 @@ fn build_list_item(
     theme: &ThemePalette,
 ) -> ListItem<'static> {
     let query_display = ge.entry.query.replace('\n', " ");
-    let char_len = query_display.chars().count();
-    let truncated = if char_len > query_max && query_max > 3 {
-        let s: String = query_display.chars().take(query_max - 1).collect();
-        format!("{s}\u{2026}")
-    } else {
-        query_display
-    };
+    let truncated = truncate_to_width_with(&query_display, query_max, "\u{2026}");
 
     let ts_short = format_short_timestamp(&ge.entry.executed_at);
 
@@ -260,9 +257,7 @@ fn build_list_item(
     };
 
     // Pad query + badge to fixed width so timestamp column aligns
-    let query_chars = truncated.chars().count();
-    let badge_chars = badge.chars().count();
-    let used = query_chars + badge_chars;
+    let used = UnicodeWidthStr::width(truncated.as_str()) + UnicodeWidthStr::width(badge.as_str());
     let pad = query_max.saturating_sub(used);
 
     if !badge.is_empty() {

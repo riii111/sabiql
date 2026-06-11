@@ -10,6 +10,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
+use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
 
 pub fn render(
@@ -396,11 +397,13 @@ fn mode_label(is_analyze: bool) -> &'static str {
 }
 
 pub(super) fn pad_or_truncate(s: &str, width: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count > width {
-        s.chars().take(width.saturating_sub(1)).collect::<String>() + "\u{2026}"
+    use unicode_width::UnicodeWidthStr;
+
+    let display_width = UnicodeWidthStr::width(s);
+    if display_width > width {
+        truncate_to_width_with(s, width, "\u{2026}")
     } else {
-        format!("{s:<width$}")
+        format!("{s}{}", " ".repeat(width - display_width))
     }
 }
 
