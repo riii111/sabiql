@@ -39,7 +39,6 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
         ]],
         row_count: 1,
         execution_time_ms: 1,
-        executed_at: now,
         source: QuerySource::Preview,
         error: None,
         command_tag: None,
@@ -53,7 +52,7 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
 
 #[test]
 fn result_pane_scrolled_past_wide_column_fills_width() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     // payload's ideal width nearly fills the pane; scrolled past it, the
@@ -85,7 +84,6 @@ fn result_pane_scrolled_past_wide_column_fills_width() {
         ],
         row_count: 2,
         execution_time_ms: 3,
-        executed_at: now,
         source: QuerySource::Preview,
         error: None,
         command_tag: None,
@@ -100,7 +98,7 @@ fn result_pane_scrolled_past_wide_column_fills_width() {
 
 #[test]
 fn result_pane_right_edge_peeks_truncated_previous_column() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     // At the right edge the trailing columns leave leftover width; the
@@ -131,7 +129,6 @@ fn result_pane_right_edge_peeks_truncated_previous_column() {
         ],
         row_count: 2,
         execution_time_ms: 3,
-        executed_at: now,
         source: QuerySource::Preview,
         error: None,
         command_tag: None,
@@ -146,7 +143,7 @@ fn result_pane_right_edge_peeks_truncated_previous_column() {
 
 #[test]
 fn result_pane_narrow_pane_keeps_horizontal_scroll() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     // Split-pane terminal: the two payload columns exceed the pane width even
     // after capping, which must not disable the scrollbar
     let mut terminal = create_test_terminal_sized(110, 40);
@@ -173,7 +170,6 @@ fn result_pane_narrow_pane_keeps_horizontal_scroll() {
         ],
         row_count: 2,
         execution_time_ms: 3,
-        executed_at: now,
         source: QuerySource::Preview,
         error: None,
         command_tag: None,
@@ -187,10 +183,10 @@ fn result_pane_narrow_pane_keeps_horizontal_scroll() {
 
 #[test]
 fn result_pane_first_cell_active_mode() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 0);
 
@@ -201,10 +197,10 @@ fn result_pane_first_cell_active_mode() {
 
 #[test]
 fn result_pane_cell_active_mode() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
 
@@ -215,10 +211,10 @@ fn result_pane_cell_active_mode() {
 
 #[test]
 fn result_pane_cell_edit_mode() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -237,10 +233,10 @@ fn result_pane_cell_edit_mode() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_head() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -256,10 +252,10 @@ fn result_pane_cell_edit_cursor_at_head() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_middle() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -275,10 +271,10 @@ fn result_pane_cell_edit_cursor_at_middle() {
 
 #[test]
 fn result_pane_cell_active_pending_draft() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
@@ -297,10 +293,10 @@ fn result_pane_cell_active_pending_draft() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_tail() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -320,10 +316,10 @@ fn result_pane_cell_edit_cursor_at_tail() {
 
 #[test]
 fn result_pane_staged_delete_row() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);

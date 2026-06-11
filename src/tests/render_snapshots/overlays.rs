@@ -215,7 +215,6 @@ fn sql_modal_normal_cursor_at_tail() {
 
 #[test]
 fn sql_modal_success_select() {
-    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -238,7 +237,6 @@ fn sql_modal_success_select() {
         ],
         row_count: 2,
         execution_time_ms: 15,
-        executed_at: now,
         source: QuerySource::Adhoc,
         error: None,
         command_tag: None,
@@ -251,7 +249,6 @@ fn sql_modal_success_select() {
 
 #[test]
 fn sql_modal_success_dml_with_command_tag() {
-    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -271,7 +268,6 @@ fn sql_modal_success_dml_with_command_tag() {
         rows: vec![],
         row_count: 3,
         execution_time_ms: 12,
-        executed_at: now,
         source: QuerySource::Adhoc,
         error: None,
         command_tag: Some(CommandTag::Delete(3)),
@@ -284,7 +280,6 @@ fn sql_modal_success_dml_with_command_tag() {
 
 #[test]
 fn sql_modal_success_ddl_create_table() {
-    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -304,7 +299,6 @@ fn sql_modal_success_ddl_create_table() {
         rows: vec![],
         row_count: 0,
         execution_time_ms: 45,
-        executed_at: now,
         source: QuerySource::Adhoc,
         error: None,
         command_tag: Some(CommandTag::Create("TABLE".to_string())),

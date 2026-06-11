@@ -267,7 +267,6 @@ mod tests {
             rows,
             row_count,
             execution_time_ms: 10,
-            executed_at: Instant::now(),
             source: QuerySource::Preview,
             error: None,
             command_tag: None,

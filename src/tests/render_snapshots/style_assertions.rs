@@ -76,7 +76,6 @@ fn jsonb_detail_state() -> (AppState, Instant) {
         ]],
         row_count: 1,
         execution_time_ms: 1,
-        executed_at: now,
         source: QuerySource::Preview,
         error: None,
         command_tag: None,
@@ -102,10 +101,10 @@ fn jsonb_detail_state() -> (AppState, Instant) {
 
 #[test]
 fn pending_draft_cell_uses_orange_fg() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
@@ -130,10 +129,10 @@ fn pending_draft_cell_uses_orange_fg() {
 
 #[test]
 fn active_cell_edit_uses_yellow_fg() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -158,10 +157,10 @@ fn active_cell_edit_uses_yellow_fg() {
 
 #[test]
 fn staged_delete_row_uses_dark_red_bg() {
-    let (mut state, now) = table_detail_loaded_state();
+    let (mut state, _) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
@@ -199,7 +198,7 @@ fn result_highlight_respects_injected_now() {
     let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     // Unfocused so highlight border is distinguishable from focus border
     state.ui.focused_pane = FocusedPane::Explorer;
 
@@ -945,7 +944,7 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
     let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);

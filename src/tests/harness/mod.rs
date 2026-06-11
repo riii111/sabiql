@@ -128,8 +128,8 @@ pub fn table_detail_loaded_state() -> (AppState, Instant) {
     (state, now)
 }
 
-pub fn with_current_result(state: &mut AppState, now: Instant) {
+pub fn with_current_result(state: &mut AppState) {
     state
         .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+        .set_current_result(Arc::new(fixtures::sample_query_result()));
 }

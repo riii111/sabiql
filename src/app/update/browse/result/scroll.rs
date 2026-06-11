@@ -254,7 +254,6 @@ pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Instant;
 
     use super::*;
     use crate::model::shared::key_sequence::Prefix;
@@ -272,7 +271,6 @@ mod tests {
                 rows: result_rows,
                 row_count,
                 execution_time_ms: 1,
-                executed_at: Instant::now(),
                 source: crate::domain::QuerySource::Preview,
                 error: None,
                 command_tag: None,
@@ -790,7 +788,6 @@ mod tests {
                 rows: result_rows,
                 row_count,
                 execution_time_ms: 1,
-                executed_at: Instant::now(),
                 source,
                 error: None,
                 command_tag: None,

@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use super::CommandTag;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,17 +13,12 @@ pub struct QueryResult {
     pub rows: Vec<Vec<String>>,
     pub row_count: usize,
     pub execution_time_ms: u64,
-    pub executed_at: Instant,
     pub source: QuerySource,
     pub error: Option<String>,
     pub command_tag: Option<CommandTag>,
 }
 
 impl QueryResult {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "execution timestamp is recorded at construction, which happens at the infra I/O boundary"
-    )]
     pub fn success(
         query: String,
         columns: Vec<String>,
@@ -40,17 +33,12 @@ impl QueryResult {
             rows,
             row_count,
             execution_time_ms,
-            executed_at: Instant::now(),
             source,
             error: None,
             command_tag: None,
         }
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "execution timestamp is recorded at construction, which happens at the infra I/O boundary"
-    )]
     pub fn error(
         query: String,
         error: String,
@@ -64,7 +52,6 @@ impl QueryResult {
             row_count: 0,
             execution_time_ms,
             source,
-            executed_at: Instant::now(),
             error: Some(error),
             command_tag: None,
         }

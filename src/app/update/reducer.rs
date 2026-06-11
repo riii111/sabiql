@@ -2667,7 +2667,6 @@ mod tests {
                 source: QuerySource::Preview,
                 row_count: PREVIEW_PAGE_SIZE,
                 query: String::new(),
-                executed_at: now,
                 error: None,
                 command_tag: None,
             });

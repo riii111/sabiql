@@ -182,7 +182,6 @@ pub fn sample_query_result() -> QueryResult {
         rows: vec![vec!["1".to_string()]],
         row_count: 1,
         execution_time_ms: 5,
-        executed_at: Instant::now(),
         source: QuerySource::Preview,
         error: None,
         command_tag: None,

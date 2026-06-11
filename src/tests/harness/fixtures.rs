@@ -95,7 +95,7 @@ pub fn sample_table_detail() -> Table {
     }
 }
 
-pub fn sample_query_result(now: Instant) -> QueryResult {
+pub fn sample_query_result() -> QueryResult {
     QueryResult {
         query: "SELECT * FROM users LIMIT 100".to_string(),
         columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
@@ -113,21 +113,19 @@ pub fn sample_query_result(now: Instant) -> QueryResult {
         ],
         row_count: 2,
         execution_time_ms: 15,
-        executed_at: now,
         source: QuerySource::Preview,
         error: None,
         command_tag: None,
     }
 }
 
-pub fn empty_query_result(now: Instant) -> QueryResult {
+pub fn empty_query_result() -> QueryResult {
     QueryResult {
         query: "SELECT * FROM users WHERE 1=0".to_string(),
         columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
         rows: vec![],
         row_count: 0,
         execution_time_ms: 5,
-        executed_at: now,
         source: QuerySource::Preview,
         error: None,
         command_tag: None,

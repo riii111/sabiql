@@ -146,7 +146,6 @@ mod tests {
     #[test]
     fn preserves_query_result_on_save_and_get() {
         use crate::domain::{QueryResult, QuerySource};
-        use std::time::Instant;
 
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
@@ -157,7 +156,6 @@ mod tests {
             rows: vec![vec!["1".to_string(), "Alice".to_string()]],
             row_count: 1,
             execution_time_ms: 10,
-            executed_at: Instant::now(),
             source: QuerySource::Preview,
             error: None,
             command_tag: None,

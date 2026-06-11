@@ -121,7 +121,6 @@ mod tests {
                     .map(|r| r.into_iter().map(ToString::to_string).collect())
                     .collect(),
                 execution_time_ms: 1,
-                executed_at: Instant::now(),
                 source: QuerySource::Preview,
                 error: None,
                 command_tag: None,
