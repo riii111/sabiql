@@ -230,12 +230,24 @@ impl Footer {
             InputMode::SqlModal => {
                 if matches!(
                     state.sql_modal.status(),
+                    SqlModalStatus::ConfirmingRisk { .. }
+                ) {
+                    vec![
+                        sql_modal_confirming::ENTER_EXECUTE.as_hint(),
+                        sql_modal_confirming::CANCEL_CONFIRM.as_hint(),
+                    ]
+                } else if matches!(
+                    state.sql_modal.status(),
                     SqlModalStatus::ConfirmingHigh { .. }
                 ) {
                     vec![sql_modal_confirming::CANCEL_CONFIRM.as_hint()]
                 } else if matches!(
                     state.sql_modal.status(),
-                    SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
+                    SqlModalStatus::Normal
+                        | SqlModalStatus::Success
+                        | SqlModalStatus::Error
+                        | SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                        | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
                 ) {
                     // Hints are shown on the modal's bottom border, not the main footer.
                     vec![]

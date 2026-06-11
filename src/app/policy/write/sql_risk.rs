@@ -1,14 +1,32 @@
-use super::write_guardrails::RiskLevel;
+use super::write_guardrails::{self, RiskLevel};
 use crate::policy::sql::statement_classifier::{
     StatementKind, advance_single_quote, classify, drop_subtype, extract_target_name,
-    skip_block_comment, skip_dollar_quoted_string, skip_double_quoted_identifier,
+    first_keyword, skip_block_comment, skip_dollar_quoted_string, skip_double_quoted_identifier,
     skip_line_comment,
 };
+
+// Why the statement cannot be confirmed via typed target name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcknowledgeReason {
+    // The classifier cannot assess the statement (Unsupported / unparseable
+    // input), so the worst case cannot be ruled out.
+    UnknownRisk,
+    // Risk is known to be high, but no target name could be extracted for
+    // typed-name confirmation.
+    TargetNameUnavailable,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmationType {
     Immediate,
-    TableNameInput { target: String },
+    // Fallback for statements that cannot offer typed-name confirmation.
+    Acknowledge {
+        reason: AcknowledgeReason,
+        label: String,
+    },
+    TableNameInput {
+        target: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,17 +137,46 @@ fn is_comment_only(sql: &str) -> bool {
     true
 }
 
+fn low_immediate() -> SqlRiskDecision {
+    SqlRiskDecision {
+        risk_level: RiskLevel::Low,
+        confirmation: ConfirmationType::Immediate,
+    }
+}
+
+// Fallback gate for statements whose risk is high but whose target name could
+// not be extracted (e.g. `DROP TABLE a, b`); Immediate here would skip
+// confirmation entirely.
+fn high_acknowledge(kind: &StatementKind) -> SqlRiskDecision {
+    SqlRiskDecision {
+        risk_level: RiskLevel::High,
+        confirmation: ConfirmationType::Acknowledge {
+            reason: AcknowledgeReason::TargetNameUnavailable,
+            label: write_guardrails::evaluate_sql_risk(kind).label.to_string(),
+        },
+    }
+}
+
 pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
     match kind {
         StatementKind::Select
         | StatementKind::Transaction
         | StatementKind::Insert
-        | StatementKind::Create
-        | StatementKind::Unsupported
-        | StatementKind::Other => SqlRiskDecision {
-            risk_level: RiskLevel::Low,
-            confirmation: ConfirmationType::Immediate,
-        },
+        | StatementKind::Create => low_immediate(),
+        StatementKind::Unsupported | StatementKind::Other => {
+            // Empty / comment-only input has nothing to execute; gating it
+            // would show a confirm dialog for a no-op.
+            if sql.trim().is_empty() || is_comment_only(sql) {
+                return low_immediate();
+            }
+            SqlRiskDecision {
+                risk_level: RiskLevel::Low,
+                confirmation: ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::UnknownRisk,
+                    label: first_keyword(sql).unwrap_or_else(|| "SQL".to_string()),
+                },
+            }
+        }
         StatementKind::Update { has_where: true }
         | StatementKind::Delete { has_where: true }
         | StatementKind::Alter => SqlRiskDecision {
@@ -143,16 +190,10 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
                         risk_level: RiskLevel::High,
                         confirmation: ConfirmationType::TableNameInput { target: name },
                     },
-                    None => SqlRiskDecision {
-                        risk_level: RiskLevel::High,
-                        confirmation: ConfirmationType::Immediate,
-                    },
+                    None => high_acknowledge(kind),
                 }
             } else {
-                SqlRiskDecision {
-                    risk_level: RiskLevel::Low,
-                    confirmation: ConfirmationType::Immediate,
-                }
+                low_immediate()
             }
         }
         StatementKind::Update { has_where: false }
@@ -162,10 +203,7 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
                 risk_level: RiskLevel::High,
                 confirmation: ConfirmationType::TableNameInput { target: name },
             },
-            None => SqlRiskDecision {
-                risk_level: RiskLevel::High,
-                confirmation: ConfirmationType::Immediate,
-            },
+            None => high_acknowledge(kind),
         },
     }
 }
@@ -187,13 +225,41 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         decisions.push((stmt.clone(), decision));
     }
 
-    // Aggregate: carry the highest risk level and the strongest confirmation type.
-    // When multiple HIGH statements exist, use the first one's target for name-input.
+    let has_table_name_input = decisions
+        .iter()
+        .any(|(_, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
+    let has_acknowledge = decisions
+        .iter()
+        .any(|(_, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }));
+
+    // One dialog can only carry one consent: a typed-name confirmation must not
+    // silently approve statements that need their own acknowledgment.
+    if has_table_name_input && has_acknowledge {
+        return MultiStatementDecision::Block {
+            reason: "Statements require different confirmations; run them separately".to_string(),
+        };
+    }
+
     let max_risk = decisions.iter().map(|(_, d)| d.risk_level).max().unwrap();
-    let confirmation = if max_risk == RiskLevel::High {
+    let confirmation = if has_table_name_input {
         decisions
             .iter()
-            .find(|(_, d)| d.risk_level == RiskLevel::High)
+            .find(|(_, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
+            .map(|(_, d)| d.confirmation.clone())
+            .unwrap()
+    } else if has_acknowledge {
+        let max_acknowledged_risk = decisions
+            .iter()
+            .filter(|(_, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
+            .map(|(_, d)| d.risk_level)
+            .max()
+            .unwrap();
+        decisions
+            .iter()
+            .find(|(_, d)| {
+                matches!(d.confirmation, ConfirmationType::Acknowledge { .. })
+                    && d.risk_level == max_acknowledged_risk
+            })
             .map(|(_, d)| d.confirmation.clone())
             .unwrap()
     } else {
@@ -298,12 +364,6 @@ mod tests {
         #[case::transaction(StatementKind::Transaction, "BEGIN", RiskLevel::Low)]
         #[case::insert(StatementKind::Insert, "INSERT INTO users VALUES (1)", RiskLevel::Low)]
         #[case::create(StatementKind::Create, "CREATE TABLE t (id INT)", RiskLevel::Low)]
-        #[case::unsupported(
-            StatementKind::Unsupported,
-            "GRANT SELECT ON users TO role1",
-            RiskLevel::Low
-        )]
-        #[case::other(StatementKind::Other, "??? invalid", RiskLevel::Low)]
         fn low_risk_returns_immediate(
             #[case] kind: StatementKind,
             #[case] sql: &str,
@@ -312,6 +372,65 @@ mod tests {
             let result = evaluate_sql_risk(&kind, sql);
             assert_eq!(result.risk_level, expected_risk);
             assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
+        #[rstest]
+        #[case::grant(StatementKind::Unsupported, "GRANT SELECT ON users TO role1", "GRANT")]
+        #[case::do_block(
+            StatementKind::Unsupported,
+            "DO $$ BEGIN DELETE FROM users; END $$",
+            "DO"
+        )]
+        #[case::copy(StatementKind::Unsupported, "COPY users FROM '/tmp/data.csv'", "COPY")]
+        #[case::select_into(StatementKind::Other, "SELECT * INTO backup FROM users", "SELECT")]
+        #[case::unparseable(StatementKind::Other, "??? invalid", "INVALID")]
+        fn unassessable_requires_acknowledgment(
+            #[case] kind: StatementKind,
+            #[case] sql: &str,
+            #[case] expected_label: &str,
+        ) {
+            let result = evaluate_sql_risk(&kind, sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Low);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::UnknownRisk,
+                    ref label,
+                } if label == expected_label
+            ));
+        }
+
+        #[rstest]
+        #[case::empty("")]
+        #[case::whitespace_only("   ")]
+        #[case::comment_only("-- just a comment")]
+        #[case::block_comment_only("/* nothing */")]
+        fn empty_or_comment_only_other_returns_immediate(#[case] sql: &str) {
+            let result = evaluate_sql_risk(&StatementKind::Other, sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Low);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
+        #[rstest]
+        #[case::drop_multiple(StatementKind::Drop, "DROP TABLE a, b", "DROP")]
+        #[case::truncate_multiple(StatementKind::Truncate, "TRUNCATE a, b", "TRUNCATE")]
+        fn high_without_target_requires_acknowledgment(
+            #[case] kind: StatementKind,
+            #[case] sql: &str,
+            #[case] expected_label: &str,
+        ) {
+            let result = evaluate_sql_risk(&kind, sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::TargetNameUnavailable,
+                    ref label,
+                } if label == expected_label
+            ));
         }
 
         #[rstest]
@@ -442,12 +561,18 @@ mod tests {
         }
 
         #[test]
-        fn select_into_returns_low_immediate() {
+        fn select_into_requires_acknowledgment() {
             let result = evaluate_multi_statement("SELECT * INTO backup FROM users");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::UnknownRisk,
+                            ..
+                        }
+                    ));
                 }
                 _ => panic!("expected Allow"),
             }
@@ -483,24 +608,101 @@ mod tests {
         }
 
         #[test]
-        fn do_block_unsupported_low_immediate() {
+        fn do_block_requires_acknowledgment() {
             let result = evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::UnknownRisk,
+                            ref label,
+                        } if label == "DO"
+                    ));
                 }
                 _ => panic!("expected Allow"),
             }
         }
 
         #[test]
-        fn copy_unsupported_low_immediate() {
+        fn copy_requires_acknowledgment() {
             let result = evaluate_multi_statement("COPY users FROM '/tmp/data.csv'");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::UnknownRisk,
+                            ref label,
+                        } if label == "COPY"
+                    ));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn do_block_after_select_requires_acknowledgment() {
+            let result =
+                evaluate_multi_statement("SELECT 1; DO $$ BEGIN DELETE FROM users; END $$");
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::UnknownRisk,
+                            ..
+                        }
+                    ));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[rstest]
+        #[case::do_block_with_drop("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE users")]
+        #[case::drop_with_unextractable_drop("DROP TABLE users; DROP TABLE a, b")]
+        fn mixed_confirmations_are_blocked(#[case] sql: &str) {
+            let result = evaluate_multi_statement(sql);
+
+            assert!(matches!(result, MultiStatementDecision::Block { .. }));
+        }
+
+        #[test]
+        fn acknowledgments_aggregate_to_highest_risk_reason() {
+            let result =
+                evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE a, b");
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::TargetNameUnavailable,
+                            ..
+                        }
+                    ));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn drop_multiple_targets_requires_acknowledgment() {
+            let result = evaluate_multi_statement("DROP TABLE a, b");
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::TargetNameUnavailable,
+                            ..
+                        }
+                    ));
                 }
                 _ => panic!("expected Allow"),
             }

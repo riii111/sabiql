@@ -1,7 +1,9 @@
 // - `Unsupported`: a recognizable SQL command that this classifier does not yet classify
-//   (e.g. GRANT, COPY, DO, MERGE). Treated as Low risk / immediate execution.
+//   (e.g. GRANT, COPY, DO, MERGE). Risk cannot be assessed, so execution requires user
+//   acknowledgment (see policy::write::sql_risk).
 // - `Other`: no statement keyword was found (e.g. empty input, comment-only, SELECT INTO).
-//   Treated as Low risk / immediate execution. Invalid SQL is rejected by the database.
+//   Non-empty input is gated like `Unsupported`; empty / comment-only input executes
+//   immediately (nothing to run). Invalid SQL is rejected by the database.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
     Select,
@@ -33,6 +35,15 @@ pub fn drop_subtype(sql: &str) -> Option<String> {
     let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
     let drop_idx = lowers.iter().position(|t| t == "drop")?;
     lowers.get(drop_idx + 1).cloned()
+}
+
+pub fn first_keyword(sql: &str) -> Option<String> {
+    let trimmed = sql.trim();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    collect_top_level_tokens(trimmed, &chars)
+        .into_iter()
+        .next()
+        .map(|(_, token)| token.to_uppercase())
 }
 
 pub fn extract_target_name(sql: &str, kind: &StatementKind) -> Option<String> {
@@ -872,6 +883,21 @@ mod tests {
         #[case::select_into_columns("SELECT id, name INTO backup FROM users", StatementKind::Other)]
         fn edge_cases(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
+        }
+    }
+
+    mod first_keyword_tests {
+        use super::*;
+
+        #[rstest]
+        #[case::grant("GRANT SELECT ON users TO role1", Some("GRANT"))]
+        #[case::lowercase("do $$ BEGIN RAISE NOTICE 'hi'; END $$", Some("DO"))]
+        #[case::leading_comment("-- note\nCOPY users FROM '/tmp/x'", Some("COPY"))]
+        #[case::leading_whitespace("  call my_procedure()", Some("CALL"))]
+        #[case::symbols_only("???", None)]
+        #[case::empty("", None)]
+        fn returns_first_token_uppercased(#[case] sql: &str, #[case] expected: Option<&str>) {
+            assert_eq!(first_keyword(sql), expected.map(ToString::to_string));
         }
     }
 

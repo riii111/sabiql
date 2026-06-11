@@ -332,8 +332,25 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyzeHigh {
-                    target_name: Some(_),
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+            ));
+        }
+
+        #[test]
+        fn unsupported_statement_shows_risk_acknowledge() {
+            use crate::policy::write::sql_risk::AcknowledgeReason;
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content(
+                "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE".to_string(),
+            );
+            state.session.dsn = Some("dsn://test".to_string());
+
+            reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeRisk {
+                    reason: AcknowledgeReason::UnknownRisk,
                     ..
                 }
             ));
@@ -377,10 +394,7 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyzeHigh {
-                    target_name: Some(_),
-                    ..
-                }
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
             ));
         }
 
@@ -397,10 +411,7 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyzeHigh {
-                    target_name: Some(_),
-                    ..
-                }
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
             ));
         }
     }
@@ -499,7 +510,7 @@ mod tests {
                 .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
                     query: "DELETE FROM users".to_string(),
                     input,
-                    target_name: Some("users".to_string()),
+                    target_name: "users".to_string(),
                 });
 
             let effects =
@@ -522,7 +533,7 @@ mod tests {
                 .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
                     query: "DELETE FROM users".to_string(),
                     input,
-                    target_name: Some("users".to_string()),
+                    target_name: "users".to_string(),
                 });
 
             let effects =
@@ -545,7 +556,45 @@ mod tests {
                 .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeHigh {
                     query: "DROP TABLE users".to_string(),
                     input: TextInputState::default(),
-                    target_name: Some("users".to_string()),
+                    target_name: "users".to_string(),
+                });
+
+            reduce_explain(&mut state, &Action::ExplainAnalyzeCancel, Instant::now());
+
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
+        }
+
+        #[test]
+        fn confirm_from_risk_acknowledge_emits_effect() {
+            use crate::policy::write::sql_risk::AcknowledgeReason;
+            let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://test".to_string());
+            state
+                .sql_modal
+                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
+                    query: "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE"
+                        .to_string(),
+                    reason: AcknowledgeReason::UnknownRisk,
+                });
+
+            let effects =
+                reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now())
+                    .into_effects()
+                    .expect("reducer should handle action");
+
+            assert_eq!(effects.len(), 1);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
+
+        #[test]
+        fn cancel_from_risk_acknowledge_resets_to_normal() {
+            use crate::policy::write::sql_risk::AcknowledgeReason;
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
+                    query: "GRANT SELECT ON users TO role1".to_string(),
+                    reason: AcknowledgeReason::UnknownRisk,
                 });
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeCancel, Instant::now());

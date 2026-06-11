@@ -384,6 +384,17 @@ pub mod sql_modal_confirming {
     use crate::update::action::Action;
     use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
 
+    // Unconditional only in acknowledge states; typed-name confirmation gates
+    // it on input match.
+    pub const ENTER_EXECUTE: KeyBinding = KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Execute",
+        description: "Execute the confirmed statement",
+        action: Action::SqlModalConfirmExecute,
+        combos: &[KeyCombo::plain(Key::Enter)],
+    };
+
     pub const CANCEL_CONFIRM: KeyBinding = KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -394,8 +405,12 @@ pub mod sql_modal_confirming {
     };
 }
 
-// Keys active only while SqlModalStatus::ConfirmingHigh — mutually exclusive with SQL_MODAL_KEYS.
-pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[sql_modal_confirming::CANCEL_CONFIRM];
+// Confirming states swap out the whole SQL keymap, so their keys are declared
+// apart from SQL_MODAL_KEYS.
+pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[
+    sql_modal_confirming::ENTER_EXECUTE,
+    sql_modal_confirming::CANCEL_CONFIRM,
+];
 
 // =============================================================================
 // Command Line

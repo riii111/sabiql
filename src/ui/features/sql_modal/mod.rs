@@ -13,6 +13,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
+use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
     sql_modal, sql_modal_compare, sql_modal_normal, sql_modal_plan,
@@ -37,7 +38,7 @@ impl SqlModal {
     ) -> Option<u16> {
         let is_confirming = matches!(
             state.sql_modal.status(),
-            SqlModalStatus::ConfirmingHigh { .. }
+            SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
         );
         let active_tab = services
             .db_capabilities
@@ -54,9 +55,7 @@ impl SqlModal {
                         " SQL \u{2500}\u{2500} \u{26a0} {} ",
                         decision.risk_level.as_str()
                     );
-                    let is_match = target_name
-                        .as_ref()
-                        .is_some_and(|name| input.content() == name);
+                    let is_match = input.content() == target_name.as_str();
                     let footer = if is_match {
                         FooterHintBar::new([("Enter", "Execute"), ("Esc", "Back")])
                     } else {
@@ -72,6 +71,27 @@ impl SqlModal {
                         theme,
                     )
                 }
+                SqlModalStatus::ConfirmingRisk { reason, .. } => {
+                    let (title, border_color) = match reason {
+                        AcknowledgeReason::UnknownRisk => (
+                            " SQL \u{2500}\u{2500} \u{26a0} UNKNOWN RISK ",
+                            theme.semantic.status.warning,
+                        ),
+                        AcknowledgeReason::TargetNameUnavailable => (
+                            " SQL \u{2500}\u{2500} \u{26a0} HIGH ",
+                            theme.semantic.status.error,
+                        ),
+                    };
+                    render_modal_with_border_color(
+                        frame,
+                        Constraint::Percentage(80),
+                        Constraint::Percentage(SQL_MODAL_HEIGHT_PERCENT),
+                        title,
+                        FooterHintBar::new([("Enter", "Execute"), ("Esc", "Back")]),
+                        border_color,
+                        theme,
+                    )
+                }
                 _ => unreachable!(),
             }
         } else {
@@ -81,14 +101,15 @@ impl SqlModal {
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     input, target_name, ..
                 } => {
-                    let is_match = target_name
-                        .as_ref()
-                        .is_some_and(|name| input.content() == name);
+                    let is_match = input.content() == target_name.as_str();
                     if is_match {
                         FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")])
                     } else {
                         FooterHintBar::new([("Esc", "Cancel")])
                     }
+                }
+                SqlModalStatus::ConfirmingAnalyzeRisk { .. } => {
+                    FooterHintBar::new([("Enter", "Execute"), ("Esc", "Cancel")])
                 }
                 _ => {
                     let compare_can_yank =
@@ -108,7 +129,7 @@ impl SqlModal {
 
         let status_height = if matches!(
             state.sql_modal.status(),
-            SqlModalStatus::ConfirmingHigh { .. }
+            SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
         ) {
             3
         } else {

@@ -4,6 +4,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use sabiql_app::model::shared::help::HelpOrigin;
 use sabiql_app::model::shared::multi_line_input::MultiLineInputState;
+use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use sabiql_domain::{ConnectionId, QueryResult};
 
@@ -87,6 +88,69 @@ fn sql_modal_completion_popup_with_scroll() {
             score: 10,
         },
     ];
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_unknown_risk_acknowledge() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content("DO $$ BEGIN DELETE FROM users; END $$".to_string());
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingRisk {
+            reason: AcknowledgeReason::UnknownRisk,
+            label: "DO".to_string(),
+        });
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_high_risk_without_target_acknowledge() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor
+        .set_content("DROP TABLE a, b".to_string());
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingRisk {
+            reason: AcknowledgeReason::TargetNameUnavailable,
+            label: "DROP".to_string(),
+        });
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_analyze_unknown_risk_acknowledge() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
+            query: "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE".to_string(),
+            reason: AcknowledgeReason::UnknownRisk,
+        });
+    state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -291,7 +355,7 @@ fn sql_modal_confirming_high_matched() {
                 label: "DROP",
             },
             input,
-            target_name: Some("users".to_string()),
+            target_name: "users".to_string(),
         });
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -319,33 +383,7 @@ fn sql_modal_confirming_high_unmatched() {
                 label: "DROP",
             },
             input,
-            target_name: Some("users".to_string()),
-        });
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn sql_modal_confirming_high_no_target() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor
-        .set_content("DROP TABLE users".to_string());
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-            decision: AdhocRiskDecision {
-                risk_level: RiskLevel::High,
-                label: "DROP",
-            },
-            input: TextInputState::default(),
-            target_name: None,
+            target_name: "users".to_string(),
         });
 
     let output = render_to_string(&mut terminal, &mut state);
