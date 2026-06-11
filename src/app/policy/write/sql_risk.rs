@@ -256,8 +256,7 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
             .map(|(_, d)| d.confirmation.clone())
             .unwrap()
     } else if has_acknowledge {
-        // Mixed reasons are blocked above, so every remaining Acknowledge
-        // carries the same reason; the first one's label is representative.
+        // Mixed reasons are blocked above; the first Acknowledge represents all.
         decisions
             .iter()
             .find(|(_, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
@@ -686,7 +685,7 @@ mod tests {
             AcknowledgeReason::TargetNameUnavailable,
             "DROP"
         )]
-        fn same_reason_acknowledgments_allow_single_dialog(
+        fn same_reason_acknowledgments_aggregate_with_first_label(
             #[case] sql: &str,
             #[case] expected_risk: RiskLevel,
             #[case] expected_reason: AcknowledgeReason,
