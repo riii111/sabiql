@@ -192,11 +192,11 @@ pub(super) mod tests {
         ))
     }
 
+    // Mirrors the executor's command-tag path: affected rows become row_count
     pub fn adhoc_result_with_tag(tag: CommandTag) -> Arc<QueryResult> {
-        Arc::new(
-            QueryResult::success(String::new(), vec![], vec![], 5, QuerySource::Adhoc)
-                .with_command_tag(tag),
-        )
+        let mut result = QueryResult::success(String::new(), vec![], vec![], 5, QuerySource::Adhoc);
+        result.row_count = tag.affected_rows().unwrap_or(0) as usize;
+        Arc::new(result.with_command_tag(tag))
     }
 
     pub fn adhoc_error_result() -> Arc<QueryResult> {
