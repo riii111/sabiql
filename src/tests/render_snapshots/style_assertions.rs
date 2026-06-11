@@ -24,8 +24,8 @@ use sabiql_ui::theme::{
 };
 
 fn has_cell(buffer: &Buffer, predicate: impl Fn(&Cell) -> bool) -> bool {
-    for y in 0..TEST_HEIGHT {
-        for x in 0..TEST_WIDTH {
+    for y in buffer.area.top()..buffer.area.bottom() {
+        for x in buffer.area.left()..buffer.area.right() {
             if buffer.cell((x, y)).is_some_and(&predicate) {
                 return true;
             }
@@ -360,6 +360,29 @@ fn help_overlay_uses_section_header_and_scrollbar_colors() {
     assert!(
         has_inactive_scrollbar,
         "Expected help overlay scrollbar track to use scrollbar_inactive color"
+    );
+}
+
+#[test]
+fn help_overlay_omits_scrollbars_when_content_fits() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal_sized(180, 300);
+
+    state.modal.set_mode(InputMode::Help);
+    state.ui.terminal_width = 180;
+    state.ui.terminal_height = 300;
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+    // A rendered scrollbar always includes ▲▼ arrows + ┃ thumb (vertical) or
+    // a ═ thumb (horizontal), so glyph absence alone proves the bars are gone.
+    // The │ track glyph is skipped: hint separators share its color tokens.
+    let has_scrollbar_part = has_cell(&buffer, |cell| {
+        matches!(cell.symbol(), "▲" | "▼" | "┃" | "═")
+    });
+    assert!(
+        !has_scrollbar_part,
+        "Expected no scrollbar glyphs when help content fits the viewport"
     );
 }
 

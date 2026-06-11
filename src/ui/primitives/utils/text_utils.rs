@@ -12,31 +12,42 @@ pub fn calculate_header_min_widths<S: AsRef<str>>(headers: &[S]) -> Vec<u16> {
 
 // Counts display cells, not chars: CJK text renders two cells per char and
 // would otherwise overflow its column and get clipped without an ellipsis.
-pub fn truncate_to_width(s: &str, max_width: usize) -> String {
-    use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+pub fn truncate_to_width_with(s: &str, max_width: usize, ellipsis: &str) -> String {
+    use unicode_width::UnicodeWidthStr;
 
     if UnicodeWidthStr::width(s) <= max_width {
         return s.to_string();
     }
 
+    let ellipsis_width = UnicodeWidthStr::width(ellipsis);
     // The ellipsis itself must respect the width contract
-    if max_width < 3 {
-        return ".".repeat(max_width);
+    if max_width < ellipsis_width {
+        return take_within_width(ellipsis, max_width);
     }
 
-    let budget = max_width - 3; // "..." occupies 3 cells
-    let mut truncated = String::new();
+    let mut truncated = take_within_width(s, max_width - ellipsis_width);
+    truncated.push_str(ellipsis);
+    truncated
+}
+
+pub fn truncate_to_width(s: &str, max_width: usize) -> String {
+    truncate_to_width_with(s, max_width, "...")
+}
+
+fn take_within_width(s: &str, budget: usize) -> String {
+    use unicode_width::UnicodeWidthChar;
+
+    let mut taken = String::new();
     let mut used = 0;
     for ch in s.chars() {
         let w = UnicodeWidthChar::width(ch).unwrap_or(0);
         if used + w > budget {
             break;
         }
-        truncated.push(ch);
+        taken.push(ch);
         used += w;
     }
-    truncated.push_str("...");
-    truncated
+    taken
 }
 
 pub fn wrapped_line_count(text: &str, width: u16) -> u16 {
@@ -107,6 +118,30 @@ mod tests {
             #[case] expected: &str,
         ) {
             let result = truncate_to_width(input, max);
+
+            assert_eq!(result, expected);
+            assert!(UnicodeWidthStr::width(result.as_str()) <= max);
+        }
+    }
+
+    mod truncate_to_width_with_tests {
+        use super::super::truncate_to_width_with;
+        use rstest::rstest;
+        use unicode_width::UnicodeWidthStr;
+
+        #[rstest]
+        #[case("users", 16, "users")]
+        #[case("exactly_16_chars", 16, "exactly_16_chars")]
+        #[case("public.user_sessions", 16, "public.user_ses\u{2026}")]
+        #[case("ab", 1, "\u{2026}")]
+        #[case("anything", 0, "")]
+        #[case("テーブル名前", 4, "テ\u{2026}")]
+        fn unicode_ellipsis_respects_display_width(
+            #[case] input: &str,
+            #[case] max: usize,
+            #[case] expected: &str,
+        ) {
+            let result = truncate_to_width_with(input, max, "\u{2026}");
 
             assert_eq!(result, expected);
             assert!(UnicodeWidthStr::width(result.as_str()) <= max);

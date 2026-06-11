@@ -8,6 +8,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::primitives::atoms::{spinner_char, text_cursor_spans};
+use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
 
 pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
@@ -131,18 +132,6 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
     );
 }
 
-fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
-    if max_chars == 0 {
-        return "\u{2026}".to_string();
-    }
-    let char_count = s.chars().count();
-    if char_count <= max_chars {
-        return s.to_string();
-    }
-    let truncated: String = s.chars().take(max_chars.saturating_sub(1)).collect();
-    format!("{truncated}\u{2026}")
-}
-
 fn render_confirming_high_status(
     frame: &mut Frame,
     area: Rect,
@@ -171,7 +160,7 @@ fn render_confirming_high_status(
     let prompt_fixed_len = "Confirm \"\": > ".len();
     let max_name_display =
         (area.width as usize).saturating_sub(prompt_fixed_len + HIGH_RISK_INPUT_VISIBLE_WIDTH + 2);
-    let display_name = truncate_with_ellipsis(name, max_name_display);
+    let display_name = truncate_to_width_with(name, max_name_display, "\u{2026}");
     let prompt = format!("Confirm \"{display_name}\": > ");
     let visible_width = HIGH_RISK_INPUT_VISIBLE_WIDTH;
     let cursor_spans = text_cursor_spans(
@@ -256,37 +245,4 @@ fn error_status_message(state: &AppState) -> String {
             || "\u{2717} Error".to_string(),
             |line| format!("\u{2717} {line}"),
         )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rstest::rstest;
-
-    mod truncate_with_ellipsis_tests {
-        use super::*;
-
-        #[rstest]
-        #[case("users", 16, "users")]
-        #[case("user_sessions", 16, "user_sessions")]
-        #[case("exactly_16_chars", 16, "exactly_16_chars")]
-        #[case("public.user_sessions", 16, "public.user_ses\u{2026}")]
-        #[case("my_schema.very_long_table_name", 16, "my_schema.very_\u{2026}")]
-        #[case("ab", 1, "\u{2026}")]
-        fn truncates_long_names(#[case] input: &str, #[case] max: usize, #[case] expected: &str) {
-            assert_eq!(truncate_with_ellipsis(input, max), expected);
-        }
-
-        #[test]
-        fn zero_max_returns_ellipsis() {
-            assert_eq!(truncate_with_ellipsis("anything", 0), "\u{2026}");
-        }
-
-        #[test]
-        fn multibyte_truncates_by_char_count() {
-            let result = truncate_with_ellipsis("テーブル名前", 4);
-
-            assert_eq!(result, "テーブ\u{2026}");
-        }
-    }
 }

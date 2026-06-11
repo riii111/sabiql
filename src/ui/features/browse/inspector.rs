@@ -16,7 +16,7 @@ use crate::app::model::shared::viewport::{
 };
 use crate::app::ports::outbound::DdlGenerator;
 use crate::app::services::AppServices;
-use crate::domain::Table;
+use crate::domain::{ForeignKey, Index, Table};
 use crate::primitives::atoms::panel_block;
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
@@ -420,24 +420,9 @@ impl Inspector {
         theme: &ThemePalette,
     ) {
         let headers = ["Name", "Columns", "Type", "Unique"];
-        // Width sampling only — row_fn rebuilds cell text for actual rendering
-        let data_rows: Vec<Vec<String>> = table
-            .indexes
-            .iter()
-            .take(50)
-            .map(|idx| {
-                vec![
-                    idx.name.clone(),
-                    idx.columns.join(", "),
-                    format!("{:?}", idx.index_type).to_lowercase(),
-                    if idx.is_unique() {
-                        "✓".to_string()
-                    } else {
-                        String::new()
-                    },
-                ]
-            })
-            .collect();
+        // Width sampling sees only the first 50 rows, so row_fn rebuilds text
+        // per visible row instead of indexing into the sample
+        let data_rows: Vec<Vec<String>> = table.indexes.iter().take(50).map(index_row).collect();
         let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
@@ -454,13 +439,10 @@ impl Inspector {
             scroll_offset,
             theme,
             |idx| {
-                let index = &table.indexes[idx];
-                vec![
-                    Cell::from(index.name.clone()),
-                    Cell::from(index.columns.join(", ")),
-                    Cell::from(format!("{:?}", index.index_type).to_lowercase()),
-                    Cell::from(if index.is_unique() { "✓" } else { "" }),
-                ]
+                index_row(&table.indexes[idx])
+                    .into_iter()
+                    .map(Cell::from)
+                    .collect()
             },
         );
     }
@@ -473,23 +455,13 @@ impl Inspector {
         theme: &ThemePalette,
     ) {
         let headers = ["Name", "Columns", "References"];
-        // Width sampling only — row_fn rebuilds cell text for actual rendering
+        // Width sampling sees only the first 50 rows, so row_fn rebuilds text
+        // per visible row instead of indexing into the sample
         let data_rows: Vec<Vec<String>> = table
             .foreign_keys
             .iter()
             .take(50)
-            .map(|fk| {
-                vec![
-                    fk.name.clone(),
-                    fk.from_columns.join(", "),
-                    format!(
-                        "{}.{}({})",
-                        fk.to_schema,
-                        fk.to_table,
-                        fk.to_columns.join(", ")
-                    ),
-                ]
-            })
+            .map(foreign_key_row)
             .collect();
         let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
@@ -507,17 +479,10 @@ impl Inspector {
             scroll_offset,
             theme,
             |idx| {
-                let fk = &table.foreign_keys[idx];
-                vec![
-                    Cell::from(fk.name.clone()),
-                    Cell::from(fk.from_columns.join(", ")),
-                    Cell::from(format!(
-                        "{}.{}({})",
-                        fk.to_schema,
-                        fk.to_table,
-                        fk.to_columns.join(", ")
-                    )),
-                ]
+                foreign_key_row(&table.foreign_keys[idx])
+                    .into_iter()
+                    .map(Cell::from)
+                    .collect()
             },
         );
     }
@@ -715,6 +680,32 @@ impl Inspector {
             theme,
         );
     }
+}
+
+fn index_row(index: &Index) -> Vec<String> {
+    vec![
+        index.name.clone(),
+        index.columns.join(", "),
+        format!("{:?}", index.index_type).to_lowercase(),
+        if index.is_unique() {
+            "✓".to_string()
+        } else {
+            String::new()
+        },
+    ]
+}
+
+fn foreign_key_row(fk: &ForeignKey) -> Vec<String> {
+    vec![
+        fk.name.clone(),
+        fk.from_columns.join(", "),
+        format!(
+            "{}.{}({})",
+            fk.to_schema,
+            fk.to_table,
+            fk.to_columns.join(", ")
+        ),
+    ]
 }
 
 fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<u16> {

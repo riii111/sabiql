@@ -10,6 +10,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
+use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
 
 pub fn render(
@@ -396,12 +397,13 @@ fn mode_label(is_analyze: bool) -> &'static str {
 }
 
 pub(super) fn pad_or_truncate(s: &str, width: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count > width {
-        s.chars().take(width.saturating_sub(1)).collect::<String>() + "\u{2026}"
-    } else {
-        format!("{s:<width$}")
-    }
+    use unicode_width::UnicodeWidthStr;
+
+    // Truncation can land short of `width` (a 2-cell char may not fit the
+    // last cell), so pad the remainder to keep side-by-side columns aligned
+    let truncated = truncate_to_width_with(s, width, "\u{2026}");
+    let pad = width.saturating_sub(UnicodeWidthStr::width(truncated.as_str()));
+    format!("{truncated}{}", " ".repeat(pad))
 }
 
 #[cfg(test)]
@@ -410,6 +412,28 @@ mod tests {
     use crate::app::model::explain_context::SlotSource;
     use crate::domain::explain_plan::ExplainPlan;
     use crate::theme::DEFAULT_THEME;
+
+    mod pad_or_truncate_tests {
+        use super::super::pad_or_truncate;
+        use rstest::rstest;
+        use unicode_width::UnicodeWidthStr;
+
+        #[rstest]
+        #[case("abc", 5, "abc  ")]
+        #[case("abcdef", 5, "abcd\u{2026}")]
+        #[case("日本語テスト", 5, "日本\u{2026}")]
+        #[case("日本語", 4, "日\u{2026} ")]
+        fn fills_exact_display_width(
+            #[case] input: &str,
+            #[case] width: usize,
+            #[case] expected: &str,
+        ) {
+            let result = pad_or_truncate(input, width);
+
+            assert_eq!(result, expected);
+            assert_eq!(UnicodeWidthStr::width(result.as_str()), width);
+        }
+    }
 
     fn sample_slot(label: SlotSource, plan: &str) -> CompareSlot {
         CompareSlot {
