@@ -54,7 +54,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: tables,
-                fetched_at: Instant::now(),
             })
         }
 
@@ -172,7 +171,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: vec![],
-                fetched_at: Instant::now(),
             })));
             state.er_preparation.target_tables = vec!["public.users".to_string()];
 
@@ -216,7 +214,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: tables,
-                fetched_at: Instant::now(),
             })
         }
 
@@ -444,7 +441,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: tables,
-                fetched_at: Instant::now(),
             })
         }
 

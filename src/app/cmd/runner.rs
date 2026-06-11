@@ -366,7 +366,6 @@ mod tests {
                     Some(0),
                     false,
                 )],
-                fetched_at: Instant::now(),
             })));
             state.ui.explorer_horizontal_offset = 20;
 

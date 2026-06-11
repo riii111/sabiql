@@ -110,7 +110,7 @@ pub fn connected_state() -> (AppState, Instant) {
     let mut state = create_test_state();
     state
         .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
     (state, now)
 }
 

@@ -11,7 +11,7 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     let mut state = create_test_state();
     state
         .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
     let mut table = fixtures::sample_table_detail();
     table.columns.push(Column {
         name: "settings".to_string(),

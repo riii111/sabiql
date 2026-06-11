@@ -48,7 +48,7 @@ fn jsonb_detail_state() -> (AppState, Instant) {
     let mut state = create_test_state();
     state
         .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
     let mut table = fixtures::sample_table_detail();
     table.columns.push(Column {
         name: "settings".to_string(),
@@ -298,7 +298,7 @@ fn header_status_uses_success_warning_and_error_colors() {
         .begin_connecting("postgres://localhost/test");
     connected
         .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
     let connected_buffer = render_and_get_buffer_at(&mut terminal, &mut connected, now);
     assert_header_status_color(
         &connected_buffer,

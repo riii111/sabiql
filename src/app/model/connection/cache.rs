@@ -113,7 +113,6 @@ mod tests {
     #[test]
     fn preserves_metadata_on_save_and_get() {
         use crate::domain::{DatabaseMetadata, TableSummary};
-        use std::time::Instant;
 
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
@@ -127,7 +126,6 @@ mod tests {
                 Some(100),
                 false,
             )],
-            fetched_at: Instant::now(),
         });
 
         let cache = ConnectionCache {

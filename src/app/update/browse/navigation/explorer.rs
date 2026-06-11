@@ -219,7 +219,6 @@ mod tests {
             database_name: "test".to_string(),
             schemas: vec![],
             table_summaries: tables,
-            fetched_at: Instant::now(),
         })));
         state.ui.set_explorer_selection(Some(0));
         state
@@ -239,7 +238,6 @@ mod tests {
             database_name: "test".to_string(),
             schemas: vec![],
             table_summaries: tables,
-            fetched_at: Instant::now(),
         })));
         state
     }

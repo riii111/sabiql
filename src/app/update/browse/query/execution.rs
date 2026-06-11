@@ -910,7 +910,6 @@ mod tests {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)
                     })
                     .collect(),
-                fetched_at: Instant::now(),
             })
         }
 

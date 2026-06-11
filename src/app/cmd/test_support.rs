@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
 
 use tokio::sync::mpsc;
 
@@ -171,7 +170,6 @@ pub fn sample_metadata() -> DatabaseMetadata {
         database_name: "testdb".to_string(),
         schemas: vec![],
         table_summaries: vec![],
-        fetched_at: Instant::now(),
     }
 }
 

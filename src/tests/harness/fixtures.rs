@@ -1,11 +1,9 @@
-use std::time::Instant;
-
 use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
     IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
-pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
+pub fn sample_metadata() -> DatabaseMetadata {
     DatabaseMetadata {
         database_name: "test_db".to_string(),
         schemas: vec![],
@@ -19,7 +17,6 @@ pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
                 false,
             ),
         ],
-        fetched_at: now,
     }
 }
 
