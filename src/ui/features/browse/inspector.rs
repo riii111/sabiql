@@ -227,8 +227,6 @@ impl Inspector {
         table: &'a Table,
         theme: &ThemePalette,
     ) -> Line<'a> {
-        let label_style = Style::default().add_modifier(Modifier::BOLD);
-
         match field {
             InspectorInfoField::Owner => Self::optional_info_line(
                 "Owner:   ",
@@ -247,13 +245,12 @@ impl Inspector {
                 Self::optional_info_line("Rows:    ", value, theme)
             }
             InspectorInfoField::Schema => Line::from(vec![
-                Span::styled("Schema:  ", label_style),
+                Self::info_label("Schema:  "),
                 Span::raw(&table.schema),
             ]),
-            InspectorInfoField::TableName => Line::from(vec![
-                Span::styled("Table:   ", label_style),
-                Span::raw(&table.name),
-            ]),
+            InspectorInfoField::TableName => {
+                Line::from(vec![Self::info_label("Table:   "), Span::raw(&table.name)])
+            }
         }
     }
 
@@ -262,17 +259,17 @@ impl Inspector {
         value: Option<Cow<'a, str>>,
         theme: &ThemePalette,
     ) -> Line<'a> {
-        let label_style = Style::default().add_modifier(Modifier::BOLD);
         let none_style = Style::default().fg(theme.semantic.text.placeholder);
         let (value, style) = match value {
             Some(value) => (value, Style::default()),
             None => (Cow::Borrowed("(none)"), none_style),
         };
 
-        Line::from(vec![
-            Span::styled(label, label_style),
-            Span::styled(value, style),
-        ])
+        Line::from(vec![Self::info_label(label), Span::styled(value, style)])
+    }
+
+    fn info_label(label: &'static str) -> Span<'static> {
+        Span::styled(label, Style::default().add_modifier(Modifier::BOLD))
     }
 
     fn render_columns(

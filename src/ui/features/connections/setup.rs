@@ -99,48 +99,52 @@ impl ConnectionSetup {
         frame.render_widget(notice_para, chunks[field_count + 1]);
 
         if form_state.database_type_dropdown().is_open()
-            && let Some(field_area) = Self::field_area(
+            && let Some(field_area) = Self::open_dropdown_field_area(
                 chunks.as_ref(),
                 visible_fields,
                 ConnectionField::DatabaseType,
             )
         {
-            let items: Vec<String> = DatabaseType::all()
-                .iter()
-                .map(ToString::to_string)
-                .collect();
             Self::render_dropdown_list(
                 frame,
                 field_area,
-                &items,
+                DatabaseType::all()
+                    .iter()
+                    .map(|database_type| database_type.label()),
                 form_state.database_type_dropdown().selected_index(),
                 theme,
             );
         } else if form_state.ssl_dropdown().is_open()
-            && let Some(field_area) =
-                Self::field_area(chunks.as_ref(), visible_fields, ConnectionField::SslMode)
+            && let Some(field_area) = Self::open_dropdown_field_area(
+                chunks.as_ref(),
+                visible_fields,
+                ConnectionField::SslMode,
+            )
         {
-            let items: Vec<String> = SslMode::all_variants()
-                .iter()
-                .map(ToString::to_string)
-                .collect();
             Self::render_dropdown_list(
                 frame,
                 field_area,
-                &items,
+                SslMode::all_variants()
+                    .iter()
+                    .map(|ssl_mode| ssl_mode_label(*ssl_mode)),
                 form_state.ssl_dropdown().selected_index(),
                 theme,
             );
         }
     }
 
-    fn field_area(
+    fn open_dropdown_field_area(
         chunks: &[Rect],
         visible_fields: &[ConnectionField],
         target: ConnectionField,
     ) -> Option<Rect> {
-        let idx = visible_fields.iter().position(|field| *field == target)?;
-        chunks.get(idx).copied()
+        let area = visible_fields
+            .iter()
+            .position(|field| *field == target)
+            .and_then(|idx| chunks.get(idx))
+            .copied();
+        debug_assert!(area.is_some(), "open dropdown field must be visible");
+        area
     }
 
     fn render_text_field(
@@ -269,7 +273,7 @@ impl ConnectionSetup {
     fn render_dropdown_list(
         frame: &mut Frame,
         field_area: Rect,
-        items: &[String],
+        items: impl ExactSizeIterator<Item = &'static str>,
         selected_index: usize,
         theme: &ThemePalette,
     ) {
@@ -297,7 +301,7 @@ impl ConnectionSetup {
 
         let inner = dropdown_area.inner(Margin::new(1, 1));
 
-        for (i, item) in items.iter().enumerate() {
+        for (i, item) in items.enumerate() {
             let item_area = Rect {
                 x: inner.x,
                 y: inner.y + i as u16,
@@ -312,8 +316,19 @@ impl ConnectionSetup {
                 Style::default().fg(theme.semantic.text.secondary)
             };
 
-            let item_para = Paragraph::new(item.as_str()).style(item_style);
+            let item_para = Paragraph::new(item).style(item_style);
             frame.render_widget(item_para, item_area);
         }
+    }
+}
+
+fn ssl_mode_label(mode: SslMode) -> &'static str {
+    match mode {
+        SslMode::Disable => "disable",
+        SslMode::Allow => "allow",
+        SslMode::Prefer => "prefer",
+        SslMode::Require => "require",
+        SslMode::VerifyCa => "verify-ca",
+        SslMode::VerifyFull => "verify-full",
     }
 }
