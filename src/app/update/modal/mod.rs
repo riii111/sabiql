@@ -34,19 +34,11 @@ mod tests {
         InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
 
+    use crate::update::test_support::use_postgres_connection;
     use std::time::Instant;
 
     fn create_test_state() -> AppState {
         AppState::new("test".to_string())
-    }
-
-    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
-        );
     }
 
     mod base {

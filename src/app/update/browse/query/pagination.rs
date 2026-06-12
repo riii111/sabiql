@@ -215,7 +215,7 @@ mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource};
     use crate::ports::outbound::DbOperationError;
-    use crate::update::browse::query::tests::use_postgres_connection;
+    use crate::update::test_support::use_postgres_connection;
     use std::sync::Arc;
 
     use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;

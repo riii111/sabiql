@@ -25,7 +25,6 @@ pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -43,15 +42,7 @@ mod tests {
         state.modal.set_mode(InputMode::SqlModal);
         state
     }
-
-    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::from_string("postgres-test"),
-            "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
-        );
-    }
+    use crate::update::test_support::use_postgres_connection;
 
     mod paste {
         use super::*;

@@ -57,25 +57,17 @@ pub(super) mod tests {
     use std::time::Instant;
 
     use crate::domain::{
-        Column, ColumnAttributes, CommandTag, ConnectionId, DatabaseType, Index, IndexAttributes,
-        IndexType, QueryResult, QuerySource, Table, Trigger, TriggerEvent, TriggerTiming,
+        Column, ColumnAttributes, CommandTag, Index, IndexAttributes, IndexType, QueryResult,
+        QuerySource, Table, Trigger, TriggerEvent, TriggerTiming,
     };
     use crate::model::app_state::AppState;
     use crate::update::action::Action;
+    use crate::update::test_support::use_postgres_connection;
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
         use_postgres_connection(&mut state, "postgres://localhost/test");
         state
-    }
-
-    pub fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
-        );
     }
 
     pub fn begin_query_run(state: &mut AppState) -> u64 {

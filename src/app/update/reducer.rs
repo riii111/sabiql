@@ -188,18 +188,10 @@ mod tests {
     use crate::update::action::ModalKind;
     use crate::update::action::{ConnectionSaveError, ConnectionTarget};
     use crate::update::action::{InputTarget, SelectMotion};
+    use crate::update::test_support::use_postgres_connection;
 
     fn create_test_state() -> AppState {
         AppState::new("test_project".to_string())
-    }
-
-    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
-        );
     }
 
     mod pure_actions {

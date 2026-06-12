@@ -34,11 +34,14 @@ fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Dispat
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
     use crate::services::AppServices;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::test_support::{
+        use_postgres_connection as use_postgres_connection_with_dsn,
+        use_sqlite_connection as use_sqlite_connection_with_dsn,
+    };
     use std::time::Instant;
 
     fn sql_modal_state() -> AppState {
@@ -51,22 +54,8 @@ mod tests {
         use_postgres_connection_with_dsn(state, "dsn://test");
     }
 
-    fn use_postgres_connection_with_dsn(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::from_string("postgres-test"),
-            "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
-        );
-    }
-
     fn use_sqlite_connection(state: &mut AppState) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::from_string("sqlite-test"),
-            "sqlite",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/app.db",
-        );
+        use_sqlite_connection_with_dsn(state, "sqlite:///tmp/app.db");
     }
 
     mod explain_request {

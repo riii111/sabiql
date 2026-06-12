@@ -978,24 +978,11 @@ impl QueryExecutor for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
-
+    use crate::adapters::test_support::make_sqlite_dsn as make_db;
     use crate::app::ports::outbound::{MetadataProvider, QueryExecutor};
     use crate::domain::{CommandTag, QuerySource};
 
     use super::*;
-
-    fn make_db(sql: &str) -> (tempfile::TempDir, String) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("app.db");
-        let status = Command::new("sqlite3")
-            .arg(&path)
-            .arg(sql)
-            .status()
-            .unwrap();
-        assert!(status.success());
-        (dir, format!("sqlite://{}", path.display()))
-    }
 
     #[test]
     fn split_sqlite_statements_ignores_semicolons_in_literals_and_comments() {
@@ -1048,96 +1035,136 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn preview_returns_columns_rows_and_respects_pagination() {
-        let (_dir, dsn) = make_db(
-            r"
+    mod preview {
+        use super::*;
+
+        #[tokio::test]
+        async fn returns_columns_rows_and_respects_pagination() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (2, 'b'), (1, 'a'), (3, 'c');
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_preview(&dsn, "main", "users", 1, 1, true)
-            .await
-            .unwrap();
-
-        assert_eq!(result.source, QuerySource::Preview);
-        assert_eq!(result.columns, vec!["id", "name"]);
-        assert_eq!(result.rows, vec![vec!["2".to_string(), "b".to_string()]]);
-    }
-
-    #[tokio::test]
-    async fn preview_rejects_non_main_schema() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter
-            .execute_preview(&dsn, "other", "users", 10, 0, true)
-            .await;
-
-        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-    }
-
-    #[tokio::test]
-    async fn adhoc_select_returns_query_result() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter
-            .execute_adhoc(&dsn, "SELECT 1 AS value", true)
-            .await
-            .unwrap();
-
-        assert_eq!(result.columns, vec!["value"]);
-        assert_eq!(result.rows, vec![vec!["1".to_string()]]);
-        assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
-    }
-
-    #[tokio::test]
-    async fn adhoc_select_preserves_quoted_newline_in_multicolumn_result() {
-        let (_dir, dsn) = make_db("CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);");
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker",
-                true,
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(result.columns, vec!["body", "marker"]);
-        assert_eq!(
-            result.rows,
-            vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
-        );
-        assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
-    }
-
-    #[test]
-    fn csv_to_query_result_preserves_quoted_newline_for_single_statement() {
-        let csv = "body,marker\n\"line 1\nline 2\",ok\n";
-
-        let result =
-            csv_to_query_result("SELECT body, marker FROM notes", csv, QuerySource::Adhoc, 1)
+            let result = adapter
+                .execute_preview(&dsn, "main", "users", 1, 1, true)
+                .await
                 .unwrap();
 
-        assert_eq!(result.columns, vec!["body", "marker"]);
-        assert_eq!(
-            result.rows,
-            vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
-        );
+            assert_eq!(result.source, QuerySource::Preview);
+            assert_eq!(result.columns, vec!["id", "name"]);
+            assert_eq!(result.rows, vec![vec!["2".to_string(), "b".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn rejects_non_main_schema() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_preview(&dsn, "other", "users", 10, 0, true)
+                .await;
+
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+        }
     }
 
-    #[tokio::test]
-    async fn adhoc_multi_select_preserves_quoted_newline_in_last_result() {
-        let (_dir, dsn) = make_db("");
-        let adapter = SqliteAdapter::new();
+    mod parsing {
+        use super::*;
 
-        let result = adapter
+        #[test]
+        fn csv_to_query_result_preserves_quoted_newline_for_single_statement() {
+            let csv = "body,marker\n\"line 1\nline 2\",ok\n";
+
+            let result =
+                csv_to_query_result("SELECT body, marker FROM notes", csv, QuerySource::Adhoc, 1)
+                    .unwrap();
+
+            assert_eq!(result.columns, vec!["body", "marker"]);
+            assert_eq!(
+                result.rows,
+                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+            );
+        }
+
+        #[test]
+        fn csv_to_query_result_uses_last_result_set_for_multi_select() {
+            let csv = "ignored\n1\nbody,marker\n\"line 1\nline 2\",ok\n";
+
+            let result = csv_to_query_result(
+                "SELECT 1 AS ignored; SELECT body, marker FROM notes",
+                csv,
+                QuerySource::Adhoc,
+                1,
+            )
+            .unwrap();
+
+            assert_eq!(result.columns, vec!["body", "marker"]);
+            assert_eq!(
+                result.rows,
+                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+            );
+        }
+
+        #[test]
+        fn parse_affected_rows_reads_trailing_changes_cell() {
+            assert_eq!(parse_affected_rows("changes()\n3\n").unwrap(), 3);
+        }
+
+        #[test]
+        fn parse_count_result_reads_first_result_cell() {
+            assert_eq!(parse_count_result("COUNT(*)\n42\n").unwrap(), 42);
+        }
+    }
+
+    mod adhoc_execution {
+        use super::*;
+
+        #[tokio::test]
+        async fn adhoc_select_returns_query_result() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "SELECT 1 AS value", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.columns, vec!["value"]);
+            assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+            assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+        }
+
+        #[tokio::test]
+        async fn adhoc_select_preserves_quoted_newline_in_multicolumn_result() {
+            let (_dir, dsn) = make_db("CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker",
+                    true,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(result.columns, vec!["body", "marker"]);
+            assert_eq!(
+                result.rows,
+                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+            );
+            assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+        }
+
+        #[tokio::test]
+        async fn adhoc_multi_select_preserves_quoted_newline_in_last_result() {
+            let (_dir, dsn) = make_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
             .execute_adhoc(
                 &dsn,
                 "SELECT 1 AS ignored; SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker",
@@ -1146,364 +1173,377 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.columns, vec!["body", "marker"]);
-        assert_eq!(
-            result.rows,
-            vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
-        );
-        assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
-    }
+            assert_eq!(result.columns, vec!["body", "marker"]);
+            assert_eq!(
+                result.rows,
+                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+            );
+            assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+        }
 
-    #[tokio::test]
-    async fn adhoc_dml_returns_affected_rows_command_tag() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn adhoc_dml_returns_affected_rows_command_tag() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_adhoc(&dsn, "UPDATE users SET name = 'x' WHERE id = 1", false)
-            .await
-            .unwrap();
+            let result = adapter
+                .execute_adhoc(&dsn, "UPDATE users SET name = 'x' WHERE id = 1", false)
+                .await
+                .unwrap();
 
-        assert_eq!(result.row_count, 1);
-        assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
-    }
+            assert_eq!(result.row_count, 1);
+            assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
+        }
 
-    #[tokio::test]
-    async fn adhoc_dml_with_following_select_uses_trailing_changes_result() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn adhoc_dml_with_following_select_uses_trailing_changes_result() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "UPDATE users SET name = 'x' WHERE id = 1; SELECT 42",
-                false,
-            )
-            .await
-            .unwrap();
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "UPDATE users SET name = 'x' WHERE id = 1; SELECT 42",
+                    false,
+                )
+                .await
+                .unwrap();
 
-        assert_eq!(result.row_count, 1);
-        assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
-    }
+            assert_eq!(result.row_count, 1);
+            assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
+        }
 
-    #[tokio::test]
-    async fn adhoc_multi_statement_dml_rolls_back_when_later_statement_fails() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let adapter = SqliteAdapter::new();
+        #[tokio::test]
+        async fn multi_statement_dml_rolls_back_when_later_statement_fails() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
-                false,
-            )
-            .await;
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
+                    false,
+                )
+                .await;
 
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
-        let rows = adapter
-            .execute_adhoc(&dsn, "SELECT id FROM users", true)
-            .await
-            .unwrap();
-        assert!(rows.rows.is_empty());
-    }
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+            assert!(rows.rows.is_empty());
+        }
 
-    #[tokio::test]
-    async fn adhoc_returning_dml_rolls_back_when_later_statement_fails() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let adapter = SqliteAdapter::new();
-        let query =
-            "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)";
+        #[tokio::test]
+        async fn returning_dml_rolls_back_when_later_statement_fails() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+            let query =
+                "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)";
 
-        let result = adapter.execute_adhoc(&dsn, query, false).await;
+            let result = adapter.execute_adhoc(&dsn, query, false).await;
 
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
-        let rows = adapter
-            .execute_adhoc(&dsn, "SELECT id FROM users", true)
-            .await
-            .unwrap();
-        assert!(rows.rows.is_empty());
-    }
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+            assert!(rows.rows.is_empty());
+        }
 
-    #[tokio::test]
-    async fn adhoc_select_then_dml_rolls_back_when_later_statement_fails() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let adapter = SqliteAdapter::new();
+        #[tokio::test]
+        async fn select_then_dml_rolls_back_when_later_statement_fails() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "SELECT 1 AS marker; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
-                false,
-            )
-            .await;
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT 1 AS marker; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
+                    false,
+                )
+                .await;
 
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
-        let rows = adapter
-            .execute_adhoc(&dsn, "SELECT id FROM users", true)
-            .await
-            .unwrap();
-        assert!(rows.rows.is_empty());
-    }
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+            assert!(rows.rows.is_empty());
+        }
 
-    #[tokio::test]
-    async fn adhoc_dml_with_trailing_line_comment_returns_affected_rows() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn adhoc_dml_with_trailing_line_comment_returns_affected_rows() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "DELETE FROM users WHERE id = 1 -- cleanup selected row",
-                false,
-            )
-            .await
-            .unwrap();
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "DELETE FROM users WHERE id = 1 -- cleanup selected row",
+                    false,
+                )
+                .await
+                .unwrap();
 
-        assert_eq!(result.row_count, 1);
-        assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
-    }
+            assert_eq!(result.row_count, 1);
+            assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
+        }
 
-    #[tokio::test]
-    async fn adhoc_dml_returning_preserves_returned_rows() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
-        let adapter = SqliteAdapter::new();
+        #[tokio::test]
+        async fn adhoc_dml_returning_preserves_returned_rows() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "INSERT INTO users(name) VALUES ('a') RETURNING id, name",
-                false,
-            )
-            .await
-            .unwrap();
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "INSERT INTO users(name) VALUES ('a') RETURNING id, name",
+                    false,
+                )
+                .await
+                .unwrap();
 
-        assert_eq!(result.columns, vec!["id", "name"]);
-        assert_eq!(result.rows, vec![vec!["1".to_string(), "a".to_string()]]);
-        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-    }
+            assert_eq!(result.columns, vec!["id", "name"]);
+            assert_eq!(result.rows, vec![vec!["1".to_string(), "a".to_string()]]);
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+        }
 
-    #[tokio::test]
-    async fn adhoc_update_returning_preserves_returned_rows() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn adhoc_update_returning_preserves_returned_rows() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "UPDATE users SET name = 'x' RETURNING id, name",
-                false,
-            )
-            .await
-            .unwrap();
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "UPDATE users SET name = 'x' RETURNING id, name",
+                    false,
+                )
+                .await
+                .unwrap();
 
-        assert_eq!(result.rows.len(), 2);
-        assert_eq!(result.command_tag, Some(CommandTag::Update(2)));
-    }
+            assert_eq!(result.rows.len(), 2);
+            assert_eq!(result.command_tag, Some(CommandTag::Update(2)));
+        }
 
-    #[tokio::test]
-    async fn adhoc_delete_returning_preserves_returned_rows() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn adhoc_delete_returning_preserves_returned_rows() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_adhoc(
-                &dsn,
-                "DELETE FROM users WHERE id = 1 RETURNING id, name",
-                false,
-            )
-            .await
-            .unwrap();
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "DELETE FROM users WHERE id = 1 RETURNING id, name",
+                    false,
+                )
+                .await
+                .unwrap();
 
-        assert_eq!(result.rows, vec![vec!["1".to_string(), "a".to_string()]]);
-        assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
+            assert_eq!(result.rows, vec![vec!["1".to_string(), "a".to_string()]]);
+            assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
+        }
+
+        #[tokio::test]
+        async fn adhoc_dml_table_name_containing_returning_reports_affected_rows() {
+            let (_dir, dsn) =
+                make_db("CREATE TABLE returning_log(id INTEGER PRIMARY KEY, name TEXT);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "INSERT INTO returning_log(name) VALUES ('a')", false)
+                .await
+                .unwrap();
+
+            assert_eq!(result.row_count, 1);
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+        }
+
+        #[tokio::test]
+        async fn adhoc_dml_backtick_quoted_identifier_containing_returning_reports_affected_rows() {
+            let (_dir, dsn) =
+                make_db("CREATE TABLE `my returning`(id INTEGER PRIMARY KEY, name TEXT);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "INSERT INTO `my returning`(name) VALUES ('a')", false)
+                .await
+                .unwrap();
+
+            assert_eq!(result.row_count, 1);
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+        }
+
+        #[tokio::test]
+        async fn adhoc_dml_bracket_quoted_identifier_containing_returning_reports_affected_rows() {
+            let (_dir, dsn) =
+                make_db("CREATE TABLE [my returning](id INTEGER PRIMARY KEY, name TEXT);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "INSERT INTO [my returning](name) VALUES ('a')", false)
+                .await
+                .unwrap();
+
+            assert_eq!(result.row_count, 1);
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+        }
+
+        #[tokio::test]
+        async fn adhoc_ddl_returns_schema_refresh_command_tag() {
+            let (_dir, dsn) = make_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "CREATE TABLE users(id INTEGER PRIMARY KEY)", false)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                result.command_tag,
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
     }
 
-    #[tokio::test]
-    async fn adhoc_dml_table_name_containing_returning_reports_affected_rows() {
-        let (_dir, dsn) = make_db("CREATE TABLE returning_log(id INTEGER PRIMARY KEY, name TEXT);");
-        let adapter = SqliteAdapter::new();
+    mod write_execution {
+        use super::*;
 
-        let result = adapter
-            .execute_adhoc(&dsn, "INSERT INTO returning_log(name) VALUES ('a')", false)
-            .await
-            .unwrap();
-
-        assert_eq!(result.row_count, 1);
-        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-    }
-
-    #[tokio::test]
-    async fn adhoc_dml_backtick_quoted_identifier_containing_returning_reports_affected_rows() {
-        let (_dir, dsn) =
-            make_db("CREATE TABLE `my returning`(id INTEGER PRIMARY KEY, name TEXT);");
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter
-            .execute_adhoc(&dsn, "INSERT INTO `my returning`(name) VALUES ('a')", false)
-            .await
-            .unwrap();
-
-        assert_eq!(result.row_count, 1);
-        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-    }
-
-    #[tokio::test]
-    async fn adhoc_dml_bracket_quoted_identifier_containing_returning_reports_affected_rows() {
-        let (_dir, dsn) =
-            make_db("CREATE TABLE [my returning](id INTEGER PRIMARY KEY, name TEXT);");
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter
-            .execute_adhoc(&dsn, "INSERT INTO [my returning](name) VALUES ('a')", false)
-            .await
-            .unwrap();
-
-        assert_eq!(result.row_count, 1);
-        assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-    }
-
-    #[tokio::test]
-    async fn adhoc_ddl_returns_schema_refresh_command_tag() {
-        let (_dir, dsn) = make_db("");
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter
-            .execute_adhoc(&dsn, "CREATE TABLE users(id INTEGER PRIMARY KEY)", false)
-            .await
-            .unwrap();
-
-        assert_eq!(
-            result.command_tag,
-            Some(CommandTag::Create("TABLE".to_string()))
-        );
-    }
-
-    #[tokio::test]
-    async fn write_execution_returns_affected_rows() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn returns_affected_rows() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let result = adapter
-            .execute_write(&dsn, "DELETE FROM users WHERE id IN (1, 2)", false)
-            .await
-            .unwrap();
+            let result = adapter
+                .execute_write(&dsn, "DELETE FROM users WHERE id IN (1, 2)", false)
+                .await
+                .unwrap();
 
-        assert_eq!(result.affected_rows, 2);
-    }
+            assert_eq!(result.affected_rows, 2);
+        }
 
-    #[tokio::test]
-    async fn count_query_rows_parses_count_result() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn count_query_rows_parses_count_result() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             INSERT INTO users(id) VALUES (1), (2), (3);
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let count = adapter
-            .count_query_rows(&dsn, "SELECT COUNT(*) FROM users", true)
-            .await
-            .unwrap();
+            let count = adapter
+                .count_query_rows(&dsn, "SELECT COUNT(*) FROM users", true)
+                .await
+                .unwrap();
 
-        assert_eq!(count, 3);
-    }
+            assert_eq!(count, 3);
+        }
 
-    #[tokio::test]
-    async fn export_to_csv_writes_rows_and_returns_row_count() {
-        let (dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn export_to_csv_writes_rows_and_returns_row_count() {
+            let (dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
             ",
-        );
-        let path = dir.path().join("users.csv");
-        let adapter = SqliteAdapter::new();
+            );
+            let path = dir.path().join("users.csv");
+            let adapter = SqliteAdapter::new();
 
-        let row_count = adapter
-            .export_to_csv(&dsn, "SELECT id, name FROM users ORDER BY id", &path, true)
-            .await
-            .unwrap();
-        let csv = std::fs::read_to_string(path).unwrap();
+            let row_count = adapter
+                .export_to_csv(&dsn, "SELECT id, name FROM users ORDER BY id", &path, true)
+                .await
+                .unwrap();
+            let csv = std::fs::read_to_string(path).unwrap();
 
-        assert_eq!(row_count, 2);
-        assert_eq!(csv, "id,name\n1,a\n2,b\n");
+            assert_eq!(row_count, 2);
+            assert_eq!(csv, "id,name\n1,a\n2,b\n");
+        }
+
+        #[tokio::test]
+        async fn read_only_write_fails() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_write(&dsn, "INSERT INTO users(id) VALUES (1)", true)
+                .await;
+
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        }
     }
 
-    #[tokio::test]
-    async fn read_only_write_fails() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let adapter = SqliteAdapter::new();
+    mod metadata {
+        use super::*;
 
-        let result = adapter
-            .execute_write(&dsn, "INSERT INTO users(id) VALUES (1)", true)
-            .await;
-
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
-    }
-
-    #[tokio::test]
-    async fn metadata_lists_user_tables_in_main_schema() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn lists_user_tables_in_main_schema() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT);
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+            let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
 
-        assert_eq!(metadata.schemas, vec![Schema::new("main")]);
-        assert_eq!(metadata.table_summaries.len(), 1);
-        assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
-        assert_eq!(metadata.table_summaries[0].row_count_estimate, Some(0));
+            assert_eq!(metadata.schemas, vec![Schema::new("main")]);
+            assert_eq!(metadata.table_summaries.len(), 1);
+            assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
+            assert_eq!(metadata.table_summaries[0].row_count_estimate, Some(0));
+        }
+
+        #[tokio::test]
+        async fn empty_database_returns_no_tables() {
+            let (_dir, dsn) = make_db("");
+            let adapter = SqliteAdapter::new();
+
+            let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+
+            assert_eq!(metadata.schemas, vec![Schema::new("main")]);
+            assert!(metadata.table_summaries.is_empty());
+        }
     }
 
-    #[tokio::test]
-    async fn metadata_for_empty_database_returns_no_tables() {
-        let (_dir, dsn) = make_db("");
-        let adapter = SqliteAdapter::new();
+    mod table_detail {
+        use super::*;
 
-        let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
-
-        assert_eq!(metadata.schemas, vec![Schema::new("main")]);
-        assert!(metadata.table_summaries.is_empty());
-    }
-
-    #[tokio::test]
-    async fn table_detail_loads_columns_indexes_and_foreign_keys() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn loads_columns_indexes_and_foreign_keys() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
                 id INTEGER PRIMARY KEY,
@@ -1514,75 +1554,79 @@ mod tests {
             INSERT INTO orgs(id) VALUES (1);
             INSERT INTO users(id, email, org_id) VALUES (1, 'a@example.com', 1);
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let detail = adapter
-            .fetch_table_detail(&dsn, "main", "users")
-            .await
-            .unwrap();
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
 
-        assert_eq!(detail.primary_key, Some(vec!["id".to_string()]));
-        assert_eq!(detail.row_count_estimate, Some(1));
-        assert!(detail.columns.iter().any(|column| {
-            column.name == "email" && !column.is_nullable() && column.is_unique()
-        }));
-        assert!(
-            detail
-                .indexes
+            assert_eq!(detail.primary_key, Some(vec!["id".to_string()]));
+            assert_eq!(detail.row_count_estimate, Some(1));
+            assert!(detail.columns.iter().any(|column| {
+                column.name == "email" && !column.is_nullable() && column.is_unique()
+            }));
+            assert!(
+                detail
+                    .indexes
+                    .iter()
+                    .any(|index| index.name == "idx_users_org_id"
+                        && index.columns == vec!["org_id".to_string()])
+            );
+            let fk = detail
+                .foreign_keys
                 .iter()
-                .any(|index| index.name == "idx_users_org_id"
-                    && index.columns == vec!["org_id".to_string()])
-        );
-        let fk = detail
-            .foreign_keys
-            .iter()
-            .find(|fk| fk.to_table == "orgs")
-            .unwrap();
-        assert_eq!(fk.from_columns, vec!["org_id".to_string()]);
-        assert_eq!(fk.to_columns, vec!["id".to_string()]);
-        assert_eq!(fk.on_delete, FkAction::Cascade);
-        assert!(detail.rls.is_none());
-        assert!(detail.triggers.is_empty());
+                .find(|fk| fk.to_table == "orgs")
+                .unwrap();
+            assert_eq!(fk.from_columns, vec!["org_id".to_string()]);
+            assert_eq!(fk.to_columns, vec!["id".to_string()]);
+            assert_eq!(fk.on_delete, FkAction::Cascade);
+            assert!(detail.rls.is_none());
+            assert!(detail.triggers.is_empty());
+        }
+
+        #[tokio::test]
+        async fn without_primary_key_sets_primary_key_none() {
+            let (_dir, dsn) = make_db("CREATE TABLE logs(message TEXT);");
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "logs")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.primary_key, None);
+            assert_eq!(detail.columns.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn columns_and_fks_preserves_unique_column_attributes_without_returning_indexes() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(email TEXT UNIQUE NOT NULL);");
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_columns_and_fks(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert!(detail.indexes.is_empty());
+            assert!(
+                detail
+                    .columns
+                    .iter()
+                    .any(|column| column.name == "email" && column.is_unique())
+            );
+        }
     }
 
-    #[tokio::test]
-    async fn table_detail_without_primary_key_sets_primary_key_none() {
-        let (_dir, dsn) = make_db("CREATE TABLE logs(message TEXT);");
-        let adapter = SqliteAdapter::new();
+    mod foreign_keys {
+        use super::*;
 
-        let detail = adapter
-            .fetch_table_detail(&dsn, "main", "logs")
-            .await
-            .unwrap();
-
-        assert_eq!(detail.primary_key, None);
-        assert_eq!(detail.columns.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn columns_and_fks_preserves_unique_column_attributes_without_returning_indexes() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(email TEXT UNIQUE NOT NULL);");
-        let adapter = SqliteAdapter::new();
-
-        let detail = adapter
-            .fetch_table_columns_and_fks(&dsn, "main", "users")
-            .await
-            .unwrap();
-
-        assert!(detail.indexes.is_empty());
-        assert!(
-            detail
-                .columns
-                .iter()
-                .any(|column| column.name == "email" && column.is_unique())
-        );
-    }
-
-    #[tokio::test]
-    async fn composite_foreign_key_groups_columns_in_sequence_order() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn composite_foreign_key_groups_columns_in_sequence_order() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
             CREATE TABLE child(
                 x INTEGER,
@@ -1590,29 +1634,29 @@ mod tests {
                 FOREIGN KEY(x, y) REFERENCES parent(a, b)
             );
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let detail = adapter
-            .fetch_table_detail(&dsn, "main", "child")
-            .await
-            .unwrap();
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "child")
+                .await
+                .unwrap();
 
-        assert_eq!(detail.foreign_keys.len(), 1);
-        assert_eq!(
-            detail.foreign_keys[0].from_columns,
-            vec!["x".to_string(), "y".to_string()]
-        );
-        assert_eq!(
-            detail.foreign_keys[0].to_columns,
-            vec!["a".to_string(), "b".to_string()]
-        );
-    }
+            assert_eq!(detail.foreign_keys.len(), 1);
+            assert_eq!(
+                detail.foreign_keys[0].from_columns,
+                vec!["x".to_string(), "y".to_string()]
+            );
+            assert_eq!(
+                detail.foreign_keys[0].to_columns,
+                vec!["a".to_string(), "b".to_string()]
+            );
+        }
 
-    #[tokio::test]
-    async fn foreign_key_without_target_columns_resolves_parent_primary_key() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn foreign_key_without_target_columns_resolves_parent_primary_key() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
             CREATE TABLE child(
                 x INTEGER,
@@ -1620,113 +1664,121 @@ mod tests {
                 FOREIGN KEY(x, y) REFERENCES parent
             );
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let detail = adapter
-            .fetch_table_detail(&dsn, "main", "child")
-            .await
-            .unwrap();
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "child")
+                .await
+                .unwrap();
 
-        assert_eq!(
-            detail.foreign_keys[0].to_columns,
-            vec!["a".to_string(), "b".to_string()]
-        );
+            assert_eq!(
+                detail.foreign_keys[0].to_columns,
+                vec!["a".to_string(), "b".to_string()]
+            );
+        }
     }
 
-    #[tokio::test]
-    async fn invalid_dsn_returns_connection_error() {
-        let adapter = SqliteAdapter::new();
+    mod dsn_validation {
+        use super::*;
 
-        let postgres_result = adapter.fetch_metadata("postgres://localhost").await;
-        let empty_result = adapter.fetch_metadata("sqlite://").await;
+        #[tokio::test]
+        async fn invalid_dsn_returns_connection_error() {
+            let adapter = SqliteAdapter::new();
 
-        assert!(matches!(
-            postgres_result,
-            Err(DbOperationError::ConnectionFailed(_))
-        ));
-        assert!(matches!(
-            empty_result,
-            Err(DbOperationError::ConnectionFailed(_))
-        ));
-    }
+            let postgres_result = adapter.fetch_metadata("postgres://localhost").await;
+            let empty_result = adapter.fetch_metadata("sqlite://").await;
 
-    #[tokio::test]
-    async fn relative_path_starting_with_dash_is_opened_as_database_path() {
-        struct CleanupPath(String);
-        impl Drop for CleanupPath {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_file(&self.0);
-            }
+            assert!(matches!(
+                postgres_result,
+                Err(DbOperationError::ConnectionFailed(_))
+            ));
+            assert!(matches!(
+                empty_result,
+                Err(DbOperationError::ConnectionFailed(_))
+            ));
         }
 
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = format!("-sabiql-{unique}.db");
-        let _cleanup = CleanupPath(path.clone());
-        let dsn = format!("sqlite://{path}");
-        let adapter = SqliteAdapter::new();
+        #[tokio::test]
+        async fn relative_path_starting_with_dash_is_opened_as_database_path() {
+            struct CleanupPath(String);
+            impl Drop for CleanupPath {
+                fn drop(&mut self) {
+                    let _ = std::fs::remove_file(&self.0);
+                }
+            }
 
-        let result = adapter
-            .execute_adhoc(&dsn, "SELECT 1 AS value", false)
-            .await;
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = format!("-sabiql-{unique}.db");
+            let _cleanup = CleanupPath(path.clone());
+            let dsn = format!("sqlite://{path}");
+            let adapter = SqliteAdapter::new();
 
-        let result = result.unwrap();
-        assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+            let result = adapter
+                .execute_adhoc(&dsn, "SELECT 1 AS value", false)
+                .await;
+
+            let result = result.unwrap();
+            assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn missing_database_file_returns_error_without_creating_file() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("missing.db");
+            let dsn = format!("sqlite://{}", path.display());
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter.fetch_metadata(&dsn).await;
+
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            assert!(!path.exists());
+        }
+
+        #[tokio::test]
+        async fn non_main_schema_returns_object_missing() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter.fetch_table_detail(&dsn, "other", "users").await;
+
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+        }
+
+        #[tokio::test]
+        async fn missing_table_returns_object_missing() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter.fetch_table_detail(&dsn, "main", "missing").await;
+
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+        }
     }
 
-    #[tokio::test]
-    async fn missing_database_file_returns_error_without_creating_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("missing.db");
-        let dsn = format!("sqlite://{}", path.display());
-        let adapter = SqliteAdapter::new();
+    mod table_signatures {
+        use super::*;
 
-        let result = adapter.fetch_metadata(&dsn).await;
+        #[tokio::test]
+        async fn change_with_table_shape() {
+            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
 
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
-        assert!(!path.exists());
-    }
+            let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
 
-    #[tokio::test]
-    async fn non_main_schema_returns_object_missing() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let adapter = SqliteAdapter::new();
+            assert_eq!(signatures.len(), 1);
+            assert_eq!(signatures[0].qualified_name(), "main.users");
+            assert!(signatures[0].signature.contains("CREATE TABLE users"));
+            assert!(signatures[0].signature.contains("col=id:INTEGER"));
+        }
 
-        let result = adapter.fetch_table_detail(&dsn, "other", "users").await;
-
-        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-    }
-
-    #[tokio::test]
-    async fn missing_table_returns_object_missing() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let adapter = SqliteAdapter::new();
-
-        let result = adapter.fetch_table_detail(&dsn, "main", "missing").await;
-
-        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-    }
-
-    #[tokio::test]
-    async fn table_signatures_change_with_table_shape() {
-        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let adapter = SqliteAdapter::new();
-
-        let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
-
-        assert_eq!(signatures.len(), 1);
-        assert_eq!(signatures[0].qualified_name(), "main.users");
-        assert!(signatures[0].signature.contains("CREATE TABLE users"));
-        assert!(signatures[0].signature.contains("col=id:INTEGER"));
-    }
-
-    #[tokio::test]
-    async fn table_signatures_include_foreign_key_update_action() {
-        let (_dir, dsn) = make_db(
-            r"
+        #[tokio::test]
+        async fn include_foreign_key_update_action() {
+            let (_dir, dsn) = make_db(
+                r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
                 org_id INTEGER REFERENCES orgs(id)
@@ -1734,19 +1786,20 @@ mod tests {
                     ON UPDATE SET NULL
             );
             ",
-        );
-        let adapter = SqliteAdapter::new();
+            );
+            let adapter = SqliteAdapter::new();
 
-        let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
-        let signature = signatures
-            .iter()
-            .find(|signature| signature.name == "users")
-            .unwrap();
+            let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
+            let signature = signatures
+                .iter()
+                .find(|signature| signature.name == "users")
+                .unwrap();
 
-        assert!(
-            signature
-                .signature
-                .contains("fk=fk_users_0:org_id:orgs:id:CASCADE:SET NULL")
-        );
+            assert!(
+                signature
+                    .signature
+                    .contains("fk=fk_users_0:org_id:orgs:id:CASCADE:SET NULL")
+            );
+        }
     }
 }

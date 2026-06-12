@@ -9,6 +9,8 @@ pub mod input;
 pub mod modal;
 pub mod reducer;
 pub mod sql_editor;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 // Facade: re-export sub-reducer entry points for update/reducer.rs dispatch
 pub use browse::metadata::dispatch_metadata;

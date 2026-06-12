@@ -91,16 +91,7 @@ pub(super) fn reduce_connection_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseType};
-
-    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
-        );
-    }
+    use crate::update::test_support::use_postgres_connection;
 
     mod scroll_down {
         use super::*;

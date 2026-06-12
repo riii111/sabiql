@@ -380,8 +380,8 @@ mod tests {
     };
     use crate::ports::outbound::DbOperationError;
     use crate::update::browse::query::dispatch_query;
-    use crate::update::browse::query::tests::use_postgres_connection;
     use crate::update::browse::query::tests::*;
+    use crate::update::test_support::use_postgres_connection;
 
     fn write_succeeded_action(state: &mut AppState, affected_rows: usize) -> Action {
         let run_id = begin_query_run(state);
