@@ -193,12 +193,24 @@ impl DdlGenerator for DbAdapterRegistry {
 }
 
 impl SqlDialect for DbAdapterRegistry {
-    fn build_explain_sql(&self, query: &str) -> Option<String> {
-        self.postgres.build_explain_sql(query)
+    fn build_explain_sql(&self, database_type: DatabaseType, query: &str) -> Option<String> {
+        match database_type {
+            DatabaseType::PostgreSQL => self.postgres.build_explain_sql(database_type, query),
+            DatabaseType::SQLite => self.sqlite.build_explain_sql(database_type, query),
+        }
     }
 
-    fn build_explain_analyze_sql(&self, query: &str) -> Option<String> {
-        self.postgres.build_explain_analyze_sql(query)
+    fn build_explain_analyze_sql(
+        &self,
+        database_type: DatabaseType,
+        query: &str,
+    ) -> Option<String> {
+        match database_type {
+            DatabaseType::PostgreSQL => self
+                .postgres
+                .build_explain_analyze_sql(database_type, query),
+            DatabaseType::SQLite => self.sqlite.build_explain_analyze_sql(database_type, query),
+        }
     }
 
     fn build_update_sql(
@@ -373,6 +385,34 @@ mod tests {
         assert_eq!(delete_sql, "DELETE FROM \"users\"\nWHERE \"id\" IN ('1');");
         assert!(ddl.contains("CREATE TABLE \"users\""));
         assert!(!ddl.contains("\"main\".\"users\""));
+    }
+
+    #[test]
+    fn postgres_explain_generation_uses_postgres_dialect() {
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        assert_eq!(
+            registry.build_explain_sql(DatabaseType::PostgreSQL, "SELECT 1"),
+            Some("EXPLAIN SELECT 1".to_string())
+        );
+        assert_eq!(
+            registry.build_explain_analyze_sql(DatabaseType::PostgreSQL, "SELECT 1"),
+            Some("EXPLAIN ANALYZE SELECT 1".to_string())
+        );
+    }
+
+    #[test]
+    fn sqlite_explain_generation_is_unsupported() {
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        assert_eq!(
+            registry.build_explain_sql(DatabaseType::SQLite, "SELECT 1"),
+            None
+        );
+        assert_eq!(
+            registry.build_explain_analyze_sql(DatabaseType::SQLite, "SELECT 1"),
+            None
+        );
     }
 
     #[tokio::test]

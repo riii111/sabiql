@@ -129,11 +129,15 @@ impl DdlGenerator for MySqlAdapter {
 }
 
 impl SqlDialect for MySqlAdapter {
-    fn build_explain_sql(&self, _query: &str) -> Option<String> {
+    fn build_explain_sql(&self, _database_type: DatabaseType, _query: &str) -> Option<String> {
         None
     }
 
-    fn build_explain_analyze_sql(&self, _query: &str) -> Option<String> {
+    fn build_explain_analyze_sql(
+        &self,
+        _database_type: DatabaseType,
+        _query: &str,
+    ) -> Option<String> {
         None
     }
 

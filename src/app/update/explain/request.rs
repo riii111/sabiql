@@ -39,7 +39,11 @@ pub(super) fn reduce_request(
                 return DispatchResult::handled();
             }
 
-            let Some(query) = services.sql_dialect.build_explain_sql(&content) else {
+            let database_type = state.session.active_database_type_or_default();
+            let Some(query) = services
+                .sql_dialect
+                .build_explain_sql(database_type, &content)
+            else {
                 mark_explain_unavailable(state);
                 return DispatchResult::handled();
             };
