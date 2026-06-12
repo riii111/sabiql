@@ -403,19 +403,6 @@ fn append_changes_query(query: &str) -> String {
     format!("{trimmed}\n;\nSELECT changes() AS affected_rows;")
 }
 
-fn csv_field_count(line: &str) -> usize {
-    let mut count = 1;
-    let mut in_quotes = false;
-    for ch in line.chars() {
-        match ch {
-            '"' => in_quotes = !in_quotes,
-            ',' if !in_quotes => count += 1,
-            _ => {}
-        }
-    }
-    count
-}
-
 fn is_ident_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
@@ -515,28 +502,42 @@ fn count_select_statements(sql: &str) -> usize {
 }
 
 fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
-    let lines: Vec<&str> = stdout.lines().collect();
-    if lines.len() <= 2 {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(stdout.as_bytes());
+    let mut record = csv::ByteRecord::new();
+    let mut records = Vec::new();
+    loop {
+        let position = reader.position().clone();
+        match reader.read_byte_record(&mut record) {
+            Ok(true) => records.push((position.byte() as usize, record.clone())),
+            Ok(false) => break,
+            Err(_) => return stdout,
+        }
+    }
+
+    if records.len() <= 2 {
         return stdout;
     }
 
     let expected_sets = count_select_statements(sql);
-    let first_header = lines[0];
-    let mut current_fc = csv_field_count(first_header);
-    let mut known_headers: Vec<&str> = vec![first_header];
+    let first_header = &records[0].1;
+    let mut current_fc = first_header.len();
+    let mut known_headers = vec![first_header.clone()];
     let mut last_header_idx = 0;
     let mut data_rows_since_header = 0usize;
 
-    for (i, &line) in lines.iter().enumerate().skip(1) {
-        let fc = csv_field_count(line);
+    for (i, (_, record)) in records.iter().enumerate().skip(1) {
+        let fc = record.len();
         if fc != current_fc {
             last_header_idx = i;
             current_fc = fc;
             data_rows_since_header = 0;
-            if !known_headers.contains(&line) {
-                known_headers.push(line);
+            if !known_headers.contains(record) {
+                known_headers.push(record.clone());
             }
-        } else if known_headers.contains(&line) {
+        } else if known_headers.contains(record) {
             last_header_idx = i;
             data_rows_since_header = 0;
         } else if expected_sets > 1
@@ -544,7 +545,7 @@ fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
             && known_headers.len() < expected_sets
         {
             last_header_idx = i;
-            known_headers.push(line);
+            known_headers.push(record.clone());
             data_rows_since_header = 0;
         } else {
             data_rows_since_header += 1;
@@ -555,13 +556,7 @@ fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
         return stdout;
     }
 
-    let byte_offset: usize = stdout
-        .lines()
-        .take(last_header_idx)
-        .map(|line| line.len() + 1)
-        .sum();
-
-    &stdout[byte_offset..]
+    &stdout[records[last_header_idx].0..]
 }
 
 fn csv_to_query_result(
@@ -581,7 +576,11 @@ fn csv_to_query_result(
         ));
     }
 
-    let csv_block = extract_last_csv_block(stdout, query);
+    let csv_block = if count_select_statements(query) <= 1 {
+        stdout
+    } else {
+        extract_last_csv_block(stdout, query)
+    };
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
         .from_reader(csv_block.as_bytes());
@@ -928,6 +927,65 @@ mod tests {
 
         assert_eq!(result.columns, vec!["value"]);
         assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+        assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_select_preserves_quoted_newline_in_multicolumn_result() {
+        let (_dir, dsn) = make_db("CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker",
+                true,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.columns, vec!["body", "marker"]);
+        assert_eq!(
+            result.rows,
+            vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+        );
+        assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+    }
+
+    #[test]
+    fn csv_to_query_result_preserves_quoted_newline_for_single_statement() {
+        let csv = "body,marker\n\"line 1\nline 2\",ok\n";
+
+        let result =
+            csv_to_query_result("SELECT body, marker FROM notes", csv, QuerySource::Adhoc, 1)
+                .unwrap();
+
+        assert_eq!(result.columns, vec!["body", "marker"]);
+        assert_eq!(
+            result.rows,
+            vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+        );
+    }
+
+    #[tokio::test]
+    async fn adhoc_multi_select_preserves_quoted_newline_in_last_result() {
+        let (_dir, dsn) = make_db("");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "SELECT 1 AS ignored; SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker",
+                true,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.columns, vec!["body", "marker"]);
+        assert_eq!(
+            result.rows,
+            vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+        );
         assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
     }
 
