@@ -138,10 +138,9 @@ impl Footer {
                     list
                 } else {
                     // Actions → Navigation → Help → Close/Cancel → Quit
-                    let active_inspector_tab = state
-                        .session
-                        .active_db_capabilities()
-                        .normalize_inspector_tab(state.ui.inspector_tab());
+                    let capabilities = state.session.active_db_capabilities();
+                    let active_inspector_tab =
+                        capabilities.normalize_inspector_tab(state.ui.inspector_tab());
                     let mut list = vec![
                         global::RELOAD.as_hint(),
                         global::SQL.as_hint(),
@@ -182,12 +181,7 @@ impl Footer {
                         }
                     }
                     if state.ui.focused_pane() == FocusedPane::Inspector
-                        && state
-                            .session
-                            .active_db_capabilities()
-                            .supported_inspector_tabs()
-                            .len()
-                            > 1
+                        && capabilities.supported_inspector_tabs().len() > 1
                     {
                         list.push(global::INSPECTOR_TABS.as_hint());
                     }
