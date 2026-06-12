@@ -171,7 +171,7 @@ impl SqlDialect for SqliteAdapter {
             let col = quote_ident(&pk_pairs_per_row[0][0].0);
             let values = pk_pairs_per_row
                 .iter()
-                .map(|pairs| quote_literal(&pairs[0].1))
+                .map(|pairs| sql_literal_or_null(&pairs[0].1))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{col} IN ({values})")
@@ -186,7 +186,7 @@ impl SqlDialect for SqliteAdapter {
                 .map(|pairs| {
                     let vals = pairs
                         .iter()
-                        .map(|(_, val)| quote_literal(val))
+                        .map(|(_, val)| sql_literal_or_null(val))
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!("({vals})")
@@ -399,13 +399,29 @@ mod tests {
         }
 
         #[test]
-        fn null_like_string_values_are_quoted_as_literals() {
+        fn null_pk_value_uses_null_literal() {
             let adapter = SqliteAdapter::new();
             let rows = vec![vec![("id".to_string(), "NULL".to_string())]];
 
             let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
 
-            assert_eq!(sql, "DELETE FROM \"users\"\nWHERE \"id\" IN ('NULL');");
+            assert_eq!(sql, "DELETE FROM \"users\"\nWHERE \"id\" IN (NULL);");
+        }
+
+        #[test]
+        fn composite_pk_null_value_uses_null_literal() {
+            let adapter = SqliteAdapter::new();
+            let rows = vec![vec![
+                ("id".to_string(), "NULL".to_string()),
+                ("tenant_id".to_string(), "10".to_string()),
+            ]];
+
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"users\"\nWHERE (\"id\", \"tenant_id\") IN ((NULL, '10'));"
+            );
         }
     }
 

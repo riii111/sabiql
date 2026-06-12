@@ -581,7 +581,11 @@ fn csv_to_query_result(
         ));
     }
 
-    let csv_block = extract_last_csv_block(stdout, query);
+    let csv_block = if count_select_statements(query) <= 1 {
+        stdout
+    } else {
+        extract_last_csv_block(stdout, query)
+    };
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
         .from_reader(csv_block.as_bytes());
@@ -929,6 +933,43 @@ mod tests {
         assert_eq!(result.columns, vec!["value"]);
         assert_eq!(result.rows, vec![vec!["1".to_string()]]);
         assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+    }
+
+    #[tokio::test]
+    async fn adhoc_select_preserves_quoted_newline_in_multicolumn_result() {
+        let (_dir, dsn) = make_db("CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker",
+                true,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.columns, vec!["body", "marker"]);
+        assert_eq!(
+            result.rows,
+            vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+        );
+        assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+    }
+
+    #[test]
+    fn csv_to_query_result_preserves_quoted_newline_for_single_statement() {
+        let csv = "body,marker\n\"line 1\nline 2\",ok\n";
+
+        let result =
+            csv_to_query_result("SELECT body, marker FROM notes", csv, QuerySource::Adhoc, 1)
+                .unwrap();
+
+        assert_eq!(result.columns, vec!["body", "marker"]);
+        assert_eq!(
+            result.rows,
+            vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+        );
     }
 
     #[tokio::test]
