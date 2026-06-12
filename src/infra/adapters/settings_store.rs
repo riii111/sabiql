@@ -6,7 +6,9 @@ use super::app_config_file::{
 };
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
-use crate::config::connection_config::{CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile};
+use crate::config::connection_config::{
+    CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile, is_supported_config_version,
+};
 
 #[cfg(test)]
 use super::app_config_file::CONFIG_FILE_NAME;
@@ -115,10 +117,6 @@ fn app_settings(config: ConnectionConfigFile) -> AppSettings {
 fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
     config.theme = Some(settings.theme_id.config_value().to_string());
     config.er_browser = settings.er_browser;
-}
-
-fn is_supported_config_version(version: u32) -> bool {
-    version == 2 || version == CURRENT_VERSION
 }
 
 #[cfg(test)]
