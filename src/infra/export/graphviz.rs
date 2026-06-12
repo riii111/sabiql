@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use crate::app::ports::outbound::ErExportError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum GraphvizError {
     #[error(
@@ -16,10 +18,24 @@ pub enum GraphvizError {
 pub enum ViewerError {
     #[error("Failed to open viewer: {0}")]
     LaunchFailed(#[from] std::io::Error),
+    #[error("{operation} is unsupported on this platform")]
+    UnsupportedPlatform { operation: String },
     #[error("{browser} is not available on this platform")]
     UnsupportedBrowser { browser: String },
     #[error("Browser command not found for {browser}. Tried: {candidates}")]
     BrowserCommandNotFound { browser: String, candidates: String },
+}
+
+impl From<GraphvizError> for ErExportError {
+    fn from(e: GraphvizError) -> Self {
+        Self::Export(e.to_string())
+    }
+}
+
+impl From<ViewerError> for ErExportError {
+    fn from(e: ViewerError) -> Self {
+        Self::Export(e.to_string())
+    }
 }
 
 pub trait GraphvizRunner: Send + Sync {
@@ -79,6 +95,20 @@ mod tests {
 
             assert!(message.contains("Safari"));
             assert!(message.contains("not available"));
+        }
+
+        #[test]
+        fn unsupported_platform_names_operation() {
+            let error = ViewerError::UnsupportedPlatform {
+                operation: "Opening ER diagrams".to_string(),
+            };
+
+            let message = format!("{error}");
+
+            assert_eq!(
+                message,
+                "Opening ER diagrams is unsupported on this platform"
+            );
         }
 
         #[test]

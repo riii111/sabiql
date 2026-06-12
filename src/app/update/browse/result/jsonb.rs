@@ -87,14 +87,18 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
 
         Action::JsonbYankAll => {
             let json = state.jsonb_detail.current_json_for_yank();
-            state.flash_timers.set(FlashId::JsonbDetail, now);
             DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                 content: json,
-                on_success: Some(Box::new(Action::CellCopied)),
+                on_success: Some(Box::new(Action::JsonbYankSuccess)),
                 on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
                     "Clipboard unavailable".into(),
                 )))),
             }])
+        }
+
+        Action::JsonbYankSuccess => {
+            state.flash_timers.set(FlashId::JsonbDetail, now);
+            DispatchResult::handled()
         }
 
         Action::JsonbEnterEdit => {
@@ -144,7 +148,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 state.jsonb_detail.editor_mut().insert_char(*ch);
             }
             update_editor_scroll(state);
-            validate_editor_inline(state);
+            state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
 
@@ -153,7 +157,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
         } => {
             state.jsonb_detail.editor_mut().backspace();
             update_editor_scroll(state);
-            validate_editor_inline(state);
+            state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
 
@@ -162,7 +166,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
         } => {
             state.jsonb_detail.editor_mut().delete();
             update_editor_scroll(state);
-            validate_editor_inline(state);
+            state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
 
@@ -190,7 +194,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
         Action::Paste(text) if state.input_mode() == InputMode::JsonbEdit => {
             state.jsonb_detail.editor_mut().insert_str(text);
             update_editor_scroll(state);
-            validate_editor_inline(state);
+            state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
 
@@ -386,16 +390,6 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
     }
 }
 
-fn validate_editor_inline(state: &mut AppState) {
-    let content = state.jsonb_detail.editor().content().to_string();
-    match serde_json::from_str::<serde_json::Value>(&content) {
-        Ok(_) => state.jsonb_detail.set_validation_error(None),
-        Err(e) => state
-            .jsonb_detail
-            .set_validation_error(Some(format!("Invalid JSON: {e}"))),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,17 +437,15 @@ mod tests {
 
     fn state_with_jsonb_value(cell_value: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.query.set_current_result(Arc::new(QueryResult {
-            query: String::new(),
-            columns: vec!["id".to_string(), "settings".to_string()],
-            rows: vec![vec!["1".to_string(), cell_value.to_string()]],
-            row_count: 1,
-            execution_time_ms: 1,
-            executed_at: Instant::now(),
-            source: QuerySource::Preview,
-            error: None,
-            command_tag: None,
-        }));
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                String::new(),
+                vec!["id".to_string(), "settings".to_string()],
+                vec![vec!["1".to_string(), cell_value.to_string()]],
+                1,
+                QuerySource::Preview,
+            )));
         state.query.pagination.reset_for_table("public", "users");
         state.session.set_table_detail_raw(Some(jsonb_table()));
         state.result_interaction.activate_cell(0, 1);
@@ -522,17 +514,15 @@ mod tests {
         #[test]
         fn blocked_on_null_cell() {
             let mut state = state_with_jsonb_cell();
-            state.query.set_current_result(Arc::new(QueryResult {
-                query: String::new(),
-                columns: vec!["id".to_string(), "settings".to_string()],
-                rows: vec![vec!["1".to_string(), String::new()]],
-                row_count: 1,
-                execution_time_ms: 1,
-                executed_at: Instant::now(),
-                source: QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    String::new(),
+                    vec!["id".to_string(), "settings".to_string()],
+                    vec![vec!["1".to_string(), String::new()]],
+                    1,
+                    QuerySource::Preview,
+                )));
 
             reduce_jsonb(
                 &mut state,
@@ -546,17 +536,15 @@ mod tests {
         #[test]
         fn blocked_on_adhoc_result() {
             let mut state = state_with_jsonb_cell();
-            state.query.set_current_result(Arc::new(QueryResult {
-                query: String::new(),
-                columns: vec!["id".to_string(), "settings".to_string()],
-                rows: vec![vec!["1".to_string(), r#"{"theme":"dark"}"#.to_string()]],
-                row_count: 1,
-                execution_time_ms: 1,
-                executed_at: Instant::now(),
-                source: QuerySource::Adhoc,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    String::new(),
+                    vec!["id".to_string(), "settings".to_string()],
+                    vec![vec!["1".to_string(), r#"{"theme":"dark"}"#.to_string()]],
+                    1,
+                    QuerySource::Adhoc,
+                )));
 
             reduce_jsonb(
                 &mut state,
@@ -857,13 +845,36 @@ mod tests {
                 Instant::now(),
             );
 
-            let effects = reduce_jsonb(&mut state, &Action::JsonbYankAll, Instant::now());
+            let now = Instant::now();
+            let effects = reduce_jsonb(&mut state, &Action::JsonbYankAll, now);
 
             let effects = effects.into_effects().expect("should return effects");
             assert_eq!(effects.len(), 1);
-            assert!(
-                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("theme"))
-            );
+            match &effects[0] {
+                Effect::CopyToClipboard {
+                    content,
+                    on_success,
+                    ..
+                } => {
+                    assert!(content.contains("theme"));
+                    assert!(matches!(
+                        on_success.as_deref(),
+                        Some(Action::JsonbYankSuccess)
+                    ));
+                }
+                other => panic!("expected CopyToClipboard, got {other:?}"),
+            }
+            assert!(!state.flash_timers.is_active(FlashId::JsonbDetail, now));
+        }
+
+        #[test]
+        fn success_sets_flash() {
+            let mut state = state_with_jsonb_cell();
+            let now = Instant::now();
+
+            reduce_jsonb(&mut state, &Action::JsonbYankSuccess, now);
+
+            assert!(state.flash_timers.is_active(FlashId::JsonbDetail, now));
         }
     }
 

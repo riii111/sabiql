@@ -10,7 +10,7 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_settings(
     state: &mut AppState,
     action: &Action,
-    _now: Instant,
+    now: Instant,
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::Settings) => {
@@ -86,11 +86,15 @@ pub(super) fn reduce_settings(
             state
                 .settings
                 .commit_saved(settings.theme_id, settings.er_browser.clone());
-            state.set_success("Settings saved".to_string());
+            state
+                .messages
+                .set_success_at("Settings saved".to_string(), now);
             DispatchResult::handled()
         }
         Action::SettingsSaveFailed(error) => {
-            state.set_error(format!("Failed to save settings: {error}"));
+            state
+                .messages
+                .set_error_at(format!("Failed to save settings: {error}"), now);
             DispatchResult::handled()
         }
         _ => DispatchResult::pass(),

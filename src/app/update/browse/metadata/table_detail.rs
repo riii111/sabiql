@@ -1,9 +1,15 @@
+use std::time::Instant;
+
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, TableTarget};
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_table_detail(state: &mut AppState, action: &Action) -> DispatchResult {
+pub(super) fn reduce_table_detail(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::TableDetailLoaded {
             dsn,
@@ -35,7 +41,7 @@ pub(super) fn reduce_table_detail(state: &mut AppState, action: &Action) -> Disp
             }
 
             if *generation == state.session.selection_generation() {
-                state.set_error(error.user_message());
+                state.messages.set_error_at(error.user_message(), now);
             }
             DispatchResult::handled()
         }

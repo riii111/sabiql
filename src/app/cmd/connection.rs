@@ -260,15 +260,14 @@ mod tests {
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner_builder(
+            let runner = make_runner_with_dsn(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
                 cache,
                 tx,
-            )
-            .dsn_builder(Arc::new(SqliteDsnBuilder))
-            .build();
+                Arc::new(SqliteDsnBuilder),
+            );
 
             let state = &mut AppState::new("test".to_string());
             let ce = RefCell::new(CompletionEngine::new());
@@ -393,7 +392,9 @@ mod tests {
 
     mod load_connections {
         use super::*;
-        use crate::cmd::runner::EffectRunner;
+        use crate::cmd::runner::{
+            ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
+        };
 
         #[tokio::test]
         async fn error_returns_empty_connections_list() {
@@ -447,21 +448,32 @@ mod tests {
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = EffectRunner::builder()
-                .metadata_provider(Arc::new(MockMetadataProvider::new()))
-                .query_executor(Arc::new(MockQueryExecutor::new()))
-                .dsn_builder(Arc::new(NoopDsnBuilder))
-                .er_exporter(Arc::new(NoopErExporter))
-                .config_writer(Arc::new(NoopConfigWriter))
-                .er_log_writer(Arc::new(NoopErLogWriter))
-                .connection_store(Arc::new(mock_store))
-                .clipboard(Arc::new(NoopClipboardWriter))
-                .folder_opener(Arc::new(NoopFolderOpener))
-                .query_history_store(Arc::new(NoopQueryHistoryStore))
-                .settings_store(Arc::new(NoopSettingsStore))
-                .metadata_cache(cache)
-                .action_tx(tx)
-                .build();
+            let runner = EffectRunner::new(
+                Arc::new(MockMetadataProvider::new()),
+                ConnectionDeps {
+                    dsn_builder: Arc::new(NoopDsnBuilder),
+                    connection_store: Arc::new(mock_store),
+                    pg_service_entry_reader: None,
+                },
+                QueryDeps {
+                    query_executor: Arc::new(MockQueryExecutor::new()),
+                    query_history_store: Arc::new(NoopQueryHistoryStore),
+                },
+                ErDeps {
+                    er_exporter: Arc::new(NoopErExporter),
+                    config_writer: Arc::new(NoopConfigWriter),
+                    er_log_writer: Arc::new(NoopErLogWriter),
+                },
+                UtilityDeps {
+                    clipboard: Arc::new(NoopClipboardWriter),
+                    folder_opener: Arc::new(NoopFolderOpener),
+                },
+                SettingsDeps {
+                    settings_store: Arc::new(NoopSettingsStore),
+                },
+                cache,
+                tx,
+            );
 
             let state = &mut AppState::new("test".to_string());
             let ce = RefCell::new(CompletionEngine::new());
@@ -510,15 +522,14 @@ mod tests {
         }
 
         fn make_runner_with_dsn_builder(action_tx: mpsc::Sender<Action>) -> EffectRunner {
-            make_runner_builder(
+            make_runner_with_dsn(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
                 TtlCache::new(60),
                 action_tx,
+                Arc::new(FakeDsnBuilder),
             )
-            .dsn_builder(Arc::new(FakeDsnBuilder))
-            .build()
         }
 
         #[tokio::test]

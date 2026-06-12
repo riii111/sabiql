@@ -14,7 +14,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           components: rustfmt
@@ -24,11 +24,11 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
       - run: ./scripts/lint_all.sh
@@ -37,18 +37,18 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - uses: taiki-e/install-action@3771e22aa892e03fd35585fae288baad1755695c # v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: taiki-e/install-action@56545b37b57562edd73171cb6c62cc509db4c34e # v2
         with:
-          tool: nextest
+          tool: nextest,cargo-insta
       - id: test_all_features
         continue-on-error: true
         run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - id: test_no_default_features
         continue-on-error: true
-        run: cargo nextest run --workspace --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
+        run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - name: Summarize failed tests
         if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
         run: |
@@ -58,14 +58,31 @@ jobs:
       - name: Fail job if tests failed
         if: steps.test_all_features.outcome == 'failure' || steps.test_no_default_features.outcome == 'failure'
         run: exit 1
+      - name: Reject unreferenced snapshots
+        run: cargo insta test --unreferenced=reject -p sabiql
+
+  integration:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: taiki-e/install-action@56545b37b57562edd73171cb6c62cc509db4c34e # v2
+        with:
+          tool: nextest
+      - name: Start PostgreSQL
+        run: docker compose up -d --wait
+      - name: Run psql integration tests (Tier 2)
+        run: cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)' --show-progress=none
 
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo build --workspace --release
       - run: cargo build --workspace --release --no-default-features
 
@@ -73,8 +90,18 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: taiki-e/install-action@3771e22aa892e03fd35585fae288baad1755695c # v2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: taiki-e/install-action@56545b37b57562edd73171cb6c62cc509db4c34e # v2
         with:
           tool: cargo-audit
       - run: cargo audit
+
+  machete:
+    name: Unused Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: taiki-e/install-action@56545b37b57562edd73171cb6c62cc509db4c34e # v2
+        with:
+          tool: cargo-machete
+      - run: cargo machete

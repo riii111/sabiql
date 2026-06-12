@@ -1,0 +1,54 @@
+---
+source: src/tests/render_snapshots/result_pane.rs
+expression: output
+---
+test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││Owner:   postgres                                                                                                         │
+│  public.comments                      ││Comment: User accounts                                                                                                    │
+│                                       ││Rows:    ~100                                                                                                             │
+│                                       ││Schema:  public                                                                                                           │
+│                                       ││Table:   users                                                                                                            │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       │└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+│                                       │┌ [3] Result (2 rows, 3ms) ────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││status                      kind                        actor                        note                                 │
+│                                       ││active_pending_validation   user_account_registration   alice.anderson@example.com   created via admin console            │
+│                                       ││suspended_awaiting_review   service_account_creation    bob.brown@example.com        imported from legacy system          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││ col 100% ◀︎─════════════════════════════════════════════════════════════════════════════════════════════════════════════▶︎ │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ^E:Export  Enter:Select  ]/[:Page  ?:Help  F1:Palette  ^K:Settings  q:Quit

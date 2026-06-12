@@ -151,7 +151,9 @@ pub fn reduce_connection_setup(
         Action::ConnectionSetupSave => {
             let setup = &mut state.connection_setup;
             validate_all(setup);
-            if !setup.has_validation_errors() {
+            if setup.has_validation_errors() {
+                DispatchResult::Handled(vec![])
+            } else {
                 let config = match setup.to_connection_config() {
                     Ok(config) => config,
                     Err(error) => {
@@ -169,8 +171,6 @@ pub fn reduce_connection_setup(
                         .to_string(),
                     config,
                 }])
-            } else {
-                DispatchResult::Handled(vec![])
             }
         }
         Action::ConnectionSetupCancel => {

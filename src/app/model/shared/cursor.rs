@@ -1,0 +1,20 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorMove {
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+    LineStart,
+    LineEnd,
+    WordForward,
+    WordBackward,
+    BufferStart,
+    BufferEnd,
+    FirstLine,
+    LastLine,
+    ViewportTop,
+    ViewportMiddle,
+    ViewportBottom,
+}

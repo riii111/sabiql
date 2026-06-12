@@ -3,11 +3,11 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::er_state::ErStatus;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
+use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn reduce_loading(
@@ -45,24 +45,14 @@ pub(super) fn reduce_loading(
                     state.ui.set_explorer_selection(Some(idx));
                     // Refresh preview and detail: DDL or reload may have changed
                     // data/schema even though the table still exists.
-                    let dsn = dsn.clone();
                     let page = state.query.pagination.current_page();
                     let generation = state.session.selection_generation();
-                    let query_run_id = state.query.begin_running(now);
+                    effects.extend(preview_effect_for_current_table(
+                        state, now, page, generation,
+                    ));
                     let detail_run_id = state.session.begin_table_detail_run();
-                    effects.push(Effect::ExecutePreview {
-                        dsn: dsn.clone(),
-                        schema: state.query.pagination.schema().to_string(),
-                        table: state.query.pagination.table().to_string(),
-                        generation,
-                        run_id: query_run_id,
-                        limit: PREVIEW_PAGE_SIZE,
-                        offset: page * PREVIEW_PAGE_SIZE,
-                        target_page: page,
-                        read_only: state.session.is_read_only(),
-                    });
                     effects.push(Effect::FetchTableDetail {
-                        dsn,
+                        dsn: dsn.clone(),
                         schema: state.query.pagination.schema().to_string(),
                         table: state.query.pagination.table().to_string(),
                         generation,

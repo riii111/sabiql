@@ -20,7 +20,7 @@ pub(super) fn reduce_output(
             is_analyze,
             execution_time_ms,
         } => {
-            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
             finish_explain_success(
@@ -34,7 +34,7 @@ pub(super) fn reduce_output(
         }
 
         Action::ExplainFailed { dsn, run_id, error } => {
-            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
             finish_explain_error(state, error.user_message());

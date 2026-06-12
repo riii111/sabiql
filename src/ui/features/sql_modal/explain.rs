@@ -9,6 +9,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
+use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::primitives::atoms::text_cursor_spans;
 use crate::theme::ThemePalette;
 
@@ -35,7 +36,13 @@ pub fn render(
         target_name,
     } = state.sql_modal.status()
     {
-        let lines = build_analyze_confirm_lines(area, query, input, target_name.as_deref(), theme);
+        let lines = build_analyze_confirm_lines(area, query, input, target_name, theme);
+        render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset());
+        return area.height;
+    }
+
+    if let SqlModalStatus::ConfirmingAnalyzeRisk { query, reason } = state.sql_modal.status() {
+        let lines = build_analyze_acknowledge_lines(area, query, reason, theme);
         render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset());
         return area.height;
     }
@@ -126,7 +133,7 @@ fn build_analyze_confirm_lines<'a>(
     area: Rect,
     query: &'a str,
     input: &'a crate::app::model::shared::text_input::TextInputState,
-    target_name: Option<&'a str>,
+    name: &'a str,
     theme: &ThemePalette,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
@@ -165,36 +172,86 @@ fn build_analyze_confirm_lines<'a>(
     }
     lines.push(Line::raw(""));
 
-    match target_name {
-        Some(name) => {
-            let is_match = input.content() == name;
-            let prompt = format!(" Type \"{name}\" to confirm: > ");
-            let mut prompt_spans = vec![Span::styled(
-                prompt,
-                Style::default().fg(theme.semantic.text.secondary),
-            )];
-            prompt_spans.extend(text_cursor_spans(
-                input.content(),
-                input.cursor(),
-                input.viewport_offset(),
-                HIGH_RISK_INPUT_VISIBLE_WIDTH,
-                theme,
-            ));
-            if is_match {
-                prompt_spans.push(Span::styled(
-                    " \u{2713}",
-                    Style::default().fg(theme.semantic.status.success),
-                ));
-            }
-            lines.push(Line::from(prompt_spans));
-        }
-        None => {
-            lines.push(Line::from(Span::styled(
-                " Cannot identify target object name.  Esc: Back",
-                Style::default().fg(theme.semantic.text.muted),
-            )));
-        }
+    let is_match = input.content() == name;
+    let prompt = format!(" Type \"{name}\" to confirm: > ");
+    let mut prompt_spans = vec![Span::styled(
+        prompt,
+        Style::default().fg(theme.semantic.text.secondary),
+    )];
+    prompt_spans.extend(text_cursor_spans(
+        input.content(),
+        input.cursor(),
+        input.viewport_offset(),
+        HIGH_RISK_INPUT_VISIBLE_WIDTH,
+        theme,
+    ));
+    if is_match {
+        prompt_spans.push(Span::styled(
+            " \u{2713}",
+            Style::default().fg(theme.semantic.status.success),
+        ));
     }
+    lines.push(Line::from(prompt_spans));
+
+    lines
+}
+
+fn build_analyze_acknowledge_lines<'a>(
+    area: Rect,
+    query: &'a str,
+    reason: &AcknowledgeReason,
+    theme: &ThemePalette,
+) -> Vec<Line<'a>> {
+    let mut lines = Vec::new();
+
+    let (header_color, explanation) = match reason {
+        AcknowledgeReason::UnknownRisk => (
+            theme.semantic.status.warning,
+            [
+                " sabiql can't assess this statement's risk.",
+                " EXPLAIN ANALYZE will execute it.",
+            ],
+        ),
+        AcknowledgeReason::TargetNameUnavailable => (
+            theme.semantic.status.error,
+            [
+                " This is a destructive statement. EXPLAIN ANALYZE will",
+                " execute it and data loss may occur.",
+            ],
+        ),
+    };
+    let header_style = Style::default()
+        .fg(header_color)
+        .add_modifier(Modifier::BOLD);
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(Span::styled(
+        " \u{26a0} EXPLAIN ANALYZE",
+        header_style,
+    )));
+    lines.push(Line::raw(""));
+
+    let sep = "\u{2500}".repeat(area.width.saturating_sub(2) as usize);
+    lines.push(Line::styled(format!(" {sep}"), theme.modal_border_style()));
+    lines.push(Line::raw(""));
+
+    for text in explanation {
+        lines.push(Line::from(Span::styled(text, header_style)));
+    }
+    lines.push(Line::raw(""));
+
+    for line in query.lines() {
+        lines.push(Line::from(Span::styled(
+            format!("  {line}"),
+            Style::default().fg(theme.semantic.text.dim),
+        )));
+    }
+    lines.push(Line::raw(""));
+
+    lines.push(Line::from(Span::styled(
+        " Press Enter to execute  Esc: Cancel",
+        Style::default().fg(theme.semantic.text.secondary),
+    )));
 
     lines
 }

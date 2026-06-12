@@ -10,6 +10,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::services::AppServices;
 use crate::update::action::{Action, ModalKind, TableTarget};
+use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::command::{command_to_action, parse_command};
 
@@ -39,21 +40,21 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
         effects.push(Effect::FetchMetadata { dsn, run_id });
     } else if !state.query.pagination.table().is_empty() {
         let page = state.query.pagination.current_page();
-        let run_id = state.query.begin_running(now);
-        effects.push(Effect::ExecutePreview {
-            dsn,
-            schema: state.query.pagination.schema().to_string(),
-            table: state.query.pagination.table().to_string(),
-            generation: state.session.selection_generation(),
-            run_id,
-            limit: PREVIEW_PAGE_SIZE,
-            offset: page * PREVIEW_PAGE_SIZE,
-            target_page: page,
-            read_only: state.session.is_read_only(),
-        });
+        let generation = state.session.selection_generation();
+        effects.extend(preview_effect_for_current_table(
+            state, now, page, generation,
+        ));
     }
 
     effects
+}
+
+fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
+    state.result_interaction.reset_view();
+    state
+        .query
+        .set_result_highlight(now + Duration::from_millis(500));
+    state.query.exit_history();
 }
 
 pub fn reduce_execution(
@@ -70,54 +71,48 @@ pub fn reduce_execution(
             generation,
             target_page,
         } => {
-            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
+                return DispatchResult::handled();
+            }
+            if *generation != 0 && *generation != state.session.selection_generation() {
                 return DispatchResult::handled();
             }
 
-            if *generation == 0 || *generation == state.session.selection_generation() {
-                state.query.mark_idle();
-                let preserved_result_col = state.result_interaction.selection().cell();
-                let preserved_horizontal_offset = state.result_interaction.horizontal_offset();
+            state.query.mark_idle();
 
-                let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
-                if !is_adhoc_error {
-                    state.result_interaction.reset_view();
+            match (result.source, result.is_error()) {
+                // Adhoc errors stay inside the SQL modal; the existing preview
+                // result and its view state are kept untouched.
+                (QuerySource::Adhoc, true) => {
                     state
-                        .query
-                        .set_result_highlight(now + Duration::from_millis(500));
-                    state.query.exit_history();
+                        .sql_modal
+                        .finish_adhoc_error(result.error.clone().unwrap_or_default());
                 }
-
-                if result.source == QuerySource::Adhoc {
-                    if result.is_error() {
-                        state
-                            .sql_modal
-                            .finish_adhoc_error(result.error.clone().unwrap_or_default());
-                    } else {
-                        state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
-                            command_tag: result.command_tag.clone(),
-                            row_count: result.row_count,
-                            execution_time_ms: result.execution_time_ms,
-                        });
-                    }
-                }
-
-                if result.source == QuerySource::Adhoc && !result.is_error() {
+                (QuerySource::Adhoc, false) => {
+                    reset_view_for_new_result(state, now);
+                    state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
+                        command_tag: result.command_tag.clone(),
+                        row_count: result.row_count,
+                        execution_time_ms: result.execution_time_ms,
+                    });
                     state.query.push_history(Arc::clone(result));
-                }
-
-                if let Some(page) = target_page {
-                    state
-                        .query
-                        .pagination
-                        .set_page_result(*page, result.rows.len() < PREVIEW_PAGE_SIZE);
-                }
-
-                if !result.is_error() || result.source != QuerySource::Adhoc {
                     state.query.set_current_result(Arc::clone(result));
                 }
+                // Preview errors arrive as error results and are shown in the
+                // Result pane like any other preview.
+                (QuerySource::Preview, _) => {
+                    let preserved_result_col = state.result_interaction.selection().cell();
+                    let preserved_horizontal_offset = state.result_interaction.horizontal_offset();
+                    reset_view_for_new_result(state, now);
 
-                if result.source == QuerySource::Preview {
+                    if let Some(page) = target_page {
+                        state
+                            .query
+                            .pagination
+                            .set_page_result(*page, result.rows.len() < PREVIEW_PAGE_SIZE);
+                    }
+                    state.query.set_current_result(Arc::clone(result));
+
                     match state.query.post_delete_row_selection() {
                         PostDeleteRowSelection::Keep => {}
                         PostDeleteRowSelection::Clear => {
@@ -148,11 +143,9 @@ pub fn reduce_execution(
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                 }
-
-                DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
-            } else {
-                DispatchResult::handled()
             }
+
+            DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
         }
         Action::QueryFailed {
             dsn,
@@ -161,7 +154,7 @@ pub fn reduce_execution(
             generation,
             source,
         } => {
-            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -182,7 +175,7 @@ pub fn reduce_execution(
                     )));
                 } else {
                     let user_message = error.user_message();
-                    state.set_error(user_message.clone());
+                    state.messages.set_error_at(user_message.clone(), now);
                     state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
@@ -238,40 +231,34 @@ pub fn reduce_execution(
             table,
             generation,
         }) => {
-            if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.query.begin_running(now);
+            if state.session.dsn().is_none() {
+                return DispatchResult::handled();
+            }
 
-                let row_estimate = state
-                    .session
-                    .table_detail()
-                    .and_then(|d| d.row_count_estimate)
-                    .or_else(|| {
-                        state.tables().iter().find_map(|t| {
-                            if t.schema == *schema && t.name == *table {
-                                t.row_count_estimate
-                            } else {
-                                None
-                            }
-                        })
-                    });
-                state
-                    .query
-                    .pagination
-                    .reset_for_table_with_estimate(schema, table, row_estimate);
+            let row_estimate = state
+                .session
+                .table_detail()
+                .and_then(|d| d.row_count_estimate)
+                .or_else(|| {
+                    state.tables().iter().find_map(|t| {
+                        if t.schema == *schema && t.name == *table {
+                            t.row_count_estimate
+                        } else {
+                            None
+                        }
+                    })
+                });
+            state
+                .query
+                .pagination
+                .reset_for_table_with_estimate(schema, table, row_estimate);
 
-                DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                    dsn,
-                    schema: schema.clone(),
-                    table: table.clone(),
-                    generation: *generation,
-                    run_id,
-                    limit: PREVIEW_PAGE_SIZE,
-                    offset: 0,
-                    target_page: 0,
-                    read_only: state.session.is_read_only(),
-                }])
-            } else {
-                DispatchResult::handled()
+            // Keep the generation captured at selection time, not the current
+            // one: the selection may have been cleared between dispatch and
+            // now, and such a completion must fail the stale check.
+            match preview_effect_for_current_table(state, now, 0, *generation) {
+                Some(effect) => DispatchResult::handled_with(vec![effect]),
+                None => DispatchResult::handled(),
             }
         }
 
@@ -299,26 +286,6 @@ mod tests {
     use crate::ports::outbound::DbOperationError;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
-
-    fn begin_query_run(state: &mut AppState) -> u64 {
-        state.query.begin_running(Instant::now())
-    }
-
-    fn query_completed_action(
-        state: &mut AppState,
-        result: Arc<QueryResult>,
-        generation: u64,
-        target_page: Option<usize>,
-    ) -> Action {
-        let run_id = begin_query_run(state);
-        Action::QueryCompleted {
-            dsn: "postgres://localhost/test".to_string(),
-            run_id,
-            result,
-            generation,
-            target_page,
-        }
-    }
 
     fn query_failed_action(
         state: &mut AppState,
@@ -600,10 +567,10 @@ mod tests {
         #[test]
         fn preview_delete_reselection_preserves_active_column_and_offset() {
             let mut state = create_test_state();
-            let result = Arc::new(QueryResult {
-                query: "SELECT * FROM users".to_string(),
-                columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
-                rows: vec![
+            let result = Arc::new(QueryResult::success(
+                "SELECT * FROM users".to_string(),
+                vec!["id".to_string(), "name".to_string(), "email".to_string()],
+                vec![
                     vec![
                         "1".to_string(),
                         "Alice".to_string(),
@@ -615,13 +582,9 @@ mod tests {
                         "b@example.com".to_string(),
                     ],
                 ],
-                row_count: 2,
-                execution_time_ms: 10,
-                executed_at: Instant::now(),
-                source: QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            });
+                10,
+                QuerySource::Preview,
+            ));
             state
                 .query
                 .set_post_delete_selection(PostDeleteRowSelection::Select(1));
@@ -900,17 +863,13 @@ mod tests {
         #[test]
         fn no_command_tag_emits_no_effects() {
             let mut state = state_with_table("public", "users");
-            let result = Arc::new(crate::domain::QueryResult {
-                query: "SELECT 1".to_string(),
-                columns: vec!["?column?".to_string()],
-                rows: vec![vec!["1".to_string()]],
-                row_count: 1,
-                execution_time_ms: 5,
-                executed_at: Instant::now(),
-                source: QuerySource::Adhoc,
-                error: None,
-                command_tag: None,
-            });
+            let result = Arc::new(crate::domain::QueryResult::success(
+                "SELECT 1".to_string(),
+                vec!["?column?".to_string()],
+                vec![vec!["1".to_string()]],
+                5,
+                QuerySource::Adhoc,
+            ));
             let action = query_completed_action(&mut state, result, 0, None);
 
             let effects =
@@ -935,7 +894,6 @@ mod tests {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)
                     })
                     .collect(),
-                fetched_at: Instant::now(),
             })
         }
 

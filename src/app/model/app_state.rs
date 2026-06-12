@@ -17,8 +17,9 @@ use crate::model::shared::flash_timer::FlashTimerStore;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
+use crate::model::shared::render_output::RenderOutput;
 use crate::model::shared::settings::SettingsState;
-use crate::model::shared::ui_state::UiState;
+use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 
@@ -97,23 +98,75 @@ impl AppState {
         self.render_dirty = false;
     }
 
-    pub fn set_error(&mut self, msg: String) {
-        self.messages.set_error(msg);
-    }
-
-    pub fn set_success(&mut self, msg: String) {
-        self.messages.set_success(msg);
-    }
-
-    pub fn clear_expired_messages(&mut self) {
-        self.messages.clear_expired();
-    }
-
     pub fn clear_expired_timers(&mut self, now: Instant) {
-        self.messages.clear_expired();
+        self.messages.clear_expired_at(now);
         self.query.clear_expired_highlight(now);
         self.result_interaction.clear_expired_flash(now);
         self.flash_timers.clear_expired(now);
+    }
+
+    /// Writes back the pane geometry measured during a draw. Inspector viewport
+    /// plans are skipped in focus mode to keep the pre-focus plan restorable.
+    pub fn apply_render_output(&mut self, output: RenderOutput) {
+        if !self.ui.is_focus_mode() {
+            self.ui
+                .set_inspector_viewport_plan(output.inspector_viewport_plan);
+        }
+        self.ui
+            .set_result_viewport_plan(output.result_viewport_plan);
+        self.ui.set_result_widths_cache(output.result_widths_cache);
+        self.ui
+            .set_explorer_pane_height(output.explorer_pane_height);
+        self.ui
+            .set_explorer_content_width(output.explorer_content_width);
+        let max_name_width = self
+            .tables()
+            .iter()
+            .map(|table| table.qualified_name().chars().count())
+            .max()
+            .unwrap_or(0);
+        let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width());
+        self.ui
+            .set_explorer_horizontal_offset(self.ui.explorer_horizontal_offset().min(max_offset));
+        self.ui
+            .set_inspector_pane_height(output.inspector_pane_height);
+        self.ui.set_result_pane_height(output.result_pane_height);
+        if let Some(width) = output.command_line_visible_width {
+            self.command_line_visible_width = width;
+        }
+        if let Some(height) = output.connection_list_pane_height {
+            self.ui.set_connection_list_pane_height(height);
+        }
+        if let Some(height) = output.table_picker_pane_height {
+            self.ui.table_picker_mut().set_pane_height(height);
+        }
+        if let Some(width) = output.table_picker_filter_visible_width {
+            self.ui.table_picker_mut().set_filter_visible_width(width);
+        }
+        if let Some(height) = output.er_picker_pane_height {
+            self.ui.er_picker_mut().set_pane_height(height);
+        }
+        if let Some(width) = output.er_picker_filter_visible_width {
+            self.ui.er_picker_mut().set_filter_visible_width(width);
+        }
+        if let Some(height) = output.query_history_picker_pane_height {
+            self.query_history_picker.set_pane_height(height);
+        }
+        if let Some(width) = output.query_history_picker_filter_visible_width {
+            self.query_history_picker.set_filter_visible_width(width);
+        }
+        if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
+            self.ui.set_jsonb_detail_editor_visible_rows(visible_rows);
+            self.jsonb_detail.editor_mut().update_scroll(visible_rows);
+        }
+        self.confirm_dialog.apply_preview_metrics(
+            output.confirm_preview_viewport_height,
+            output.confirm_preview_content_height,
+            output.confirm_preview_scroll,
+        );
+        if let Some(height) = output.explain_compare_viewport_height {
+            self.explain.set_compare_viewport_height(height);
+        }
     }
 
     pub fn result_visible_rows(&self) -> usize {
@@ -222,6 +275,12 @@ impl AppState {
     pub fn can_request_csv_export(&self) -> bool {
         !self.query.is_history_mode() && self.query.visible_result().is_some_and(|r| !r.is_error())
     }
+
+    /// True when a run-scoped async response no longer belongs to the active
+    /// connection and query run, and must be dropped without touching state.
+    pub fn is_stale_query_run(&self, dsn: &str, run_id: u64) -> bool {
+        !self.session.dsn_matches(dsn) || !self.query.is_current_run(run_id)
+    }
 }
 
 #[cfg(test)]
@@ -264,7 +323,6 @@ mod tests {
             database_name: "test".to_string(),
             schemas: vec![],
             table_summaries,
-            fetched_at: Instant::now(),
         })
     }
 

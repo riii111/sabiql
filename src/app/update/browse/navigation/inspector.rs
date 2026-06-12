@@ -93,14 +93,11 @@ pub fn reduce_inspector(
             direction: ScrollDirection::Right,
             amount: ScrollAmount::Line,
         } => {
-            let plan = state.ui.inspector_viewport_plan();
-            let all_widths_len = plan.max_offset + plan.column_count;
             state
                 .ui
                 .set_inspector_horizontal_offset(calculate_next_column_offset(
-                    all_widths_len,
                     state.ui.inspector_horizontal_offset(),
-                    plan.column_count,
+                    state.ui.inspector_viewport_plan().max_offset,
                 ));
             DispatchResult::handled()
         }

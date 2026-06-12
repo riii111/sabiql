@@ -49,11 +49,9 @@ impl ConnectionProfile {
         Self::new_postgres(name, host, port, database, username, password, ssl_mode).map_err(|e| {
             match e {
                 ConnectionProfileError::Name(e) => e,
-                ConnectionProfileError::EmptySqlitePath => unreachable!("postgres constructor"),
-                ConnectionProfileError::InvalidSqlitePath => {
-                    unreachable!("postgres constructor")
-                }
-                ConnectionProfileError::MissingPostgresField(_) => {
+                ConnectionProfileError::EmptySqlitePath
+                | ConnectionProfileError::InvalidSqlitePath
+                | ConnectionProfileError::MissingPostgresField(_) => {
                     unreachable!("postgres constructor")
                 }
             }
@@ -102,11 +100,9 @@ impl ConnectionProfile {
         Self::with_id_postgres(id, name, host, port, database, username, password, ssl_mode)
             .map_err(|e| match e {
                 ConnectionProfileError::Name(e) => e,
-                ConnectionProfileError::EmptySqlitePath => unreachable!("postgres constructor"),
-                ConnectionProfileError::InvalidSqlitePath => {
-                    unreachable!("postgres constructor")
-                }
-                ConnectionProfileError::MissingPostgresField(_) => {
+                ConnectionProfileError::EmptySqlitePath
+                | ConnectionProfileError::InvalidSqlitePath
+                | ConnectionProfileError::MissingPostgresField(_) => {
                     unreachable!("postgres constructor")
                 }
             })

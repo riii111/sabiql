@@ -2,6 +2,7 @@
 name = "sabiql-infra"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Infrastructure layer for sabiql"
 license.workspace = true
 repository.workspace = true
@@ -10,7 +11,6 @@ repository.workspace = true
 path = "lib.rs"
 
 [dependencies]
-arboard.workspace = true
 async-trait.workspace = true
 csv.workspace = true
 dirs.workspace = true
@@ -23,7 +23,13 @@ urlencoding.workspace = true
 sabiql-app.workspace = true
 sabiql-domain.workspace = true
 
+[target.'cfg(not(target_os = "android"))'.dependencies]
+arboard.workspace = true
+
 [dev-dependencies]
 rstest.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

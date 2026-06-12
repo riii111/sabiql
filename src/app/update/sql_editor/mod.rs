@@ -161,7 +161,7 @@ mod tests {
                         label: "DROP",
                     },
                     input: TextInputState::default(),
-                    target_name: Some("users".to_string()),
+                    target_name: "users".to_string(),
                 });
 
             reduce_sql_modal(
@@ -238,7 +238,7 @@ mod tests {
         use crate::policy::write::write_guardrails::AdhocRiskDecision;
         use crate::update::action::CursorMove;
 
-        fn confirming_high_state(content: &str, target: Option<&str>) -> AppState {
+        fn confirming_high_state(content: &str, target: &str) -> AppState {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content(content.to_string());
             state
@@ -249,7 +249,7 @@ mod tests {
                         label: "DROP",
                     },
                     input: TextInputState::default(),
-                    target_name: target.map(ToString::to_string),
+                    target_name: target.to_string(),
                 });
             state
         }
@@ -267,14 +267,14 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "users"
+                } if target_name == "users"
             ));
         }
 
         #[test]
-        fn submit_other_executes_immediately() {
+        fn submit_other_enters_risk_acknowledge() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -284,11 +284,17 @@ mod tests {
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk {
+                    reason: crate::policy::write::sql_risk::AcknowledgeReason::UnknownRisk,
+                    ..
+                }
+            ));
         }
 
         #[test]
-        fn submit_unsupported_executes_immediately() {
+        fn submit_unsupported_enters_risk_acknowledge() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -298,7 +304,34 @@ mod tests {
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk {
+                    reason: crate::policy::write::sql_risk::AcknowledgeReason::UnknownRisk,
+                    ..
+                }
+            ));
+        }
+
+        #[test]
+        fn submit_drop_without_target_enters_risk_acknowledge() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("DROP TABLE a, b".to_string());
+            use_postgres_connection(&mut state, "postgres://test");
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk {
+                    reason:
+                        crate::policy::write::sql_risk::AcknowledgeReason::TargetNameUnavailable,
+                    ..
+                }
+            ));
         }
 
         #[test]
@@ -335,7 +368,7 @@ mod tests {
 
         #[test]
         fn high_risk_input_appends_char() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
 
             reduce_sql_modal(
                 &mut state,
@@ -355,7 +388,7 @@ mod tests {
 
         #[test]
         fn high_risk_backspace_removes_char() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             reduce_sql_modal(
                 &mut state,
                 &Action::TextInput {
@@ -390,7 +423,7 @@ mod tests {
 
         #[test]
         fn high_risk_confirm_executes_on_match() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             use_postgres_connection(&mut state, "postgres://test");
             for c in "users".chars() {
                 reduce_sql_modal(
@@ -403,11 +436,8 @@ mod tests {
                 );
             }
 
-            let effects = reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(state.query.is_running());
@@ -422,7 +452,7 @@ mod tests {
 
         #[test]
         fn high_risk_confirm_without_dsn_sets_error() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             for c in "users".chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -434,11 +464,8 @@ mod tests {
                 );
             }
 
-            let effects = reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error));
             assert_eq!(
@@ -450,7 +477,7 @@ mod tests {
 
         #[test]
         fn high_risk_confirm_blocked_on_mismatch() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             reduce_sql_modal(
                 &mut state,
                 &Action::TextInput {
@@ -460,27 +487,7 @@ mod tests {
                 Instant::now(),
             );
 
-            reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
-
-            assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh { .. }
-            ));
-        }
-
-        #[test]
-        fn high_risk_confirm_blocked_when_no_target() {
-            let mut state = confirming_high_state("DROP TABLE users", None);
-
-            reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
+            reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
@@ -490,7 +497,7 @@ mod tests {
 
         #[test]
         fn cancel_from_confirming_high_returns_to_normal() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
 
             reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
 
@@ -499,7 +506,7 @@ mod tests {
 
         #[test]
         fn high_risk_move_cursor_works() {
-            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            let mut state = confirming_high_state("DROP TABLE users", "users");
             for c in "ab".chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -540,9 +547,9 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "users"
+                } if target_name == "users"
             ));
         }
 
@@ -559,9 +566,9 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "users"
+                } if target_name == "users"
             ));
         }
 
@@ -578,9 +585,9 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "users"
+                } if target_name == "users"
             ));
         }
 
@@ -597,17 +604,16 @@ mod tests {
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(name),
+                    target_name,
                     ..
-                } if name == "my_schema.very_long_table_name"
+                } if target_name == "my_schema.very_long_table_name"
             ));
         }
 
         #[test]
         fn high_risk_confirm_matches_full_name_not_truncated() {
             let full_name = "my_schema.very_long_table_name";
-            let mut state =
-                confirming_high_state(&format!("DROP TABLE {full_name}"), Some(full_name));
+            let mut state = confirming_high_state(&format!("DROP TABLE {full_name}"), full_name);
             use_postgres_connection(&mut state, "postgres://test");
             for c in full_name.chars() {
                 reduce_sql_modal(
@@ -620,11 +626,8 @@ mod tests {
                 );
             }
 
-            let effects = reduce_sql_modal(
-                &mut state,
-                &Action::SqlModalHighRiskConfirmExecute,
-                Instant::now(),
-            );
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(
@@ -706,6 +709,50 @@ mod tests {
 
             assert!(!effects.is_empty());
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
+    }
+
+    mod risk_acknowledge_flow {
+        use super::*;
+        use crate::policy::write::sql_risk::AcknowledgeReason;
+
+        fn confirming_risk_state(content: &str) -> AppState {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content(content.to_string());
+            use_postgres_connection(&mut state, "postgres://localhost/test");
+            state
+                .sql_modal
+                .set_status_for_test(SqlModalStatus::ConfirmingRisk {
+                    reason: AcknowledgeReason::UnknownRisk,
+                    label: "DO".to_string(),
+                });
+            state
+        }
+
+        #[test]
+        fn enter_executes_acknowledged_statement() {
+            let mut state = confirming_risk_state("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now())
+                    .into_effects()
+                    .expect("reducer should handle action");
+
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecuteAdhoc { .. }))
+            );
+        }
+
+        #[test]
+        fn cancel_returns_to_normal() {
+            let mut state = confirming_risk_state("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
+
+            reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
+
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
         }
     }
 

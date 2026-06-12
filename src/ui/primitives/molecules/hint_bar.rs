@@ -57,6 +57,7 @@ impl FooterHintBar {
         }
     }
 
+    #[must_use]
     pub fn without_item(mut self, key: &str) -> Self {
         self.items.retain(|item| item.key != key);
         self

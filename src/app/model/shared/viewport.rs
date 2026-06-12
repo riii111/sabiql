@@ -1,11 +1,45 @@
+use std::borrow::Cow;
+
 pub const MIN_COL_WIDTH: u16 = 4;
 pub const MAX_COL_WIDTH: u16 = 200;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum SlackPolicy {
-    #[default]
-    None,
-    RightmostLimited,
+// An over-wide column may claim at most this share of the pane while
+// scrolling. Without the cap it monopolizes the viewport: scrolling past it
+// reveals nothing new until max_offset, where the right-edge logic dumps
+// every remaining column at once.
+const MAX_WIDE_COLUMN_PANE_SHARE: (u32, u32) = (3, 5);
+
+// Skipped when everything already fits — capping would only shrink content
+// without enabling anything. Header min widths still win over the cap so
+// headers stay intact.
+fn cap_wide_columns<'a>(
+    ideal_widths: &'a [u16],
+    min_widths: &[u16],
+    available_width: u16,
+) -> Cow<'a, [u16]> {
+    let (num, den) = MAX_WIDE_COLUMN_PANE_SHARE;
+    let cap = (u32::from(available_width) * num / den) as u16;
+
+    if total_width_with_separators(ideal_widths) <= available_width
+        || !ideal_widths.iter().any(|&w| w > cap)
+    {
+        return Cow::Borrowed(ideal_widths);
+    }
+
+    Cow::Owned(
+        ideal_widths
+            .iter()
+            .enumerate()
+            .map(|(i, &w)| {
+                if w > cap {
+                    let min_w = min_widths.get(i).copied().unwrap_or(MIN_COL_WIDTH);
+                    cap.max(min_w)
+                } else {
+                    w
+                }
+            })
+            .collect(),
+    )
 }
 
 pub struct ColumnWidthConfig<'a> {
@@ -18,7 +52,6 @@ pub struct SelectionContext {
     pub available_width: u16,
     pub fixed_count: Option<usize>,
     pub max_offset: usize,
-    pub slack_policy: SlackPolicy,
 }
 
 fn total_width_with_separators(widths: &[u16]) -> u16 {
@@ -82,7 +115,6 @@ fn apply_slack_to_rightmost(widths: &mut [u16], available_width: u16) {
         return;
     }
 
-    // No upper limit: only called when max_offset == 0 (no scroll needed)
     let slack = available_width - current_total;
     if let Some(rightmost) = widths.last_mut() {
         *rightmost += slack;
@@ -119,6 +151,68 @@ fn try_add_bonus_column(
     false
 }
 
+// When the next column's ideal width doesn't fit, show it truncated as long as
+// its header (min width) still fits — leaving the space blank helps no one.
+fn try_add_partial_column(
+    config: &ColumnWidthConfig,
+    indices: &mut Vec<usize>,
+    widths: &mut Vec<u16>,
+    available_width: u16,
+) {
+    let Some(&rightmost_idx) = indices.last() else {
+        return;
+    };
+    let next_idx = rightmost_idx + 1;
+
+    if next_idx >= config.ideal_widths.len() {
+        return;
+    }
+
+    let current_total = total_width_with_separators(widths);
+    let remaining = available_width.saturating_sub(current_total + 1); // +1 for separator
+    let min_w = config
+        .min_widths
+        .get(next_idx)
+        .copied()
+        .unwrap_or(MIN_COL_WIDTH);
+
+    if remaining >= min_w {
+        indices.push(next_idx);
+        widths.push(remaining);
+    }
+}
+
+// At the right edge no next column exists, so leftover width goes to a
+// truncated peek of the previous column instead. By max_offset minimality the
+// previous column never fits fully here, so a single partial prepend suffices.
+fn try_prepend_partial_column(
+    config: &ColumnWidthConfig,
+    indices: &mut Vec<usize>,
+    widths: &mut Vec<u16>,
+    available_width: u16,
+) {
+    let Some(&leftmost_idx) = indices.first() else {
+        return;
+    };
+    if leftmost_idx == 0 {
+        return;
+    }
+    let prev_idx = leftmost_idx - 1;
+
+    let current_total = total_width_with_separators(widths);
+    let remaining = available_width.saturating_sub(current_total + 1); // +1 for separator
+    let min_w = config
+        .min_widths
+        .get(prev_idx)
+        .copied()
+        .unwrap_or(MIN_COL_WIDTH);
+
+    if remaining >= min_w {
+        indices.insert(0, prev_idx);
+        widths.insert(0, remaining.min(config.ideal_widths[prev_idx]));
+    }
+}
+
 pub fn select_viewport_columns(
     config: &ColumnWidthConfig,
     ctx: &SelectionContext,
@@ -127,14 +221,18 @@ pub fn select_viewport_columns(
         return (Vec::new(), Vec::new());
     }
 
+    let capped = cap_wide_columns(config.ideal_widths, config.min_widths, ctx.available_width);
+    let config = &ColumnWidthConfig {
+        ideal_widths: &capped,
+        min_widths: config.min_widths,
+    };
+
     let (indices, mut widths) = match ctx.fixed_count {
         Some(count) => select_fixed_columns(config, ctx, count),
         None => select_dynamic_columns(config, ctx.horizontal_offset, ctx.available_width),
     };
 
-    if ctx.slack_policy == SlackPolicy::RightmostLimited {
-        apply_slack_to_rightmost(&mut widths, ctx.available_width);
-    }
+    apply_slack_to_rightmost(&mut widths, ctx.available_width);
 
     (indices, widths)
 }
@@ -153,9 +251,9 @@ fn select_fixed_columns(
 
     let mut widths: Vec<u16> = indices.iter().map(|&i| config.ideal_widths[i]).collect();
 
-    // Add bonus column when scrolling is needed (max_offset > 0)
     if ctx.max_offset > 0 {
-        try_add_bonus_column(config, &mut indices, &mut widths, ctx.available_width);
+        while try_add_bonus_column(config, &mut indices, &mut widths, ctx.available_width) {}
+        try_add_partial_column(config, &mut indices, &mut widths, ctx.available_width);
     }
 
     let total_needed = total_width_with_separators(&widths);
@@ -164,7 +262,7 @@ fn select_fixed_columns(
         let excess = total_needed - ctx.available_width;
         let at_right_edge = ctx.horizontal_offset >= ctx.max_offset && ctx.max_offset > 0;
 
-        let remaining = shrink_columns(
+        let mut remaining = shrink_columns(
             &mut widths,
             config.min_widths,
             &indices,
@@ -172,22 +270,37 @@ fn select_fixed_columns(
             at_right_edge,
         );
 
-        if at_right_edge && remaining > 0 && indices.len() > 1 {
-            indices.remove(0);
-            widths.remove(0);
+        if at_right_edge {
+            while remaining > 0 && indices.len() > 1 {
+                indices.remove(0);
+                widths.remove(0);
 
-            if let Some(last_idx) = indices.last()
+                if let Some(last_idx) = indices.last()
+                    && let Some(last_w) = widths.last_mut()
+                {
+                    *last_w = config.ideal_widths[*last_idx];
+                }
+
+                let new_total = total_width_with_separators(&widths);
+                remaining = new_total.saturating_sub(ctx.available_width);
+                if remaining > 0 {
+                    remaining =
+                        shrink_columns(&mut widths, config.min_widths, &indices, remaining, true);
+                }
+            }
+
+            // Pane narrower than the last header itself: clamp so the cell
+            // truncates with an ellipsis instead of overflowing the pane
+            if remaining > 0
                 && let Some(last_w) = widths.last_mut()
             {
-                *last_w = config.ideal_widths[*last_idx];
-            }
-
-            let new_total = total_width_with_separators(&widths);
-            if new_total > ctx.available_width {
-                let new_excess = new_total - ctx.available_width;
-                shrink_columns(&mut widths, config.min_widths, &indices, new_excess, true);
+                *last_w = ctx.available_width;
             }
         }
+    }
+
+    if ctx.max_offset > 0 && ctx.horizontal_offset >= ctx.max_offset {
+        try_prepend_partial_column(config, &mut indices, &mut widths, ctx.available_width);
     }
 
     (indices, widths)
@@ -234,31 +347,17 @@ fn select_dynamic_columns(
     (indices, widths)
 }
 
-// Uses ideal_widths primarily so scrolling is enabled when content exceeds viewport,
-// even if headers (min_widths) would fit.
-pub fn calculate_viewport_column_count(
-    ideal_widths: &[u16],
-    min_widths: &[u16],
-    available_width: u16,
-) -> usize {
+// Uses ideal widths so scrolling is enabled when content exceeds the viewport.
+// A single column always counts as fitting (it renders truncated); squeezing
+// every column to its header width instead would disable scrolling entirely.
+pub fn calculate_viewport_column_count(ideal_widths: &[u16], available_width: u16) -> usize {
     if ideal_widths.is_empty() {
         return 0;
     }
 
-    for n in (1..=ideal_widths.len()).rev() {
+    for n in (2..=ideal_widths.len()).rev() {
         let all_windows_fit = (0..=ideal_widths.len() - n).all(|start| {
             let window = &ideal_widths[start..start + n];
-            total_width_with_separators(window) <= available_width
-        });
-        if all_windows_fit {
-            return n;
-        }
-    }
-
-    // When ideal widths are too wide, fall back to min_widths to show something
-    for n in (1..=min_widths.len()).rev() {
-        let all_windows_fit = (0..=min_widths.len() - n).all(|start| {
-            let window = &min_widths[start..start + n];
             total_width_with_separators(window) <= available_width
         });
         if all_windows_fit {
@@ -269,70 +368,76 @@ pub fn calculate_viewport_column_count(
     1
 }
 
+// Order-sensitive: max_offset depends on suffix widths, so reordered columns
+// must produce a different fingerprint even when len/sum/max are unchanged.
+pub fn widths_fingerprint(ideal_widths: &[u16], min_widths: &[u16]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    ideal_widths.hash(&mut hasher);
+    min_widths.hash(&mut hasher);
+    hasher.finish()
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ViewportPlan {
     pub column_count: usize,
     pub max_offset: usize,
+    pub total_columns: usize,
     pub available_width: u16,
-    pub min_widths_sum: u16,
-    pub ideal_widths_sum: u16,
-    pub ideal_widths_max: u16,
-    pub slack_policy: SlackPolicy,
+    pub widths_fingerprint: u64,
 }
 
 impl ViewportPlan {
     pub fn calculate(ideal_widths: &[u16], min_widths: &[u16], available_width: u16) -> Self {
-        let column_count =
-            calculate_viewport_column_count(ideal_widths, min_widths, available_width);
-        let max_offset = calculate_max_offset(ideal_widths.len(), column_count);
-        let min_widths_sum = min_widths.iter().sum();
-        let ideal_widths_sum = ideal_widths.iter().sum();
-        let ideal_widths_max = ideal_widths.iter().copied().max().unwrap_or(0);
-        let slack_policy = if max_offset == 0 {
-            SlackPolicy::RightmostLimited
-        } else {
-            SlackPolicy::None
-        };
+        let capped = cap_wide_columns(ideal_widths, min_widths, available_width);
+        let column_count = calculate_viewport_column_count(&capped, available_width);
+        let max_offset = calculate_max_offset(&capped, column_count, available_width);
 
         Self {
             column_count,
             max_offset,
+            total_columns: ideal_widths.len(),
             available_width,
-            min_widths_sum,
-            ideal_widths_sum,
-            ideal_widths_max,
-            slack_policy,
+            // From raw widths: callers compare against fingerprints of the
+            // uncapped cache, and a mismatch would recalculate every frame
+            widths_fingerprint: widths_fingerprint(ideal_widths, min_widths),
         }
     }
 
-    pub fn needs_recalculation(
-        &self,
-        new_widths_len: usize,
-        new_available_width: u16,
-        new_min_widths_sum: u16,
-        new_ideal_widths_sum: u16,
-        new_ideal_widths_max: u16,
-    ) -> bool {
+    pub fn needs_recalculation(&self, new_available_width: u16, new_fingerprint: u64) -> bool {
         self.column_count == 0
             || self.available_width != new_available_width
-            || self.max_offset + self.column_count != new_widths_len
-            || self.min_widths_sum != new_min_widths_sum
-            || self.ideal_widths_sum != new_ideal_widths_sum
-            || self.ideal_widths_max != new_ideal_widths_max
+            || self.widths_fingerprint != new_fingerprint
+    }
+
+    pub fn has_horizontal_scroll(&self) -> bool {
+        self.max_offset > 0
+    }
+
+    // Sized from max_offset rather than the displayed column count so the
+    // indicator reaches 100% at the last scroll position
+    pub fn indicator_viewport_size(&self) -> usize {
+        self.total_columns.saturating_sub(self.max_offset)
     }
 }
 
-pub fn calculate_max_offset(all_widths_len: usize, viewport_column_count: usize) -> usize {
-    all_widths_len.saturating_sub(viewport_column_count)
+// Scrolling stops at the first offset where every remaining column fits at its
+// ideal width — going further would only reveal blank space. When no suffix
+// fits (an over-wide column near the end), keep the count-based bound so the
+// last column stays reachable.
+pub fn calculate_max_offset(
+    ideal_widths: &[u16],
+    viewport_column_count: usize,
+    available_width: u16,
+) -> usize {
+    let count_based = ideal_widths.len().saturating_sub(viewport_column_count);
+    (0..=count_based)
+        .find(|&offset| total_width_with_separators(&ideal_widths[offset..]) <= available_width)
+        .unwrap_or(count_based)
 }
 
-pub fn calculate_next_column_offset(
-    all_widths_len: usize,
-    current_offset: usize,
-    viewport_column_count: usize,
-) -> usize {
-    let max_offset = calculate_max_offset(all_widths_len, viewport_column_count);
-    (current_offset + 1).min(max_offset)
+pub fn calculate_next_column_offset(current_offset: usize, max_offset: usize) -> usize {
+    current_offset.saturating_add(1).min(max_offset)
 }
 
 pub fn calculate_prev_column_offset(current_offset: usize) -> usize {
@@ -386,7 +491,6 @@ mod tests {
             available_width: width,
             fixed_count: fixed,
             max_offset: max,
-            slack_policy: SlackPolicy::None,
         }
     }
 
@@ -414,22 +518,20 @@ mod tests {
         use super::*;
 
         #[test]
-        fn uses_ideal_widths_primarily() {
+        fn uses_ideal_widths() {
             let ideal = vec![15, 15, 15, 15];
-            let min = vec![10, 10, 10, 10];
             // 3 ideal cols + 2 sep = 47 <= 50
-            let count = calculate_viewport_column_count(&ideal, &min, 50);
+            let count = calculate_viewport_column_count(&ideal, 50);
             assert_eq!(count, 3);
         }
 
         #[test]
         fn scroll_enabled_when_ideal_exceeds_available() {
             let ideal = vec![30, 30, 30, 30, 30];
-            let min = vec![10, 10, 10, 10, 10];
             let available = 80;
 
-            let count = calculate_viewport_column_count(&ideal, &min, available);
-            let max_offset = calculate_max_offset(5, count);
+            let count = calculate_viewport_column_count(&ideal, available);
+            let max_offset = calculate_max_offset(&ideal, count, available);
 
             // 30+30+1sep = 61 <= 80 → 2 columns fit
             assert_eq!(count, 2);
@@ -437,23 +539,25 @@ mod tests {
         }
 
         #[test]
-        fn falls_back_to_min_when_ideal_too_wide() {
+        fn over_wide_columns_keep_scrolling_enabled() {
             let ideal = vec![100, 100, 100];
-            let min = vec![10, 10, 10];
             let available = 50;
 
-            // Ideal: no fit, Min: 3 cols + 2 sep = 32 <= 50
-            let count = calculate_viewport_column_count(&ideal, &min, available);
-            assert_eq!(count, 3);
+            // Each column exceeds the viewport: show one at a time (truncated)
+            // instead of squeezing all to header width with no scrolling
+            let count = calculate_viewport_column_count(&ideal, available);
+            let max_offset = calculate_max_offset(&ideal, count, available);
+
+            assert_eq!(count, 1);
+            assert_eq!(max_offset, 2);
         }
 
         #[test]
         fn handles_varying_widths() {
             let ideal = vec![6, 6, 25, 6, 6];
-            let min = vec![6, 6, 25, 6, 6];
             let available = 40;
 
-            let count = calculate_viewport_column_count(&ideal, &min, available);
+            let count = calculate_viewport_column_count(&ideal, available);
 
             // Window [1,2,3] = 6 + 25 + 6 + 2 sep = 39 <= 40 OK
             assert_eq!(count, 3);
@@ -462,10 +566,9 @@ mod tests {
         #[test]
         fn reduces_count_when_long_column_in_middle() {
             let ideal = vec![10, 10, 50, 10, 10];
-            let min = vec![10, 10, 50, 10, 10];
             let available = 60;
 
-            let count = calculate_viewport_column_count(&ideal, &min, available);
+            let count = calculate_viewport_column_count(&ideal, available);
 
             // Window [1,2] = 10 + 50 + 1 sep = 61 > 60, so n=2 fails
             assert_eq!(count, 1);
@@ -474,21 +577,19 @@ mod tests {
         #[test]
         fn at_least_one_column() {
             let ideal = vec![100, 100];
-            let min = vec![100, 100];
-            let count = calculate_viewport_column_count(&ideal, &min, 50);
+            let count = calculate_viewport_column_count(&ideal, 50);
             assert_eq!(count, 1);
         }
 
         #[test]
         fn empty_input_returns_zero() {
-            let count = calculate_viewport_column_count(&[], &[], 100);
+            let count = calculate_viewport_column_count(&[], 100);
             assert_eq!(count, 0);
         }
     }
 
     mod viewport_plan {
         use super::*;
-        use rstest::rstest;
 
         #[test]
         fn calculate_returns_valid_plan() {
@@ -499,90 +600,58 @@ mod tests {
 
             assert_eq!(plan.column_count, 2);
             assert_eq!(plan.max_offset, 3);
+            assert_eq!(plan.total_columns, 5);
             assert_eq!(plan.available_width, 80);
-            assert_eq!(plan.min_widths_sum, 50);
-            assert_eq!(plan.ideal_widths_sum, 150);
-            assert_eq!(plan.ideal_widths_max, 30);
+            assert_eq!(plan.widths_fingerprint, widths_fingerprint(&ideal, &min));
         }
 
-        fn make_plan() -> ViewportPlan {
-            ViewportPlan {
-                column_count: 2,
-                max_offset: 3,
-                available_width: 80,
-                min_widths_sum: 50,
-                ideal_widths_sum: 150,
-                ideal_widths_max: 30,
-                ..Default::default()
-            }
+        #[test]
+        fn same_widths_skip_recalculation() {
+            let ideal = vec![10, 20, 30, 40, 50];
+            let min = vec![5, 5, 5, 5, 5];
+            let plan = ViewportPlan::calculate(&ideal, &min, 80);
+
+            assert!(!plan.needs_recalculation(80, widths_fingerprint(&ideal, &min)));
         }
 
-        #[rstest]
-        #[case(5, 100, 50, 150, 30, true)] // width changes
-        #[case(5, 80, 50, 150, 30, false)] // no change
-        #[case(10, 80, 50, 150, 30, true)] // widths_len changes
-        #[case(5, 80, 60, 150, 30, true)] // min_widths_sum changes
-        #[case(5, 80, 50, 200, 30, true)] // ideal_widths_sum changes
-        #[case(5, 80, 50, 150, 50, true)] // ideal_widths_max changes
-        fn recalculates_when_inputs_change(
-            #[case] len: usize,
-            #[case] width: u16,
-            #[case] min_sum: u16,
-            #[case] ideal_sum: u16,
-            #[case] ideal_max: u16,
-            #[case] expected: bool,
-        ) {
-            let plan = make_plan();
+        #[test]
+        fn recalculates_when_available_width_changes() {
+            let ideal = vec![10, 20, 30];
+            let min = vec![5, 5, 5];
+            let plan = ViewportPlan::calculate(&ideal, &min, 80);
 
-            let result = plan.needs_recalculation(len, width, min_sum, ideal_sum, ideal_max);
+            assert!(plan.needs_recalculation(100, widths_fingerprint(&ideal, &min)));
+        }
 
-            assert_eq!(result, expected);
+        #[test]
+        fn recalculates_when_a_width_changes() {
+            let ideal = vec![10, 20, 30, 40, 50];
+            let min = vec![5, 5, 5, 5, 5];
+            let plan = ViewportPlan::calculate(&ideal, &min, 80);
+
+            let changed = vec![10, 20, 30, 40, 60];
+
+            assert!(plan.needs_recalculation(80, widths_fingerprint(&changed, &min)));
+        }
+
+        #[test]
+        fn reordered_widths_trigger_recalculation() {
+            // max_offset depends on suffix widths, so a stale plan would point
+            // at the wrong scroll range even though len/sum/max are unchanged
+            let ideal = vec![10, 20, 30, 40, 50];
+            let min = vec![5, 5, 5, 5, 5];
+            let plan = ViewportPlan::calculate(&ideal, &min, 80);
+
+            let reordered = vec![50, 40, 30, 20, 10];
+
+            assert!(plan.needs_recalculation(80, widths_fingerprint(&reordered, &min)));
         }
 
         #[test]
         fn default_plan_needs_recalculation() {
             let plan = ViewportPlan::default();
 
-            let result = plan.needs_recalculation(5, 80, 50, 150, 30);
-
-            assert!(result);
-        }
-
-        #[test]
-        fn different_max_triggers_recalculation() {
-            // Scenario: Data in a column changed width
-            // Original: [10, 20, 30, 40, 50] sum=150, max=50
-            // Changed:  [10, 20, 30, 40, 60] sum=160, max=60
-            let original_ideal = vec![10, 20, 30, 40, 50];
-            let original_min = vec![5, 5, 5, 5, 5];
-            let plan = ViewportPlan::calculate(&original_ideal, &original_min, 80);
-
-            let changed = [10, 20, 30, 40, 60];
-            let sum: u16 = changed.iter().sum();
-            let max: u16 = changed.iter().copied().max().unwrap();
-
-            let result = plan.needs_recalculation(5, 80, 25, sum, max);
-
-            assert!(result);
-        }
-
-        #[test]
-        fn same_sum_and_max_skips_recalculation() {
-            // Edge case: reordering doesn't change sum or max
-            // Original: [10, 20, 30, 40, 50] sum=150, max=50
-            // Changed:  [50, 40, 30, 20, 10] sum=150, max=50
-            let original_ideal = vec![10, 20, 30, 40, 50];
-            let original_min = vec![5, 5, 5, 5, 5];
-            let plan = ViewportPlan::calculate(&original_ideal, &original_min, 80);
-
-            let reordered = [50, 40, 30, 20, 10];
-            let sum: u16 = reordered.iter().sum();
-            let max: u16 = reordered.iter().copied().max().unwrap();
-
-            let result = plan.needs_recalculation(5, 80, 25, sum, max);
-
-            // Known limitation: reordering with same sum+max is not detected
-            assert!(!result);
+            assert!(plan.needs_recalculation(80, widths_fingerprint(&[10], &[4])));
         }
     }
 
@@ -590,13 +659,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn basic_fit() {
+        fn basic_fit_absorbs_remainder_into_rightmost() {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
             let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 35, None, 0));
             assert_eq!(indices, vec![0, 1, 2]);
-            assert_eq!(selected, vec![10, 10, 10]);
+            // 10+10+10 + 2 sep = 32, remainder 3 absorbed by rightmost
+            assert_eq!(selected, vec![10, 10, 13]);
         }
 
         #[test]
@@ -638,10 +708,10 @@ mod tests {
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
             // max_offset=1, available=100, fixed=3
-            // 3 cols: 32, slack=68, bonus col needs 11 → bonus added
+            // 3 cols: 32, slack=68, bonus col needs 11 → bonus added, remainder absorbed
             let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 100, Some(3), 1));
             assert_eq!(indices, vec![0, 1, 2, 3]); // 3 fixed + 1 bonus
-            assert_eq!(selected, vec![10, 10, 10, 10]);
+            assert_eq!(selected, vec![10, 10, 10, 67]);
         }
 
         #[test]
@@ -650,10 +720,10 @@ mod tests {
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
             // max_offset=2, available=100, fixed=2
-            // 2 cols: 21, slack=79, bonus col needs 11 → bonus added
+            // 2 cols: 21, slack=79, bonus col needs 11 → bonus added, remainder absorbed
             let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 100, Some(2), 2));
             assert_eq!(indices, vec![1, 2, 3]); // 2 fixed + 1 bonus
-            assert_eq!(selected, vec![10, 10, 10]);
+            assert_eq!(selected, vec![10, 10, 78]);
         }
 
         #[test]
@@ -671,10 +741,10 @@ mod tests {
             let ideal = vec![20, 20, 20];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
-            // 2 cols of 20 + 1 sep = 41, available = 31, excess = 10
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 31, Some(2), 1));
+            // 2 cols of 20 + 1 sep = 41, available = 34, excess = 7
+            let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 34, Some(2), 1));
             assert_eq!(indices, vec![1, 2]);
-            assert_eq!(selected, vec![10, 20]); // left shrinks, right preserved
+            assert_eq!(selected, vec![13, 20]); // left shrinks, right preserved
         }
 
         #[test]
@@ -682,9 +752,9 @@ mod tests {
             let ideal = vec![20, 20, 20];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
-            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 30, Some(3), 1));
+            let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 34, Some(3), 1));
             assert_eq!(indices, vec![0, 1, 2]);
-            assert_eq!(selected, vec![20, 4, 4]);
+            assert_eq!(selected, vec![20, 8, 4]);
         }
 
         #[test]
@@ -699,7 +769,7 @@ mod tests {
         #[test]
         fn one_column_scroll_changes_one_column() {
             let ideal = vec![10, 10, 50, 10, 10];
-            let min = vec![4, 4, 4, 4, 4];
+            let min = vec![8, 8, 8, 8, 8];
             let cfg = config(&ideal, &min);
             let max_offset = 2;
 
@@ -718,18 +788,36 @@ mod tests {
         use super::*;
 
         #[test]
-        fn basic() {
-            assert_eq!(calculate_max_offset(5, 3), 2);
+        fn ends_where_remaining_columns_fit() {
+            let ideal = vec![10, 10, 10, 10, 10];
+            // suffix from 2: 10+10+10 + 2 sep = 32 <= 32
+            assert_eq!(calculate_max_offset(&ideal, 2, 32), 2);
         }
 
         #[test]
-        fn all_fit() {
-            assert_eq!(calculate_max_offset(3, 3), 0);
+        fn zero_when_all_fit() {
+            let ideal = vec![10, 10, 10];
+            assert_eq!(calculate_max_offset(&ideal, 3, 100), 0);
         }
 
         #[test]
         fn more_viewport_than_columns() {
-            assert_eq!(calculate_max_offset(2, 5), 0);
+            let ideal = vec![10, 10];
+            assert_eq!(calculate_max_offset(&ideal, 5, 100), 0);
+        }
+
+        #[test]
+        fn stops_before_count_bound_when_tail_is_narrow() {
+            let ideal = vec![30, 30, 10, 10, 10];
+            // count 1 → count-based bound 4, but suffix from 2 (32) fits in 60
+            assert_eq!(calculate_max_offset(&ideal, 1, 60), 2);
+        }
+
+        #[test]
+        fn caps_at_count_bound_when_suffix_never_fits() {
+            // Last column alone exceeds the viewport
+            let ideal = vec![10, 200];
+            assert_eq!(calculate_max_offset(&ideal, 1, 80), 1);
         }
     }
 
@@ -738,12 +826,17 @@ mod tests {
 
         #[test]
         fn next_increments() {
-            assert_eq!(calculate_next_column_offset(5, 1, 3), 2);
+            assert_eq!(calculate_next_column_offset(1, 2), 2);
         }
 
         #[test]
         fn next_clamps_to_max() {
-            assert_eq!(calculate_next_column_offset(5, 2, 3), 2);
+            assert_eq!(calculate_next_column_offset(2, 2), 2);
+        }
+
+        #[test]
+        fn next_saturates_at_usize_max() {
+            assert_eq!(calculate_next_column_offset(usize::MAX, 2), 2);
         }
 
         #[test]
@@ -771,17 +864,28 @@ mod tests {
 
             let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 80, Some(3), max_offset));
             let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 80, Some(3), max_offset));
-            let (idx2, _) = select_viewport_columns(&cfg, &ctx(2, 80, Some(3), max_offset));
 
             // First column shifts by 1 each scroll
             assert_eq!(idx0[0], 0);
             assert_eq!(idx1[0], 1);
-            assert_eq!(idx2[0], 2);
 
             // At least fixed count columns are shown
             assert!(idx0.len() >= 3);
             assert!(idx1.len() >= 3);
-            assert!(idx2.len() >= 3);
+        }
+
+        #[test]
+        fn right_edge_keeps_anchor_at_full_width_behind_prepended_peek() {
+            let ideal = vec![15, 20, 30, 10, 25];
+            let min = vec![8, 8, 8, 8, 8];
+            let cfg = config(&ideal, &min);
+            let max_offset = 2;
+
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(2, 80, Some(3), max_offset));
+
+            // Truncated peek of col 1 fills the leftover; anchor col 2 keeps ideal width
+            assert_eq!(indices, vec![1, 2, 3, 4]);
+            assert_eq!(widths, vec![12, 30, 10, 25]);
         }
 
         #[test]
@@ -842,8 +946,8 @@ mod tests {
             let min = vec![8, 8, 20, 8, 8];
             let available = 50;
 
-            let count = calculate_viewport_column_count(&ideal, &min, available);
-            let max_offset = calculate_max_offset(ideal.len(), count);
+            let count = calculate_viewport_column_count(&ideal, available);
+            let max_offset = calculate_max_offset(&ideal, count, available);
 
             for offset in 0..=max_offset {
                 let cfg = config(&ideal, &min);
@@ -885,15 +989,77 @@ mod tests {
             let cfg = config(&ideal, &min);
             let max_offset = 1;
 
-            // 2 cols of 20 + 1 sep = 41, available = 31, excess = 10
+            // 2 cols of 20 + 1 sep = 41, available = 34, excess = 7
             let (_, selected) =
-                select_viewport_columns(&cfg, &ctx(max_offset, 31, Some(2), max_offset));
+                select_viewport_columns(&cfg, &ctx(max_offset, 34, Some(2), max_offset));
 
             assert!(
                 selected[0] < ideal[1],
                 "Left column should be shrunk at right edge"
             );
             assert_eq!(selected[1], ideal[2], "Right column should be preserved");
+        }
+
+        #[test]
+        fn fills_leftover_with_truncated_previous_column() {
+            let ideal = vec![20, 8, 8];
+            let min = vec![6, 6, 6];
+            let cfg = config(&ideal, &min);
+            let max_offset = 1;
+
+            // Suffix [1, 2] = 17 fits in 25; col 0 (ideal 20) can't fit fully,
+            // so the leftover 7 shows it truncated
+            let (indices, widths) =
+                select_viewport_columns(&cfg, &ctx(max_offset, 25, Some(1), max_offset));
+
+            assert_eq!(indices, vec![0, 1, 2]);
+            assert_eq!(widths, vec![7, 8, 8]);
+        }
+
+        #[test]
+        fn keeps_slack_in_rightmost_when_previous_header_does_not_fit() {
+            let ideal = vec![20, 8, 8];
+            let min = vec![15, 6, 6];
+            let cfg = config(&ideal, &min);
+            let max_offset = 1;
+
+            // Leftover 7 < col 0 min 15 → absorbed by rightmost instead
+            let (indices, widths) =
+                select_viewport_columns(&cfg, &ctx(max_offset, 25, Some(1), max_offset));
+
+            assert_eq!(indices, vec![1, 2]);
+            assert_eq!(widths, vec![8, 16]);
+        }
+
+        #[test]
+        fn single_column_clamps_to_available_when_header_overflows() {
+            let ideal = vec![30, 30];
+            let min = vec![20, 20];
+            let cfg = config(&ideal, &min);
+            let max_offset = 1;
+
+            // Pane narrower than the column's header min width (20 > 15)
+            let (indices, widths) =
+                select_viewport_columns(&cfg, &ctx(max_offset, 15, Some(1), max_offset));
+
+            assert_eq!(indices, vec![1]);
+            assert_eq!(widths, vec![15]);
+        }
+
+        #[test]
+        fn drops_columns_until_remaining_fits_then_clamps() {
+            let ideal = vec![30, 30, 30];
+            let min = vec![20, 20, 20];
+            let cfg = config(&ideal, &min);
+            let max_offset = 1;
+
+            // [1, 2] exceeds 15 even at min widths; col 1 is dropped and the
+            // surviving col 2 still overflows → clamped to the pane
+            let (indices, widths) =
+                select_viewport_columns(&cfg, &ctx(max_offset, 15, Some(2), max_offset));
+
+            assert_eq!(indices, vec![2]);
+            assert_eq!(widths, vec![15]);
         }
 
         #[test]
@@ -911,28 +1077,13 @@ mod tests {
 
             assert_eq!(indices.len(), 1, "Should drop to 1 column");
             assert_eq!(indices[0], 2, "Should keep rightmost column");
-            assert_eq!(widths[0], 30, "Rightmost should have ideal width");
+            // 30 ideal + 5 absorbed slack
+            assert_eq!(widths[0], 35, "Rightmost should fill available width");
         }
     }
 
     mod slack_absorption {
         use super::*;
-
-        fn ctx_with_slack(
-            offset: usize,
-            width: u16,
-            fixed: Option<usize>,
-            max: usize,
-            policy: SlackPolicy,
-        ) -> SelectionContext {
-            SelectionContext {
-                horizontal_offset: offset,
-                available_width: width,
-                fixed_count: fixed,
-                max_offset: max,
-                slack_policy: policy,
-            }
-        }
 
         #[test]
         fn absorbs_slack_when_max_offset_zero() {
@@ -941,29 +1092,12 @@ mod tests {
             let cfg = config(&ideal, &min);
 
             // 10+10+10 + 2sep = 32, available = 50, slack = 18
-            let (indices, widths) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 50, Some(3), 0, SlackPolicy::RightmostLimited),
-            );
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 50, Some(3), 0));
 
             assert_eq!(indices, vec![0, 1, 2]);
             assert_eq!(widths[0], 10);
             assert_eq!(widths[1], 10);
             assert_eq!(widths[2], 28); // 10 + 18 absorbed
-        }
-
-        #[test]
-        fn no_absorption_when_policy_none() {
-            let ideal = vec![10, 10, 10];
-            let min = vec![4, 4, 4];
-            let cfg = config(&ideal, &min);
-
-            let (_, widths) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 50, Some(3), 0, SlackPolicy::None),
-            );
-
-            assert_eq!(widths, vec![10, 10, 10]);
         }
 
         #[test]
@@ -973,54 +1107,118 @@ mod tests {
             let cfg = config(&ideal, &min);
 
             // 40+40 + 1sep = 81, available = 120, slack = 39
-            let (_, widths) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 120, Some(2), 0, SlackPolicy::RightmostLimited),
-            );
+            let (_, widths) = select_viewport_columns(&cfg, &ctx(0, 120, Some(2), 0));
 
             assert_eq!(widths[0], 40);
             assert_eq!(widths[1], 79); // 40 + 39 (all slack absorbed)
         }
 
         #[test]
-        fn viewport_plan_sets_policy_based_on_max_offset() {
-            let ideal = vec![10, 10, 10];
-            let min = vec![4, 4, 4];
+        fn absorbs_residual_slack_when_scrolling() {
+            let ideal = vec![10, 10, 10, 20, 10];
+            let min = vec![4, 4, 4, 15, 4];
+            let cfg = config(&ideal, &min);
 
-            // All columns fit → max_offset = 0 → RightmostLimited
-            let plan = ViewportPlan::calculate(&ideal, &min, 100);
-            assert_eq!(plan.max_offset, 0);
-            assert_eq!(plan.slack_policy, SlackPolicy::RightmostLimited);
+            // 3 cols: 32; col 3 gets neither bonus (needs 21 > slack 8)
+            // nor partial (remaining 7 < min 15) → leftover goes to rightmost
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 40, Some(3), 2));
 
-            // Need scroll → max_offset > 0 → None
-            let plan2 = ViewportPlan::calculate(&ideal, &min, 25);
-            assert!(plan2.max_offset > 0);
-            assert_eq!(plan2.slack_policy, SlackPolicy::None);
+            assert_eq!(indices, vec![0, 1, 2]);
+            assert_eq!(widths, vec![10, 10, 18]);
         }
 
         #[test]
-        fn one_scroll_still_changes_one_column_with_slack_none() {
+        fn one_scroll_still_changes_one_column_with_absorption() {
             let ideal = vec![15, 15, 15, 15, 15];
             let min = vec![8, 8, 8, 8, 8];
             let cfg = config(&ideal, &min);
             let max_offset = 2;
 
-            let (idx0, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 60, Some(3), max_offset, SlackPolicy::None),
+            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 60, Some(3), max_offset));
+            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 60, Some(3), max_offset));
+
+            assert_eq!(idx0[0], 0);
+            assert_eq!(idx1[0], 1);
+        }
+    }
+
+    mod wide_column_cap {
+        use super::*;
+
+        #[test]
+        fn scroll_past_wide_column_reveals_one_column_per_step() {
+            // Uncapped, col 2 (200) monopolizes the pane: scrolling reveals
+            // nothing new until max_offset dumps the remaining columns at once
+            let ideal = vec![6, 12, 200, 14, 10, 16];
+            let min = vec![4, 6, 8, 12, 8, 8];
+            let available = 120;
+
+            let plan = ViewportPlan::calculate(&ideal, &min, available);
+            let cfg = config(&ideal, &min);
+            let visible: Vec<Vec<usize>> = (0..=plan.max_offset)
+                .map(|offset| {
+                    let (indices, _) = select_viewport_columns(
+                        &cfg,
+                        &ctx(offset, available, Some(plan.column_count), plan.max_offset),
+                    );
+                    indices
+                })
+                .collect();
+
+            assert_eq!(
+                visible,
+                vec![vec![0, 1, 2, 3, 4], vec![1, 2, 3, 4, 5], vec![2, 3, 4, 5]]
             );
-            let (idx1, _) = select_viewport_columns(
+        }
+
+        #[test]
+        fn plan_counts_use_capped_widths() {
+            let ideal = vec![6, 12, 200, 14, 10, 16];
+            let min = vec![4, 6, 8, 12, 8, 8];
+
+            let plan = ViewportPlan::calculate(&ideal, &min, 120);
+
+            assert_eq!(plan.column_count, 4);
+            assert_eq!(plan.max_offset, 2);
+        }
+
+        #[test]
+        fn raw_fingerprint_still_matches_capped_plan() {
+            let ideal = vec![6, 12, 200, 14, 10, 16];
+            let min = vec![4, 6, 8, 12, 8, 8];
+
+            let plan = ViewportPlan::calculate(&ideal, &min, 120);
+
+            assert!(!plan.needs_recalculation(120, widths_fingerprint(&ideal, &min)));
+        }
+
+        #[test]
+        fn no_cap_when_all_columns_fit() {
+            let ideal = vec![10, 80];
+            let min = vec![4, 4];
+            let cfg = config(&ideal, &min);
+
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 120, Some(2), 0));
+
+            assert_eq!(indices, vec![0, 1]);
+            assert_eq!(widths, vec![10, 109]);
+        }
+
+        #[test]
+        fn capped_width_never_below_header_min() {
+            let ideal = vec![100, 100];
+            let min = vec![70, 4];
+            let available = 100; // cap (60) is below col 0's header width
+
+            let plan = ViewportPlan::calculate(&ideal, &min, available);
+            let cfg = config(&ideal, &min);
+            let (indices, widths) = select_viewport_columns(
                 &cfg,
-                &ctx_with_slack(1, 60, Some(3), max_offset, SlackPolicy::None),
-            );
-            let (idx2, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(2, 60, Some(3), max_offset, SlackPolicy::None),
+                &ctx(0, available, Some(plan.column_count), plan.max_offset),
             );
 
-            assert_eq!(idx0, vec![0, 1, 2]);
-            assert_eq!(idx1, vec![1, 2, 3]);
-            assert_eq!(idx2, vec![2, 3, 4]);
+            assert_eq!(indices, vec![0, 1]);
+            assert!(widths[0] >= 70);
         }
     }
 
@@ -1045,7 +1243,6 @@ mod tests {
                 available_width,
                 fixed_count: Some(plan.column_count),
                 max_offset: plan.max_offset,
-                slack_policy: plan.slack_policy,
             };
 
             select_viewport_columns(&cfg, &ctx)
@@ -1063,16 +1260,17 @@ mod tests {
             // At right edge (max offset)
             let (indices, widths) = run_full_pipeline(&ideal, &min, available, max_offset);
 
-            // Rightmost column should have its ideal width (40)
+            // Rightmost column should have at least its ideal width (40);
+            // residual slack may widen it further
             let last_idx = indices.len() - 1;
             assert_eq!(
                 indices[last_idx],
                 ideal.len() - 1,
                 "Should include the last column at right edge"
             );
-            assert_eq!(
-                widths[last_idx], ideal[indices[last_idx]],
-                "Rightmost column should have ideal width at right edge"
+            assert!(
+                widths[last_idx] >= ideal[indices[last_idx]],
+                "Rightmost column should not be truncated at right edge"
             );
         }
 
@@ -1131,7 +1329,6 @@ mod tests {
 
             let plan = ViewportPlan::calculate(&ideal, &min, available);
             assert_eq!(plan.max_offset, 0, "Should fit all columns");
-            assert_eq!(plan.slack_policy, SlackPolicy::RightmostLimited);
 
             let (_, widths) = run_full_pipeline(&ideal, &min, available, 0);
 
@@ -1158,8 +1355,8 @@ mod tests {
             for offset in 0..=plan.max_offset {
                 let (indices, widths) = run_full_pipeline(&ideal, &min, available, offset);
 
-                // Column count should be stable
-                assert_eq!(indices.len(), plan.column_count);
+                // At least the guaranteed count; bonus/partial columns may add more
+                assert!(indices.len() >= plan.column_count);
 
                 // Total width should not exceed available
                 let total: u16 =
@@ -1181,74 +1378,44 @@ mod tests {
     mod bonus_column {
         use super::*;
 
-        fn ctx_with_slack(
-            offset: usize,
-            width: u16,
-            fixed: Option<usize>,
-            max: usize,
-            policy: SlackPolicy,
-        ) -> SelectionContext {
-            SelectionContext {
-                horizontal_offset: offset,
-                available_width: width,
-                fixed_count: fixed,
-                max_offset: max,
-                slack_policy: policy,
-            }
-        }
-
         #[test]
-        fn adds_bonus_when_slack_sufficient() {
-            // 3 fixed columns + bonus potential
+        fn adds_bonus_columns_while_they_fit() {
             let ideal = vec![10, 10, 10, 10, 10];
             let min = vec![4, 4, 4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            // Fixed count = 3, max_offset = 2
-            // 3 cols: 10+10+10 + 2 sep = 32
-            // Available: 50, slack: 18
-            // Next col needs: 10 + 1 sep = 11
-            // 18 >= 11, so bonus added
-            let (indices, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 50, Some(3), 2, SlackPolicy::None),
-            );
+            // Fixed count = 2 (21), bonus cols 2,3,4 each need 11 → all added
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 70, Some(2), 3));
 
-            assert_eq!(indices.len(), 4, "Should add 1 bonus column");
-            assert_eq!(indices, vec![0, 1, 2, 3]);
+            assert_eq!(indices, vec![0, 1, 2, 3, 4]);
+            let total = total_width_with_separators(&widths);
+            assert!(total <= 70);
         }
 
         #[test]
-        fn no_bonus_when_slack_insufficient() {
+        fn adds_partial_column_when_ideal_does_not_fit() {
             let ideal = vec![10, 10, 10, 20, 10];
             let min = vec![4, 4, 4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            // 3 cols: 10+10+10 + 2 sep = 32
-            // Available: 40, slack: 8
-            // Next col needs: 20 + 1 sep = 21
-            // 8 < 21, no bonus
-            let (indices, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 40, Some(3), 2, SlackPolicy::None),
-            );
+            // 3 cols: 32; col 3 needs 21 > slack 8 → no bonus,
+            // but remaining 7 >= min 4 → shown truncated
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 40, Some(3), 2));
 
-            assert_eq!(indices.len(), 3, "Should not add bonus column");
+            assert_eq!(indices, vec![0, 1, 2, 3]);
+            assert_eq!(widths, vec![10, 10, 10, 7]);
         }
 
         #[test]
-        fn no_bonus_at_last_column() {
+        fn no_append_past_last_column_when_not_at_right_edge() {
             let ideal = vec![10, 10, 10];
             let min = vec![4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            // At offset 1, showing cols [1, 2], no col 3 exists
-            let (indices, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(1, 50, Some(2), 1, SlackPolicy::None),
-            );
+            // Showing cols [1, 2]; nothing exists after col 2 to append
+            let (indices, _) = select_viewport_columns(&cfg, &ctx(1, 50, Some(2), 2));
 
-            assert_eq!(indices.len(), 2, "No bonus when no more columns exist");
+            assert_eq!(indices.len(), 2);
         }
 
         #[test]
@@ -1258,11 +1425,7 @@ mod tests {
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
 
-            // max_offset = 0 means all columns fit, bonus logic should not apply
-            let (indices, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 100, Some(3), 0, SlackPolicy::RightmostLimited),
-            );
+            let (indices, _) = select_viewport_columns(&cfg, &ctx(0, 100, Some(3), 0));
 
             // Only 3 columns (fixed count), not 4
             assert_eq!(indices.len(), 3);
@@ -1276,14 +1439,8 @@ mod tests {
             // Fixed count = 3, max_offset = 3
             // With bonus, might show 4 columns
 
-            let (idx0, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 70, Some(3), 3, SlackPolicy::None),
-            );
-            let (idx1, _) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(1, 70, Some(3), 3, SlackPolicy::None),
-            );
+            let (idx0, _) = select_viewport_columns(&cfg, &ctx(0, 70, Some(3), 3));
+            let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 70, Some(3), 3));
 
             // Scroll should still move by 1 (fixed count behavior)
             // idx0 starts at 0, idx1 starts at 1
@@ -1301,10 +1458,7 @@ mod tests {
             // Available: 80, slack: 18
             // Next col needs: 15 + 1 sep = 16
             // 18 >= 16, bonus added
-            let (indices, widths) = select_viewport_columns(
-                &cfg,
-                &ctx_with_slack(0, 80, Some(3), 1, SlackPolicy::None),
-            );
+            let (indices, widths) = select_viewport_columns(&cfg, &ctx(0, 80, Some(3), 1));
 
             assert_eq!(indices.len(), 4);
             let total = total_width_with_separators(&widths);

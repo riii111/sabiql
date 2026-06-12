@@ -297,11 +297,6 @@ impl QueryExecution {
         self.post_delete_row_selection
     }
 
-    pub fn reset_delete_state(&mut self) {
-        self.pending_delete_refresh_target = None;
-        self.post_delete_row_selection = PostDeleteRowSelection::Keep;
-    }
-
     // ── Visible result ─────────────────────────────────────────────
 
     pub fn visible_result_kind(&self) -> VisibleResultKind {

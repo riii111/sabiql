@@ -156,7 +156,7 @@ mod tests {
             assert!(result.is_none());
         }
 
-        // CONNECTION_ERROR_ROWS has multiple bindings; Esc at idx 5 resolves to CloseConnectionError
+        // Esc resolves to connection_error::ESC_CLOSE even though earlier rows exist
         #[test]
         fn first_matching_binding_wins() {
             let result = resolve_mode(&KeyCombo::plain(Key::Esc), CONNECTION_ERROR_ROWS);
@@ -164,7 +164,7 @@ mod tests {
             assert!(matches!(result, Some(Action::CloseConnectionError)));
         }
 
-        // TYPE_FILTER row has no Enter combo — Enter resolves to ConfirmSelection at idx 0
+        // table_picker::TYPE_FILTER has no Enter combo, so it must not shadow ENTER_SELECT
         #[test]
         fn unrelated_row_does_not_block_later_match() {
             let result = resolve_mode(&KeyCombo::plain(Key::Enter), TABLE_PICKER_ROWS);

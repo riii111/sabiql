@@ -1,23 +1,21 @@
 use super::schema::Schema;
 use super::table::TableSummary;
 use std::collections::HashMap;
-use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub struct DatabaseMetadata {
     pub database_name: String,
     pub schemas: Vec<Schema>,
     pub table_summaries: Vec<TableSummary>,
-    pub fetched_at: Instant,
 }
 
 impl DatabaseMetadata {
+    #[must_use]
     pub fn new(database_name: String) -> Self {
         Self {
             database_name,
             schemas: Vec::new(),
             table_summaries: Vec::new(),
-            fetched_at: Instant::now(),
         }
     }
 
@@ -27,10 +25,6 @@ impl DatabaseMetadata {
             map.entry(&table.schema).or_default().push(table);
         }
         map
-    }
-
-    pub fn age_seconds(&self) -> u64 {
-        self.fetched_at.elapsed().as_secs()
     }
 }
 

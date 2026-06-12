@@ -105,19 +105,19 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
         let id = ConnectionId::from_string(&entry.id);
         let name = ConnectionName::new(&entry.name)?;
         match entry.db_type {
-            DatabaseType::PostgreSQL => ConnectionProfile::with_id_and_config(
+            DatabaseType::PostgreSQL => Self::with_id_and_config(
                 id,
                 name.as_str().to_string(),
                 ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
-                    required_postgres_field(&entry.host, "host")?,
+                    required_postgres_field(entry.host.as_ref(), "host")?,
                     entry.port.unwrap_or(5432),
-                    required_postgres_field(&entry.database, "database")?,
-                    required_postgres_field(&entry.username, "username")?,
+                    required_postgres_field(entry.database.as_ref(), "database")?,
+                    required_postgres_field(entry.username.as_ref(), "username")?,
                     entry.password.clone().unwrap_or_default(),
                     entry.ssl_mode.unwrap_or_default(),
                 )),
             ),
-            DatabaseType::SQLite => ConnectionProfile::with_id_and_config(
+            DatabaseType::SQLite => Self::with_id_and_config(
                 id,
                 name.as_str().to_string(),
                 ConnectionConfig::SQLite(SqliteConnectionConfig::new(
@@ -129,12 +129,10 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
 }
 
 fn required_postgres_field(
-    value: &Option<String>,
+    value: Option<&String>,
     field: &'static str,
 ) -> Result<String, ConnectionProfileError> {
-    let value = value
-        .as_ref()
-        .ok_or(ConnectionProfileError::MissingPostgresField(field))?;
+    let value = value.ok_or(ConnectionProfileError::MissingPostgresField(field))?;
     if value.trim().is_empty() {
         return Err(ConnectionProfileError::MissingPostgresField(field));
     }

@@ -15,9 +15,12 @@ fn ensure_cell_visible(state: &mut AppState) {
         if col < h_offset {
             state.result_interaction.set_horizontal_offset(col);
         } else if col >= h_offset + plan.column_count {
-            state
-                .result_interaction
-                .set_horizontal_offset(col.saturating_sub(plan.column_count.saturating_sub(1)));
+            // At max_offset every remaining column is visible, so clamping
+            // never hides the active cell
+            state.result_interaction.set_horizontal_offset(
+                col.saturating_sub(plan.column_count.saturating_sub(1))
+                    .min(plan.max_offset),
+            );
         }
     }
 }
@@ -112,20 +115,17 @@ mod tests {
                 .query
                 .pagination
                 .set_page_result(current_page, state.query.pagination.reached_end());
-            state.query.set_current_result(Arc::new(QueryResult {
-                query: "SELECT * FROM public.users".to_string(),
-                columns: vec!["id".to_string(), "name".to_string()],
-                row_count: rows.len(),
-                rows: rows
-                    .into_iter()
-                    .map(|r| r.into_iter().map(ToString::to_string).collect())
-                    .collect(),
-                execution_time_ms: 1,
-                executed_at: Instant::now(),
-                source: QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT * FROM public.users".to_string(),
+                    vec!["id".to_string(), "name".to_string()],
+                    rows.into_iter()
+                        .map(|r| r.into_iter().map(ToString::to_string).collect())
+                        .collect(),
+                    1,
+                    QuerySource::Preview,
+                )));
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),

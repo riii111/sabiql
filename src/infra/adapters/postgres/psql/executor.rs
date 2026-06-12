@@ -6,119 +6,68 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
+use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 use super::error::classify_query_error;
 use super::parser::{ParseCommandTagError, split_sql_statements};
 
-fn csv_field_count(line: &str) -> usize {
-    let mut count = 1;
-    let mut in_quotes = false;
-    for ch in line.chars() {
-        match ch {
-            '"' => in_quotes = !in_quotes,
-            ',' if !in_quotes => count += 1,
-            _ => {}
-        }
-    }
-    count
+// Keep user SQL server-side: stdin scripts would let psql interpret
+// line-leading backslash metacommands before the server sees them.
+
+fn boundary_marker() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    format!(
+        "__sabiql_boundary_{}_{}_{}__",
+        std::process::id(),
+        nanos,
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
-fn first_keyword(stmt: &str) -> &str {
-    let bytes = stmt.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
-                i += 2;
-                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                    i += 1;
-                }
-                if i + 1 < bytes.len() {
-                    i += 2;
-                }
-            }
-            b if b.is_ascii_alphabetic() => {
-                let start = i;
-                while i < bytes.len() && bytes[i].is_ascii_alphanumeric() {
-                    i += 1;
-                }
-                return &stmt[start..i];
-            }
-            _ => i += 1,
-        }
+// Match the implicit all-or-nothing behavior of a single multi-statement -c.
+fn segmented_query_args(statements: &[&str], marker: &str) -> Vec<String> {
+    let echo = format!("\\echo {marker}");
+    let mut args = Vec::with_capacity(statements.len() * 4 + 1);
+    args.push("--single-transaction".to_string());
+    for stmt in statements {
+        args.push("-c".to_string());
+        args.push(echo.clone());
+        args.push("-c".to_string());
+        args.push((*stmt).to_string());
     }
-    ""
+    args
 }
 
-fn count_select_statements(sql: &str) -> usize {
-    split_sql_statements(sql)
+fn split_marker_segments<'a>(stdout: &'a str, marker: &str) -> Vec<&'a str> {
+    let mut segments = Vec::new();
+    let mut seg_start: Option<usize> = None;
+    let mut offset = 0;
+    for line in stdout.split_inclusive('\n') {
+        if line.trim_end_matches(['\n', '\r']) == marker {
+            if let Some(start) = seg_start {
+                segments.push(stdout[start..offset].trim_matches(['\n', '\r']));
+            }
+            seg_start = Some(offset + line.len());
+        }
+        offset += line.len();
+    }
+    if let Some(start) = seg_start {
+        segments.push(stdout[start..].trim_matches(['\n', '\r']));
+    }
+    segments
+}
+
+fn select_result_segment<'a>(segments: &[&'a str]) -> Option<&'a str> {
+    segments
         .iter()
-        .filter(|s| {
-            let kw = first_keyword(s);
-            kw.eq_ignore_ascii_case("SELECT") || kw.eq_ignore_ascii_case("WITH")
-        })
-        .count()
-}
-
-// psql --csv concatenates multiple result sets without separators;
-// keep only the last one.
-fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
-    let lines: Vec<&str> = stdout.lines().collect();
-    if lines.len() <= 2 {
-        return stdout;
-    }
-
-    let expected_sets = count_select_statements(sql);
-    let first_header = lines[0];
-    let mut current_fc = csv_field_count(first_header);
-    let mut known_headers: Vec<&str> = vec![first_header];
-    let mut last_header_idx = 0;
-    let mut data_rows_since_header = 0usize;
-
-    for (i, &line) in lines.iter().enumerate().skip(1) {
-        let fc = csv_field_count(line);
-        if fc != current_fc {
-            last_header_idx = i;
-            current_fc = fc;
-            data_rows_since_header = 0;
-            if !known_headers.contains(&line) {
-                known_headers.push(line);
-            }
-        } else if known_headers.contains(&line) {
-            last_header_idx = i;
-            data_rows_since_header = 0;
-        } else if expected_sets > 1
-            && data_rows_since_header >= 1
-            && known_headers.len() < expected_sets
-        {
-            // Require at least one data row before accepting a new header
-            // candidate, bounded by SELECT/WITH count
-            last_header_idx = i;
-            known_headers.push(line);
-            data_rows_since_header = 0;
-        } else {
-            data_rows_since_header += 1;
-        }
-    }
-
-    if last_header_idx == 0 {
-        return stdout;
-    }
-
-    let byte_offset: usize = stdout
-        .lines()
-        .take(last_header_idx)
-        .map(|l| l.len() + 1) // +1 for '\n'
-        .sum();
-
-    &stdout[byte_offset..]
+        .rev()
+        .find(|seg| !seg.trim().is_empty() && !PostgresAdapter::is_command_tags_only(seg))
+        .copied()
 }
 
 struct PsqlOutput {
@@ -137,6 +86,17 @@ impl PostgresAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<PsqlOutput, DbOperationError> {
+        self.run_psql_args(dsn, extra_args, &["-c", query], read_only)
+            .await
+    }
+
+    async fn run_psql_args(
+        &self,
+        dsn: &str,
+        extra_args: &[&str],
+        query_args: &[&str],
+        read_only: bool,
+    ) -> Result<PsqlOutput, DbOperationError> {
         let mut cmd = Command::new("psql");
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
@@ -146,8 +106,9 @@ impl PostgresAdapter {
         for arg in extra_args {
             cmd.arg(arg);
         }
-
-        cmd.arg("-c").arg(query);
+        for arg in query_args {
+            cmd.arg(arg);
+        }
 
         Self::collect_output(&mut cmd, self.timeout_secs).await
     }
@@ -242,6 +203,29 @@ impl PostgresAdapter {
         source: QuerySource,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
+        let statements = split_sql_statements(query);
+        if statements.len() <= 1 {
+            return self
+                .execute_single_statement(dsn, query, source, read_only)
+                .await;
+        }
+        self.execute_segmented_statements(dsn, query, &statements, source, read_only)
+            .await
+    }
+
+    // Keep non-transaction-capable statements outside the segmented
+    // --single-transaction path.
+    async fn execute_single_statement(
+        &self,
+        dsn: &str,
+        query: &str,
+        source: QuerySource,
+        read_only: bool,
+    ) -> Result<QueryResult, DbOperationError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures psql execution time at the I/O boundary"
+        )]
         let start = Instant::now();
 
         let output = self.run_psql(dsn, &["--csv"], query, read_only).await?;
@@ -252,7 +236,8 @@ impl PostgresAdapter {
             return Err(Self::classify_psql_error(&output.stderr));
         }
 
-        if output.stdout.trim().is_empty() {
+        let stdout_trimmed = output.stdout.trim();
+        if stdout_trimmed.is_empty() {
             return Ok(QueryResult::success(
                 query.to_string(),
                 Vec::new(),
@@ -262,16 +247,88 @@ impl PostgresAdapter {
             ));
         }
 
-        let stdout_trimmed = output.stdout.trim();
         if let Some(tag) = Self::parse_aggregate_command_tag(stdout_trimmed, query) {
-            let row_count = tag.affected_rows().unwrap_or(0) as usize;
-            let mut result =
-                QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source);
-            result.row_count = row_count;
-            return Ok(result.with_command_tag(tag));
+            return Ok(Self::command_tag_result(query, tag, elapsed, source));
         }
 
-        let csv_block = extract_last_csv_block(stdout_trimmed, query);
+        Self::csv_result(query, stdout_trimmed, elapsed, source)
+    }
+
+    async fn execute_segmented_statements(
+        &self,
+        dsn: &str,
+        query: &str,
+        statements: &[&str],
+        source: QuerySource,
+        read_only: bool,
+    ) -> Result<QueryResult, DbOperationError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures psql execution time at the I/O boundary"
+        )]
+        let start = Instant::now();
+
+        let marker = boundary_marker();
+        let args = segmented_query_args(statements, &marker);
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let output = self
+            .run_psql_args(dsn, &["--csv"], &arg_refs, read_only)
+            .await?;
+
+        let elapsed = start.elapsed().as_millis() as u64;
+
+        if !output.status.success() {
+            return Err(Self::classify_psql_error(&output.stderr));
+        }
+
+        let segments = split_marker_segments(&output.stdout, &marker);
+        // A mismatch implies a marker collision in data; guessing would
+        // reintroduce silent result-set misattribution.
+        if segments.len() != statements.len() {
+            return Err(DbOperationError::QueryFailed(format!(
+                "result-set boundary mismatch: expected {} segments, found {}",
+                statements.len(),
+                segments.len()
+            )));
+        }
+
+        if let Some(csv_block) = select_result_segment(&segments) {
+            return Self::csv_result(query, csv_block, elapsed, source);
+        }
+
+        let tags = segments.join("\n");
+        if let Some(tag) = Self::parse_aggregate_command_tag(tags.trim(), query) {
+            return Ok(Self::command_tag_result(query, tag, elapsed, source));
+        }
+
+        Ok(QueryResult::success(
+            query.to_string(),
+            Vec::new(),
+            Vec::new(),
+            elapsed,
+            source,
+        ))
+    }
+
+    fn command_tag_result(
+        query: &str,
+        tag: CommandTag,
+        elapsed: u64,
+        source: QuerySource,
+    ) -> QueryResult {
+        let row_count = tag.affected_rows().unwrap_or(0) as usize;
+        let mut result =
+            QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source);
+        result.row_count = row_count;
+        result.with_command_tag(tag)
+    }
+
+    fn csv_result(
+        query: &str,
+        csv_block: &str,
+        elapsed: u64,
+        source: QuerySource,
+    ) -> Result<QueryResult, DbOperationError> {
         let mut reader = csv::ReaderBuilder::new()
             .has_headers(true)
             .from_reader(csv_block.as_bytes());
@@ -300,6 +357,10 @@ impl PostgresAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<WriteExecutionResult, DbOperationError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures psql execution time at the I/O boundary"
+        )]
         let start = Instant::now();
 
         let output = self.run_psql(dsn, &[], query, read_only).await?;
@@ -452,143 +513,133 @@ impl PostgresAdapter {
 mod tests {
     use crate::adapters::postgres::PostgresAdapter;
 
-    mod extract_last_csv_block {
-        use super::super::extract_last_csv_block;
+    mod boundary_marker {
+        use super::super::boundary_marker;
 
         #[test]
-        fn single_result_set_returned_as_is() {
-            let input = "id,name\n1,alice\n2,bob";
-            assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
+        fn consecutive_markers_are_unique() {
+            assert_ne!(boundary_marker(), boundary_marker());
+        }
+    }
+
+    mod segmented_query_args {
+        use super::super::segmented_query_args;
+
+        #[test]
+        fn interleaves_echo_markers_inside_single_transaction() {
+            let args = segmented_query_args(&["SELECT 1", "SELECT 2"], "M");
+
+            assert_eq!(
+                args,
+                vec![
+                    "--single-transaction",
+                    "-c",
+                    "\\echo M",
+                    "-c",
+                    "SELECT 1",
+                    "-c",
+                    "\\echo M",
+                    "-c",
+                    "SELECT 2",
+                ]
+            );
+        }
+    }
+
+    mod split_marker_segments {
+        use super::super::split_marker_segments;
+
+        #[test]
+        fn splits_segments_between_markers() {
+            let stdout = "M\na\n1\nM\nb,c\n2,3\n";
+            assert_eq!(split_marker_segments(stdout, "M"), vec!["a\n1", "b,c\n2,3"]);
         }
 
         #[test]
-        fn two_selects_same_header_returns_last() {
-            let input = "?column?\n1\n?column?\n2";
+        fn drops_text_before_first_marker() {
+            let stdout = "noise\nM\na\n1\n";
+            assert_eq!(split_marker_segments(stdout, "M"), vec!["a\n1"]);
+        }
+
+        #[test]
+        fn no_marker_returns_empty() {
+            assert!(split_marker_segments("a\n1\n", "M").is_empty());
+        }
+
+        #[test]
+        fn consecutive_markers_yield_empty_segment() {
+            let stdout = "M\nM\nb\n2\n";
+            assert_eq!(split_marker_segments(stdout, "M"), vec!["", "b\n2"]);
+        }
+
+        #[test]
+        fn crlf_marker_line_is_recognized() {
+            let stdout = "M\r\na\r\n1\r\nM\r\nb\r\n2\r\n";
+            assert_eq!(split_marker_segments(stdout, "M"), vec!["a\r\n1", "b\r\n2"]);
+        }
+
+        #[test]
+        fn data_line_containing_marker_substring_is_not_a_boundary() {
+            let stdout = "M\nx\nprefix M suffix\nM\ny\n1\n";
             assert_eq!(
-                extract_last_csv_block(input, "SELECT 1; SELECT 2"),
-                "?column?\n2"
+                split_marker_segments(stdout, "M"),
+                vec!["x\nprefix M suffix", "y\n1"]
+            );
+        }
+    }
+
+    mod select_result_segment {
+        use super::super::select_result_segment;
+
+        #[test]
+        fn tag_then_csv_returns_csv() {
+            let segments = vec!["UPDATE 3", "id,name\n1,Alice"];
+            assert_eq!(select_result_segment(&segments), Some("id,name\n1,Alice"));
+        }
+
+        #[test]
+        fn csv_then_tag_returns_csv() {
+            let segments = vec!["id,name\n1,Alice", "DELETE 2"];
+            assert_eq!(select_result_segment(&segments), Some("id,name\n1,Alice"));
+        }
+
+        #[test]
+        fn two_result_sets_returns_last() {
+            let segments = vec!["a\n1", "b\n2"];
+            assert_eq!(select_result_segment(&segments), Some("b\n2"));
+        }
+
+        #[test]
+        fn tags_only_returns_none() {
+            let segments = vec!["BEGIN", "UPDATE 1", "COMMIT"];
+            assert_eq!(select_result_segment(&segments), None);
+        }
+
+        #[test]
+        fn empty_leading_result_set_returns_last() {
+            let segments = vec!["id,name", "age,email\n30,alice@example.com"];
+            assert_eq!(
+                select_result_segment(&segments),
+                Some("age,email\n30,alice@example.com")
             );
         }
 
         #[test]
-        fn two_selects_different_column_count_returns_last() {
-            let input = "a\n1\nb,c\n2,3";
-            assert_eq!(
-                extract_last_csv_block(input, "SELECT 1 AS a; SELECT 2 AS b, 3 AS c"),
-                "b,c\n2,3"
-            );
+        fn empty_trailing_result_set_is_selected_over_earlier_data() {
+            let segments = vec!["id,name\n1,Alice", "age,email"];
+            assert_eq!(select_result_segment(&segments), Some("age,email"));
         }
 
         #[test]
-        fn three_selects_returns_last() {
-            let input = "?column?\n1\n?column?\n2\n?column?\n3";
-            assert_eq!(
-                extract_last_csv_block(input, "SELECT 1; SELECT 2; SELECT 3"),
-                "?column?\n3"
-            );
+        fn data_rows_identical_to_header_stay_in_segment() {
+            let segments = vec!["id,name\n1,Alice", "id,name\nid,name"];
+            assert_eq!(select_result_segment(&segments), Some("id,name\nid,name"));
         }
 
         #[test]
-        fn single_result_set_returns_unchanged() {
-            let input = "col\n42";
-            assert_eq!(extract_last_csv_block(input, "SELECT 1"), input);
-        }
-
-        #[test]
-        fn empty_input_returns_empty() {
-            assert_eq!(extract_last_csv_block("", "SELECT 1"), "");
-        }
-
-        #[test]
-        fn header_only_returns_unchanged() {
-            assert_eq!(extract_last_csv_block("col", "SELECT 1"), "col");
-        }
-
-        #[test]
-        fn same_field_count_different_headers_returns_last() {
-            let input = "id,name\n1,Alice\nage,email\n30,alice@example.com";
-            assert_eq!(
-                extract_last_csv_block(
-                    input,
-                    "SELECT id, name FROM users; SELECT age, email FROM contacts"
-                ),
-                "age,email\n30,alice@example.com"
-            );
-        }
-
-        #[test]
-        fn single_statement_falls_back() {
-            let input = "id,name\n1,Alice\n2,Bob";
-            assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
-        }
-
-        #[test]
-        fn three_different_headers_same_field_count() {
-            let input = "x,y\n1,2\na,b\n3,4\np,q\n5,6";
-            assert_eq!(
-                extract_last_csv_block(
-                    input,
-                    "SELECT 1 AS x, 2 AS y; SELECT 3 AS a, 4 AS b; SELECT 5 AS p, 6 AS q"
-                ),
-                "p,q\n5,6"
-            );
-        }
-
-        #[test]
-        fn non_select_statements_excluded_from_hint() {
-            let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
-            assert_eq!(
-                extract_last_csv_block(
-                    input,
-                    "SET search_path TO public; SELECT id, name FROM users; SELECT age, email FROM contacts"
-                ),
-                "age,email\n30,bob@example.com"
-            );
-        }
-
-        #[test]
-        fn data_row_not_mistaken_when_single_select() {
-            let input = "x,y\na,b\n1,2";
-            assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
-        }
-
-        #[test]
-        fn leading_line_comment_does_not_break_hint() {
-            let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
-            assert_eq!(
-                extract_last_csv_block(
-                    input,
-                    "-- note\nSELECT id, name FROM users; SELECT age, email FROM contacts"
-                ),
-                "age,email\n30,bob@example.com"
-            );
-        }
-
-        #[test]
-        fn leading_block_comment_does_not_break_hint() {
-            let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
-            assert_eq!(
-                extract_last_csv_block(
-                    input,
-                    "/* note */ SELECT id, name FROM users; SELECT age, email FROM contacts"
-                ),
-                "age,email\n30,bob@example.com"
-            );
-        }
-
-        // Known limitation: when the leading result set has 0 data rows,
-        // the data_rows_since_header guard prevents detecting the next header.
-        // Fixing this requires redesigning how boundary info flows from
-        // parse_aggregate_command_tag, which is out of scope here.
-        #[test]
-        #[ignore = "empty leading result set — needs boundary redesign"]
-        fn empty_leading_result_returns_last_block() {
-            let input = "id,name\nage,email\n30,alice@example.com";
-            let sql = "SELECT id, name FROM users WHERE false; SELECT age, email FROM contacts";
-            assert_eq!(
-                extract_last_csv_block(input, sql),
-                "age,email\n30,alice@example.com"
-            );
+        fn blank_segments_are_skipped() {
+            let segments = vec!["a\n1", ""];
+            assert_eq!(select_result_segment(&segments), Some("a\n1"));
         }
     }
 

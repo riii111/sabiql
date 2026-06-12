@@ -28,7 +28,7 @@ pub(super) fn render_editor(
     // Cursor and highlight are omitted to reinforce that the SQL is not editable here.
     if matches!(
         state.sql_modal.status(),
-        SqlModalStatus::ConfirmingHigh { .. }
+        SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
     ) {
         let lines: Vec<Line> = content
             .lines()

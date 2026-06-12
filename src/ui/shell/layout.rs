@@ -19,12 +19,11 @@ use crate::features::connections::setup::ConnectionSetup;
 use crate::features::overlays::confirm_dialog::{ConfirmDialog, ConfirmPreviewMetrics};
 use crate::features::overlays::help::HelpOverlay;
 use crate::features::overlays::settings::SettingsOverlay;
+use crate::features::pickers::PickerRenderMetrics;
 use crate::features::pickers::command_palette::CommandPalette;
-use crate::features::pickers::er_table_picker::{ErTablePicker, ErTablePickerRenderMetrics};
-use crate::features::pickers::query_history_picker::{
-    QueryHistoryPicker, QueryHistoryPickerRenderMetrics,
-};
-use crate::features::pickers::table_picker::{TablePicker, TablePickerRenderMetrics};
+use crate::features::pickers::er_table_picker::ErTablePicker;
+use crate::features::pickers::query_history_picker::QueryHistoryPicker;
+use crate::features::pickers::table_picker::TablePicker;
 use crate::features::sql_modal::SqlModal;
 use crate::shell::command_line::CommandLine;
 use crate::shell::footer::Footer;
@@ -93,37 +92,28 @@ impl MainLayout {
             _ => None,
         };
 
+        let split_metrics = |metrics: PickerRenderMetrics| {
+            (
+                Some(metrics.pane_height),
+                Some(metrics.filter_visible_width),
+            )
+        };
+
         let (table_picker_pane_height, table_picker_filter_visible_width) = match state.input_mode()
         {
-            InputMode::TablePicker => {
-                let TablePickerRenderMetrics {
-                    pane_height,
-                    filter_visible_width,
-                } = TablePicker::render(frame, state, theme);
-                (Some(pane_height), Some(filter_visible_width))
-            }
+            InputMode::TablePicker => split_metrics(TablePicker::render(frame, state, theme)),
             _ => (None, None),
         };
 
         let (er_picker_pane_height, er_picker_filter_visible_width) = match state.input_mode() {
-            InputMode::ErTablePicker => {
-                let ErTablePickerRenderMetrics {
-                    pane_height,
-                    filter_visible_width,
-                } = ErTablePicker::render(frame, state, theme);
-                (Some(pane_height), Some(filter_visible_width))
-            }
+            InputMode::ErTablePicker => split_metrics(ErTablePicker::render(frame, state, theme)),
             _ => (None, None),
         };
 
         let (query_history_picker_pane_height, query_history_picker_filter_visible_width) =
             match state.input_mode() {
                 InputMode::QueryHistoryPicker => {
-                    let QueryHistoryPickerRenderMetrics {
-                        pane_height,
-                        filter_visible_width,
-                    } = QueryHistoryPicker::render(frame, state, theme);
-                    (Some(pane_height), Some(filter_visible_width))
+                    split_metrics(QueryHistoryPicker::render(frame, state, theme))
                 }
                 _ => (None, None),
             };

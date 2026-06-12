@@ -6,7 +6,7 @@ use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::list::ConnectionListItem;
-use crate::app::update::input::keybindings::{CONNECTION_SELECTOR_ROWS, idx};
+use crate::app::update::input::keybindings::connection_selector;
 use crate::domain::connection::ConnectionId;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,
@@ -40,15 +40,14 @@ impl ConnectionSelector {
     }
 
     fn build_hints(is_service_selected: bool) -> Vec<(&'static str, &'static str)> {
-        let r = CONNECTION_SELECTOR_ROWS;
-        use idx::connection_selector as cs;
+        use connection_selector as cs;
 
-        let mut hints = vec![r[cs::CONFIRM].as_hint(), r[cs::NEW].as_hint()];
+        let mut hints = vec![cs::CONFIRM.as_hint(), cs::NEW.as_hint()];
         if !is_service_selected {
-            hints.push(r[cs::EDIT].as_hint());
-            hints.push(r[cs::DELETE].as_hint());
+            hints.push(cs::EDIT.as_hint());
+            hints.push(cs::DELETE.as_hint());
         }
-        hints.push(r[cs::CLOSE].as_hint());
+        hints.push(cs::CLOSE.as_hint());
 
         hints
     }

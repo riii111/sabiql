@@ -162,6 +162,10 @@ impl SqliteAdapter {
         source: QuerySource,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures sqlite3 execution time at the I/O boundary"
+        )]
         let start = Instant::now();
         let stdout = self.cli.execute_csv(path, query, read_only).await?;
         let elapsed = start.elapsed().as_millis() as u64;
@@ -174,6 +178,10 @@ impl SqliteAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<(usize, u64), DbOperationError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures sqlite3 execution time at the I/O boundary"
+        )]
         let start = Instant::now();
         let stdout = self
             .cli
@@ -228,28 +236,27 @@ impl SqliteAdapter {
         let mut referenced_primary_keys = HashMap::new();
 
         for fk in raw {
-            let to_column = match fk.to {
-                Some(to) => to,
-                None => {
-                    if !referenced_primary_keys.contains_key(&fk.table) {
-                        let primary_key = self.primary_key_columns(path, &fk.table).await?;
-                        referenced_primary_keys.insert(fk.table.clone(), primary_key);
-                    }
-                    referenced_primary_keys
-                        .get(&fk.table)
-                        .and_then(|primary_key| {
-                            usize::try_from(fk.seq)
-                                .ok()
-                                .and_then(|idx| primary_key.get(idx))
-                        })
-                        .cloned()
-                        .ok_or_else(|| {
-                            DbOperationError::MetadataParseFailed(format!(
-                                "SQLite foreign key references missing primary key column: {}.{}",
-                                fk.table, fk.seq
-                            ))
-                        })?
+            let to_column = if let Some(to) = fk.to {
+                to
+            } else {
+                if !referenced_primary_keys.contains_key(&fk.table) {
+                    let primary_key = self.primary_key_columns(path, &fk.table).await?;
+                    referenced_primary_keys.insert(fk.table.clone(), primary_key);
                 }
+                referenced_primary_keys
+                    .get(&fk.table)
+                    .and_then(|primary_key| {
+                        usize::try_from(fk.seq)
+                            .ok()
+                            .and_then(|idx| primary_key.get(idx))
+                    })
+                    .cloned()
+                    .ok_or_else(|| {
+                        DbOperationError::MetadataParseFailed(format!(
+                            "SQLite foreign key references missing primary key column: {}.{}",
+                            fk.table, fk.seq
+                        ))
+                    })?
             };
 
             if current_id != Some(fk.id) {
@@ -479,9 +486,7 @@ fn next_keyword_from(sql: &str, mut i: usize) -> Option<(&str, usize)> {
 }
 
 fn first_keyword(sql: &str) -> &str {
-    next_keyword_from(sql, 0)
-        .map(|(keyword, _)| keyword)
-        .unwrap_or("")
+    next_keyword_from(sql, 0).map_or("", |(keyword, _)| keyword)
 }
 
 fn second_keyword(sql: &str) -> Option<&str> {
@@ -882,10 +887,10 @@ mod tests {
     #[tokio::test]
     async fn preview_returns_columns_rows_and_respects_pagination() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (2, 'b'), (1, 'a'), (3, 'c');
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -929,10 +934,10 @@ mod tests {
     #[tokio::test]
     async fn adhoc_dml_returns_affected_rows_command_tag() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -948,10 +953,10 @@ mod tests {
     #[tokio::test]
     async fn adhoc_dml_with_following_select_uses_trailing_changes_result() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -971,10 +976,10 @@ mod tests {
     #[tokio::test]
     async fn adhoc_dml_with_trailing_line_comment_returns_affected_rows() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -1013,10 +1018,10 @@ mod tests {
     #[tokio::test]
     async fn adhoc_update_returning_preserves_returned_rows() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -1036,10 +1041,10 @@ mod tests {
     #[tokio::test]
     async fn adhoc_delete_returning_preserves_returned_rows() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -1119,10 +1124,10 @@ mod tests {
     #[tokio::test]
     async fn write_execution_returns_affected_rows() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -1137,10 +1142,10 @@ mod tests {
     #[tokio::test]
     async fn count_query_rows_parses_count_result() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             INSERT INTO users(id) VALUES (1), (2), (3);
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -1155,10 +1160,10 @@ mod tests {
     #[tokio::test]
     async fn export_to_csv_writes_rows_and_returns_row_count() {
         let (dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-            "#,
+            ",
         );
         let path = dir.path().join("users.csv");
         let adapter = SqliteAdapter::new();
@@ -1188,9 +1193,9 @@ mod tests {
     #[tokio::test]
     async fn metadata_lists_user_tables_in_main_schema() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT);
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -1216,7 +1221,7 @@ mod tests {
     #[tokio::test]
     async fn table_detail_loads_columns_indexes_and_foreign_keys() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
                 id INTEGER PRIMARY KEY,
@@ -1226,7 +1231,7 @@ mod tests {
             CREATE INDEX idx_users_org_id ON users(org_id);
             INSERT INTO orgs(id) VALUES (1);
             INSERT INTO users(id, email, org_id) VALUES (1, 'a@example.com', 1);
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -1295,14 +1300,14 @@ mod tests {
     #[tokio::test]
     async fn composite_foreign_key_groups_columns_in_sequence_order() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
             CREATE TABLE child(
                 x INTEGER,
                 y INTEGER,
                 FOREIGN KEY(x, y) REFERENCES parent(a, b)
             );
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -1325,14 +1330,14 @@ mod tests {
     #[tokio::test]
     async fn foreign_key_without_target_columns_resolves_parent_primary_key() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
             CREATE TABLE child(
                 x INTEGER,
                 y INTEGER,
                 FOREIGN KEY(x, y) REFERENCES parent
             );
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -1439,14 +1444,14 @@ mod tests {
     #[tokio::test]
     async fn table_signatures_include_foreign_key_update_action() {
         let (_dir, dsn) = make_db(
-            r#"
+            r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
                 org_id INTEGER REFERENCES orgs(id)
                     ON DELETE CASCADE
                     ON UPDATE SET NULL
             );
-            "#,
+            ",
         );
         let adapter = SqliteAdapter::new();
 

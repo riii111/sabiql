@@ -2,10 +2,9 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::app::ports::outbound::{
-    ErDiagramExporter, ErExportResult, GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher,
-};
+use crate::app::ports::outbound::{ErDiagramExporter, ErExportResult};
 use crate::domain::ErTableInfo;
+use crate::export::graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 
 pub struct SystemGraphvizRunner;
 
@@ -36,42 +35,50 @@ pub struct SystemViewerLauncher;
 
 impl ViewerLauncher for SystemViewerLauncher {
     fn open_file(&self, path: &Path, browser: Option<&str>) -> Result<(), ViewerError> {
-        if let Some(browser) = browser.map(str::trim).filter(|value| !value.is_empty()) {
-            open_with_browser(path, browser)?;
-            return Ok(());
+        match requested_browser(browser) {
+            Some(browser) => open_with_browser(path, browser),
+            None => open_with_default_viewer(path),
         }
-
-        #[cfg(target_os = "macos")]
-        {
-            open_with_default_browser(path)?;
-        }
-        #[cfg(any(target_os = "freebsd", target_os = "linux"))]
-        {
-            Command::new("xdg-open").arg(path).spawn()?;
-        }
-        #[cfg(target_os = "windows")]
-        {
-            Command::new("cmd")
-                .args(["/C", "start"])
-                .arg(path)
-                .spawn()?;
-        }
-        Ok(())
     }
+}
+
+fn requested_browser(browser: Option<&str>) -> Option<&str> {
+    browser.map(str::trim).filter(|value| !value.is_empty())
+}
+
+#[cfg(target_os = "macos")]
+fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
+    open_with_default_browser(path)
+}
+
+#[cfg(any(target_os = "freebsd", target_os = "linux"))]
+fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
+    spawn_viewer("xdg-open", &[], path)
+}
+
+#[cfg(target_os = "windows")]
+fn open_with_default_viewer(path: &Path) -> Result<(), ViewerError> {
+    spawn_viewer("cmd", &["/C", "start", ""], path)
+}
+
+#[cfg(not(any(
+    target_os = "freebsd",
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows"
+)))]
+fn open_with_default_viewer(_path: &Path) -> Result<(), ViewerError> {
+    Err(ViewerError::UnsupportedPlatform {
+        operation: "Opening ER diagrams".to_string(),
+    })
 }
 
 #[cfg(target_os = "macos")]
 fn open_with_default_browser(path: &Path) -> Result<(), ViewerError> {
     if let Some(bundle_id) = default_web_browser_bundle_id() {
-        Command::new("open")
-            .arg("-b")
-            .arg(bundle_id)
-            .arg(path)
-            .spawn()?;
-    } else {
-        Command::new("open").arg(path).spawn()?;
+        return spawn_viewer("open", &["-b", &bundle_id], path);
     }
-    Ok(())
+    spawn_viewer("open", &[], path)
 }
 
 #[cfg(target_os = "macos")]
@@ -130,30 +137,35 @@ fn handler_bundle_id(handler: &serde_json::Value) -> Option<String> {
         .map(str::to_string)
 }
 
+#[cfg(target_os = "macos")]
 fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg("-a")
-            .arg(macos_browser_application_name(browser))
-            .arg(path)
-            .spawn()?;
-        Ok(())
-    }
+    spawn_viewer(
+        "open",
+        &["-a", macos_browser_application_name(browser)],
+        path,
+    )
+}
 
-    #[cfg(any(target_os = "freebsd", target_os = "linux"))]
-    {
-        open_with_browser_candidates(path, browser, &browser_command_candidates(browser))
-    }
+#[cfg(any(target_os = "freebsd", target_os = "linux"))]
+fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
+    open_with_browser_candidates(path, browser, &browser_command_candidates(browser))
+}
 
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("cmd")
-            .args(["/C", "start", "", browser])
-            .arg(path)
-            .spawn()?;
-        Ok(())
-    }
+#[cfg(target_os = "windows")]
+fn open_with_browser(path: &Path, browser: &str) -> Result<(), ViewerError> {
+    spawn_viewer("cmd", &["/C", "start", "", browser], path)
+}
+
+#[cfg(not(any(
+    target_os = "freebsd",
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows"
+)))]
+fn open_with_browser(_path: &Path, browser: &str) -> Result<(), ViewerError> {
+    Err(ViewerError::UnsupportedPlatform {
+        operation: format!("Opening ER diagrams with {browser}"),
+    })
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -209,6 +221,11 @@ fn open_with_browser_candidates(
         browser: browser.to_string(),
         candidates: candidates.join(", "),
     })
+}
+
+fn spawn_viewer(program: &str, args: &[&str], path: &Path) -> Result<(), ViewerError> {
+    Command::new(program).args(args).arg(path).spawn()?;
+    Ok(())
 }
 
 pub struct DotExporter<G = SystemGraphvizRunner, V = SystemViewerLauncher> {
@@ -557,6 +574,16 @@ mod tests {
                 exporter.viewer.browser.lock().unwrap().as_deref(),
                 Some("Firefox")
             );
+        }
+
+        #[test]
+        fn requested_browser_ignores_whitespace_only_values() {
+            assert_eq!(requested_browser(Some("   ")), None);
+        }
+
+        #[test]
+        fn requested_browser_trims_browser_name() {
+            assert_eq!(requested_browser(Some("  Firefox  ")), Some("Firefox"));
         }
 
         #[test]

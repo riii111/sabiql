@@ -6,25 +6,19 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::domain::er::er_output_filename;
-use crate::primitives::atoms::text_cursor_spans;
 use crate::theme::ThemePalette;
 
-use crate::features::pickers::table_picker::filter_visible_width;
-use crate::primitives::molecules::{FooterHintBar, render_modal};
+use crate::features::pickers::PickerRenderMetrics;
+use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 
 pub struct ErTablePicker;
-
-pub struct ErTablePickerRenderMetrics {
-    pub pane_height: u16,
-    pub filter_visible_width: usize,
-}
 
 impl ErTablePicker {
     pub fn render(
         frame: &mut Frame,
         state: &AppState,
         theme: &ThemePalette,
-    ) -> ErTablePickerRenderMetrics {
+    ) -> PickerRenderMetrics {
         let selected_count = state.ui.er_selected_tables().len();
         let total_count = state.tables().len();
         let filtered_count = state.er_filtered_tables().len();
@@ -87,24 +81,13 @@ impl ErTablePicker {
         ])
         .areas(inner);
 
-        let raw_width = filter_area.width.saturating_sub(4) as usize;
-
-        // Filter input
-        let input = state.ui.er_picker().filter_input();
-        let visible_width = filter_visible_width(raw_width, input.cursor(), input.char_count());
-        let cursor_spans = text_cursor_spans(
-            input.content(),
-            input.cursor(),
-            input.viewport_offset(),
-            visible_width,
+        let visible_width = render_filter_input_line(
+            frame,
+            filter_area,
+            state.ui.er_picker().filter_input(),
+            None,
             theme,
         );
-        let mut spans = vec![Span::styled(
-            "  > ",
-            Style::default().fg(theme.component.modal.title),
-        )];
-        spans.extend(cursor_spans);
-        frame.render_widget(Paragraph::new(Line::from(spans)), filter_area);
 
         // 3-line execution preview
         let preview_lines = vec![
@@ -162,7 +145,7 @@ impl ErTablePicker {
             .with_selected(selected)
             .with_offset(state.ui.er_picker().scroll_offset());
         frame.render_stateful_widget(list, list_area, &mut list_state);
-        ErTablePickerRenderMetrics {
+        PickerRenderMetrics {
             pane_height: list_area.height,
             filter_visible_width: visible_width,
         }

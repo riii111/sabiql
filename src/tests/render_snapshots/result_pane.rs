@@ -11,7 +11,7 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     let mut state = create_test_state();
     state
         .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
     let mut table = fixtures::sample_table_detail();
     table.columns.push(Column {
         name: "settings".to_string(),
@@ -22,28 +22,26 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
         ordinal_position: 4,
     });
     let _ = state.session.set_table_detail(table, 0);
-    state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
-        columns: vec![
-            "id".to_string(),
-            "name".to_string(),
-            "email".to_string(),
-            "settings".to_string(),
-        ],
-        rows: vec![vec![
-            "1".to_string(),
-            "Alice".to_string(),
-            "alice@example.com".to_string(),
-            r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
-                .to_string(),
-        ]],
-        row_count: 1,
-        execution_time_ms: 1,
-        executed_at: now,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }));
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
+            vec![
+                "id".to_string(),
+                "name".to_string(),
+                "email".to_string(),
+                "settings".to_string(),
+            ],
+            vec![vec![
+                "1".to_string(),
+                "Alice".to_string(),
+                "alice@example.com".to_string(),
+                r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
+                    .to_string(),
+            ]],
+            1,
+            QuerySource::Preview,
+        )));
     state.query.pagination.reset_for_table("public", "users");
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
@@ -51,11 +49,139 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
 }
 
 #[test]
-fn result_pane_first_cell_active_mode() {
-    let (mut state, now) = table_detail_loaded_state();
+fn result_pane_scrolled_past_wide_column_fills_width() {
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    // payload's ideal width nearly fills the pane; scrolled past it, the
+    // remaining narrow columns must fill the viewport instead of leaving
+    // most of the pane blank
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT * FROM events".to_string(),
+            ["id", "payload", "status", "kind", "actor", "note"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            vec![
+                vec![
+                    "1".to_string(),
+                    "x".repeat(100),
+                    "active_pending_validation".to_string(),
+                    "user_account_registration".to_string(),
+                    "alice.anderson@example.com".to_string(),
+                    "created via admin console".to_string(),
+                ],
+                vec![
+                    "2".to_string(),
+                    "y".repeat(100),
+                    "suspended_awaiting_review".to_string(),
+                    "service_account_creation".to_string(),
+                    "bob.brown@example.com".to_string(),
+                    "imported from legacy system".to_string(),
+                ],
+            ],
+            3,
+            QuerySource::Preview,
+        )));
+    state.ui.set_focused_pane(FocusedPane::Result);
+    state.result_interaction.set_horizontal_offset(2);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_right_edge_peeks_truncated_previous_column() {
+    let mut state = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    // At the right edge the trailing columns leave leftover width; the
+    // hidden wide description column shows up truncated instead of blank
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT * FROM events".to_string(),
+            ["id", "description", "status", "kind", "actor", "note"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            vec![
+                vec![
+                    "1".to_string(),
+                    "x".repeat(100),
+                    "active_validation".to_string(),
+                    "create_operation".to_string(),
+                    "alice.anderson".to_string(),
+                    "first_revision".to_string(),
+                ],
+                vec![
+                    "2".to_string(),
+                    "y".repeat(100),
+                    "suspended_review".to_string(),
+                    "update_operation".to_string(),
+                    "bob.brownfield".to_string(),
+                    "second_revision".to_string(),
+                ],
+            ],
+            3,
+            QuerySource::Preview,
+        )));
+    state.ui.set_focused_pane(FocusedPane::Result);
+    state.result_interaction.set_horizontal_offset(2);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_narrow_pane_keeps_horizontal_scroll() {
+    let mut state = table_detail_loaded_state();
+    // Split-pane terminal: the two payload columns exceed the pane width even
+    // after capping, which must not disable the scrollbar
+    let mut terminal = create_test_terminal_sized(110, 40);
+
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT * FROM events".to_string(),
+            ["id", "payload", "details", "status"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            vec![
+                vec![
+                    "1".to_string(),
+                    "x".repeat(100),
+                    "z".repeat(100),
+                    "active".to_string(),
+                ],
+                vec![
+                    "2".to_string(),
+                    "y".repeat(100),
+                    "w".repeat(100),
+                    "done".to_string(),
+                ],
+            ],
+            3,
+            QuerySource::Preview,
+        )));
+    state.ui.set_focused_pane(FocusedPane::Result);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_first_cell_active_mode() {
+    let mut state = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    with_current_result(&mut state);
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
 
@@ -66,10 +192,10 @@ fn result_pane_first_cell_active_mode() {
 
 #[test]
 fn result_pane_cell_active_mode() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
 
@@ -80,10 +206,10 @@ fn result_pane_cell_active_mode() {
 
 #[test]
 fn result_pane_cell_edit_mode() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -102,10 +228,10 @@ fn result_pane_cell_edit_mode() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_head() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -121,10 +247,10 @@ fn result_pane_cell_edit_cursor_at_head() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_middle() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -140,10 +266,10 @@ fn result_pane_cell_edit_cursor_at_middle() {
 
 #[test]
 fn result_pane_cell_active_pending_draft() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
@@ -162,10 +288,10 @@ fn result_pane_cell_active_pending_draft() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_tail() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
@@ -185,10 +311,10 @@ fn result_pane_cell_edit_cursor_at_tail() {
 
 #[test]
 fn result_pane_staged_delete_row() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);

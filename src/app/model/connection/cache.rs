@@ -113,7 +113,6 @@ mod tests {
     #[test]
     fn preserves_metadata_on_save_and_get() {
         use crate::domain::{DatabaseMetadata, TableSummary};
-        use std::time::Instant;
 
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
@@ -127,7 +126,6 @@ mod tests {
                 Some(100),
                 false,
             )],
-            fetched_at: Instant::now(),
         });
 
         let cache = ConnectionCache {
@@ -146,22 +144,17 @@ mod tests {
     #[test]
     fn preserves_query_result_on_save_and_get() {
         use crate::domain::{QueryResult, QuerySource};
-        use std::time::Instant;
 
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
 
-        let query_result = QueryResult {
-            query: "SELECT * FROM users".to_string(),
-            columns: vec!["id".to_string(), "name".to_string()],
-            rows: vec![vec!["1".to_string(), "Alice".to_string()]],
-            row_count: 1,
-            execution_time_ms: 10,
-            executed_at: Instant::now(),
-            source: QuerySource::Preview,
-            error: None,
-            command_tag: None,
-        };
+        let query_result = QueryResult::success(
+            "SELECT * FROM users".to_string(),
+            vec!["id".to_string(), "name".to_string()],
+            vec![vec!["1".to_string(), "Alice".to_string()]],
+            10,
+            QuerySource::Preview,
+        );
 
         let cache = ConnectionCache {
             query_result: Some(Arc::new(query_result)),

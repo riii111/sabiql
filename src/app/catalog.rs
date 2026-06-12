@@ -3,6 +3,10 @@ use unicode_width::UnicodeWidthStr;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
+#[allow(
+    clippy::wildcard_imports,
+    reason = "help catalog enumerates nearly every keybindings table; explicit list is churn"
+)]
 use crate::update::input::keybindings::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,44 +187,34 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
     let rows = match origin {
         HelpOrigin::Normal {
             history_mode: true, ..
-        } => rows_from_binding_refs(&[
-            &HISTORY_KEYS[idx::history::NAV],
-            &HISTORY_KEYS[idx::history::EXIT],
-        ]),
+        } => rows_from_binding_refs(&[&history::NAV, &history::EXIT]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
             result_active: true,
             ..
         } => rows_from_binding_refs(&[
-            &RESULT_ACTIVE_KEYS[idx::result_active::YANK],
-            &RESULT_ACTIVE_KEYS[idx::result_active::ROW_YANK],
-            &RESULT_ACTIVE_KEYS[idx::result_active::STAGE_DELETE],
-            &RESULT_ACTIVE_KEYS[idx::result_active::EDIT],
-            &RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK],
+            &result_active::YANK,
+            &result_active::ROW_YANK,
+            &result_active::STAGE_DELETE,
+            &result_active::EDIT,
+            &result_active::ESC_BACK,
         ]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
             ..
         } => rows_from_binding_refs(&[
-            &RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN],
-            &FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV],
-            &GLOBAL_KEYS[idx::global::CSV_EXPORT],
+            &result_active::ENTER_DEEPEN,
+            &footer_nav::PAGE_NAV,
+            &global::CSV_EXPORT,
         ]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Inspector,
             ..
-        } => rows_from_binding_refs(&[
-            &GLOBAL_KEYS[idx::global::INSPECTOR_TABS],
-            &INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK],
-        ]),
+        } => rows_from_binding_refs(&[&global::INSPECTOR_TABS, &inspector_ddl::YANK]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Explorer,
             ..
-        } => rows_from_binding_refs(&[
-            &GLOBAL_KEYS[idx::global::TABLE_PICKER],
-            &GLOBAL_KEYS[idx::global::CONNECTIONS],
-            &GLOBAL_KEYS[idx::global::SQL],
-        ]),
+        } => rows_from_binding_refs(&[&global::TABLE_PICKER, &global::CONNECTIONS, &global::SQL]),
         HelpOrigin::CommandLine => rows_from_bindings(COMMAND_LINE_KEYS),
         HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
         HelpOrigin::TablePicker => rows_from_mode_rows(TABLE_PICKER_ROWS),
@@ -249,41 +243,41 @@ fn reference_sections() -> Vec<HelpSection> {
         section(
             "Common",
             rows_from_binding_refs(&[
-                &GLOBAL_KEYS[idx::global::HELP],
-                &GLOBAL_KEYS[idx::global::QUIT],
-                &GLOBAL_KEYS[idx::global::SETTINGS],
-                &GLOBAL_KEYS[idx::global::COMMAND_PALETTE],
-                &GLOBAL_KEYS[idx::global::COMMAND_LINE],
-                &GLOBAL_KEYS[idx::global::FOCUS],
-                &GLOBAL_KEYS[idx::global::READ_ONLY],
+                &global::HELP,
+                &global::QUIT,
+                &global::SETTINGS,
+                &global::COMMAND_PALETTE,
+                &global::COMMAND_LINE,
+                &global::FOCUS,
+                &global::READ_ONLY,
             ]),
         ),
         section("Navigation", rows_from_bindings(NAVIGATION_KEYS)),
         section(
             "Open / Switch",
             rows_from_binding_refs(&[
-                &GLOBAL_KEYS[idx::global::TABLE_PICKER],
-                &GLOBAL_KEYS[idx::global::SQL],
-                &GLOBAL_KEYS[idx::global::ER_DIAGRAM],
-                &GLOBAL_KEYS[idx::global::CONNECTIONS],
-                &GLOBAL_KEYS[idx::global::QUERY_HISTORY],
-                &GLOBAL_KEYS[idx::global::PANE_SWITCH],
-                &GLOBAL_KEYS[idx::global::INSPECTOR_TABS],
+                &global::TABLE_PICKER,
+                &global::SQL,
+                &global::ER_DIAGRAM,
+                &global::CONNECTIONS,
+                &global::QUERY_HISTORY,
+                &global::PANE_SWITCH,
+                &global::INSPECTOR_TABS,
             ]),
         ),
         section(
             "Data Actions",
             merge_rows(&[
                 rows_from_binding_refs(&[
-                    &GLOBAL_KEYS[idx::global::RELOAD],
-                    &GLOBAL_KEYS[idx::global::CSV_EXPORT],
-                    &RESULT_ACTIVE_KEYS[idx::result_active::YANK],
-                    &RESULT_ACTIVE_KEYS[idx::result_active::ROW_YANK],
-                    &RESULT_ACTIVE_KEYS[idx::result_active::STAGE_DELETE],
-                    &RESULT_ACTIVE_KEYS[idx::result_active::UNSTAGE_DELETE],
-                    &INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK],
+                    &global::RELOAD,
+                    &global::CSV_EXPORT,
+                    &result_active::YANK,
+                    &result_active::ROW_YANK,
+                    &result_active::STAGE_DELETE,
+                    &result_active::UNSTAGE_DELETE,
+                    &inspector_ddl::YANK,
                 ]),
-                rows_from_mode_row_refs(&[&JSONB_DETAIL_ROWS[idx::jsonb_detail::YANK]]),
+                rows_from_mode_row_refs(&[&jsonb_detail::YANK]),
             ]),
         ),
         section(
@@ -300,9 +294,9 @@ fn reference_sections() -> Vec<HelpSection> {
             "Search / Filter",
             merge_rows(&[
                 rows_from_mode_row_refs(&[
-                    &TABLE_PICKER_ROWS[idx::table_picker::TYPE_FILTER],
-                    &ER_PICKER_ROWS[idx::er_picker::TYPE_FILTER],
-                    &QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::TYPE_FILTER],
+                    &table_picker::TYPE_FILTER,
+                    &er_picker::TYPE_FILTER,
+                    &query_history_picker::TYPE_FILTER,
                 ]),
                 rows_from_bindings(JSONB_SEARCH_KEYS),
                 rows_from_mode_rows(HELP_ROWS),

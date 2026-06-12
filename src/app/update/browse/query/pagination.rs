@@ -4,10 +4,10 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::domain::QuerySource;
 use crate::model::app_state::AppState;
-use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
+use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 
 pub fn reduce_pagination(
@@ -24,9 +24,8 @@ pub fn reduce_pagination(
             let Some(result) = state.query.visible_result() else {
                 return DispatchResult::handled();
             };
-            let dsn = match state.session.dsn().map(String::from) {
-                Some(d) => d,
-                None => return DispatchResult::handled(),
+            let Some(dsn) = state.session.dsn().map(String::from) else {
+                return DispatchResult::handled();
             };
 
             let export_query = result.query.clone();
@@ -68,7 +67,7 @@ pub fn reduce_pagination(
             export_query,
             file_name,
         } => {
-            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -116,7 +115,7 @@ pub fn reduce_pagination(
             file_name,
             row_count,
         } => {
-            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -136,7 +135,7 @@ pub fn reduce_pagination(
             path,
             row_count,
         } => {
-            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -153,7 +152,7 @@ pub fn reduce_pagination(
         }
 
         Action::CsvExportFailed { dsn, run_id, error } => {
-            if !state.session.dsn_matches(dsn) || !state.query.is_current_run(*run_id) {
+            if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
@@ -177,23 +176,14 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_next() {
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = state.session.dsn().map(String::from) {
-                let next_page = state.query.pagination.next_page();
-                let run_id = state.query.begin_running(now);
-                state.result_interaction.reset_view();
-                DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                    dsn,
-                    schema: state.query.pagination.schema().to_string(),
-                    table: state.query.pagination.table().to_string(),
-                    generation: state.session.selection_generation(),
-                    run_id,
-                    limit: PREVIEW_PAGE_SIZE,
-                    offset: next_page * PREVIEW_PAGE_SIZE,
-                    target_page: next_page,
-                    read_only: state.session.is_read_only(),
-                }])
-            } else {
-                DispatchResult::handled()
+            let next_page = state.query.pagination.next_page();
+            let generation = state.session.selection_generation();
+            match preview_effect_for_current_table(state, now, next_page, generation) {
+                Some(effect) => {
+                    state.result_interaction.reset_view();
+                    DispatchResult::handled_with(vec![effect])
+                }
+                None => DispatchResult::handled(),
             }
         }
 
@@ -204,24 +194,15 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_prev() {
                 return DispatchResult::handled();
             }
-            if let Some(dsn) = state.session.dsn().map(String::from) {
-                let prev_page = state.query.pagination.prev_page();
-                let run_id = state.query.begin_running(now);
-                state.result_interaction.reset_view();
-                state.query.pagination.clear_reached_end();
-                DispatchResult::handled_with(vec![Effect::ExecutePreview {
-                    dsn,
-                    schema: state.query.pagination.schema().to_string(),
-                    table: state.query.pagination.table().to_string(),
-                    generation: state.session.selection_generation(),
-                    run_id,
-                    limit: PREVIEW_PAGE_SIZE,
-                    offset: prev_page * PREVIEW_PAGE_SIZE,
-                    target_page: prev_page,
-                    read_only: state.session.is_read_only(),
-                }])
-            } else {
-                DispatchResult::handled()
+            let prev_page = state.query.pagination.prev_page();
+            let generation = state.session.selection_generation();
+            match preview_effect_for_current_table(state, now, prev_page, generation) {
+                Some(effect) => {
+                    state.result_interaction.reset_view();
+                    state.query.pagination.clear_reached_end();
+                    DispatchResult::handled_with(vec![effect])
+                }
+                None => DispatchResult::handled(),
             }
         }
 
@@ -237,12 +218,9 @@ mod tests {
     use crate::update::browse::query::tests::use_postgres_connection;
     use std::sync::Arc;
 
+    use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
-
-    fn begin_query_run(state: &mut AppState) -> u64 {
-        state.query.begin_running(Instant::now())
-    }
 
     fn csv_rows_counted_action(
         state: &mut AppState,
@@ -283,17 +261,13 @@ mod tests {
         let rows: Vec<Vec<String>> = (0..row_count)
             .map(|i| vec![i.to_string(), format!("name_{i}")])
             .collect();
-        Arc::new(QueryResult {
-            query: "SELECT * FROM users".to_string(),
-            columns: vec!["id".to_string(), "name".to_string()],
+        Arc::new(QueryResult::success(
+            "SELECT * FROM users".to_string(),
+            vec!["id".to_string(), "name".to_string()],
             rows,
-            row_count,
-            execution_time_ms: 10,
-            executed_at: Instant::now(),
-            source: QuerySource::Preview,
-            error: None,
-            command_tag: None,
-        })
+            10,
+            QuerySource::Preview,
+        ))
     }
 
     mod next_page {

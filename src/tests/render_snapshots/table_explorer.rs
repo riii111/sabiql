@@ -4,10 +4,10 @@ use sabiql_app::model::shared::ui_state::FocusMode;
 
 #[test]
 fn table_selection_with_preview() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    with_current_result(&mut state, now);
+    with_current_result(&mut state);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -16,12 +16,12 @@ fn table_selection_with_preview() {
 
 #[test]
 fn focus_on_result_pane() {
-    let (mut state, now) = explorer_selected_state();
+    let mut state = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
     state
         .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+        .set_current_result(Arc::new(fixtures::sample_query_result()));
     state.ui.set_focused_pane(FocusedPane::Result);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -31,12 +31,12 @@ fn focus_on_result_pane() {
 
 #[test]
 fn focus_mode_fullscreen_result() {
-    let (mut state, now) = explorer_selected_state();
+    let mut state = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
     state
         .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+        .set_current_result(Arc::new(fixtures::sample_query_result()));
     state
         .ui
         .set_focus_mode(FocusMode::focused(state.ui.focused_pane()));
@@ -48,7 +48,8 @@ fn focus_mode_fullscreen_result() {
 
 #[test]
 fn error_message_in_footer() {
-    let (mut state, now) = explorer_selected_state();
+    let mut state = explorer_selected_state();
+    let now = test_instant();
     let mut terminal = create_test_terminal();
 
     state
@@ -62,12 +63,12 @@ fn error_message_in_footer() {
 
 #[test]
 fn empty_query_result() {
-    let (mut state, now) = table_detail_loaded_state();
+    let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
     state
         .query
-        .set_current_result(Arc::new(fixtures::empty_query_result(now)));
+        .set_current_result(Arc::new(fixtures::empty_query_result()));
 
     let output = render_to_string(&mut terminal, &mut state);
 

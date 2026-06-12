@@ -3,7 +3,7 @@ use harness::{connected_state, explorer_selected_state};
 
 #[test]
 fn er_waiting_progress() {
-    let (mut state, _now) = explorer_selected_state();
+    let mut state = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
     let _ = state.er_preparation.start_waiting_run();
@@ -20,7 +20,7 @@ fn er_waiting_progress() {
 
 #[test]
 fn er_table_picker_modal() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
@@ -32,7 +32,7 @@ fn er_table_picker_modal() {
 
 #[test]
 fn er_table_picker_filtered() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
@@ -45,7 +45,7 @@ fn er_table_picker_filtered() {
 
 #[test]
 fn er_table_picker_single_select() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
@@ -60,7 +60,7 @@ fn er_table_picker_single_select() {
 
 #[test]
 fn er_table_picker_multi_select() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
@@ -75,7 +75,7 @@ fn er_table_picker_multi_select() {
 
 #[test]
 fn er_table_picker_all_selected() {
-    let (mut state, _now) = connected_state();
+    let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);

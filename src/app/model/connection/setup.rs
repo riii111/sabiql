@@ -257,7 +257,7 @@ impl ConnectionSetupState {
 
     pub fn focused_input(&self) -> Option<&TextInputState> {
         match self.focused_field {
-            ConnectionField::DatabaseType => None,
+            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
             ConnectionField::Name => Some(&self.name),
             ConnectionField::SqlitePath => Some(&self.sqlite_path),
             ConnectionField::Host => Some(&self.host),
@@ -265,13 +265,12 @@ impl ConnectionSetupState {
             ConnectionField::Database => Some(&self.database),
             ConnectionField::User => Some(&self.user),
             ConnectionField::Password => Some(&self.password),
-            ConnectionField::SslMode => None,
         }
     }
 
     pub fn focused_input_mut(&mut self) -> Option<&mut TextInputState> {
         match self.focused_field {
-            ConnectionField::DatabaseType => None,
+            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
             ConnectionField::Name => Some(&mut self.name),
             ConnectionField::SqlitePath => Some(&mut self.sqlite_path),
             ConnectionField::Host => Some(&mut self.host),
@@ -279,7 +278,6 @@ impl ConnectionSetupState {
             ConnectionField::Database => Some(&mut self.database),
             ConnectionField::User => Some(&mut self.user),
             ConnectionField::Password => Some(&mut self.password),
-            ConnectionField::SslMode => None,
         }
     }
 

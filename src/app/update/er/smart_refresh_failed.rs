@@ -9,7 +9,7 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_smart_refresh_failed(
     state: &mut AppState,
     action: &Action,
-    _now: Instant,
+    now: Instant,
 ) -> DispatchResult {
     match action {
         Action::SmartErRefreshFailed(SmartErRefreshError {
@@ -28,7 +28,9 @@ pub(super) fn reduce_smart_refresh_failed(
 
             let Some(metadata) = &state.session.metadata() else {
                 state.er_preparation.mark_idle();
-                state.set_error("Metadata not loaded yet".to_string());
+                state
+                    .messages
+                    .set_error_at("Metadata not loaded yet".to_string(), now);
                 return DispatchResult::handled();
             };
             let scoped_tables = state
@@ -39,9 +41,10 @@ pub(super) fn reduce_smart_refresh_failed(
                 .invalidate_refresh_signatures(metadata.table_summaries.len());
 
             if let Some(scoped_tables) = scoped_tables {
-                state.set_error(format!(
-                    "Smart refresh failed ({error}), falling back to scoped prefetch"
-                ));
+                state.messages.set_error_at(
+                    format!("Smart refresh failed ({error}), falling back to scoped prefetch"),
+                    now,
+                );
                 DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchScoped {
@@ -49,9 +52,10 @@ pub(super) fn reduce_smart_refresh_failed(
                     }]),
                 ])
             } else {
-                state.set_error(format!(
-                    "Smart refresh failed ({error}), falling back to full refresh"
-                ));
+                state.messages.set_error_at(
+                    format!("Smart refresh failed ({error}), falling back to full refresh"),
+                    now,
+                );
                 DispatchResult::handled_with(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchAll]),

@@ -11,7 +11,7 @@ use crate::model::er_state::ErStatus;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
+pub(super) fn check_er_completion(state: &mut AppState, now: Instant) -> Vec<Effect> {
     if state.er_preparation.status() != ErStatus::Waiting || !state.er_preparation.is_complete() {
         return vec![];
     }
@@ -29,10 +29,13 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
 
     state.er_preparation.mark_idle();
     let failed_data: Vec<(String, String)> = state.er_preparation.failed_table_errors();
-    state.set_error(format!(
-        "ER failed: {} table(s) failed. 'e' to retry.",
-        failed_data.len()
-    ));
+    state.messages.set_error_at(
+        format!(
+            "ER failed: {} table(s) failed. 'e' to retry.",
+            failed_data.len()
+        ),
+        now,
+    );
     vec![Effect::WriteErFailureLog {
         failed_tables: failed_data,
     }]
@@ -40,9 +43,9 @@ pub(super) fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
 
 pub fn dispatch_metadata(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     loading::reduce_loading(state, action, now)
-        .or_else(|| table_detail::reduce_table_detail(state, action))
+        .or_else(|| table_detail::reduce_table_detail(state, action, now))
         .or_else(|| prefetch::reduce_prefetch(state, action, now))
-        .or_else(|| er_neighbors::reduce_er_neighbors(state, action))
+        .or_else(|| er_neighbors::reduce_er_neighbors(state, action, now))
 }
 
 #[cfg(test)]
@@ -97,7 +100,6 @@ mod tests {
                     None,
                     false,
                 )],
-                fetched_at: Instant::now(),
             })
         }
 
@@ -424,7 +426,7 @@ mod tests {
             state.sql_modal.record_prefetch_failure(
                 qualified.clone(),
                 FailedPrefetchEntry {
-                    failed_at: Instant::now().checked_sub(Duration::from_secs(60)).unwrap(),
+                    failed_at: Instant::now().checked_sub(Duration::from_mins(1)).unwrap(),
                     error: "old error".to_string(),
                     retry_count: 1,
                 },
@@ -636,7 +638,6 @@ mod tests {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)
                     })
                     .collect(),
-                fetched_at: Instant::now(),
             })
         }
 
@@ -739,7 +740,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: tables,
-                fetched_at: Instant::now(),
             })
         }
 
@@ -863,7 +863,7 @@ mod tests {
             state.er_preparation.mark_fk_unexpanded();
             // pending and fetching are empty → is_complete() = true
 
-            let effects = check_er_completion(&mut state);
+            let effects = check_er_completion(&mut state, Instant::now());
 
             assert!(effects.iter().any(|e| matches!(
                 e,
@@ -878,7 +878,7 @@ mod tests {
             state.er_preparation.mark_waiting();
             state.er_preparation.mark_fk_expanded();
 
-            let effects = check_er_completion(&mut state);
+            let effects = check_er_completion(&mut state, Instant::now());
 
             assert!(effects.iter().any(|e| matches!(
                 e,

@@ -2,6 +2,7 @@
 name = "sabiql-app"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Application layer for sabiql"
 license.workspace = true
 repository.workspace = true
@@ -13,23 +14,17 @@ path = "lib.rs"
 test-support = []
 
 [dependencies]
-arboard.workspace = true
 async-trait.workspace = true
 color-eyre.workspace = true
-crossterm.workspace = true
 csv.workspace = true
 lru.workspace = true
 nucleo-matcher.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
 toml.workspace = true
 unicode-casefold.workspace = true
 unicode-width.workspace = true
-urlencoding.workspace = true
-uuid.workspace = true
 dirs.workspace = true
 sabiql-domain.workspace = true
 
@@ -38,3 +33,6 @@ mockall.workspace = true
 rstest.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

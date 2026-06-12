@@ -1,0 +1,43 @@
+---
+source: src/tests/render_snapshots/inspector.rs
+expression: output
+---
+test_project | test_db | - | no dsn | localhost:5432/test                                                     
+┌ [1] Explorer ────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                       
+│> public.users            │┌ [2] Inspector ─────────────────────────────────────────────────────────────────┐
+│  public.posts            ││Type           Null   PK   Default   Comment                                    │
+│  public.comments         ││integer               ✓              Primary key, generated from the tenant...  │
+│                          ││varchar(255)                                                                    │
+│                          ││varchar(255)   ✓                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││ col  50% ◀︎─══════════════════════════════════════════════════════════════════▶︎ │
+│                          │└────────────────────────────────────────────────────────────────────────────────┘
+│                          │┌ [3] Result ────────────────────────────────────────────────────────────────────┐
+│                          ││(select a table to preview)                                                     │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+│                          ││                                                                                │
+└──────────────────────────┘└────────────────────────────────────────────────────────────────────────────────┘
+r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  Tab/⇧Tab:InsTabs  ?:Help  F1:Pale

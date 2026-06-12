@@ -413,7 +413,6 @@ impl BrowseSession {
 mod tests {
     use super::*;
     use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
-    use std::time::Instant;
 
     fn make_metadata(db_name: &str) -> Arc<DatabaseMetadata> {
         Arc::new(DatabaseMetadata {
@@ -423,7 +422,6 @@ mod tests {
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
-            fetched_at: Instant::now(),
         })
     }
 

@@ -13,11 +13,14 @@ use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
+    widths_fingerprint,
 };
 use crate::app::services::AppServices;
-use crate::domain::Table;
+use crate::domain::{ForeignKey, Index, Table};
 use crate::primitives::atoms::panel_block;
-use crate::primitives::utils::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
+use crate::primitives::utils::text_utils::{
+    MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
+};
 use crate::theme::ThemePalette;
 
 pub struct Inspector;
@@ -323,18 +326,9 @@ impl Inspector {
         } else {
             &data_rows
         };
-        let (all_ideal_widths, _) = calculate_column_widths(&headers, sample);
-        let current_min_widths_sum: u16 = header_min_widths.iter().sum();
-        let current_ideal_widths_sum: u16 = all_ideal_widths.iter().sum();
-        let current_ideal_widths_max: u16 = all_ideal_widths.iter().copied().max().unwrap_or(0);
-
-        let plan = if stored_plan.needs_recalculation(
-            all_ideal_widths.len(),
-            available_width,
-            current_min_widths_sum,
-            current_ideal_widths_sum,
-            current_ideal_widths_max,
-        ) {
+        let all_ideal_widths = calculate_column_widths(&headers, sample);
+        let fingerprint = widths_fingerprint(&all_ideal_widths, &header_min_widths);
+        let plan = if stored_plan.needs_recalculation(available_width, fingerprint) {
             ViewportPlan::calculate(&all_ideal_widths, &header_min_widths, available_width)
         } else {
             stored_plan.clone()
@@ -351,7 +345,6 @@ impl Inspector {
             available_width,
             fixed_count: Some(plan.column_count),
             max_offset: plan.max_offset,
-            slack_policy: plan.slack_policy,
         };
         let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
 
@@ -401,7 +394,7 @@ impl Inspector {
                 Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
                     |(&col_idx, &col_width)| {
                         let text = row.get(col_idx).map_or("", String::as_str);
-                        let display = truncate_cell(text, col_width as usize);
+                        let display = truncate_to_width(text, col_width as usize);
 
                         // Special styling for PK and Comment columns
                         let cell_style = if col_idx == 3 && !text.is_empty() {
@@ -427,7 +420,7 @@ impl Inspector {
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
             render_vertical_scroll_indicator_bar,
         };
-        let has_h_scroll = headers.len() > plan.column_count;
+        let has_h_scroll = plan.has_horizontal_scroll();
         render_vertical_scroll_indicator_bar(
             frame,
             area,
@@ -444,7 +437,7 @@ impl Inspector {
             area,
             HorizontalScrollParams {
                 position: clamped_offset,
-                viewport_size: plan.column_count, // Use fixed count, not actual displayed (may include bonus)
+                viewport_size: plan.indicator_viewport_size(),
                 total_items: headers.len(),
             },
             theme,
@@ -461,25 +454,10 @@ impl Inspector {
         theme: &ThemePalette,
     ) {
         let headers = ["Name", "Columns", "Type", "Unique"];
-        // Width sampling only — row_fn rebuilds cell text for actual rendering
-        let data_rows: Vec<Vec<String>> = table
-            .indexes
-            .iter()
-            .take(50)
-            .map(|idx| {
-                vec![
-                    idx.name.clone(),
-                    idx.columns.join(", "),
-                    format!("{:?}", idx.index_type).to_lowercase(),
-                    if idx.is_unique() {
-                        "✓".to_string()
-                    } else {
-                        String::new()
-                    },
-                ]
-            })
-            .collect();
-        let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
+        // Width sampling sees only the first 50 rows, so row_fn rebuilds text
+        // per visible row instead of indexing into the sample
+        let data_rows: Vec<Vec<String>> = table.indexes.iter().take(50).map(index_row).collect();
+        let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
@@ -495,13 +473,10 @@ impl Inspector {
             scroll_offset,
             theme,
             |idx| {
-                let index = &table.indexes[idx];
-                vec![
-                    Cell::from(index.name.clone()),
-                    Cell::from(index.columns.join(", ")),
-                    Cell::from(format!("{:?}", index.index_type).to_lowercase()),
-                    Cell::from(if index.is_unique() { "✓" } else { "" }),
-                ]
+                index_row(&table.indexes[idx])
+                    .into_iter()
+                    .map(Cell::from)
+                    .collect()
             },
         );
     }
@@ -514,25 +489,15 @@ impl Inspector {
         theme: &ThemePalette,
     ) {
         let headers = ["Name", "Columns", "References"];
-        // Width sampling only — row_fn rebuilds cell text for actual rendering
+        // Width sampling sees only the first 50 rows, so row_fn rebuilds text
+        // per visible row instead of indexing into the sample
         let data_rows: Vec<Vec<String>> = table
             .foreign_keys
             .iter()
             .take(50)
-            .map(|fk| {
-                vec![
-                    fk.name.clone(),
-                    fk.from_columns.join(", "),
-                    format!(
-                        "{}.{}({})",
-                        fk.to_schema,
-                        fk.to_table,
-                        fk.to_columns.join(", ")
-                    ),
-                ]
-            })
+            .map(foreign_key_row)
             .collect();
-        let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
+        let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
@@ -548,17 +513,10 @@ impl Inspector {
             scroll_offset,
             theme,
             |idx| {
-                let fk = &table.foreign_keys[idx];
-                vec![
-                    Cell::from(fk.name.clone()),
-                    Cell::from(fk.from_columns.join(", ")),
-                    Cell::from(format!(
-                        "{}.{}({})",
-                        fk.to_schema,
-                        fk.to_table,
-                        fk.to_columns.join(", ")
-                    )),
-                ]
+                foreign_key_row(&table.foreign_keys[idx])
+                    .into_iter()
+                    .map(Cell::from)
+                    .collect()
             },
         );
     }
@@ -621,7 +579,7 @@ impl Inspector {
                         if let Some(qual) = &policy.qual {
                             lines.push(Line::from(format!(
                                 "    USING: {}",
-                                truncate_cell(qual, 50)
+                                truncate_to_width(qual, 50)
                             )));
                         }
                     }
@@ -755,35 +713,49 @@ impl Inspector {
     }
 }
 
-fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>, u16) {
-    let mut true_total: u16 = 0;
-    let clamped: Vec<u16> = headers
+fn index_row(index: &Index) -> Vec<String> {
+    vec![
+        index.name.clone(),
+        index.columns.join(", "),
+        format!("{:?}", index.index_type).to_lowercase(),
+        if index.is_unique() {
+            "✓".to_string()
+        } else {
+            String::new()
+        },
+    ]
+}
+
+fn foreign_key_row(fk: &ForeignKey) -> Vec<String> {
+    vec![
+        fk.name.clone(),
+        fk.from_columns.join(", "),
+        format!(
+            "{}.{}({})",
+            fk.to_schema,
+            fk.to_table,
+            fk.to_columns.join(", ")
+        ),
+    ]
+}
+
+fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<u16> {
+    use unicode_width::UnicodeWidthStr;
+
+    headers
         .iter()
         .enumerate()
         .map(|(col_idx, header)| {
-            let mut max_width = header.chars().count();
+            let mut max_width = UnicodeWidthStr::width(*header);
 
             for row in rows.iter().take(50) {
                 if let Some(cell) = row.get(col_idx) {
-                    max_width = max_width.max(cell.chars().count());
+                    max_width = max_width.max(UnicodeWidthStr::width(cell.as_str()));
                 }
             }
 
-            let true_width = max_width as u16 + PADDING;
-            true_total += true_width;
-            true_width.clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
+            let max_width = max_width.min(MAX_COL_WIDTH as usize) as u16;
+            (max_width + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
         })
-        .collect();
-
-    (clamped, true_total)
-}
-
-fn truncate_cell(s: &str, max_chars: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count <= max_chars {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
-        format!("{truncated}...")
-    }
+        .collect()
 }

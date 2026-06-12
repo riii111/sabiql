@@ -9,13 +9,15 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_er_picker(
     state: &mut AppState,
     action: &Action,
-    _now: Instant,
+    now: Instant,
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ErTablePicker) => {
             if state.session.metadata().is_none() {
                 state.ui.request_er_picker_after_metadata();
-                state.set_success("Waiting for metadata...".to_string());
+                state
+                    .messages
+                    .set_success_at("Waiting for metadata...".to_string(), now);
                 return DispatchResult::handled();
             }
             state.ui.reset_er_picker_request();
@@ -69,7 +71,9 @@ pub(super) fn reduce_er_picker(
         }
         Action::ErConfirmSelection => {
             if state.ui.er_selected_tables().is_empty() {
-                state.set_error("No tables selected".to_string());
+                state
+                    .messages
+                    .set_error_at("No tables selected".to_string(), now);
                 return DispatchResult::handled();
             }
             state

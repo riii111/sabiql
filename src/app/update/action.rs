@@ -46,26 +46,7 @@ pub enum ErLogError {
     Config(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CursorMove {
-    Left,
-    Right,
-    Up,
-    Down,
-    Home,
-    End,
-    LineStart,
-    LineEnd,
-    WordForward,
-    WordBackward,
-    BufferStart,
-    BufferEnd,
-    FirstLine,
-    LastLine,
-    ViewportTop,
-    ViewportMiddle,
-    ViewportBottom,
-}
+pub use crate::model::shared::cursor::CursorMove;
 
 // ---------------------------------------------------------------------------
 // Parametric Action types
@@ -443,7 +424,7 @@ pub enum Action {
     SqlModalSubmit,
     SqlModalClear,
     SqlModalCancelConfirm,
-    SqlModalHighRiskConfirmExecute,
+    SqlModalConfirmExecute,
     SqlModalNextTab,
     SqlModalPrevTab,
     CompletionTrigger,
@@ -512,9 +493,17 @@ pub enum Action {
     ResultCellLeft,
     ResultCellRight,
     ResultCellYank,
+    ResultCellYankSuccess {
+        row: usize,
+        col: usize,
+    },
     ResultRowYankOperatorPending,
     ResultRowYank,
+    ResultRowYankSuccess {
+        row: usize,
+    },
     DdlYank,
+    DdlYankSuccess,
     ResultDeleteOperatorPending,
     StageRowForDelete,
     UnstageLastStagedRow,
@@ -525,7 +514,6 @@ pub enum Action {
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
     OpenWritePreviewConfirm(Box<WritePreview>),
-    CellCopied,
     CopyFailed(ClipboardError),
     OpenFolderFailed(FolderOpenError),
     ToggleFocus,
@@ -576,6 +564,7 @@ pub enum Action {
 
     // JSONB detail
     JsonbYankAll,
+    JsonbYankSuccess,
     JsonbEnterEdit,
     JsonbAppendInsert,
     JsonbExitEdit,

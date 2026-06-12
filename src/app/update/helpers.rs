@@ -208,7 +208,6 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
     state.clear_validation_error(field);
 
     match field {
-        ConnectionField::DatabaseType => {}
         ConnectionField::SqlitePath => {
             match crate::domain::connection::SqliteConnectionConfig::new(
                 state
@@ -292,7 +291,7 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 state.set_validation_error(field, "Name must be 50 characters or less");
             }
         }
-        ConnectionField::Password | ConnectionField::SslMode => {}
+        ConnectionField::DatabaseType | ConnectionField::Password | ConnectionField::SslMode => {}
     }
 }
 
@@ -308,7 +307,6 @@ pub fn validate_all(state: &mut ConnectionSetupState) {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use std::time::Instant;
 
     use crate::domain::{Column, ColumnAttributes, DatabaseType, QuerySource, Table};
     use rstest::rstest;
@@ -436,54 +434,6 @@ mod tests {
         }
     }
 
-    mod delete_refresh_target {
-        fn deletion_refresh_target(
-            row_count: usize,
-            selected_row: usize,
-            current_page: usize,
-        ) -> (usize, Option<usize>) {
-            if row_count <= 1 {
-                if current_page > 0 {
-                    (current_page - 1, Some(usize::MAX))
-                } else {
-                    (0, None)
-                }
-            } else if selected_row < row_count - 1 {
-                (current_page, Some(selected_row))
-            } else {
-                (current_page, Some(row_count - 2))
-            }
-        }
-
-        #[test]
-        fn single_row_first_page_clears_selection() {
-            let (page, row) = deletion_refresh_target(1, 0, 0);
-            assert_eq!(page, 0);
-            assert_eq!(row, None);
-        }
-
-        #[test]
-        fn single_row_non_first_page_goes_previous_page_last_row() {
-            let (page, row) = deletion_refresh_target(1, 0, 2);
-            assert_eq!(page, 1);
-            assert_eq!(row, Some(usize::MAX));
-        }
-
-        #[test]
-        fn middle_row_keeps_same_index() {
-            let (page, row) = deletion_refresh_target(3, 1, 4);
-            assert_eq!(page, 4);
-            assert_eq!(row, Some(1));
-        }
-
-        #[test]
-        fn last_row_selects_previous_row() {
-            let (page, row) = deletion_refresh_target(3, 2, 4);
-            assert_eq!(page, 4);
-            assert_eq!(row, Some(1));
-        }
-    }
-
     mod delete_refresh_target_bulk {
         use super::*;
 
@@ -538,17 +488,15 @@ mod tests {
                 database_type,
                 dsn,
             );
-            state.query.set_current_result(Arc::new(QueryResult {
-                query: "SELECT * FROM users".to_string(),
-                columns: vec!["id".to_string(), "name".to_string()],
-                rows: vec![vec!["1".to_string(), "Alice".to_string()]],
-                row_count: 1,
-                execution_time_ms: 10,
-                executed_at: Instant::now(),
-                source: QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT * FROM users".to_string(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec!["1".to_string(), "Alice".to_string()]],
+                    10,
+                    QuerySource::Preview,
+                )));
             state.session.set_table_detail_raw(Some(Table {
                 schema: "main".to_string(),
                 name: "users".to_string(),

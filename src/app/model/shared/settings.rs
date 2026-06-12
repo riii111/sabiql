@@ -1,6 +1,6 @@
 use super::text_input::TextInputState;
 use super::theme_id::ThemeId;
-use crate::update::action::CursorMove;
+use crate::model::shared::cursor::CursorMove;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
@@ -84,7 +84,7 @@ impl ErBrowserChoice {
         match browser
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(|value| value.to_ascii_lowercase())
+            .map(str::to_ascii_lowercase)
             .as_deref()
         {
             None => Self::SystemDefault,

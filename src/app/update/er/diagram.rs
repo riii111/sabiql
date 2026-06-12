@@ -8,7 +8,7 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_diagram_lifecycle(
     state: &mut AppState,
     action: &Action,
-    _now: Instant,
+    now: Instant,
 ) -> DispatchResult {
     match action {
         Action::ErDiagramOpened(ErDiagramInfo {
@@ -19,18 +19,21 @@ pub(super) fn reduce_diagram_lifecycle(
             state.er_preparation.mark_idle();
             // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
             state.sql_modal.invalidate_prefetch();
-            state.set_success(format!(
-                "✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"
-            ));
+            state.messages.set_success_at(
+                format!(
+                    "✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"
+                ),
+                now,
+            );
             DispatchResult::handled()
         }
         Action::ErDiagramFailed(error) => {
             state.er_preparation.mark_idle();
-            state.set_error(error.to_string());
+            state.messages.set_error_at(error.to_string(), now);
             DispatchResult::handled()
         }
         Action::ErLogWriteFailed(error) => {
-            state.set_error(error.to_string());
+            state.messages.set_error_at(error.to_string(), now);
             DispatchResult::handled()
         }
         Action::ErOpenDiagram => {
@@ -39,17 +42,23 @@ pub(super) fn reduce_diagram_lifecycle(
             }
 
             let Some(dsn) = state.session.dsn().map(String::from) else {
-                state.set_error("No active connection".to_string());
+                state
+                    .messages
+                    .set_error_at("No active connection".to_string(), now);
                 return DispatchResult::handled();
             };
             if state.session.metadata().is_none() {
-                state.set_error("Metadata not loaded yet".to_string());
+                state
+                    .messages
+                    .set_error_at("Metadata not loaded yet".to_string(), now);
                 return DispatchResult::handled();
             }
 
             state.sql_modal.invalidate_prefetch();
             let run_id = state.er_preparation.start_waiting_run();
-            state.set_success("Checking for schema changes...".to_string());
+            state
+                .messages
+                .set_success_at("Checking for schema changes...".to_string(), now);
 
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
         }

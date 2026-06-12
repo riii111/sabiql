@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
@@ -5,7 +7,11 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::check_er_completion;
 
-pub(super) fn reduce_er_neighbors(state: &mut AppState, action: &Action) -> DispatchResult {
+pub(super) fn reduce_er_neighbors(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+) -> DispatchResult {
     match action {
         Action::ExpandPrefetchWithFkNeighbors => {
             let seed_tables = state.er_preparation.seed_tables().to_vec();
@@ -19,7 +25,7 @@ pub(super) fn reduce_er_neighbors(state: &mut AppState, action: &Action) -> Disp
 
             if tables.is_empty() {
                 // No new neighbors — proceed to generate with what we have
-                return DispatchResult::handled_with(check_er_completion(state));
+                return DispatchResult::handled_with(check_er_completion(state, now));
             }
 
             for qualified_name in tables {

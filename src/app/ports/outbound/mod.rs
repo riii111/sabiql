@@ -1,8 +1,7 @@
 //! Port traits and their error types.
 //!
-//! Error variants carry source types (`std::io::Error`, `arboard::Error`, etc.)
-//! via `#[source]` to preserve `Error::source()` chains. Method signatures stay
-//! free of adapter-specific types; only error sources are exposed.
+//! Error variants may preserve `Error::source()` chains, but method signatures
+//! stay free of adapter-specific types.
 
 pub mod clipboard;
 pub mod config_writer;
@@ -13,7 +12,6 @@ pub mod dsn_builder;
 pub mod er_exporter;
 pub mod er_log_writer;
 pub mod folder_opener;
-pub mod graphviz;
 pub mod metadata;
 pub mod query_executor;
 pub mod query_history;
@@ -31,7 +29,6 @@ pub use dsn_builder::DsnBuilder;
 pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};
 pub use er_log_writer::ErLogWriter;
 pub use folder_opener::{FolderOpenError, FolderOpener};
-pub use graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 pub use metadata::MetadataProvider;
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};

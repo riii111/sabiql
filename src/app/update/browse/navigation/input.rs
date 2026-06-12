@@ -396,7 +396,6 @@ mod tests {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 table_summaries: tables,
-                fetched_at: Instant::now(),
             })));
             state
         }

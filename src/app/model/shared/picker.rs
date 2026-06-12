@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::update::action::CursorMove;
+use crate::model::shared::cursor::CursorMove;
 
 use super::text_input::TextInputState;
 

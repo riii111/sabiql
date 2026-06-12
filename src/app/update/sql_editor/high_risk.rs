@@ -31,7 +31,7 @@ pub(super) fn reduce_high_risk_confirmation(
         Action::SqlModalCancelConfirm => {
             if matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh { .. }
+                SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
             ) {
                 state.sql_modal.cancel_confirmation();
                 state.ui.set_key_sequence(KeySequenceState::Idle);
@@ -41,7 +41,6 @@ pub(super) fn reduce_high_risk_confirmation(
             }
         }
 
-        // HIGH risk confirmation input (adhoc + EXPLAIN ANALYZE)
         Action::TextInput {
             target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
             ch: c,
@@ -72,7 +71,7 @@ pub(super) fn reduce_high_risk_confirmation(
             DispatchResult::handled()
         }
 
-        Action::SqlModalHighRiskConfirmExecute => {
+        Action::SqlModalConfirmExecute => {
             // `matches!` + flag instead of `if let` because the immutable borrow
             // from pattern matching must end before we can mutate `state.sql_modal.status`.
             let matched = matches!(
@@ -81,7 +80,10 @@ pub(super) fn reduce_high_risk_confirmation(
                     target_name,
                     input,
                     ..
-                } if target_name.as_ref().is_some_and(|n| input.content() == n)
+                } if input.content() == target_name.as_str()
+            ) || matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk { .. }
             );
             if matched {
                 let query = state.sql_modal.editor.content().trim().to_string();

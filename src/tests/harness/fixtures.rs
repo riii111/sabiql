@@ -1,11 +1,9 @@
-use std::time::Instant;
-
 use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
     IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
-pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
+pub fn sample_metadata() -> DatabaseMetadata {
     DatabaseMetadata {
         database_name: "test_db".to_string(),
         schemas: vec![],
@@ -19,7 +17,6 @@ pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
                 false,
             ),
         ],
-        fetched_at: now,
     }
 }
 
@@ -95,11 +92,11 @@ pub fn sample_table_detail() -> Table {
     }
 }
 
-pub fn sample_query_result(now: Instant) -> QueryResult {
-    QueryResult {
-        query: "SELECT * FROM users LIMIT 100".to_string(),
-        columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
-        rows: vec![
+pub fn sample_query_result() -> QueryResult {
+    QueryResult::success(
+        "SELECT * FROM users LIMIT 100".to_string(),
+        vec!["id".to_string(), "name".to_string(), "email".to_string()],
+        vec![
             vec![
                 "1".to_string(),
                 "Alice".to_string(),
@@ -111,25 +108,17 @@ pub fn sample_query_result(now: Instant) -> QueryResult {
                 "bob@example.com".to_string(),
             ],
         ],
-        row_count: 2,
-        execution_time_ms: 15,
-        executed_at: now,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }
+        15,
+        QuerySource::Preview,
+    )
 }
 
-pub fn empty_query_result(now: Instant) -> QueryResult {
-    QueryResult {
-        query: "SELECT * FROM users WHERE 1=0".to_string(),
-        columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
-        rows: vec![],
-        row_count: 0,
-        execution_time_ms: 5,
-        executed_at: now,
-        source: QuerySource::Preview,
-        error: None,
-        command_tag: None,
-    }
+pub fn empty_query_result() -> QueryResult {
+    QueryResult::success(
+        "SELECT * FROM users WHERE 1=0".to_string(),
+        vec!["id".to_string(), "name".to_string(), "email".to_string()],
+        vec![],
+        5,
+        QuerySource::Preview,
+    )
 }

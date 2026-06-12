@@ -207,7 +207,9 @@ fn footer_shows_success_message() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
-    state.messages.set_success("Reconnected!".to_string());
+    state
+        .messages
+        .set_success_at("Reconnected!".to_string(), std::time::Instant::now());
 
     let output = render_to_string(&mut terminal, &mut state);
 

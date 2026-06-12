@@ -25,12 +25,6 @@ impl RuntimeState {
     pub fn set_service_file_path(&mut self, path: Option<PathBuf>) {
         self.service_file_path = path;
     }
-
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(crate) fn set_project_name_for_test(&mut self, project_name: String) {
-        self.project_name = project_name;
-    }
 }
 
 #[cfg(test)]

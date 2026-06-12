@@ -9,7 +9,7 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_smart_refresh_completed(
     state: &mut AppState,
     action: &Action,
-    _now: Instant,
+    now: Instant,
 ) -> DispatchResult {
     match action {
         Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -49,8 +49,9 @@ pub(super) fn reduce_smart_refresh_completed(
             refetch.dedup();
 
             if refetch.is_empty() {
-                state.set_success(
+                state.messages.set_success_at(
                     "No schema changes detected, generating ER diagram...".to_string(),
+                    now,
                 );
                 effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
             } else {
@@ -59,10 +60,10 @@ pub(super) fn reduce_smart_refresh_completed(
                         tables: stale_tables.clone(),
                     });
                 }
-                state.set_success(format!(
-                    "Refreshing {} table(s) for ER diagram...",
-                    refetch.len()
-                ));
+                state.messages.set_success_at(
+                    format!("Refreshing {} table(s) for ER diagram...", refetch.len()),
+                    now,
+                );
                 effects.push(Effect::DispatchActions(vec![Action::StartPrefetchScoped {
                     tables: refetch,
                 }]));

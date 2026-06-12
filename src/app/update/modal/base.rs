@@ -17,8 +17,7 @@ pub(super) fn reduce_base_lifecycle(
             state.ui.table_picker_mut().clear_filter_and_reset();
             DispatchResult::handled()
         }
-        Action::CloseModal(ModalKind::TablePicker)
-        | Action::CloseModal(ModalKind::CommandPalette) => {
+        Action::CloseModal(ModalKind::TablePicker | ModalKind::CommandPalette) => {
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
