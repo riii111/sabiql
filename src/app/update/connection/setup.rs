@@ -22,23 +22,23 @@ pub fn reduce_connection_setup(
                 state.connection_setup.set_first_run(false);
             }
             state.modal.set_mode(InputMode::ConnectionSetup);
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::StartEditConnection(id) => {
-            DispatchResult::Handled(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
+            DispatchResult::handled_with(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
         }
         Action::ConnectionEditLoaded(profile) => {
             state.connection_setup = ConnectionSetupState::from(&**profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::ConnectionEditLoadFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::ConnectionSetup) => {
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
 
         // ===== Clipboard Paste =====
@@ -68,7 +68,7 @@ pub fn reduce_connection_setup(
                     }
                 }
             }
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
 
         // ===== Connection Setup Form =====
@@ -93,7 +93,7 @@ pub fn reduce_connection_setup(
                     }
                 }
             }
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::ConnectionSetup,
@@ -103,7 +103,7 @@ pub fn reduce_connection_setup(
                 input.backspace();
                 input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
             }
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::TextMoveCursor {
             target: InputTarget::ConnectionSetup,
@@ -114,55 +114,55 @@ pub fn reduce_connection_setup(
                 input.move_cursor(*movement);
                 input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
             }
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::ConnectionSetupNextField => {
             let setup = &mut state.connection_setup;
             validate_field(setup, setup.focused_field());
             setup.focus_next_field();
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::ConnectionSetupPrevField => {
             let setup = &mut state.connection_setup;
             validate_field(setup, setup.focused_field());
             setup.focus_prev_field();
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::ConnectionSetupToggleDropdown => {
             state.connection_setup.toggle_focused_dropdown();
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::ConnectionSetupDropdownNext => {
             state.connection_setup.dropdown_next();
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::ConnectionSetupDropdownPrev => {
             state.connection_setup.dropdown_prev();
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::ConnectionSetupDropdownConfirm => {
             state.connection_setup.confirm_dropdown();
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::ConnectionSetupDropdownCancel => {
             state.connection_setup.cancel_dropdown();
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
         Action::ConnectionSetupSave => {
             let setup = &mut state.connection_setup;
             validate_all(setup);
             if setup.has_validation_errors() {
-                DispatchResult::Handled(vec![])
+                DispatchResult::handled()
             } else {
                 let config = match setup.to_connection_config() {
                     Ok(config) => config,
                     Err(error) => {
                         setup.record_sqlite_config_error(error);
-                        return DispatchResult::Handled(vec![]);
+                        return DispatchResult::handled();
                     }
                 };
                 state.session.mark_connecting();
-                DispatchResult::Handled(vec![Effect::SaveAndConnect {
+                DispatchResult::handled_with(vec![Effect::SaveAndConnect {
                     id: setup.editing_id().cloned(),
                     name: setup
                         .input(ConnectionField::Name)
@@ -181,10 +181,12 @@ pub fn reduce_connection_setup(
                     crate::model::shared::confirm_dialog::ConfirmIntent::QuitNoConnection,
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
-                DispatchResult::Handled(vec![])
+                DispatchResult::handled()
             } else {
                 state.modal.set_mode(InputMode::Normal);
-                DispatchResult::Handled(vec![Effect::DispatchActions(vec![Action::TryConnect])])
+                DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
+                    Action::TryConnect,
+                ])])
             }
         }
         Action::ConnectionSaveCompleted(ConnectionTarget {
@@ -200,7 +202,7 @@ pub fn reduce_connection_setup(
                 .set_active_connection_with_dsn(id, name, *database_type, dsn);
             state.session.disable_read_only();
             let run_id = state.session.begin_connecting(dsn);
-            DispatchResult::Handled(vec![Effect::FetchMetadata {
+            DispatchResult::handled_with(vec![Effect::FetchMetadata {
                 dsn: dsn.clone(),
                 run_id,
             }])
@@ -210,7 +212,7 @@ pub fn reduce_connection_setup(
                 state.session.mark_disconnected();
             }
             state.messages.set_error_at(e.to_string(), now);
-            DispatchResult::Handled(vec![])
+            DispatchResult::handled()
         }
 
         _ => DispatchResult::pass(),
