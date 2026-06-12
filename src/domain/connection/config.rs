@@ -32,7 +32,7 @@ impl PostgresConnectionConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SqliteConnectionConfig {
     path: String,
 }
@@ -58,6 +58,21 @@ impl SqliteConnectionConfig {
 
     pub fn path(&self) -> &str {
         &self.path
+    }
+}
+
+impl<'de> Deserialize<'de> for SqliteConnectionConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawSqliteConnectionConfig {
+            path: String,
+        }
+
+        let raw = RawSqliteConnectionConfig::deserialize(deserializer)?;
+        Self::new(raw.path).map_err(serde::de::Error::custom)
     }
 }
 
@@ -96,6 +111,38 @@ impl ConnectionConfig {
         match self {
             Self::SQLite(config) => Some(config),
             Self::PostgreSQL(_) => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod sqlite_deserialize {
+        use super::*;
+
+        #[test]
+        fn accepts_valid_path() {
+            let config: SqliteConnectionConfig =
+                serde_json::from_str(r#"{ "path": "/tmp/app.db" }"#).unwrap();
+
+            assert_eq!(config.path(), "/tmp/app.db");
+        }
+
+        #[test]
+        fn rejects_empty_path() {
+            let result = serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "   " }"#);
+
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn rejects_control_characters() {
+            let result =
+                serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "/tmp/app\n.db" }"#);
+
+            assert!(result.is_err());
         }
     }
 }
