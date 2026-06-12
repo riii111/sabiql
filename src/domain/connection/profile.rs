@@ -37,27 +37,6 @@ pub struct ConnectionProfile {
 }
 
 impl ConnectionProfile {
-    pub fn new(
-        name: impl Into<String>,
-        host: impl Into<String>,
-        port: u16,
-        database: impl Into<String>,
-        username: impl Into<String>,
-        password: impl Into<String>,
-        ssl_mode: SslMode,
-    ) -> Result<Self, ConnectionNameError> {
-        Self::new_postgres(name, host, port, database, username, password, ssl_mode).map_err(|e| {
-            match e {
-                ConnectionProfileError::Name(e) => e,
-                ConnectionProfileError::EmptySqlitePath
-                | ConnectionProfileError::InvalidSqlitePath
-                | ConnectionProfileError::MissingPostgresField(_) => {
-                    unreachable!("postgres constructor")
-                }
-            }
-        })
-    }
-
     pub fn new_postgres(
         name: impl Into<String>,
         host: impl Into<String>,
@@ -85,27 +64,6 @@ impl ConnectionProfile {
             name: ConnectionName::new(name)?,
             config: ConnectionConfig::SQLite(SqliteConnectionConfig::new(path)?),
         })
-    }
-
-    pub fn with_id(
-        id: ConnectionId,
-        name: impl Into<String>,
-        host: impl Into<String>,
-        port: u16,
-        database: impl Into<String>,
-        username: impl Into<String>,
-        password: impl Into<String>,
-        ssl_mode: SslMode,
-    ) -> Result<Self, ConnectionNameError> {
-        Self::with_id_postgres(id, name, host, port, database, username, password, ssl_mode)
-            .map_err(|e| match e {
-                ConnectionProfileError::Name(e) => e,
-                ConnectionProfileError::EmptySqlitePath
-                | ConnectionProfileError::InvalidSqlitePath
-                | ConnectionProfileError::MissingPostgresField(_) => {
-                    unreachable!("postgres constructor")
-                }
-            })
     }
 
     pub fn with_id_postgres(
@@ -176,7 +134,7 @@ mod tests {
     use super::*;
 
     fn make_test_profile() -> ConnectionProfile {
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             "Test Connection",
             "localhost",
             5432,
@@ -200,7 +158,7 @@ mod tests {
 
         #[test]
         fn empty_name_returns_error() {
-            let result = ConnectionProfile::new(
+            let result = ConnectionProfile::new_postgres(
                 "",
                 "localhost",
                 5432,

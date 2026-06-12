@@ -537,7 +537,7 @@ mod tests {
             let (tx, mut rx) = mpsc::channel::<Action>(16);
             let runner = make_runner_with_dsn_builder(tx);
 
-            let profile = ConnectionProfile::new(
+            let profile = ConnectionProfile::new_postgres(
                 "My DB",
                 "db.example.com",
                 5432,

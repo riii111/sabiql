@@ -11,6 +11,13 @@ use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::inspector_tab::InspectorTab;
 
+#[derive(Debug, Clone)]
+struct ActiveConnection {
+    id: ConnectionId,
+    name: String,
+    database_type: DatabaseType,
+}
+
 // # Invariants
 //
 // - `connection_state` and `metadata_state` always transition as a pair
@@ -44,9 +51,7 @@ pub struct BrowseSession {
 
     // -- co-dependent: connection identity / lifecycle --
     dsn: Option<String>,
-    active_connection_id: Option<ConnectionId>,
-    active_connection_name: Option<String>,
-    active_database_type: Option<DatabaseType>,
+    active_connection: Option<ActiveConnection>,
     active_db_capabilities: DbCapabilities,
     read_only: bool,
     is_reloading: bool,
@@ -64,9 +69,7 @@ impl Default for BrowseSession {
             metadata_run: AsyncRun::default(),
             table_detail_run: AsyncRun::default(),
             dsn: None,
-            active_connection_id: None,
-            active_connection_name: None,
-            active_database_type: None,
+            active_connection: None,
             active_db_capabilities: DbCapabilities::disconnected(),
             read_only: false,
             is_reloading: false,
@@ -139,11 +142,14 @@ impl BrowseSession {
         database_type: DatabaseType,
         dsn: &str,
     ) {
-        self.active_connection_id = Some(id.clone());
-        self.active_connection_name = Some(name.to_string());
-        self.active_database_type = Some(database_type);
+        self.active_connection = Some(ActiveConnection {
+            id: id.clone(),
+            name: name.to_string(),
+            database_type,
+        });
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
+        self.read_only = false;
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -154,24 +160,23 @@ impl BrowseSession {
         name: &str,
         database_type: DatabaseType,
     ) {
-        self.active_connection_id = Some(id.clone());
-        self.active_connection_name = Some(name.to_string());
-        self.active_database_type = Some(database_type);
+        self.active_connection = Some(ActiveConnection {
+            id: id.clone(),
+            name: name.to_string(),
+            database_type,
+        });
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
     }
 
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
     pub fn set_active_database_type_for_test(&mut self, database_type: DatabaseType) {
-        self.active_database_type = Some(database_type);
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
     }
 
     pub fn clear_connection(&mut self) {
         self.dsn = None;
-        self.active_connection_id = None;
-        self.active_connection_name = None;
-        self.active_database_type = None;
+        self.active_connection = None;
         self.active_db_capabilities = DbCapabilities::disconnected();
     }
 
@@ -284,7 +289,6 @@ impl BrowseSession {
     ) {
         self.restore_from_cache(cache, query);
         self.set_active_connection_with_dsn(id, name, database_type, dsn);
-        self.disable_read_only();
     }
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
@@ -347,19 +351,25 @@ impl BrowseSession {
     }
 
     pub fn active_connection_id(&self) -> Option<&ConnectionId> {
-        self.active_connection_id.as_ref()
+        self.active_connection
+            .as_ref()
+            .map(|connection| &connection.id)
     }
 
     pub fn active_connection_name(&self) -> Option<&str> {
-        self.active_connection_name.as_deref()
+        self.active_connection
+            .as_ref()
+            .map(|connection| connection.name.as_str())
     }
 
     pub fn active_database_type(&self) -> Option<DatabaseType> {
-        self.active_database_type
+        self.active_connection
+            .as_ref()
+            .map(|connection| connection.database_type)
     }
 
     pub fn active_database_type_or_default(&self) -> DatabaseType {
-        self.active_database_type.unwrap_or_default()
+        self.active_database_type().unwrap_or_default()
     }
 
     pub fn active_db_capabilities(&self) -> &DbCapabilities {

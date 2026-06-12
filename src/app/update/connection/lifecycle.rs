@@ -22,7 +22,6 @@ fn reset_for_new_connection(
     state
         .session
         .set_active_connection_with_dsn(id, name, database_type, dsn);
-    state.session.disable_read_only();
 }
 
 pub fn reduce_connection_lifecycle(
@@ -47,19 +46,20 @@ pub fn reduce_connection_lifecycle(
             }
         }
 
-        Action::SwitchConnection(ConnectionTarget {
-            id,
-            dsn,
-            name,
-            database_type,
-        }) => {
+        Action::SwitchConnection(target) => {
+            let ConnectionTarget {
+                id,
+                dsn,
+                name,
+                database_type,
+            } = target;
             if let Some(current_id) = state.session.active_connection_id().cloned() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
-                restore_cache(state, &cached, id, name, *database_type, dsn);
+                restore_cache(state, &cached, target);
                 DispatchResult::handled_with(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata

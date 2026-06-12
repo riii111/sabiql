@@ -200,7 +200,6 @@ pub fn reduce_connection_setup(
             state
                 .session
                 .set_active_connection_with_dsn(id, name, *database_type, dsn);
-            state.session.disable_read_only();
             let run_id = state.session.begin_connecting(dsn);
             DispatchResult::handled_with(vec![Effect::FetchMetadata {
                 dsn: dsn.clone(),
@@ -230,7 +229,7 @@ mod tests {
     }
 
     fn create_profile(name: &str) -> ConnectionProfile {
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             name.to_string(),
             "localhost".to_string(),
             5432,

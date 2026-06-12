@@ -171,7 +171,9 @@ impl ErPreparationState {
         self.status = ErStatus::Idle;
     }
 
-    pub fn mark_waiting(&mut self) {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn mark_waiting_for_test(&mut self) {
         self.status = ErStatus::Waiting;
     }
 

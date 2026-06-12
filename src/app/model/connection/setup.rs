@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-use std::path::Path;
-
 use crate::domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SqliteConnectionConfigError,
     SslMode,
 };
 use crate::model::shared::text_input::TextInputState;
+use std::collections::HashMap;
 
 pub const CONNECTION_INPUT_WIDTH: u16 = 30;
 pub const CONNECTION_INPUT_VISIBLE_WIDTH: usize = (CONNECTION_INPUT_WIDTH - 4) as usize;
@@ -24,20 +22,6 @@ pub enum ConnectionField {
 }
 
 impl ConnectionField {
-    pub fn all() -> &'static [Self] {
-        &[
-            Self::DatabaseType,
-            Self::Name,
-            Self::SqlitePath,
-            Self::Host,
-            Self::Port,
-            Self::Database,
-            Self::User,
-            Self::Password,
-            Self::SslMode,
-        ]
-    }
-
     pub fn fields_for(database_type: DatabaseType) -> &'static [Self] {
         match database_type {
             DatabaseType::PostgreSQL => &[
@@ -125,7 +109,7 @@ pub struct ConnectionSetupState {
     pub(crate) ssl_dropdown: SslModeDropdown,
     pub(crate) validation_errors: HashMap<ConnectionField, String>,
 
-    pub(crate) is_first_run: bool,
+    is_first_run: bool,
 
     pub(crate) editing_id: Option<ConnectionId>,
 }
@@ -237,48 +221,12 @@ impl ConnectionSetupState {
         &mut self.port
     }
 
-    pub fn default_name(&self) -> String {
-        match self.database_type {
-            DatabaseType::PostgreSQL => {
-                if self.database.content().is_empty() {
-                    self.host.content().to_string()
-                } else {
-                    format!("{}@{}", self.database.content(), self.host.content())
-                }
-            }
-            DatabaseType::SQLite => self
-                .sqlite_path
-                .content()
-                .file_name_for_display()
-                .unwrap_or("SQLite")
-                .to_string(),
-        }
-    }
-
     pub fn focused_input(&self) -> Option<&TextInputState> {
-        match self.focused_field {
-            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
-            ConnectionField::Name => Some(&self.name),
-            ConnectionField::SqlitePath => Some(&self.sqlite_path),
-            ConnectionField::Host => Some(&self.host),
-            ConnectionField::Port => Some(&self.port),
-            ConnectionField::Database => Some(&self.database),
-            ConnectionField::User => Some(&self.user),
-            ConnectionField::Password => Some(&self.password),
-        }
+        self.input(self.focused_field)
     }
 
     pub fn focused_input_mut(&mut self) -> Option<&mut TextInputState> {
-        match self.focused_field {
-            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
-            ConnectionField::Name => Some(&mut self.name),
-            ConnectionField::SqlitePath => Some(&mut self.sqlite_path),
-            ConnectionField::Host => Some(&mut self.host),
-            ConnectionField::Port => Some(&mut self.port),
-            ConnectionField::Database => Some(&mut self.database),
-            ConnectionField::User => Some(&mut self.user),
-            ConnectionField::Password => Some(&mut self.password),
-        }
+        self.input_mut(self.focused_field)
     }
 
     pub fn clear_errors(&mut self) {
@@ -447,19 +395,6 @@ fn base_from_profile(profile: &ConnectionProfile) -> ConnectionSetupState {
     }
 }
 
-trait PathDisplayName {
-    fn file_name_for_display(&self) -> Option<&str>;
-}
-
-impl PathDisplayName for str {
-    fn file_name_for_display(&self) -> Option<&str> {
-        Path::new(self)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .filter(|name| !name.is_empty())
-    }
-}
-
 fn next_visible_field(
     fields: &[ConnectionField],
     current: ConnectionField,
@@ -526,14 +461,6 @@ mod tests {
         ) {
             assert_eq!(field.is_required(), expected);
         }
-
-        #[test]
-        fn all_returns_fields_in_order() {
-            let all = ConnectionField::all();
-            assert_eq!(all.len(), 9);
-            assert_eq!(all[0], ConnectionField::DatabaseType);
-            assert_eq!(all[8], ConnectionField::SslMode);
-        }
     }
 
     mod connection_setup_state {
@@ -550,32 +477,8 @@ mod tests {
             assert!(state.password.content().is_empty());
             assert_eq!(state.ssl_mode, SslMode::Prefer);
             assert_eq!(state.focused_field, ConnectionField::DatabaseType);
-            assert!(state.is_first_run);
+            assert!(state.is_first_run());
             assert!(state.editing_id.is_none());
-        }
-
-        #[test]
-        fn default_name_without_database() {
-            let state = ConnectionSetupState::default();
-            assert_eq!(state.default_name(), "localhost");
-        }
-
-        #[test]
-        fn default_name_with_database() {
-            let mut state = ConnectionSetupState::default();
-            state.database.set_content("mydb".to_string());
-            assert_eq!(state.default_name(), "mydb@localhost");
-        }
-
-        #[test]
-        fn sqlite_default_name_uses_path_file_name() {
-            let mut state = ConnectionSetupState {
-                database_type: DatabaseType::SQLite,
-                ..ConnectionSetupState::default()
-            };
-            state.sqlite_path.set_content("/tmp/app.db".to_string());
-
-            assert_eq!(state.default_name(), "app.db");
         }
 
         #[test]
@@ -623,7 +526,7 @@ mod tests {
 
         #[test]
         fn from_profile_populates_all_fields() {
-            let profile = ConnectionProfile::new(
+            let profile = ConnectionProfile::new_postgres(
                 "Test DB",
                 "db.example.com",
                 5433,
@@ -644,7 +547,7 @@ mod tests {
             assert_eq!(state.password.content(), "secret");
             assert_eq!(state.ssl_mode, SslMode::Require);
             assert_eq!(state.editing_id, Some(profile.id));
-            assert!(!state.is_first_run);
+            assert!(!state.is_first_run());
         }
 
         #[test]
@@ -655,7 +558,7 @@ mod tests {
 
         #[test]
         fn is_edit_mode_returns_true_for_edit() {
-            let profile = ConnectionProfile::new(
+            let profile = ConnectionProfile::new_postgres(
                 "Test",
                 "localhost",
                 5432,

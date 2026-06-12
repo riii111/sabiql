@@ -109,7 +109,7 @@ mod tests {
     use crate::model::connection::list::build_connection_list;
 
     fn create_profile(name: &str) -> ConnectionProfile {
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             name.to_string(),
             "localhost".to_string(),
             5432,

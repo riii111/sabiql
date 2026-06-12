@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn builds_postgres_dsn_from_postgres_profile() {
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
-        let profile = ConnectionProfile::new(
+        let profile = ConnectionProfile::new_postgres(
             "Test",
             "localhost",
             5432,

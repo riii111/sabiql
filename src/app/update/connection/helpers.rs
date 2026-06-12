@@ -1,6 +1,6 @@
-use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
+use crate::update::action::ConnectionTarget;
 
 pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
     state.session.to_cache(
@@ -14,18 +14,15 @@ pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
 pub(super) fn restore_cache(
     state: &mut AppState,
     cache: &ConnectionCache,
-    id: &ConnectionId,
-    name: &str,
-    database_type: DatabaseType,
-    dsn: &str,
+    target: &ConnectionTarget,
 ) {
     state.session.restore_from_cache_for_connection(
         cache,
         &mut state.query,
-        id,
-        name,
-        database_type,
-        dsn,
+        &target.id,
+        &target.name,
+        target.database_type,
+        &target.dsn,
     );
     state.ui.set_inspector_tab(
         state

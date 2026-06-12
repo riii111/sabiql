@@ -111,7 +111,7 @@ mod tests {
     use crate::update::browse::navigation::dispatch_navigation;
 
     fn create_test_profile(name: &str) -> ConnectionProfile {
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             name,
             "localhost",
             5432,
@@ -306,7 +306,7 @@ mod tests {
         use super::*;
 
         fn create_test_profile_with_id(name: &str, id: ConnectionId) -> ConnectionProfile {
-            ConnectionProfile::with_id(
+            ConnectionProfile::with_id_postgres(
                 id,
                 name,
                 "localhost",

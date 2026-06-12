@@ -138,7 +138,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_test_profile(name: &str) -> ConnectionProfile {
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             name,
             "localhost",
             5432,

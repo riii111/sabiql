@@ -146,10 +146,6 @@ impl ExplainContext {
         self.scroll_offset = 0;
     }
 
-    pub fn reset_confirm_scroll(&mut self) {
-        self.confirm_scroll_offset = 0;
-    }
-
     pub fn set_compare_viewport_height(&mut self, height: u16) {
         self.compare_viewport_height = Some(height);
     }
@@ -164,10 +160,6 @@ impl ExplainContext {
 
     pub fn scroll_compare_to(&mut self, offset: usize) {
         self.compare_scroll_offset = offset;
-    }
-
-    pub fn right_full_query(&self) -> Option<&str> {
-        self.right.as_ref().map(|slot| slot.full_query.as_str())
     }
 
     pub fn reset_for_new_run(&mut self) {
