@@ -135,7 +135,7 @@ impl BrowseSession {
         self.begin_metadata_run()
     }
 
-    pub fn set_active_connection_with_dsn(
+    pub fn activate_connection_with_dsn(
         &mut self,
         id: &ConnectionId,
         name: &str,
@@ -170,7 +170,7 @@ impl BrowseSession {
 
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
-    pub fn set_active_database_type_for_test(&mut self, database_type: DatabaseType) {
+    pub fn set_active_db_capabilities_for_test(&mut self, database_type: DatabaseType) {
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
     }
 
@@ -288,7 +288,7 @@ impl BrowseSession {
         dsn: &str,
     ) {
         self.restore_from_cache(cache, query);
-        self.set_active_connection_with_dsn(id, name, database_type, dsn);
+        self.activate_connection_with_dsn(id, name, database_type, dsn);
     }
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
@@ -597,7 +597,7 @@ mod tests {
         #[test]
         fn mark_connecting_sets_pair_without_changing_dsn() {
             let mut session = BrowseSession::default();
-            session.set_active_connection_with_dsn(
+            session.activate_connection_with_dsn(
                 &ConnectionId::new(),
                 "postgres",
                 DatabaseType::PostgreSQL,
@@ -782,7 +782,7 @@ mod tests {
         fn clears_session_and_query_state() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            session.set_active_connection_with_dsn(
+            session.activate_connection_with_dsn(
                 &ConnectionId::new(),
                 "mydb",
                 DatabaseType::PostgreSQL,

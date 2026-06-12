@@ -52,7 +52,7 @@ mod tests {
     }
 
     fn use_postgres_connection_with_dsn(state: &mut AppState, dsn: &str) {
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::from_string("postgres-test"),
             "postgres",
             DatabaseType::PostgreSQL,
@@ -61,7 +61,7 @@ mod tests {
     }
 
     fn use_sqlite_connection(state: &mut AppState) {
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::from_string("sqlite-test"),
             "sqlite",
             DatabaseType::SQLite,

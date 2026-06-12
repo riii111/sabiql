@@ -194,7 +194,7 @@ mod tests {
     }
 
     fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
             "postgres",
             DatabaseType::PostgreSQL,
@@ -1306,7 +1306,7 @@ mod tests {
         #[test]
         fn reload_then_metadata_loaded_shows_reloaded_message() {
             let mut state = create_test_state();
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &crate::domain::connection::ConnectionId::from_string("test-connection"),
                 "test",
                 DatabaseType::PostgreSQL,
@@ -2104,7 +2104,7 @@ mod tests {
             // When already connected, metadata failure should preserve connection state
             // (metadata-only failure, e.g., permission denied on schema)
             let mut state = create_test_state();
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &crate::domain::connection::ConnectionId::from_string("test-connection"),
                 "test",
                 DatabaseType::PostgreSQL,
@@ -2232,7 +2232,7 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &conn_a,
                 "conn-a",
                 DatabaseType::PostgreSQL,
@@ -2278,7 +2278,7 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &conn_a,
                 "conn-a",
                 DatabaseType::PostgreSQL,

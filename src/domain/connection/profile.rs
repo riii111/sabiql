@@ -102,9 +102,6 @@ impl ConnectionProfile {
         name: impl Into<String>,
         config: ConnectionConfig,
     ) -> Result<Self, ConnectionProfileError> {
-        if let ConnectionConfig::SQLite(sqlite) = &config {
-            sqlite.validate()?;
-        }
         Ok(Self {
             id,
             name: ConnectionName::new(name)?,

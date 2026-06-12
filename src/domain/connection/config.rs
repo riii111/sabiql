@@ -52,10 +52,6 @@ impl SqliteConnectionConfig {
         Ok(Self { path })
     }
 
-    pub(crate) fn validate(&self) -> Result<(), SqliteConnectionConfigError> {
-        validate_sqlite_path(&self.path)
-    }
-
     pub fn path(&self) -> &str {
         &self.path
     }

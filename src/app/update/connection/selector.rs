@@ -190,7 +190,7 @@ mod tests {
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
             state.ui.set_connection_list_selected_raw(0);
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &profile_id,
                 "Production",
                 crate::domain::DatabaseType::PostgreSQL,
@@ -303,7 +303,7 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &profile_id,
                 "Production",
                 crate::domain::DatabaseType::PostgreSQL,
@@ -330,7 +330,7 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &profile_id,
                 "Production",
                 crate::domain::DatabaseType::PostgreSQL,

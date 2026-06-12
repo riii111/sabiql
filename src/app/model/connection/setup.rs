@@ -1,9 +1,10 @@
+use std::collections::HashMap;
+
 use crate::domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SqliteConnectionConfigError,
     SslMode,
 };
 use crate::model::shared::text_input::TextInputState;
-use std::collections::HashMap;
 
 pub const CONNECTION_INPUT_WIDTH: u16 = 30;
 pub const CONNECTION_INPUT_VISIBLE_WIDTH: usize = (CONNECTION_INPUT_WIDTH - 4) as usize;

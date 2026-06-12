@@ -21,7 +21,7 @@ fn reset_for_new_connection(
     state.ui.set_explorer_selection(None);
     state
         .session
-        .set_active_connection_with_dsn(id, name, database_type, dsn);
+        .activate_connection_with_dsn(id, name, database_type, dsn);
 }
 
 pub fn reduce_connection_lifecycle(
@@ -112,7 +112,7 @@ mod tests {
         let current_id = ConnectionId::new();
         let new_id = ConnectionId::new();
 
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &current_id,
             "current",
             DatabaseType::PostgreSQL,
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn sqlite_try_connect_fetches_metadata() {
         let mut state = AppState::new("test".to_string());
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::from_string("sqlite-test"),
             "sqlite",
             DatabaseType::SQLite,

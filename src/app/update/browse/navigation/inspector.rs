@@ -121,7 +121,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.set_inspector_pane_height(10);
             state.ui.set_inspector_tab(InspectorTab::Columns);
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
                 "postgres",
                 DatabaseType::PostgreSQL,
@@ -275,7 +275,7 @@ mod tests {
         }
 
         fn use_sqlite_tabs(state: &mut AppState) {
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
                 "sqlite",
                 DatabaseType::SQLite,
