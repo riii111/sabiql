@@ -256,29 +256,11 @@ impl ConnectionSetupState {
     }
 
     pub fn focused_input(&self) -> Option<&TextInputState> {
-        match self.focused_field {
-            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
-            ConnectionField::Name => Some(&self.name),
-            ConnectionField::SqlitePath => Some(&self.sqlite_path),
-            ConnectionField::Host => Some(&self.host),
-            ConnectionField::Port => Some(&self.port),
-            ConnectionField::Database => Some(&self.database),
-            ConnectionField::User => Some(&self.user),
-            ConnectionField::Password => Some(&self.password),
-        }
+        self.input(self.focused_field)
     }
 
     pub fn focused_input_mut(&mut self) -> Option<&mut TextInputState> {
-        match self.focused_field {
-            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
-            ConnectionField::Name => Some(&mut self.name),
-            ConnectionField::SqlitePath => Some(&mut self.sqlite_path),
-            ConnectionField::Host => Some(&mut self.host),
-            ConnectionField::Port => Some(&mut self.port),
-            ConnectionField::Database => Some(&mut self.database),
-            ConnectionField::User => Some(&mut self.user),
-            ConnectionField::Password => Some(&mut self.password),
-        }
+        self.input_mut(self.focused_field)
     }
 
     pub fn clear_errors(&mut self) {
