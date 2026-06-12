@@ -122,11 +122,15 @@ impl DdlGenerator for SqliteAdapter {
 }
 
 impl SqlDialect for SqliteAdapter {
-    fn build_explain_sql(&self, _query: &str) -> Option<String> {
+    fn build_explain_sql(&self, _database_type: DatabaseType, _query: &str) -> Option<String> {
         None
     }
 
-    fn build_explain_analyze_sql(&self, _query: &str) -> Option<String> {
+    fn build_explain_analyze_sql(
+        &self,
+        _database_type: DatabaseType,
+        _query: &str,
+    ) -> Option<String> {
         None
     }
 
@@ -257,6 +261,20 @@ mod tests {
     fn user_tables_query_uses_compatible_schema_table() {
         assert!(user_tables_query().contains("FROM sqlite_master"));
         assert!(user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
+    }
+
+    #[test]
+    fn explain_generation_is_unsupported() {
+        let adapter = SqliteAdapter::new();
+
+        assert_eq!(
+            adapter.build_explain_sql(DatabaseType::SQLite, "SELECT 1"),
+            None
+        );
+        assert_eq!(
+            adapter.build_explain_analyze_sql(DatabaseType::SQLite, "SELECT 1"),
+            None
+        );
     }
 
     #[test]

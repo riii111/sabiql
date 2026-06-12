@@ -70,8 +70,10 @@ pub(super) fn reduce_analyze(
                         .begin_confirming_analyze_risk(content, reason);
                 }
                 ConfirmationType::Immediate => {
-                    let Some(explain_query) =
-                        services.sql_dialect.build_explain_analyze_sql(&content)
+                    let database_type = state.session.active_database_type_or_default();
+                    let Some(explain_query) = services
+                        .sql_dialect
+                        .build_explain_analyze_sql(database_type, &content)
                     else {
                         mark_explain_unavailable(state);
                         return DispatchResult::handled();
@@ -107,7 +109,10 @@ pub(super) fn reduce_analyze(
             if let Some(query) = query
                 && let Some(dsn) = state.session.dsn().map(String::from)
             {
-                let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
+                let database_type = state.session.active_database_type_or_default();
+                let Some(explain_query) = services
+                    .sql_dialect
+                    .build_explain_analyze_sql(database_type, &query)
                 else {
                     mark_explain_unavailable(state);
                     return DispatchResult::handled();

@@ -1,8 +1,9 @@
 use crate::domain::DatabaseType;
 
 pub trait SqlDialect: Send + Sync {
-    fn build_explain_sql(&self, query: &str) -> Option<String>;
-    fn build_explain_analyze_sql(&self, query: &str) -> Option<String>;
+    fn build_explain_sql(&self, database_type: DatabaseType, query: &str) -> Option<String>;
+    fn build_explain_analyze_sql(&self, database_type: DatabaseType, query: &str)
+    -> Option<String>;
     fn build_update_sql(
         &self,
         database_type: DatabaseType,
