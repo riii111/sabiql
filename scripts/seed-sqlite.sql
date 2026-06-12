@@ -18,11 +18,33 @@ INSERT INTO agent_threads (id, external_thread_id, workspace_slug, title, agent_
 INSERT INTO agent_messages (id, thread_id, role, turn_index, content, content_hash, token_count, metadata, created_at) VALUES
 (1, 1, 'system', 0, 'You are a local coding agent. Keep answers compact, inspect real files before proposing changes, and preserve user edits. When browsing SQLite-backed memory stores, prefer read-only investigation unless explicitly asked to mutate data.', lower(hex(randomblob(16))), 42, '{"kind":"instruction"}', datetime('now', '-3 days')),
 (2, 1, 'user', 1, 'I opened a SQLite database used by an AI desktop app. Some cells contain very long prompts, Markdown summaries, and JSON tool outputs. The grid view truncates everything, so I cannot tell whether the data is valid without copying values out to another tool. Please analyze what a better TUI experience should look like.', lower(hex(randomblob(16))), 58, '{"kind":"prompt","contains_long_text":true}', datetime('now', '-3 days', '+2 minutes')),
-(3, 1, 'assistant', 2, 'The result pane should keep the grid dense and scannable, then provide a focused detail view for the selected cell. A long prompt or memory body should not expand row height inside the table because that makes navigation unstable. A modal can preserve line breaks, wrap paragraphs, support vertical scrolling, and optionally switch into a structured JSON view when the content parses as JSON.\n\nThe interaction should be read-first. Inline edit is a separate action with stronger guardrails, because opening a long prompt for inspection should never feel like the user is about to modify application memory. This is especially important for SQLite files because they are often live local state for an agent, not disposable reporting replicas.\n\nA useful first version is a cell detail modal with four rendering modes: plain text, JSON, empty/NULL, and binary or invalid UTF-8. Plain text keeps Markdown readable without trying to become a full Markdown renderer. JSON uses the existing JSONB modal behavior where possible. Binary values should show size and a short hex preview instead of corrupt text.', lower(hex(randomblob(16))), 178, '{"kind":"analysis","contains_newlines":true}', datetime('now', '-3 days', '+5 minutes')),
-(4, 2, 'user', 1, 'Here are raw interview notes. Please preserve the important wording.\n\nParticipant A said the tool feels fast until they hit a cell that contains a whole generated answer. At that point the table stops being useful because the preview is only a narrow slice of the value.\n\nParticipant B said they expect Enter to mean open or inspect, not edit. They were worried about accidentally changing memory records while exploring an agent database.\n\nParticipant C said JSON payloads should be formatted automatically, because a single-line object with escaped newlines is unreadable in a terminal grid.', lower(hex(randomblob(16))), 111, '{"kind":"research_notes","contains_newlines":true}', datetime('now', '-8 days')),
-(5, 2, 'assistant', 2, 'Three product implications stand out:\n\n1. Keep table navigation stable. Do not let long values resize rows.\n2. Add an inspect action for the selected cell. Treat it as read-only by default.\n3. Reuse existing structured JSON affordances instead of inventing a separate viewer.\n\nThe most concrete UI gap is not SQLite-specific. SQLite makes it visible because local AI tools commonly store prompts, transcripts, tool outputs, and memory summaries in TEXT columns, but PostgreSQL users with JSONB and TEXT columns will benefit from the same design.', lower(hex(randomblob(16))), 103, '{"kind":"summary","contains_markdown":true}', datetime('now', '-8 days', '+7 minutes')),
+(3, 1, 'assistant', 2, 'The result pane should keep the grid dense and scannable, then provide a focused detail view for the selected cell. A long prompt or memory body should not expand row height inside the table because that makes navigation unstable. A modal can preserve line breaks, wrap paragraphs, support vertical scrolling, and optionally switch into a structured JSON view when the content parses as JSON.
+
+The interaction should be read-first. Inline edit is a separate action with stronger guardrails, because opening a long prompt for inspection should never feel like the user is about to modify application memory. This is especially important for SQLite files because they are often live local state for an agent, not disposable reporting replicas.
+
+A useful first version is a cell detail modal with four rendering modes: plain text, JSON, empty/NULL, and binary or invalid UTF-8. Plain text keeps Markdown readable without trying to become a full Markdown renderer. JSON uses the existing JSONB modal behavior where possible. Binary values should show size and a short hex preview instead of corrupt text.', lower(hex(randomblob(16))), 178, '{"kind":"analysis","contains_newlines":true}', datetime('now', '-3 days', '+5 minutes')),
+(4, 2, 'user', 1, 'Here are raw interview notes. Please preserve the important wording.
+
+Participant A said the tool feels fast until they hit a cell that contains a whole generated answer. At that point the table stops being useful because the preview is only a narrow slice of the value.
+
+Participant B said they expect Enter to mean open or inspect, not edit. They were worried about accidentally changing memory records while exploring an agent database.
+
+Participant C said JSON payloads should be formatted automatically, because a single-line object with escaped newlines is unreadable in a terminal grid.', lower(hex(randomblob(16))), 111, '{"kind":"research_notes","contains_newlines":true}', datetime('now', '-8 days')),
+(5, 2, 'assistant', 2, 'Three product implications stand out:
+
+1. Keep table navigation stable. Do not let long values resize rows.
+2. Add an inspect action for the selected cell. Treat it as read-only by default.
+3. Reuse existing structured JSON affordances instead of inventing a separate viewer.
+
+The most concrete UI gap is not SQLite-specific. SQLite makes it visible because local AI tools commonly store prompts, transcripts, tool outputs, and memory summaries in TEXT columns, but PostgreSQL users with JSONB and TEXT columns will benefit from the same design.', lower(hex(randomblob(16))), 103, '{"kind":"summary","contains_markdown":true}', datetime('now', '-8 days', '+7 minutes')),
 (6, 3, 'user', 1, 'Draft a migration plan. The current app writes one JSON file per conversation. Each file contains messages, tool call results, compact summaries, and long-term memories. We want a single SQLite database so the desktop app can query recent work quickly, but we need to preserve debuggability.', lower(hex(randomblob(16))), 55, '{"kind":"planning_prompt"}', datetime('now', '-1 day')),
-(7, 3, 'assistant', 2, 'Recommended migration plan:\n\nPhase 1 keeps the JSON files as source of truth and builds a SQLite mirror. The mirror should include conversations, messages, tool calls, and memory items. Every imported row stores the original file path and byte offset where possible, so debugging can still jump back to the old artifact.\n\nPhase 2 changes reads to prefer SQLite while writes still update JSON first. A background verifier compares row counts, message counts, and content hashes. Any mismatch disables SQLite reads for that workspace.\n\nPhase 3 moves writes to SQLite and exports periodic JSON snapshots for recovery. At that point the UI should include a long-cell inspector because prompts, responses, and memory bodies are no longer convenient to inspect as files.', lower(hex(randomblob(16))), 145, '{"kind":"plan","contains_newlines":true}', datetime('now', '-1 day', '+9 minutes'));
+(7, 3, 'assistant', 2, 'Recommended migration plan:
+
+Phase 1 keeps the JSON files as source of truth and builds a SQLite mirror. The mirror should include conversations, messages, tool calls, and memory items. Every imported row stores the original file path and byte offset where possible, so debugging can still jump back to the old artifact.
+
+Phase 2 changes reads to prefer SQLite while writes still update JSON first. A background verifier compares row counts, message counts, and content hashes. Any mismatch disables SQLite reads for that workspace.
+
+Phase 3 moves writes to SQLite and exports periodic JSON snapshots for recovery. At that point the UI should include a long-cell inspector because prompts, responses, and memory bodies are no longer convenient to inspect as files.', lower(hex(randomblob(16))), 145, '{"kind":"plan","contains_newlines":true}', datetime('now', '-1 day', '+9 minutes'));
 
 WITH RECURSIVE seq(n) AS (
     VALUES(4)
@@ -66,7 +88,11 @@ SELECT
     CASE turns.role
         WHEN 'system' THEN 'You are running inside a local desktop agent. Use the SQLite memory store as read-only context unless the user explicitly asks for mutation. Preserve source IDs, include concise reasoning, and avoid rewriting unrelated state.'
         WHEN 'user' THEN 'Please inspect the recent memory rows for workspace ' || threads.n || '. I need to understand why the agent kept recalling an outdated instruction. The database may include long prompts, compressed summaries, JSON tool results, and offline sync records. Keep the investigation grounded in the stored rows and quote only short excerpts.'
-        WHEN 'assistant' THEN 'I found three likely causes in the local memory store.\n\nFirst, the high-importance memory row was updated after the newer correction, so retrieval score favored the stale summary. Second, the conversation summary preserved the old instruction in a dense paragraph, which made it hard to visually distinguish from the correction. Third, the background compaction job retried after a transient file lock and wrote a merged summary with both versions.\n\nA better database client flow would let the user open the long memory body in a modal, inspect related tool calls, and compare timestamps without copying values into another editor.'
+        WHEN 'assistant' THEN 'I found three likely causes in the local memory store.
+
+First, the high-importance memory row was updated after the newer correction, so retrieval score favored the stale summary. Second, the conversation summary preserved the old instruction in a dense paragraph, which made it hard to visually distinguish from the correction. Third, the background compaction job retried after a transient file lock and wrote a merged summary with both versions.
+
+A better database client flow would let the user open the long memory body in a modal, inspect related tool calls, and compare timestamps without copying values into another editor.'
         ELSE '{"tool":"memory_lookup","status":"ok","rows":[{"table":"agent_memory_items","matches":3},{"table":"background_jobs","matches":1}],"notes":"Long JSON tool payload stored as text for local debugging."}'
     END,
     lower(hex(randomblob(16))),
@@ -84,7 +110,14 @@ SELECT
     1000 + (id * 10) + 2,
     CASE id % 4 WHEN 0 THEN 'memory_lookup' WHEN 1 THEN 'sqlite_query' WHEN 2 THEN 'document_search' ELSE 'job_status' END,
     '{"workspaceId":' || (1 + (id % 8)) || ',"query":"stale instruction retrieval","limit":20,"readOnly":true}',
-    'Tool result for generated thread ' || id || '.\n\nRows inspected:\n- agent_memory_items: long body with conflicting instruction\n- document_chunks_fts: matching prompt fragments\n- background_jobs: retrying compaction job\n\nThe raw payload is intentionally multi-line so a result cell needs a detail view.',
+    'Tool result for generated thread ' || id || '.
+
+Rows inspected:
+- agent_memory_items: long body with conflicting instruction
+- document_chunks_fts: matching prompt fragments
+- background_jobs: retrying compaction job
+
+The raw payload is intentionally multi-line so a result cell needs a detail view.',
     CASE id % 9 WHEN 0 THEN 'failed' ELSE 'ok' END,
     100 + (id * 17),
     datetime('now', '-' || id || ' hours', '+4 minutes')
@@ -94,7 +127,10 @@ WHERE id >= 4;
 INSERT INTO agent_tool_calls (message_id, tool_name, arguments_json, result_text, status, elapsed_ms, created_at) VALUES
 (3, 'sqlite_schema_scan', '{"database":"/tmp/agent-memory.sqlite3","tables":["agent_messages","agent_memory_items"],"read_only":true}', 'Found local-first SQLite tables. Long text candidates: agent_messages.content, agent_memory_items.body, agent_tool_calls.result_text. JSON candidates: metadata, arguments_json, tags.', 'ok', 184, datetime('now', '-3 days', '+4 minutes')),
 (5, 'summarize_transcript', '{"mode":"extractive","preserve_quotes":true,"max_points":5}', 'The clearest repeated observation is that long cells need a separate reading surface. Participants did not ask for a spreadsheet-like expanded row; they asked for a focused view that keeps the grid usable.', 'ok', 922, datetime('now', '-8 days', '+6 minutes')),
-(7, 'migration_risk_check', '{"source":"conversation-json","target":"sqlite","checks":["hash","row-count","foreign-key"]}', 'Risk notes:\n- Message ordering must remain stable across imports.\n- Tool result payloads may contain escaped JSON inside text.\n- Memory summaries are short, but memory bodies can exceed several thousand characters.', 'ok', 441, datetime('now', '-1 day', '+8 minutes'));
+(7, 'migration_risk_check', '{"source":"conversation-json","target":"sqlite","checks":["hash","row-count","foreign-key"]}', 'Risk notes:
+- Message ordering must remain stable across imports.
+- Tool result payloads may contain escaped JSON inside text.
+- Memory summaries are short, but memory bodies can exceed several thousand characters.', 'ok', 441, datetime('now', '-1 day', '+8 minutes'));
 
 WITH RECURSIVE seq(n) AS (
     VALUES(1)
@@ -108,7 +144,21 @@ SELECT
     printf('memory.%04d.%s', n, CASE n % 4 WHEN 0 THEN 'instruction' WHEN 1 THEN 'preference' WHEN 2 THEN 'tool-result' ELSE 'summary' END),
     CASE n % 4 WHEN 0 THEN 'instruction' WHEN 1 THEN 'user_preference' WHEN 2 THEN 'tool_trace' ELSE 'conversation_summary' END,
     'Generated memory item ' || n || ' with prompt-like long text.',
-    'Memory item #' || n || '\n\nContext:\nThe user was working inside a local SQLite-backed agent database. The row stores a compact but still long memory body containing preferences, recent task state, and references to tool outputs. This is representative of desktop AI agents that keep memory in a local file so the app can recover context quickly without a server process.\n\nObserved behavior:\n- Retrieval favored this row because the importance score was high.\n- The body contains paragraphs, bullets, and JSON-looking snippets.\n- The content is too long for a table cell but too important to hide entirely.\n\nStored payload excerpt:\n{"workspace":"sabiql","reason":"exercise long text cells","sequence":' || n || ',"needsModal":true}\n\nFollow-up:\nA TUI should open this cell in a read-focused modal with wrapping, scrolling, and JSON-aware formatting when possible.',
+    'Memory item #' || n || '
+
+Context:
+The user was working inside a local SQLite-backed agent database. The row stores a compact but still long memory body containing preferences, recent task state, and references to tool outputs. This is representative of desktop AI agents that keep memory in a local file so the app can recover context quickly without a server process.
+
+Observed behavior:
+- Retrieval favored this row because the importance score was high.
+- The body contains paragraphs, bullets, and JSON-looking snippets.
+- The content is too long for a table cell but too important to hide entirely.
+
+Stored payload excerpt:
+{"workspace":"sabiql","reason":"exercise long text cells","sequence":' || n || ',"needsModal":true}
+
+Follow-up:
+A TUI should open this cell in a read-focused modal with wrapping, scrolling, and JSON-aware formatting when possible.',
     CASE n % 2 WHEN 0 THEN 'text-embedding-3-large' ELSE 'text-embedding-3-small' END,
     'embedding://memory/' || n,
     (n % 100) / 100.0,
@@ -181,7 +231,16 @@ SELECT
     f.id,
     chunk_index.idx,
     'Chunk ' || chunk_index.idx || ' from ' || f.relative_path,
-    'Document chunk from ' || f.relative_path || '\n\nThis chunk simulates local-first AI application data. It may be a prompt template, retrieved document passage, browser capture, markdown note, crash analysis, or tool result. SQLite-backed apps often keep this text directly in a TEXT column and build FTS indexes beside it.\n\nImportant details:\n- workspace_id=' || f.workspace_id || '\n- file_kind=' || f.file_kind || '\n- chunk_index=' || chunk_index.idx || '\n\nThe content is intentionally verbose so table-cell truncation is visible. Searching for phrases like stale instruction, offline sync, prompt template, crash report, or retrieved document should hit the FTS virtual table.',
+    'Document chunk from ' || f.relative_path || '
+
+This chunk simulates local-first AI application data. It may be a prompt template, retrieved document passage, browser capture, markdown note, crash analysis, or tool result. SQLite-backed apps often keep this text directly in a TEXT column and build FTS indexes beside it.
+
+Important details:
+- workspace_id=' || f.workspace_id || '
+- file_kind=' || f.file_kind || '
+- chunk_index=' || chunk_index.idx || '
+
+The content is intentionally verbose so table-cell truncation is visible. Searching for phrases like stale instruction, offline sync, prompt template, crash report, or retrieved document should hit the FTS virtual table.',
     180 + ((f.id + chunk_index.idx) % 500),
     CASE f.id % 2 WHEN 0 THEN 'text-embedding-3-small' ELSE 'text-embedding-3-large' END,
     'embedding://' || f.workspace_id || '/' || f.id || '/' || chunk_index.idx,
@@ -238,7 +297,12 @@ SELECT
     n % 4,
     5,
     '{"jobId":' || n || ',"source":"sqlite-seed","payloadKind":"local-background-work","longTextCandidate":true}',
-    CASE WHEN n % 10 IN (0, 1) THEN 'Job failed while processing a long prompt. The retry log includes enough text to require a cell detail modal.\n\nStack trace excerpt:\n  at compactMemory(memory_id=' || n || ')\n  at writeSummary(sqlite://local-agent-state)\nReason: database is locked during concurrent read.' ELSE NULL END,
+    CASE WHEN n % 10 IN (0, 1) THEN 'Job failed while processing a long prompt. The retry log includes enough text to require a cell detail modal.
+
+Stack trace excerpt:
+  at compactMemory(memory_id=' || n || ')
+  at writeSummary(sqlite://local-agent-state)
+Reason: database is locked during concurrent read.' ELSE NULL END,
     CASE WHEN n % 10 = 2 THEN datetime('now', '+5 minutes') ELSE NULL END,
     datetime('now', '-' || (n % 300) || ' minutes'),
     CASE WHEN n % 10 >= 4 THEN datetime('now', '-' || (n % 250) || ' minutes') ELSE NULL END,

@@ -103,6 +103,7 @@
               pkgs.graphviz
               pkgs.lefthook
               pkgs.postgresql
+              pkgs.sqlite
               pkgs.python3
               pkgs.ruby
             ];
