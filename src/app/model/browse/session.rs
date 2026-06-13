@@ -612,6 +612,29 @@ mod tests {
         }
 
         #[test]
+        fn activate_connection_with_dsn_disables_read_only() {
+            let mut session = BrowseSession::default();
+            let id = ConnectionId::new();
+            session.enable_read_only();
+
+            session.activate_connection_with_dsn(
+                &id,
+                "postgres",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
+
+            assert!(!session.is_read_only());
+            assert_eq!(session.dsn(), Some("postgres://localhost/test"));
+            assert_eq!(session.active_connection_id(), Some(&id));
+            assert_eq!(session.active_connection_name(), Some("postgres"));
+            assert_eq!(
+                session.active_database_type(),
+                Some(DatabaseType::PostgreSQL)
+            );
+        }
+
+        #[test]
         fn mark_connected_sets_pair_and_metadata() {
             let mut session = BrowseSession::default();
             let metadata = make_metadata("test_db");
