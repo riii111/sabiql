@@ -1,4 +1,5 @@
 use crate::domain::QueryResult;
+use crate::domain::connection::SqliteConnectionConfig;
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
 use crate::policy::write::write_guardrails::{
@@ -204,44 +205,35 @@ pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
         .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
 
+fn text_input_content(state: &ConnectionSetupState, field: ConnectionField) -> &str {
+    state
+        .input(field)
+        .expect("connection field is a text input")
+        .content()
+}
+
+fn require_non_empty(state: &mut ConnectionSetupState, field: ConnectionField, message: &str) {
+    if text_input_content(state, field).trim().is_empty() {
+        state.set_validation_error(field, message);
+    }
+}
+
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
     state.clear_validation_error(field);
 
     match field {
         ConnectionField::SqlitePath => {
-            match crate::domain::connection::SqliteConnectionConfig::new(
-                state
-                    .input(ConnectionField::SqlitePath)
-                    .expect("sqlite path is a text input")
-                    .content()
-                    .to_string(),
-            ) {
+            let path = text_input_content(state, ConnectionField::SqlitePath).to_string();
+            match SqliteConnectionConfig::new(path) {
                 Ok(_) => {}
-                Err(crate::domain::connection::SqliteConnectionConfigError::EmptyPath) => {
-                    state.set_validation_error(field, "Required");
-                }
-                Err(crate::domain::connection::SqliteConnectionConfigError::UnsupportedPath) => {
-                    state.set_validation_error(field, "Unsupported characters");
-                }
+                Err(error) => state.record_sqlite_config_error(error),
             }
         }
-        ConnectionField::Host => {
-            if state
-                .input(ConnectionField::Host)
-                .expect("host is a text input")
-                .content()
-                .trim()
-                .is_empty()
-            {
-                state.set_validation_error(field, "Required");
-            }
+        ConnectionField::Host | ConnectionField::Database | ConnectionField::User => {
+            require_non_empty(state, field, "Required");
         }
         ConnectionField::Port => {
-            let port = state
-                .input(ConnectionField::Port)
-                .expect("port is a text input")
-                .content()
-                .trim();
+            let port = text_input_content(state, field).trim();
             if port.is_empty() {
                 state.set_validation_error(field, "Required");
             } else {
@@ -256,35 +248,8 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 }
             }
         }
-        ConnectionField::Database => {
-            if state
-                .input(ConnectionField::Database)
-                .expect("database is a text input")
-                .content()
-                .trim()
-                .is_empty()
-            {
-                state.set_validation_error(field, "Required");
-            }
-        }
-        ConnectionField::User => {
-            if state
-                .input(ConnectionField::User)
-                .expect("user is a text input")
-                .content()
-                .trim()
-                .is_empty()
-            {
-                state.set_validation_error(field, "Required");
-            }
-        }
         ConnectionField::Name => {
-            let name = state
-                .input(ConnectionField::Name)
-                .expect("name is a text input")
-                .content()
-                .trim()
-                .to_string();
+            let name = text_input_content(state, field).trim().to_string();
             if name.is_empty() {
                 state.set_validation_error(field, "Name is required");
             } else if name.chars().count() > 50 {

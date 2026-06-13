@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::time::Instant;
 
 use ratatui::Frame;
@@ -226,57 +227,49 @@ impl Inspector {
         table: &'a Table,
         theme: &ThemePalette,
     ) -> Line<'a> {
-        let label_style = Style::default().add_modifier(Modifier::BOLD);
-        let none_style = Style::default().fg(theme.semantic.text.placeholder);
-
         match field {
-            InspectorInfoField::Owner => {
-                let value = table.owner.as_deref().unwrap_or("(none)");
-                let style = if table.owner.is_some() {
-                    Style::default()
-                } else {
-                    none_style
-                };
-                Line::from(vec![
-                    Span::styled("Owner:   ", label_style),
-                    Span::styled(value, style),
-                ])
-            }
-            InspectorInfoField::Comment => {
-                let value = table.comment.as_deref().unwrap_or("(none)");
-                let style = if table.comment.is_some() {
-                    Style::default()
-                } else {
-                    none_style
-                };
-                Line::from(vec![
-                    Span::styled("Comment: ", label_style),
-                    Span::styled(value, style),
-                ])
-            }
+            InspectorInfoField::Owner => Self::optional_info_line(
+                "Owner:   ",
+                table.owner.as_deref().map(Cow::Borrowed),
+                theme,
+            ),
+            InspectorInfoField::Comment => Self::optional_info_line(
+                "Comment: ",
+                table.comment.as_deref().map(Cow::Borrowed),
+                theme,
+            ),
             InspectorInfoField::RowCount => {
                 let value = table
                     .row_count_estimate
-                    .map_or_else(|| "(none)".to_string(), |n| format!("~{n}"));
-                let style = if table.row_count_estimate.is_some() {
-                    Style::default()
-                } else {
-                    none_style
-                };
-                Line::from(vec![
-                    Span::styled("Rows:    ", label_style),
-                    Span::styled(value, style),
-                ])
+                    .map(|n| Cow::Owned(format!("~{n}")));
+                Self::optional_info_line("Rows:    ", value, theme)
             }
             InspectorInfoField::Schema => Line::from(vec![
-                Span::styled("Schema:  ", label_style),
+                Self::info_label("Schema:  "),
                 Span::raw(&table.schema),
             ]),
-            InspectorInfoField::TableName => Line::from(vec![
-                Span::styled("Table:   ", label_style),
-                Span::raw(&table.name),
-            ]),
+            InspectorInfoField::TableName => {
+                Line::from(vec![Self::info_label("Table:   "), Span::raw(&table.name)])
+            }
         }
+    }
+
+    fn optional_info_line<'a>(
+        label: &'static str,
+        value: Option<Cow<'a, str>>,
+        theme: &ThemePalette,
+    ) -> Line<'a> {
+        let none_style = Style::default().fg(theme.semantic.text.placeholder);
+        let (value, style) = match value {
+            Some(value) => (value, Style::default()),
+            None => (Cow::Borrowed("(none)"), none_style),
+        };
+
+        Line::from(vec![Self::info_label(label), Span::styled(value, style)])
+    }
+
+    fn info_label(label: &'static str) -> Span<'static> {
+        Span::styled(label, Style::default().add_modifier(Modifier::BOLD))
     }
 
     fn render_columns(
