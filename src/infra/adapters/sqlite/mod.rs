@@ -978,7 +978,7 @@ impl QueryExecutor for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::test_support::make_sqlite_dsn as make_db;
+    use crate::adapters::test_support::make_sqlite_db;
     use crate::app::ports::outbound::{MetadataProvider, QueryExecutor};
     use crate::domain::{CommandTag, QuerySource};
 
@@ -1040,7 +1040,7 @@ mod tests {
 
         #[tokio::test]
         async fn returns_columns_rows_and_respects_pagination() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (2, 'b'), (1, 'a'), (3, 'c');
@@ -1060,7 +1060,7 @@ mod tests {
 
         #[tokio::test]
         async fn rejects_non_main_schema() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1091,11 +1091,12 @@ mod tests {
 
         #[test]
         fn csv_to_query_result_uses_last_result_set_for_multi_select() {
-            let csv = "ignored\n1\nbody,marker\n\"line 1\nline 2\",ok\n";
+            let sqlite_csv_with_ignored_first_result_set =
+                "ignored\n1\nbody,marker\n\"line 1\nline 2\",ok\n";
 
             let result = csv_to_query_result(
                 "SELECT 1 AS ignored; SELECT body, marker FROM notes",
-                csv,
+                sqlite_csv_with_ignored_first_result_set,
                 QuerySource::Adhoc,
                 1,
             )
@@ -1124,7 +1125,8 @@ mod tests {
 
         #[tokio::test]
         async fn select_returns_query_result() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
+            let (_dir, dsn) =
+                make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1139,7 +1141,8 @@ mod tests {
 
         #[tokio::test]
         async fn select_preserves_quoted_newline_in_multicolumn_result() {
-            let (_dir, dsn) = make_db("CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);");
+            let (_dir, dsn) =
+                make_sqlite_db("CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1161,7 +1164,7 @@ mod tests {
 
         #[tokio::test]
         async fn multi_select_preserves_quoted_newline_in_last_result() {
-            let (_dir, dsn) = make_db("");
+            let (_dir, dsn) = make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1183,7 +1186,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_returns_affected_rows_command_tag() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -1202,7 +1205,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_with_following_select_uses_trailing_changes_result() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
@@ -1284,7 +1287,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_with_trailing_line_comment_returns_affected_rows() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
@@ -1307,7 +1310,8 @@ mod tests {
 
         #[tokio::test]
         async fn dml_returning_preserves_returned_rows() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
+            let (_dir, dsn) =
+                make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1326,7 +1330,7 @@ mod tests {
 
         #[tokio::test]
         async fn update_returning_preserves_returned_rows() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -1349,7 +1353,7 @@ mod tests {
 
         #[tokio::test]
         async fn delete_returning_preserves_returned_rows() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -1373,7 +1377,7 @@ mod tests {
         #[tokio::test]
         async fn dml_table_name_containing_returning_reports_affected_rows() {
             let (_dir, dsn) =
-                make_db("CREATE TABLE returning_log(id INTEGER PRIMARY KEY, name TEXT);");
+                make_sqlite_db("CREATE TABLE returning_log(id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1388,7 +1392,7 @@ mod tests {
         #[tokio::test]
         async fn dml_backtick_quoted_identifier_containing_returning_reports_affected_rows() {
             let (_dir, dsn) =
-                make_db("CREATE TABLE `my returning`(id INTEGER PRIMARY KEY, name TEXT);");
+                make_sqlite_db("CREATE TABLE `my returning`(id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1403,7 +1407,7 @@ mod tests {
         #[tokio::test]
         async fn dml_bracket_quoted_identifier_containing_returning_reports_affected_rows() {
             let (_dir, dsn) =
-                make_db("CREATE TABLE [my returning](id INTEGER PRIMARY KEY, name TEXT);");
+                make_sqlite_db("CREATE TABLE [my returning](id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1417,7 +1421,7 @@ mod tests {
 
         #[tokio::test]
         async fn ddl_returns_schema_refresh_command_tag() {
-            let (_dir, dsn) = make_db("");
+            let (_dir, dsn) = make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1437,7 +1441,7 @@ mod tests {
 
         #[tokio::test]
         async fn returns_affected_rows() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -1455,7 +1459,7 @@ mod tests {
 
         #[tokio::test]
         async fn count_query_rows_parses_count_result() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             INSERT INTO users(id) VALUES (1), (2), (3);
@@ -1473,7 +1477,7 @@ mod tests {
 
         #[tokio::test]
         async fn export_to_csv_writes_rows_and_returns_row_count() {
-            let (dir, dsn) = make_db(
+            let (dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -1494,7 +1498,7 @@ mod tests {
 
         #[tokio::test]
         async fn read_only_write_fails() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1510,7 +1514,7 @@ mod tests {
 
         #[tokio::test]
         async fn lists_user_tables_in_main_schema() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT);
             ",
@@ -1527,7 +1531,7 @@ mod tests {
 
         #[tokio::test]
         async fn empty_database_returns_no_tables() {
-            let (_dir, dsn) = make_db("");
+            let (_dir, dsn) = make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
@@ -1542,7 +1546,7 @@ mod tests {
 
         #[tokio::test]
         async fn loads_columns_indexes_and_foreign_keys() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
@@ -1588,7 +1592,7 @@ mod tests {
 
         #[tokio::test]
         async fn without_primary_key_sets_primary_key_none() {
-            let (_dir, dsn) = make_db("CREATE TABLE logs(message TEXT);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE logs(message TEXT);");
             let adapter = SqliteAdapter::new();
 
             let detail = adapter
@@ -1602,7 +1606,7 @@ mod tests {
 
         #[tokio::test]
         async fn columns_and_fks_preserves_unique_column_attributes_without_returning_indexes() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(email TEXT UNIQUE NOT NULL);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(email TEXT UNIQUE NOT NULL);");
             let adapter = SqliteAdapter::new();
 
             let detail = adapter
@@ -1625,7 +1629,7 @@ mod tests {
 
         #[tokio::test]
         async fn composite_foreign_key_groups_columns_in_sequence_order() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
             CREATE TABLE child(
@@ -1655,7 +1659,7 @@ mod tests {
 
         #[tokio::test]
         async fn foreign_key_without_target_columns_resolves_parent_primary_key() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
             CREATE TABLE child(
@@ -1740,7 +1744,7 @@ mod tests {
 
         #[tokio::test]
         async fn non_main_schema_returns_object_missing() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter.fetch_table_detail(&dsn, "other", "users").await;
@@ -1750,7 +1754,7 @@ mod tests {
 
         #[tokio::test]
         async fn missing_table_returns_object_missing() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter.fetch_table_detail(&dsn, "main", "missing").await;
@@ -1764,7 +1768,7 @@ mod tests {
 
         #[tokio::test]
         async fn change_with_table_shape() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
@@ -1777,7 +1781,7 @@ mod tests {
 
         #[tokio::test]
         async fn include_foreign_key_update_action() {
-            let (_dir, dsn) = make_db(
+            let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
