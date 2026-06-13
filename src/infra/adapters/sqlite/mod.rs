@@ -1123,7 +1123,7 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn adhoc_select_returns_query_result() {
+        async fn select_returns_query_result() {
             let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
 
@@ -1138,7 +1138,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_select_preserves_quoted_newline_in_multicolumn_result() {
+        async fn select_preserves_quoted_newline_in_multicolumn_result() {
             let (_dir, dsn) = make_db("CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);");
             let adapter = SqliteAdapter::new();
 
@@ -1160,7 +1160,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_multi_select_preserves_quoted_newline_in_last_result() {
+        async fn multi_select_preserves_quoted_newline_in_last_result() {
             let (_dir, dsn) = make_db("");
             let adapter = SqliteAdapter::new();
 
@@ -1182,7 +1182,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_dml_returns_affected_rows_command_tag() {
+        async fn dml_returns_affected_rows_command_tag() {
             let (_dir, dsn) = make_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
@@ -1201,7 +1201,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_dml_with_following_select_uses_trailing_changes_result() {
+        async fn dml_with_following_select_uses_trailing_changes_result() {
             let (_dir, dsn) = make_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
@@ -1283,7 +1283,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_dml_with_trailing_line_comment_returns_affected_rows() {
+        async fn dml_with_trailing_line_comment_returns_affected_rows() {
             let (_dir, dsn) = make_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
@@ -1306,7 +1306,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_dml_returning_preserves_returned_rows() {
+        async fn dml_returning_preserves_returned_rows() {
             let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
 
@@ -1325,7 +1325,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_update_returning_preserves_returned_rows() {
+        async fn update_returning_preserves_returned_rows() {
             let (_dir, dsn) = make_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
@@ -1348,7 +1348,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_delete_returning_preserves_returned_rows() {
+        async fn delete_returning_preserves_returned_rows() {
             let (_dir, dsn) = make_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
@@ -1371,7 +1371,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_dml_table_name_containing_returning_reports_affected_rows() {
+        async fn dml_table_name_containing_returning_reports_affected_rows() {
             let (_dir, dsn) =
                 make_db("CREATE TABLE returning_log(id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
@@ -1386,7 +1386,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_dml_backtick_quoted_identifier_containing_returning_reports_affected_rows() {
+        async fn dml_backtick_quoted_identifier_containing_returning_reports_affected_rows() {
             let (_dir, dsn) =
                 make_db("CREATE TABLE `my returning`(id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
@@ -1401,7 +1401,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_dml_bracket_quoted_identifier_containing_returning_reports_affected_rows() {
+        async fn dml_bracket_quoted_identifier_containing_returning_reports_affected_rows() {
             let (_dir, dsn) =
                 make_db("CREATE TABLE [my returning](id INTEGER PRIMARY KEY, name TEXT);");
             let adapter = SqliteAdapter::new();
@@ -1416,7 +1416,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn adhoc_ddl_returns_schema_refresh_command_tag() {
+        async fn ddl_returns_schema_refresh_command_tag() {
             let (_dir, dsn) = make_db("");
             let adapter = SqliteAdapter::new();
 

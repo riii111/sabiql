@@ -6,7 +6,7 @@ use crate::domain::connection::{
 };
 
 pub const CURRENT_VERSION: u32 = 3;
-pub const SUPPORTED_CONFIG_VERSIONS: &[u32] = &[2, CURRENT_VERSION];
+const SUPPORTED_CONFIG_VERSIONS: &[u32] = &[2, CURRENT_VERSION];
 
 pub fn is_supported_config_version(version: u32) -> bool {
     SUPPORTED_CONFIG_VERSIONS.contains(&version)

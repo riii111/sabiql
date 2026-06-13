@@ -461,16 +461,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sqlite_columns_and_fks_are_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = make_sqlite_dsn(
-            r"
-            CREATE TABLE orgs(id INTEGER PRIMARY KEY);
-            CREATE TABLE users(
-                id INTEGER PRIMARY KEY,
-                org_id INTEGER REFERENCES orgs(id)
-            );
-            ",
-        );
+    async fn sqlite_columns_request_is_dispatched_to_sqlite_adapter() {
+        let (_dir, dsn) = make_sqlite_dsn("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let detail = registry
