@@ -61,7 +61,7 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
             "postgres",
             DatabaseType::PostgreSQL,
@@ -304,7 +304,7 @@ mod tests {
         fn retry_limit_exceeded_as_last_table_triggers_er_completion() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             // Only table remaining; retry limit exceeded
@@ -341,7 +341,7 @@ mod tests {
         fn retry_limit_exceeded_with_queue_remaining_redrives_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_expanded();
             let failed = "public.users".to_string();
             let remaining = "public.posts".to_string();
@@ -558,7 +558,7 @@ mod tests {
         fn transient_failure_then_success_clears_er_failure_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
             state.sql_modal.mark_prefetching(qualified.clone());
@@ -859,7 +859,7 @@ mod tests {
         #[test]
         fn complete_not_fk_expanded_dispatches_expand() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_unexpanded();
             // pending and fetching are empty → is_complete() = true
 
@@ -875,7 +875,7 @@ mod tests {
         #[test]
         fn complete_fk_expanded_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_expanded();
 
             let effects = check_er_completion(&mut state, Instant::now());
@@ -897,7 +897,7 @@ mod tests {
         fn empty_neighbors_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -918,7 +918,7 @@ mod tests {
         fn non_empty_neighbors_adds_to_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -953,7 +953,7 @@ mod tests {
         #[test]
         fn stale_neighbors_without_active_run_do_not_mutate_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -974,7 +974,7 @@ mod tests {
         fn duplicate_neighbors_are_not_requeued() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state
                 .er_preparation
                 .queue_pending_table("public.posts".to_string());
@@ -1022,7 +1022,7 @@ mod tests {
             // All Phase 2 tables fail → completion must still fire
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_expanded();
             let neighbor = "public.posts".to_string();
             state.er_preparation.queue_pending_table(neighbor.clone());

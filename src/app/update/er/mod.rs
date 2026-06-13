@@ -33,7 +33,7 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
             "postgres",
             DatabaseType::PostgreSQL,
@@ -143,7 +143,7 @@ mod tests {
         #[test]
         fn waiting_status_returns_empty_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
                 .into_effects()
@@ -230,7 +230,7 @@ mod tests {
         fn no_changes_dispatches_generate_from_cache() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -259,7 +259,7 @@ mod tests {
         fn stale_tables_trigger_evict_and_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -293,7 +293,7 @@ mod tests {
         fn added_tables_trigger_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -322,7 +322,7 @@ mod tests {
         fn removed_tables_trigger_evict() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -351,7 +351,7 @@ mod tests {
         fn missing_in_cache_triggers_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
@@ -380,7 +380,7 @@ mod tests {
         fn mismatched_run_id_returns_empty_for_completed() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 5);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 dsn: "postgres://localhost/test".to_string(),
@@ -404,7 +404,7 @@ mod tests {
         fn updates_metadata_and_signatures() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let new_sigs: HashMap<String, String> =
@@ -457,7 +457,7 @@ mod tests {
         fn falls_back_to_full_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(5)));
             state.er_preparation.apply_refresh_metadata(
                 HashMap::from([("public.old".to_string(), "sig".to_string())]),
@@ -501,7 +501,7 @@ mod tests {
         fn falls_back_to_scoped_prefetch_when_targets_set() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(10)));
             state
                 .er_preparation
@@ -543,7 +543,7 @@ mod tests {
         fn mismatched_run_id_returns_empty_for_failed() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 5);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(5)));
 
             let effects = reduce_er(
@@ -565,7 +565,7 @@ mod tests {
         fn mismatched_dsn_returns_empty_for_failed() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(5)));
 
             let effects = reduce_er(
@@ -590,7 +590,7 @@ mod tests {
         fn no_metadata_sets_idle_and_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
 
             let effects = reduce_er(
                 &mut state,
@@ -613,7 +613,7 @@ mod tests {
         fn new_metadata_applied_before_fallback() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.session.set_metadata(Some(make_metadata(3)));
 
             let effects = reduce_er(

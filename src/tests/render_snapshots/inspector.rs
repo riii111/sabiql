@@ -172,7 +172,7 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
     table.rls = None;
     table.triggers = vec![];
     let _ = state.session.set_table_detail(table, 0);
-    state.session.set_active_connection_with_dsn(
+    state.session.activate_connection_with_dsn(
         &ConnectionId::from_string("sqlite-test"),
         "app.db",
         DatabaseType::SQLite,

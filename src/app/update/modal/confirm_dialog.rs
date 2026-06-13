@@ -101,7 +101,7 @@ pub(super) fn reduce_confirm_dialog(
             if matches!(intent, Some(ConfirmIntent::QuitNoConnection)) {
                 state.connection_setup.reset();
                 if !state.connections().is_empty() || state.session.dsn().is_some() {
-                    state.connection_setup.is_first_run = false;
+                    state.connection_setup.set_first_run(false);
                 }
                 state.modal.pop_mode_override(InputMode::ConnectionSetup);
                 DispatchResult::handled()

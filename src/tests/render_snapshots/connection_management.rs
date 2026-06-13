@@ -6,7 +6,7 @@ use sabiql_domain::connection::{ConnectionId, ConnectionProfile, SslMode};
 fn three_connections() -> (ConnectionId, Vec<ConnectionProfile>) {
     let active_id = ConnectionId::new();
     let profiles = vec![
-        ConnectionProfile::with_id(
+        ConnectionProfile::with_id_postgres(
             active_id.clone(),
             "Production",
             "prod.example.com",
@@ -17,7 +17,7 @@ fn three_connections() -> (ConnectionId, Vec<ConnectionProfile>) {
             SslMode::Require,
         )
         .unwrap(),
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             "Staging",
             "staging.example.com",
             5432,
@@ -27,7 +27,7 @@ fn three_connections() -> (ConnectionId, Vec<ConnectionProfile>) {
             SslMode::Prefer,
         )
         .unwrap(),
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             "Local Dev",
             "localhost",
             5432,

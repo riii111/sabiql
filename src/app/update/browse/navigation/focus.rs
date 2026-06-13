@@ -114,7 +114,7 @@ mod tests {
         use super::*;
 
         fn use_sqlite_connection(state: &mut AppState) {
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
                 "sqlite",
                 DatabaseType::SQLite,

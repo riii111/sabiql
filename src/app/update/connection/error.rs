@@ -94,7 +94,7 @@ mod tests {
     use crate::domain::{ConnectionId, DatabaseType};
 
     fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
             "postgres",
             DatabaseType::PostgreSQL,
@@ -142,7 +142,7 @@ mod tests {
         #[test]
         fn blocked_for_service_connection() {
             let mut state = AppState::new("test".to_string());
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
                 "service",
                 DatabaseType::PostgreSQL,

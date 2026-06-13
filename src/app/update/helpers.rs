@@ -482,7 +482,7 @@ mod tests {
                 DatabaseType::PostgreSQL => "postgres://localhost/test",
                 DatabaseType::SQLite => "sqlite:///tmp/app.db",
             };
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &crate::domain::connection::ConnectionId::from_string("test-connection"),
                 "test",
                 database_type,

@@ -21,8 +21,7 @@ fn reset_for_new_connection(
     state.ui.set_explorer_selection(None);
     state
         .session
-        .set_active_connection_with_dsn(id, name, database_type, dsn);
-    state.session.disable_read_only();
+        .activate_connection_with_dsn(id, name, database_type, dsn);
 }
 
 pub fn reduce_connection_lifecycle(
@@ -47,19 +46,20 @@ pub fn reduce_connection_lifecycle(
             }
         }
 
-        Action::SwitchConnection(ConnectionTarget {
-            id,
-            dsn,
-            name,
-            database_type,
-        }) => {
+        Action::SwitchConnection(target) => {
+            let ConnectionTarget {
+                id,
+                dsn,
+                name,
+                database_type,
+            } = target;
             if let Some(current_id) = state.session.active_connection_id().cloned() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
-                restore_cache(state, &cached, id, name, *database_type, dsn);
+                restore_cache(state, &cached, target);
                 DispatchResult::handled_with(vec![Effect::ClearCompletionEngineCache])
             } else {
                 // No cache: reset and fetch metadata
@@ -112,7 +112,7 @@ mod tests {
         let current_id = ConnectionId::new();
         let new_id = ConnectionId::new();
 
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &current_id,
             "current",
             DatabaseType::PostgreSQL,
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn sqlite_try_connect_fetches_metadata() {
         let mut state = AppState::new("test".to_string());
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::from_string("sqlite-test"),
             "sqlite",
             DatabaseType::SQLite,

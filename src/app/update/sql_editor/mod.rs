@@ -45,7 +45,7 @@ mod tests {
     }
 
     fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::from_string("postgres-test"),
             "postgres",
             DatabaseType::PostgreSQL,

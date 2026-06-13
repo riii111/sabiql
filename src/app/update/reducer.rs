@@ -194,7 +194,7 @@ mod tests {
     }
 
     fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.set_active_connection_with_dsn(
+        state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
             "postgres",
             DatabaseType::PostgreSQL,
@@ -1306,7 +1306,7 @@ mod tests {
         #[test]
         fn reload_then_metadata_loaded_shows_reloaded_message() {
             let mut state = create_test_state();
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &crate::domain::connection::ConnectionId::from_string("test-connection"),
                 "test",
                 DatabaseType::PostgreSQL,
@@ -1450,7 +1450,7 @@ mod tests {
         #[test]
         fn metadata_failed_resets_er_waiting_to_idle() {
             let mut state = create_test_state();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             let now = Instant::now();
             use_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
@@ -1670,7 +1670,7 @@ mod tests {
         fn save_completed_sets_dsn_and_returns_fetch_effect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.is_first_run = true;
+            state.connection_setup.set_first_run(true);
             state
                 .connection_setup
                 .host
@@ -1694,7 +1694,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(!state.connection_setup.is_first_run);
+            assert!(!state.connection_setup.is_first_run());
             assert_eq!(state.session.dsn(), Some("postgres://db.example.com/mydb"));
             assert_eq!(
                 state.session.active_connection_name(),
@@ -1728,7 +1728,7 @@ mod tests {
         fn cancel_on_first_run_opens_confirm_dialog() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.is_first_run = true;
+            state.connection_setup.set_first_run(true);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1750,7 +1750,7 @@ mod tests {
         fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.connection_setup.is_first_run = false;
+            state.connection_setup.set_first_run(false);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2104,7 +2104,7 @@ mod tests {
             // When already connected, metadata failure should preserve connection state
             // (metadata-only failure, e.g., permission denied on schema)
             let mut state = create_test_state();
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &crate::domain::connection::ConnectionId::from_string("test-connection"),
                 "test",
                 DatabaseType::PostgreSQL,
@@ -2232,7 +2232,7 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &conn_a,
                 "conn-a",
                 DatabaseType::PostgreSQL,
@@ -2278,7 +2278,7 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.set_active_connection_with_dsn(
+            state.session.activate_connection_with_dsn(
                 &conn_a,
                 "conn-a",
                 DatabaseType::PostgreSQL,
@@ -2545,7 +2545,7 @@ mod tests {
             let mut state = state_with_metadata();
             use_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.er_preparation.begin_full_prefetch(1);
             state.er_preparation.mark_fk_expanded();
             state
@@ -2579,7 +2579,7 @@ mod tests {
             let mut state = state_with_metadata();
             use_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
-            state.er_preparation.mark_waiting();
+            state.er_preparation.mark_waiting_for_test();
             state.er_preparation.begin_full_prefetch(2);
             state.er_preparation.mark_fk_expanded();
             state

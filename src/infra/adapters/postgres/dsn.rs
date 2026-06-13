@@ -49,7 +49,7 @@ mod tests {
     use crate::domain::connection::SslMode;
 
     fn make_test_profile() -> ConnectionProfile {
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             "Test Connection",
             "localhost",
             5432,
@@ -81,7 +81,7 @@ mod tests {
         #[test]
         fn encodes_special_chars_in_credentials() {
             let adapter = PostgresAdapter::new();
-            let profile = ConnectionProfile::new(
+            let profile = ConnectionProfile::new_postgres(
                 "Test",
                 "localhost",
                 5432,
