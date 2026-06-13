@@ -564,7 +564,7 @@ fn count_select_statements(sql: &str) -> usize {
 fn is_transaction_control(statement: &str) -> bool {
     matches!(
         first_keyword(statement).to_ascii_uppercase().as_str(),
-        "BEGIN" | "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "RELEASE"
+        "BEGIN" | "COMMIT" | "END" | "ROLLBACK" | "SAVEPOINT" | "RELEASE"
     )
 }
 
@@ -1025,7 +1025,7 @@ mod tests {
     }
 
     #[test]
-    fn append_changes_keeps_explicit_transaction_control() {
+    fn append_changes_keeps_explicit_begin_commit_transaction_control() {
         let query = "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT";
 
         let wrapped = append_changes_query(query);
@@ -1033,6 +1033,18 @@ mod tests {
         assert_eq!(
             wrapped,
             "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT\n;\nSELECT changes() AS affected_rows;"
+        );
+    }
+
+    #[test]
+    fn append_changes_keeps_explicit_begin_end_transaction_control() {
+        let query = "BEGIN; INSERT INTO users(id) VALUES (1); END";
+
+        let wrapped = append_changes_query(query);
+
+        assert_eq!(
+            wrapped,
+            "BEGIN; INSERT INTO users(id) VALUES (1); END\n;\nSELECT changes() AS affected_rows;"
         );
     }
 

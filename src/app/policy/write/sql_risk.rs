@@ -697,6 +697,8 @@ mod tests {
         #[case::dot_inside_string("SELECT '.shell echo ok'")]
         #[case::backslash_inside_string("SELECT '\\\\! echo ok'")]
         #[case::dot_inside_comment("-- .shell ignored\nSELECT 1")]
+        #[case::backslash_inside_block_comment("SELECT /* \\! ignored */ 1")]
+        #[case::backslash_inside_quoted_identifier(r#"SELECT "table\!name" FROM "table\!name""#)]
         #[case::dot_inside_dollar_quote("SELECT $tag$\n.shell ignored\n$tag$")]
         fn cli_meta_command_like_text_is_allowed(#[case] sql: &str) {
             let result = evaluate_multi_statement(sql);
