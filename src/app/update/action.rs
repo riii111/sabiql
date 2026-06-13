@@ -424,7 +424,7 @@ pub enum Action {
     SqlModalConfirmExecute,
     SqlModalNextTab,
     SqlModalPrevTab,
-    CompletionTrigger,
+    CompletionRequest,
     CompletionUpdated {
         candidates: Vec<CompletionCandidate>,
         trigger_position: usize,

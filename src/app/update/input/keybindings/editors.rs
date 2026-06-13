@@ -341,15 +341,6 @@ pub mod sql_modal {
         combos: &[],
     };
 
-    pub const COMPLETION_TRIGGER: KeyBinding = KeyBinding {
-        key_short: "^Space",
-        key: "Ctrl+Space",
-        desc_short: "Complete",
-        description: "Trigger completion",
-        action: Action::CompletionTrigger,
-        combos: &[KeyCombo::ctrl(Key::Char(' '))],
-    };
-
     pub const CLEAR: KeyBinding = KeyBinding {
         key_short: "^L",
         key: "Ctrl+L",
@@ -375,7 +366,6 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
     sql_modal::MOVE,
     sql_modal::HOME_END,
     sql_modal::TAB,
-    sql_modal::COMPLETION_TRIGGER,
     sql_modal::CLEAR,
     sql_modal::QUERY_HISTORY,
 ];

@@ -237,7 +237,7 @@ async fn main() -> Result<()> {
         {
             state.sql_modal.consume_completion_debounce();
             process_action(
-                Action::CompletionTrigger,
+                Action::CompletionRequest,
                 &mut state,
                 &mut tui,
                 &effect_runner,
