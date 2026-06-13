@@ -222,6 +222,7 @@ pub fn reduce_connection_setup(
 mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionProfile, SslMode};
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::update::test_support::use_postgres_connection;
 
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
