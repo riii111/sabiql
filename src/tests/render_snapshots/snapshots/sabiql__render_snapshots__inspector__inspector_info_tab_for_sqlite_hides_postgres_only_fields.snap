@@ -1,10 +1,9 @@
 ---
 source: src/tests/render_snapshots/inspector.rs
-assertion_line: 177
 expression: output
 ---
-test_project | test_db | - | connected | app.db                                                                                                                      
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [DDL]                                                                                              
+test_project | test_db | - | connected | app.db
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [DDL]
 │> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  public.posts                         ││Rows:    ~100                                                                                                             │
 │  public.comments                      ││Schema:  public                                                                                                           │

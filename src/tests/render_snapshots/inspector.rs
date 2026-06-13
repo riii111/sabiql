@@ -2,6 +2,14 @@ use super::*;
 use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
 
+fn trim_line_endings(output: &str) -> String {
+    output
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
 fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
     let mut state = harness::explorer_selected_state();
@@ -172,7 +180,7 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
     insta::assert_snapshot!(output);
 }
