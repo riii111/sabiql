@@ -516,12 +516,6 @@ pub enum Action {
     ToggleFocus,
     ToggleReadOnly,
 
-    // Result history
-    OpenResultHistory,
-    HistoryOlder,
-    HistoryNewer,
-    ExitResultHistory,
-
     // Query history
     QueryHistoryLoaded(
         crate::domain::ConnectionId,

@@ -274,7 +274,6 @@ mod tests {
                 check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
-                check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
                 check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             }
 
@@ -339,7 +338,6 @@ mod tests {
                     "CONNECTION_SETUP_KEYS",
                 );
                 check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
-                check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
                 check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             }
         }

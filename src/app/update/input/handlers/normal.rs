@@ -4,8 +4,7 @@ use crate::model::shared::key_sequence::Prefix;
 use crate::update::action::{Action, ModalKind};
 use crate::update::input::keybindings::{self as kb, Key, KeyCombo, Modifiers};
 use crate::update::input::vim::{
-    BrowseVimContext, VimCommand, VimSurfaceContext, action_for_input, action_for_key,
-    classify_command,
+    BrowseVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
 
 pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
@@ -16,43 +15,33 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Ctrl combos
     if combo.modifiers.contains(Modifiers::CTRL) {
         match combo.key {
-            Key::Char('h') => {
-                return if state.query.is_history_mode() {
-                    Action::ExitResultHistory
-                } else {
-                    Action::OpenResultHistory
-                };
-            }
-            Key::Char('k') if !state.query.is_history_mode() => {
+            Key::Char('k') => {
                 return Action::OpenModal(ModalKind::Settings);
             }
             Key::Char('r') => {
                 return Action::ToggleReadOnly;
             }
-            Key::Char('o') if !state.query.is_history_mode() => {
+            Key::Char('o') => {
                 return Action::OpenModal(ModalKind::QueryHistoryPicker);
             }
             Key::Char('e') if state.can_request_csv_export() => {
                 return Action::RequestCsvExport;
             }
-            Key::Char('p') if !state.query.is_history_mode() => {
+            Key::Char('p') => {
                 return Action::OpenModal(ModalKind::TablePicker);
             }
-            // Ctrl+N/P navigation disabled on main screen; use j/k or arrows.
-            // Modals/pickers handle Ctrl+N/P via their own bindings.
-            // NOTE: vim/classify.rs still maps Ctrl+N/P → MoveDown/MoveUp for
-            // modal contexts (SQL Modal Plan/Compare). This catch-all prevents
-            // that mapping from reaching the main screen.
-            Key::Char('n' | 'p') => {
+            // Ctrl+N navigation disabled on main screen; use j/k or arrows.
+            // Modals/pickers handle Ctrl+N via their own bindings.
+            // NOTE: vim/classify.rs still maps Ctrl+N → MoveDown for modal
+            // contexts (SQL Modal Plan/Compare). This catch-all prevents that
+            // mapping from reaching the main screen.
+            Key::Char('n') => {
                 return Action::None;
             }
             _ => {
                 if let Some(action) = action_for_key(&combo, VimSurfaceContext::Browse(browse_ctx))
                 {
                     return action;
-                }
-                if state.query.is_history_mode() {
-                    return Action::None;
                 }
             }
         }
@@ -69,22 +58,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Some(Action::None) | None => Action::CancelKeySequence,
             Some(action) => action,
         };
-    }
-
-    // History mode: whitelist — only history nav, help, and scroll allowed
-    if state.query.is_history_mode() {
-        match combo.key {
-            Key::Char('[') => return Action::HistoryOlder,
-            Key::Char(']') => return Action::HistoryNewer,
-            Key::Char('?') => return Action::ToggleModal(ModalKind::Help),
-            // Home/End/PageDown/PageUp are blocked in history mode
-            // (only char keys g/G and Ctrl+D/U/F/B are allowed for these motions)
-            Key::Home | Key::End | Key::PageDown | Key::PageUp => return Action::None,
-            // Scroll keys fall through to shared vim navigation handling
-            _ if matches!(classify_command(&combo), Some(VimCommand::Navigation(_))) => {}
-            Key::Char('z') => {}
-            _ => return Action::None,
-        }
     }
 
     // Global actions (predicate-based, no modifiers)
@@ -1116,230 +1089,8 @@ mod tests {
             }
         }
 
-        mod history_mode {
-            use super::*;
-            use crate::domain::{QueryResult, QuerySource};
-            use std::sync::Arc;
-
-            fn make_result(query: &str) -> Arc<QueryResult> {
-                Arc::new(QueryResult::success(
-                    query.to_string(),
-                    vec!["col".to_string()],
-                    vec![vec!["val".to_string()]],
-                    10,
-                    QuerySource::Adhoc,
-                ))
-            }
-
-            fn state_with_history(count: usize) -> AppState {
-                let mut state = AppState::new("test".to_string());
-                for i in 0..count {
-                    state
-                        .query
-                        .push_history(make_result(&format!("SELECT {}", i + 1)));
-                }
-                state.query.set_current_result(make_result("SELECT latest"));
-                state
-            }
-
-            mod open_close {
-                use super::*;
-
-                #[test]
-                fn ctrl_h_opens_result_history() {
-                    let state = AppState::new("test".to_string());
-
-                    let result = handle_normal_mode(combo_ctrl(Key::Char('h')), &state);
-
-                    assert!(matches!(result, Action::OpenResultHistory));
-                }
-
-                #[test]
-                fn ctrl_h_exits_when_active() {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(1);
-
-                    let result = handle_normal_mode(combo_ctrl(Key::Char('h')), &state);
-
-                    assert!(matches!(result, Action::ExitResultHistory));
-                }
-
-                #[test]
-                fn bracket_left_navigates_history_older() {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(2);
-
-                    let result = handle_normal_mode(combo(Key::Char('[')), &state);
-
-                    assert!(matches!(result, Action::HistoryOlder));
-                }
-
-                #[test]
-                fn bracket_right_navigates_history_newer() {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(0);
-
-                    let result = handle_normal_mode(combo(Key::Char(']')), &state);
-
-                    assert!(matches!(result, Action::HistoryNewer));
-                }
-
-                #[test]
-                fn bracket_nav_falls_through_when_not_in_history() {
-                    let mut state = AppState::new("test".to_string());
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-
-                    let next = handle_normal_mode(combo(Key::Char(']')), &state);
-                    let prev = handle_normal_mode(combo(Key::Char('[')), &state);
-
-                    assert!(matches!(next, Action::ResultNextPage));
-                    assert!(matches!(prev, Action::ResultPrevPage));
-                }
-            }
-
-            mod blocked_keys {
-                use super::*;
-
-                #[test]
-                fn help_allowed() {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(1);
-
-                    let result = handle_normal_mode(combo(Key::Char('?')), &state);
-
-                    assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
-                }
-
-                #[rstest]
-                #[case(Key::Char('q'))]
-                #[case(Key::Char('s'))]
-                #[case(Key::Char('f'))]
-                #[case(Key::Char('r'))]
-                #[case(Key::Char(':'))]
-                #[case(Key::F(1))]
-                #[case(Key::Enter)]
-                #[case(Key::Esc)]
-                fn are_noop(#[case] key: Key) {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(1);
-
-                    let result = handle_normal_mode(combo(key), &state);
-
-                    assert!(matches!(result, Action::None));
-                }
-            }
-
-            mod scroll_keys {
-                use super::*;
-
-                #[rstest]
-                #[case(Key::Char('j'), ScrollDirection::Down, ScrollAmount::Line)]
-                #[case(Key::Char('k'), ScrollDirection::Up, ScrollAmount::Line)]
-                #[case(Key::Char('h'), ScrollDirection::Left, ScrollAmount::Line)]
-                #[case(Key::Char('l'), ScrollDirection::Right, ScrollAmount::Line)]
-                #[case(Key::Char('g'), ScrollDirection::Up, ScrollAmount::ToStart)]
-                #[case(Key::Char('G'), ScrollDirection::Down, ScrollAmount::ToEnd)]
-                #[case(Key::Char('H'), ScrollDirection::Up, ScrollAmount::ViewportTop)]
-                #[case(Key::Char('M'), ScrollDirection::Up, ScrollAmount::ViewportMiddle)]
-                #[case(Key::Char('L'), ScrollDirection::Down, ScrollAmount::ViewportBottom)]
-                fn are_allowed(
-                    #[case] key: Key,
-                    #[case] direction: ScrollDirection,
-                    #[case] amount: ScrollAmount,
-                ) {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(1);
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-
-                    let result = handle_normal_mode(combo(key), &state);
-
-                    assert!(matches!(
-                        result,
-                        Action::Scroll {
-                            target: ScrollTarget::Result,
-                            direction: actual_direction,
-                            amount: actual_amount,
-                        } if actual_direction == direction && actual_amount == amount
-                    ));
-                }
-
-                #[test]
-                fn ctrl_p_and_ctrl_n_are_noop_in_history() {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(1);
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-
-                    let prev = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
-                    let next = handle_normal_mode(combo_ctrl(Key::Char('n')), &state);
-
-                    assert!(matches!(prev, Action::None));
-                    assert!(matches!(next, Action::None));
-                }
-
-                #[test]
-                fn ctrl_scroll_is_allowed() {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(1);
-                    state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-
-                    assert!(matches!(
-                        handle_normal_mode(combo_ctrl(Key::Char('d')), &state),
-                        Action::Scroll {
-                            target: ScrollTarget::Result,
-                            direction: ScrollDirection::Down,
-                            amount: ScrollAmount::HalfPage
-                        }
-                    ));
-                    assert!(matches!(
-                        handle_normal_mode(combo_ctrl(Key::Char('u')), &state),
-                        Action::Scroll {
-                            target: ScrollTarget::Result,
-                            direction: ScrollDirection::Up,
-                            amount: ScrollAmount::HalfPage
-                        }
-                    ));
-                }
-            }
-
-            mod ctrl_keys {
-                use super::*;
-
-                #[rstest]
-                #[case(Key::Char('o'))]
-                #[case(Key::Char('k'))]
-                #[case(Key::Char('e'))]
-                fn ctrl_overlay_keys_are_blocked(#[case] key: Key) {
-                    let mut state = state_with_history(3);
-                    state.query.enter_history(1);
-
-                    let result = handle_normal_mode(combo_ctrl(key), &state);
-
-                    assert!(matches!(result, Action::None));
-                }
-            }
-        }
-
         mod key_sequence {
             use super::*;
-
-            fn history_mode_state_with_key_sequence() -> AppState {
-                use crate::domain::{QueryResult, QuerySource};
-                use std::sync::Arc;
-
-                let mut state = browse_state();
-                let qr = Arc::new(QueryResult::success(
-                    "SELECT 1".to_string(),
-                    vec!["col".to_string()],
-                    vec![vec!["val".to_string()]],
-                    10,
-                    QuerySource::Adhoc,
-                ));
-                state.query.push_history(qr.clone());
-                state.query.set_current_result(qr);
-                state.query.enter_history(0);
-                state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
-                state
-            }
 
             mod begin {
                 use super::*;
@@ -1443,40 +1194,6 @@ mod tests {
                 }
             }
 
-            mod history_mode {
-                use super::*;
-
-                #[test]
-                fn zt_works() {
-                    let state = history_mode_state_with_key_sequence();
-
-                    let result = handle_normal_mode(combo(Key::Char('t')), &state);
-
-                    assert!(matches!(
-                        result,
-                        Action::ScrollToCursor {
-                            target: ScrollToCursorTarget::Explorer,
-                            position: CursorPosition::Top
-                        }
-                    ));
-                }
-
-                #[test]
-                fn zb_works() {
-                    let state = history_mode_state_with_key_sequence();
-
-                    let result = handle_normal_mode(combo(Key::Char('b')), &state);
-
-                    assert!(matches!(
-                        result,
-                        Action::ScrollToCursor {
-                            target: ScrollToCursorTarget::Explorer,
-                            position: CursorPosition::Bottom
-                        }
-                    ));
-                }
-            }
-
             mod cancel_and_precedence {
                 use super::*;
 
@@ -1525,8 +1242,6 @@ mod tests {
 
     mod navigation_matrix {
         use super::*;
-        use crate::domain::{QueryResult, QuerySource};
-        use std::sync::Arc;
 
         fn assert_action(actual: Action, expected: Action, ctx: &str, key: &str) {
             assert_eq!(
@@ -1554,27 +1269,6 @@ mod tests {
             inspector_focused_state()
         }
 
-        fn make_result() -> Arc<QueryResult> {
-            Arc::new(QueryResult::success(
-                "SELECT 1".to_string(),
-                vec!["col".to_string()],
-                vec![vec!["val".to_string()]],
-                10,
-                QuerySource::Adhoc,
-            ))
-        }
-
-        fn history_focus_ctx() -> AppState {
-            let mut state = browse_state();
-            let qr = make_result();
-            state.query.push_history(qr.clone());
-            state.query.set_current_result(qr);
-            state.query.enter_history(0);
-            state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-            state.ui.focused_pane = FocusedPane::Result;
-            state
-        }
-
         fn focus_mode_ctx() -> AppState {
             focus_mode_state()
         }
@@ -1598,8 +1292,6 @@ mod tests {
         #[case("result_cell_active", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
         #[case("inspector", Key::Char('j'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
         #[case("inspector", Key::Char('k'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
-        #[case("history_focus", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
-        #[case("history_focus", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
         #[case("focus_mode", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
         #[case("focus_mode", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
         fn vertical_jk(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
@@ -1608,7 +1300,6 @@ mod tests {
                 "result_scroll" => result_scroll_ctx(),
                 "result_cell_active" => result_cell_active_ctx(),
                 "inspector" => inspector_ctx(),
-                "history_focus" => history_focus_ctx(),
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
@@ -1626,8 +1317,6 @@ mod tests {
         #[case("result_cell_active", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         #[case("inspector", Key::Char('g'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
         #[case("inspector", Key::Char('G'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
-        #[case("history_focus", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
-        #[case("history_focus", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         #[case("focus_mode", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
         #[case("focus_mode", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         fn ends_g_shift_g(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
@@ -1636,7 +1325,6 @@ mod tests {
                 "result_scroll" => result_scroll_ctx(),
                 "result_cell_active" => result_cell_active_ctx(),
                 "inspector" => inspector_ctx(),
-                "history_focus" => history_focus_ctx(),
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
@@ -1674,9 +1362,6 @@ mod tests {
         #[case("inspector", Key::Char('H'), Action::None)]
         #[case("inspector", Key::Char('M'), Action::None)]
         #[case("inspector", Key::Char('L'), Action::None)]
-        #[case("history_focus", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
-        #[case("history_focus", Key::Char('M'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
-        #[case("history_focus", Key::Char('L'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
         #[case("focus_mode", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
         #[case("focus_mode", Key::Char('M'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
         #[case("focus_mode", Key::Char('L'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
@@ -1686,7 +1371,6 @@ mod tests {
                 "result_scroll" => result_scroll_ctx(),
                 "result_cell_active" => result_cell_active_ctx(),
                 "inspector" => inspector_ctx(),
-                "history_focus" => history_focus_ctx(),
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
@@ -1708,9 +1392,6 @@ mod tests {
         #[case("inspector", Key::Char('z'), Action::CancelKeySequence)]
         #[case("inspector", Key::Char('t'), Action::CancelKeySequence)]
         #[case("inspector", Key::Char('b'), Action::CancelKeySequence)]
-        #[case("history_focus", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
-        #[case("history_focus", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
-        #[case("history_focus", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
         #[case("focus_mode", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
         #[case("focus_mode", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
         #[case("focus_mode", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
@@ -1724,7 +1405,6 @@ mod tests {
                 "result_scroll" => result_scroll_ctx(),
                 "result_cell_active" => result_cell_active_ctx(),
                 "inspector" => inspector_ctx(),
-                "history_focus" => history_focus_ctx(),
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
@@ -1739,173 +1419,10 @@ mod tests {
         #[case("result_scroll", result_scroll_ctx())]
         #[case("result_cell_active", result_cell_active_ctx())]
         #[case("inspector", inspector_ctx())]
-        #[case("history_focus", history_focus_ctx())]
         #[case("focus_mode", focus_mode_ctx())]
         fn z_prefix_returns_begin_key_sequence(#[case] ctx_name: &str, #[case] state: AppState) {
             let actual = handle_normal_mode(combo(Key::Char('z')), &state);
             assert_action(actual, Action::BeginKeySequence(Prefix::Z), ctx_name, "z");
-        }
-
-        mod history_pane_edges {
-            use super::*;
-
-            fn history_explorer_ctx() -> AppState {
-                let mut state = history_focus_ctx();
-                state.ui.focused_pane = FocusedPane::Explorer;
-                state.ui.focus_mode = FocusMode::Normal;
-                state
-            }
-
-            fn history_inspector_ctx() -> AppState {
-                let mut state = history_focus_ctx();
-                state.ui.focused_pane = FocusedPane::Inspector;
-                state.ui.focus_mode = FocusMode::Normal;
-                state
-            }
-
-            #[test]
-            fn history_explorer_j_selects_next() {
-                let state = history_explorer_ctx();
-                let actual = handle_normal_mode(combo(Key::Char('j')), &state);
-                assert_action(
-                    actual,
-                    Action::Select(SelectMotion::Next),
-                    "history+explorer",
-                    "j",
-                );
-            }
-
-            #[test]
-            fn history_explorer_h_selects_viewport_top() {
-                let state = history_explorer_ctx();
-                let actual = handle_normal_mode(combo(Key::Char('H')), &state);
-                assert_action(
-                    actual,
-                    Action::Select(SelectMotion::ViewportTop),
-                    "history+explorer",
-                    "H",
-                );
-            }
-
-            #[test]
-            fn history_inspector_j_scrolls_down() {
-                let state = history_inspector_ctx();
-                let actual = handle_normal_mode(combo(Key::Char('j')), &state);
-                assert_action(
-                    actual,
-                    Action::Scroll {
-                        target: ScrollTarget::Inspector,
-                        direction: ScrollDirection::Down,
-                        amount: ScrollAmount::Line,
-                    },
-                    "history+inspector",
-                    "j",
-                );
-            }
-
-            #[test]
-            fn history_inspector_h_is_noop() {
-                let state = history_inspector_ctx();
-                let actual = handle_normal_mode(combo(Key::Char('H')), &state);
-                assert_action(actual, Action::None, "history+inspector", "H");
-            }
-
-            #[test]
-            fn history_zz_explorer_scrolls_cursor() {
-                let mut state = history_explorer_ctx();
-                state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
-                let actual = handle_normal_mode(combo(Key::Char('z')), &state);
-                assert_action(
-                    actual,
-                    Action::ScrollToCursor {
-                        target: ScrollToCursorTarget::Explorer,
-                        position: CursorPosition::Center,
-                    },
-                    "history+explorer+key_sequence",
-                    "z",
-                );
-            }
-
-            #[test]
-            fn history_zz_inspector_clears() {
-                let mut state = history_inspector_ctx();
-                state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
-                let actual = handle_normal_mode(combo(Key::Char('z')), &state);
-                assert_action(
-                    actual,
-                    Action::CancelKeySequence,
-                    "history+inspector+key_sequence",
-                    "z",
-                );
-            }
-        }
-
-        mod history_whitelist_asymmetry {
-            use super::*;
-
-            fn history_result_ctx() -> AppState {
-                history_focus_ctx()
-            }
-
-            #[test]
-            fn home_blocked_in_history() {
-                let state = history_result_ctx();
-                let actual = handle_normal_mode(combo(Key::Home), &state);
-                assert_action(actual, Action::None, "history+result", "Home");
-            }
-
-            #[test]
-            fn end_blocked_in_history() {
-                let state = history_result_ctx();
-                let actual = handle_normal_mode(combo(Key::End), &state);
-                assert_action(actual, Action::None, "history+result", "End");
-            }
-
-            #[test]
-            fn pagedown_blocked_in_history() {
-                let state = history_result_ctx();
-                let actual = handle_normal_mode(combo(Key::PageDown), &state);
-                assert_action(actual, Action::None, "history+result", "PageDown");
-            }
-
-            #[test]
-            fn pageup_blocked_in_history() {
-                let state = history_result_ctx();
-                let actual = handle_normal_mode(combo(Key::PageUp), &state);
-                assert_action(actual, Action::None, "history+result", "PageUp");
-            }
-
-            #[test]
-            fn up_allowed_in_history() {
-                let state = history_result_ctx();
-                let actual = handle_normal_mode(combo(Key::Up), &state);
-                assert_action(
-                    actual,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Up,
-                        amount: ScrollAmount::Line,
-                    },
-                    "history+result",
-                    "Up",
-                );
-            }
-
-            #[test]
-            fn down_allowed_in_history() {
-                let state = history_result_ctx();
-                let actual = handle_normal_mode(combo(Key::Down), &state);
-                assert_action(
-                    actual,
-                    Action::Scroll {
-                        target: ScrollTarget::Result,
-                        direction: ScrollDirection::Down,
-                        amount: ScrollAmount::Line,
-                    },
-                    "history+result",
-                    "Down",
-                );
-            }
         }
     }
 }
