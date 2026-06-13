@@ -46,7 +46,7 @@ pub enum MultiStatementDecision {
     },
 }
 
-pub fn contains_cli_meta_command(sql: &str) -> bool {
+fn contains_cli_meta_command(sql: &str) -> bool {
     let chars: Vec<(usize, char)> = sql.char_indices().collect();
     let mut i = 0;
     let mut in_string = false;

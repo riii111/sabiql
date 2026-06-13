@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -162,14 +163,31 @@ impl SqliteAdapter {
         source: QuerySource,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
+        self.execute_csv_query_with_display_query(path, query, query, source, read_only)
+            .await
+    }
+
+    async fn execute_csv_query_with_display_query(
+        &self,
+        path: &str,
+        execution_query: &str,
+        display_query: &str,
+        source: QuerySource,
+        read_only: bool,
+    ) -> Result<QueryResult, DbOperationError> {
         #[expect(
             clippy::disallowed_methods,
             reason = "infra measures sqlite3 execution time at the I/O boundary"
         )]
         let start = Instant::now();
-        let stdout = self.cli.execute_csv(path, query, read_only).await?;
+        let stdout = self
+            .cli
+            .execute_csv(path, execution_query, read_only)
+            .await?;
         let elapsed = start.elapsed().as_millis() as u64;
-        csv_to_query_result(query, &stdout, source, elapsed)
+        let mut result = csv_to_query_result(execution_query, &stdout, source, elapsed)?;
+        result.query = display_query.to_string();
+        Ok(result)
     }
 
     async fn execute_changes_query(
@@ -550,9 +568,18 @@ fn is_transaction_control(statement: &str) -> bool {
     )
 }
 
-fn should_wrap_dml_transaction(query: &str) -> bool {
+fn is_write_statement(statement: &str) -> bool {
+    matches!(
+        first_keyword(statement).to_ascii_uppercase().as_str(),
+        "INSERT" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
+    )
+}
+
+fn should_wrap_transaction(query: &str) -> bool {
     let statements = split_sqlite_statements(query);
-    statements.len() > 1 && !statements.iter().any(|stmt| is_transaction_control(stmt))
+    statements.len() > 1
+        && statements.iter().any(|stmt| is_write_statement(stmt))
+        && !statements.iter().any(|stmt| is_transaction_control(stmt))
 }
 
 fn sqlite_transaction_block(query: &str) -> String {
@@ -560,12 +587,16 @@ fn sqlite_transaction_block(query: &str) -> String {
     format!("BEGIN;\n{trimmed}\n;\nCOMMIT")
 }
 
-fn append_changes_query(query: &str) -> String {
-    let body = if should_wrap_dml_transaction(query) {
-        sqlite_transaction_block(query)
+fn sqlite_execution_query(query: &str) -> Cow<'_, str> {
+    if should_wrap_transaction(query) {
+        Cow::Owned(sqlite_transaction_block(query))
     } else {
-        query.trim_end().to_string()
-    };
+        Cow::Borrowed(query)
+    }
+}
+
+fn append_changes_query(query: &str) -> String {
+    let body = sqlite_execution_query(query).trim_end().to_string();
     // The standalone separator also terminates a trailing line comment before
     // appending the changes() probe.
     format!("{body}\n;\nSELECT changes() AS affected_rows;")
@@ -839,13 +870,20 @@ impl QueryExecutor for SqliteAdapter {
     ) -> Result<QueryResult, DbOperationError> {
         let path = Self::path_from_dsn(dsn)?;
         let keyword = first_keyword(query);
+        let execution_query = sqlite_execution_query(query);
         if keyword.eq_ignore_ascii_case("INSERT")
             || keyword.eq_ignore_ascii_case("UPDATE")
             || keyword.eq_ignore_ascii_case("DELETE")
         {
             if contains_keyword(query, "RETURNING") {
                 let mut result = self
-                    .execute_csv_query(path, query, QuerySource::Adhoc, read_only)
+                    .execute_csv_query_with_display_query(
+                        path,
+                        &execution_query,
+                        query,
+                        QuerySource::Adhoc,
+                        read_only,
+                    )
                     .await?;
                 let affected_rows = result.row_count as u64;
                 let tag = if keyword.eq_ignore_ascii_case("INSERT") {
@@ -880,7 +918,13 @@ impl QueryExecutor for SqliteAdapter {
         }
 
         let mut result = self
-            .execute_csv_query(path, query, QuerySource::Adhoc, read_only)
+            .execute_csv_query_with_display_query(
+                path,
+                &execution_query,
+                query,
+                QuerySource::Adhoc,
+                read_only,
+            )
             .await?;
         if let Some(tag) = ddl_tag(query) {
             result = result.with_command_tag(tag);
@@ -969,7 +1013,7 @@ mod tests {
     }
 
     #[test]
-    fn append_changes_wraps_multi_statement_dml_without_explicit_transaction() {
+    fn append_changes_wraps_multi_statement_write_without_explicit_transaction() {
         let query = "INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2);";
 
         let wrapped = append_changes_query(query);
@@ -1149,6 +1193,44 @@ mod tests {
             .execute_adhoc(
                 &dsn,
                 "INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
+                false,
+            )
+            .await;
+
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        let rows = adapter
+            .execute_adhoc(&dsn, "SELECT id FROM users", true)
+            .await
+            .unwrap();
+        assert!(rows.rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn adhoc_returning_dml_rolls_back_when_later_statement_fails() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let adapter = SqliteAdapter::new();
+        let query =
+            "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)";
+
+        let result = adapter.execute_adhoc(&dsn, query, false).await;
+
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        let rows = adapter
+            .execute_adhoc(&dsn, "SELECT id FROM users", true)
+            .await
+            .unwrap();
+        assert!(rows.rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn adhoc_select_then_dml_rolls_back_when_later_statement_fails() {
+        let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let adapter = SqliteAdapter::new();
+
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                "SELECT 1 AS marker; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
                 false,
             )
             .await;

@@ -24,7 +24,7 @@ sabiql treats the SQL modal as SQL-only input. CLI meta-commands such as psql ba
 
 Read-only mode combines app-level write blocking with the database client guard available for the active adapter. PostgreSQL uses a read-only session option; SQLite uses sqlite3's read-only mode.
 
-PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement DML is wrapped in an explicit transaction unless the input already contains transaction control statements.
+PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement write SQL is wrapped in an explicit transaction unless the input already contains transaction control statements.
 
 ## Features
 ![hero_1000_20fps](https://github.com/user-attachments/assets/06e1900d-b044-4f29-a2a8-7d7bab5bd3a1)
