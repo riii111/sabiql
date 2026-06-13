@@ -62,11 +62,11 @@ pub(super) mod tests {
     };
     use crate::model::app_state::AppState;
     use crate::update::action::Action;
-    use crate::update::test_support::use_postgres_connection;
+    use crate::update::test_support::activate_postgres_connection;
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
-        use_postgres_connection(&mut state, "postgres://localhost/test");
+        activate_postgres_connection(&mut state, "postgres://localhost/test");
         state
     }
 

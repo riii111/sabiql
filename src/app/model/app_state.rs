@@ -299,7 +299,7 @@ mod tests {
         AppState::new("test".to_string())
     }
 
-    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
+    fn activate_postgres_connection(state: &mut AppState, dsn: &str) {
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
             "postgres",
@@ -603,7 +603,7 @@ mod tests {
 
         fn prepare_state_for_reload() -> AppState {
             let mut state = make_state();
-            use_postgres_connection(&mut state, "postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
             state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
@@ -754,7 +754,7 @@ mod tests {
                     .session
                     .select_table("public", "users", &mut state.query.pagination);
                 let generation = state.session.selection_generation();
-                use_postgres_connection(&mut state, "dsn://test");
+                activate_postgres_connection(&mut state, "dsn://test");
                 let run_id = state.session.begin_table_detail_run();
                 state.ui.set_inspector_scroll_offset(42);
 

@@ -113,7 +113,7 @@ mod tests {
     mod inspector_tabs {
         use super::*;
 
-        fn use_sqlite_connection(state: &mut AppState) {
+        fn activate_sqlite_connection(state: &mut AppState) {
             state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
                 "sqlite",
@@ -125,7 +125,7 @@ mod tests {
         #[test]
         fn next_tab_uses_session_capabilities() {
             let mut state = AppState::new("test".to_string());
-            use_sqlite_connection(&mut state);
+            activate_sqlite_connection(&mut state);
             state.ui.set_inspector_tab(InspectorTab::Info);
 
             dispatch_navigation(
@@ -141,7 +141,7 @@ mod tests {
         #[test]
         fn prev_tab_uses_session_capabilities() {
             let mut state = AppState::new("test".to_string());
-            use_sqlite_connection(&mut state);
+            activate_sqlite_connection(&mut state);
             state.ui.set_inspector_tab(InspectorTab::Info);
 
             dispatch_navigation(

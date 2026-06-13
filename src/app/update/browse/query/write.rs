@@ -381,7 +381,7 @@ mod tests {
     use crate::ports::outbound::DbOperationError;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
-    use crate::update::test_support::use_postgres_connection;
+    use crate::update::test_support::activate_postgres_connection;
 
     fn write_succeeded_action(state: &mut AppState, affected_rows: usize) -> Action {
         let run_id = begin_query_run(state);
@@ -406,7 +406,7 @@ mod tests {
 
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            use_postgres_connection(&mut state, "postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.query.set_current_result(editable_preview_result());
             state
                 .session
@@ -559,7 +559,7 @@ mod tests {
 
         fn editable_state_with_jsonb() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            use_postgres_connection(&mut state, "postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
                 .query
                 .set_current_result(editable_preview_result_with_jsonb());
