@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/inspector.rs
-assertion_line: 121
 expression: output
 ---
 test_project | test_db | - | connected | app.db

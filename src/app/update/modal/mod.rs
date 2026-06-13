@@ -34,19 +34,11 @@ mod tests {
         InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
 
+    use crate::update::test_support::activate_postgres_connection;
     use std::time::Instant;
 
     fn create_test_state() -> AppState {
         AppState::new("test".to_string())
-    }
-
-    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
-        );
     }
 
     mod base {
@@ -412,7 +404,7 @@ mod tests {
             fn execute_write_sets_running_state_and_returns_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::CellEdit);
-                use_postgres_connection(&mut state, "postgres://localhost/test");
+                activate_postgres_connection(&mut state, "postgres://localhost/test");
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -530,7 +522,7 @@ mod tests {
             fn csv_export_returns_export_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                use_postgres_connection(&mut state, "postgres://localhost/test");
+                activate_postgres_connection(&mut state, "postgres://localhost/test");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
@@ -589,7 +581,7 @@ mod tests {
             fn csv_export_ignores_mismatched_run_id() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                use_postgres_connection(&mut state, "postgres://localhost/test");
+                activate_postgres_connection(&mut state, "postgres://localhost/test");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",

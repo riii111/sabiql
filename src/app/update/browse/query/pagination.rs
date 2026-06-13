@@ -215,7 +215,7 @@ mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource};
     use crate::ports::outbound::DbOperationError;
-    use crate::update::browse::query::tests::use_postgres_connection;
+    use crate::update::test_support::activate_postgres_connection;
     use std::sync::Arc;
 
     use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
@@ -498,7 +498,7 @@ mod tests {
 
         fn export_test_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            use_postgres_connection(&mut state, "postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
         }
 

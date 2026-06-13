@@ -5,7 +5,9 @@ use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
 };
 use crate::app::ports::outbound::connection_store::{ConnectionStore, ConnectionStoreError};
-use crate::config::connection_config::{CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile};
+use crate::config::connection_config::{
+    CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile, is_supported_config_version,
+};
 use crate::domain::connection::{ConnectionId, ConnectionProfile};
 
 #[cfg(test)]
@@ -40,7 +42,7 @@ impl TomlConnectionStore {
         let content = fs::read_to_string(&path)?;
         let version_check: ConfigVersionCheck = toml::from_str(&content)?;
 
-        if version_check.version != 2 && version_check.version != CURRENT_VERSION {
+        if !is_supported_config_version(version_check.version) {
             return Err(ConnectionStoreError::VersionMismatch {
                 found: version_check.version,
                 expected: CURRENT_VERSION,

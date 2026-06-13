@@ -25,7 +25,6 @@ pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -43,15 +42,7 @@ mod tests {
         state.modal.set_mode(InputMode::SqlModal);
         state
     }
-
-    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::from_string("postgres-test"),
-            "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
-        );
-    }
+    use crate::update::test_support::activate_postgres_connection;
 
     mod paste {
         use super::*;
@@ -280,7 +271,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT * INTO backup FROM users".to_string());
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -300,7 +291,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("COPY users FROM '/tmp/data.csv'".to_string());
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -320,7 +311,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DROP TABLE a, b".to_string());
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -341,7 +332,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("UPDATE users SET x=1 WHERE id=1".to_string());
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -424,7 +415,7 @@ mod tests {
         #[test]
         fn high_risk_confirm_executes_on_match() {
             let mut state = confirming_high_state("DROP TABLE users", "users");
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             for c in "users".chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -614,7 +605,7 @@ mod tests {
         fn high_risk_confirm_matches_full_name_not_truncated() {
             let full_name = "my_schema.very_long_table_name";
             let mut state = confirming_high_state(&format!("DROP TABLE {full_name}"), full_name);
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             for c in full_name.chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -649,7 +640,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id = 1".to_string());
-            use_postgres_connection(&mut state, "postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.session.enable_read_only();
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
@@ -668,7 +659,7 @@ mod tests {
         fn read_only_reject_clears_prior_success() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
-            use_postgres_connection(&mut state, "postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.session.enable_read_only();
 
             // Simulate a prior adhoc success
@@ -700,7 +691,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            use_postgres_connection(&mut state, "postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.session.enable_read_only();
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
@@ -719,7 +710,7 @@ mod tests {
         fn confirming_risk_state(content: &str) -> AppState {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content(content.to_string());
-            use_postgres_connection(&mut state, "postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
                 .sql_modal
                 .set_status_for_test(SqlModalStatus::ConfirmingRisk {
@@ -764,7 +755,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.editor.set_content(query.to_string());
-            use_postgres_connection(&mut state, "postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
         }
 
@@ -1025,7 +1016,7 @@ mod tests {
         #[test]
         fn plan_tab_yank_copies_plan_text() {
             let mut state = sql_modal_state();
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.plan_text = Some("Seq Scan on users".to_string());
 
@@ -1042,7 +1033,7 @@ mod tests {
         #[test]
         fn plan_tab_yank_no_plan_is_noop() {
             let mut state = sql_modal_state();
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.plan_text = None;
 
@@ -1056,7 +1047,7 @@ mod tests {
         #[test]
         fn plan_tab_yank_error_state_is_noop() {
             let mut state = sql_modal_state();
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.plan_text = None;
             state.explain.error = Some("syntax error".to_string());
@@ -1071,7 +1062,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_both_slots() {
             let mut state = sql_modal_state();
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = Some(make_slot("Seq Scan", false, 420, SlotSource::AutoPrevious));
             state.explain.right = Some(make_slot("Index Scan", true, 50, SlotSource::AutoLatest));
@@ -1097,7 +1088,7 @@ mod tests {
         #[test]
         fn both_auto_slots_yank_returns_distinguishable_headers() {
             let mut state = sql_modal_state();
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::AutoPrevious));
             state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
@@ -1118,7 +1109,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_right_only_is_noop() {
             let mut state = sql_modal_state();
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = None;
             state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
@@ -1133,7 +1124,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_left_only_is_noop() {
             let mut state = sql_modal_state();
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = Some(make_slot("Seq Scan", false, 200, SlotSource::AutoPrevious));
             state.explain.right = None;
@@ -1148,7 +1139,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_empty_is_noop() {
             let mut state = sql_modal_state();
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = None;
             state.explain.right = None;
@@ -1163,7 +1154,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_includes_verdict_with_reasons() {
             let mut state = sql_modal_state();
-            use_postgres_connection(&mut state, "postgres://test");
+            activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             // Use parseable EXPLAIN output so compare_plans produces a real verdict
             state.explain.left = Some(CompareSlot {

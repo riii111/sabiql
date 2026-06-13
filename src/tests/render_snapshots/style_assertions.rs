@@ -13,7 +13,6 @@ use ratatui::style::{Color, Modifier};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::model::shared::theme_id::ThemeId;
-use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
@@ -1132,7 +1131,7 @@ fn light_theme_applies_shell_and_sql_colors() {
         .sql_modal
         .editor_mut_for_input()
         .set_content("SELECT 42".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
     let sql_buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &LIGHT_THEME);
     let has_light_keyword = has_cell(&sql_buffer, |cell| {

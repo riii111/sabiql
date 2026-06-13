@@ -2,8 +2,7 @@ use super::*;
 use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
 
-/// Keep this focused snapshot free of right-padding whitespace so diff-check stays stable.
-fn trim_line_endings(output: String) -> String {
+fn trim_line_endings(output: &str) -> String {
     output
         .lines()
         .map(str::trim_end)
@@ -181,7 +180,7 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);
 
-    let output = trim_line_endings(render_to_string(&mut terminal, &mut state));
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
     insta::assert_snapshot!(output);
 }

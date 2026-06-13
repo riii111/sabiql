@@ -6,6 +6,12 @@ use crate::domain::connection::{
 };
 
 pub const CURRENT_VERSION: u32 = 3;
+// Version 2 remains readable because older config files omit db_type and map to PostgreSQL.
+const SUPPORTED_CONFIG_VERSIONS: &[u32] = &[2, CURRENT_VERSION];
+
+pub fn is_supported_config_version(version: u32) -> bool {
+    SUPPORTED_CONFIG_VERSIONS.contains(&version)
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigVersionCheck {
@@ -142,6 +148,20 @@ fn required_postgres_field(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn supported_versions_are_accepted() {
+        for version in SUPPORTED_CONFIG_VERSIONS {
+            assert!(is_supported_config_version(*version));
+        }
+    }
+
+    #[test]
+    fn unsupported_versions_are_rejected() {
+        for version in [1, CURRENT_VERSION + 1] {
+            assert!(!is_supported_config_version(version));
+        }
+    }
 
     fn postgres_entry() -> ConnectionConfigEntry {
         ConnectionConfigEntry {

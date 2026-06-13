@@ -16,4 +16,5 @@ if [ -n "$foreign_key_errors" ]; then
     exit 1
 fi
 
-sqlite3 "$db_path" "SELECT 'sqlite://' || '$db_path' AS dsn, COUNT(*) AS tables FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';"
+table_count=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';")
+printf 'sqlite://%s|%s\n' "$db_path" "$table_count"

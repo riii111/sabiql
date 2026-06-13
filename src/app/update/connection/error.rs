@@ -92,15 +92,7 @@ pub(super) fn reduce_connection_error(
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
-
-    fn use_postgres_connection(state: &mut AppState, dsn: &str) {
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "postgres",
-            DatabaseType::PostgreSQL,
-            dsn,
-        );
-    }
+    use crate::update::test_support::activate_postgres_connection;
 
     mod scroll_down {
         use super::*;
@@ -158,7 +150,7 @@ mod tests {
         #[test]
         fn allowed_for_profile_connection() {
             let mut state = AppState::new("test".to_string());
-            use_postgres_connection(&mut state, "postgres://localhost/db");
+            activate_postgres_connection(&mut state, "postgres://localhost/db");
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
