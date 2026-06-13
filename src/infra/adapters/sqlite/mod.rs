@@ -1228,7 +1228,7 @@ mod tests {
 
         #[tokio::test]
         async fn multi_statement_dml_rolls_back_when_later_statement_fails() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1249,7 +1249,7 @@ mod tests {
 
         #[tokio::test]
         async fn returning_dml_rolls_back_when_later_statement_fails() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
             let query =
                 "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)";
@@ -1266,7 +1266,7 @@ mod tests {
 
         #[tokio::test]
         async fn select_then_dml_rolls_back_when_later_statement_fails() {
-            let (_dir, dsn) = make_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
