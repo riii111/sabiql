@@ -78,7 +78,7 @@ impl ConnectionSetup {
                     frame,
                     chunks[idx],
                     field.label(),
-                    &form_state.ssl_mode().to_string(),
+                    ssl_mode_label(form_state.ssl_mode()),
                     form_state.focused_field() == ConnectionField::SslMode,
                     theme,
                 ),
