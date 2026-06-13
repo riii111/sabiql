@@ -118,7 +118,10 @@ fn reduce_inner(
             } else if state.modal.active_mode() == InputMode::CommandPalette {
                 use crate::update::input::palette::palette_action_for_index;
 
-                let cmd_action = palette_action_for_index(state.ui.table_picker.selected());
+                let cmd_action = palette_action_for_index(
+                    state.ui.table_picker.selected(),
+                    state.settings.saved_keymap_preset(),
+                );
                 state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
             }
@@ -2760,7 +2763,7 @@ mod tests {
         }
 
         fn palette_index_of(target: impl Fn(&Action) -> bool) -> usize {
-            palette_commands()
+            palette_commands(crate::model::shared::settings::KeymapPreset::default())
                 .enumerate()
                 .find(|(_, kb)| target(&kb.action))
                 .map(|(i, _)| i)

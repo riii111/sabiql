@@ -86,6 +86,7 @@ impl Footer {
 
         match state.input_mode() {
             InputMode::Normal => {
+                let keymap_preset = state.settings.saved_keymap_preset();
                 let result_navigation =
                     state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result;
                 let nav_mode = state.result_interaction.selection().mode();
@@ -127,13 +128,18 @@ impl Footer {
                         list.push(cell_edit::WRITE.as_hint());
                     }
                     if state.can_request_csv_export() {
-                        list.push(global::CSV_EXPORT.as_hint());
+                        list.push(
+                            crate::app::update::input::keybindings::csv_export(keymap_preset)
+                                .as_hint(),
+                        );
                     }
                     if state.query.can_paginate_visible_result() {
                         list.push(footer_nav::PAGE_NAV.as_hint());
                     }
                     list.push(global::HELP.as_hint());
-                    list.push(global::SETTINGS.as_hint());
+                    list.push(
+                        crate::app::update::input::keybindings::settings(keymap_preset).as_hint(),
+                    );
                     list.push(global::EXIT_FOCUS.as_hint());
                     list.push(global::QUIT.as_hint());
                     list
@@ -150,19 +156,34 @@ impl Footer {
                     if state.ui.focused_pane == FocusedPane::Explorer {
                         list.push(global::CONNECTIONS.as_hint());
                     }
-                    list.push(global::TABLE_PICKER.as_hint());
-                    list.push(global::QUERY_HISTORY.as_hint());
+                    list.push(
+                        crate::app::update::input::keybindings::table_picker(keymap_preset)
+                            .as_hint(),
+                    );
+                    list.push(
+                        crate::app::update::input::keybindings::query_history(keymap_preset)
+                            .as_hint(),
+                    );
                     if state.connection_error.error_info.is_some() {
                         list.push(overlay::ERROR_OPEN.as_hint());
                     }
                     if state.session.read_only {
-                        list.push(global::EXIT_READ_ONLY.as_hint());
+                        list.push(
+                            crate::app::update::input::keybindings::exit_read_only(keymap_preset)
+                                .as_hint(),
+                        );
                     } else {
-                        list.push(global::READ_ONLY.as_hint());
+                        list.push(
+                            crate::app::update::input::keybindings::read_only(keymap_preset)
+                                .as_hint(),
+                        );
                     }
                     list.push(global::FOCUS.as_hint());
                     if state.can_request_csv_export() {
-                        list.push(global::CSV_EXPORT.as_hint());
+                        list.push(
+                            crate::app::update::input::keybindings::csv_export(keymap_preset)
+                                .as_hint(),
+                        );
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         use crate::app::model::shared::inspector_tab::InspectorTab;
@@ -187,8 +208,13 @@ impl Footer {
                         list.push(global::INSPECTOR_TABS.as_hint());
                     }
                     list.push(global::HELP.as_hint());
-                    list.push(global::COMMAND_PALETTE.as_hint());
-                    list.push(global::SETTINGS.as_hint());
+                    list.push(
+                        crate::app::update::input::keybindings::command_palette(keymap_preset)
+                            .as_hint(),
+                    );
+                    list.push(
+                        crate::app::update::input::keybindings::settings(keymap_preset).as_hint(),
+                    );
                     list.push(global::QUIT.as_hint());
                     list
                 }
@@ -259,7 +285,10 @@ impl Footer {
                 }
             }
             InputMode::ConnectionSetup => vec![
-                connection_setup::SAVE.as_hint(),
+                crate::app::update::input::keybindings::connection_setup_save(
+                    state.settings.saved_keymap_preset(),
+                )
+                .as_hint(),
                 connection_setup::TAB_NEXT.as_hint(),
                 connection_setup::TAB_PREV.as_hint(),
                 connection_setup::ESC_CANCEL.as_hint(),
@@ -281,7 +310,10 @@ impl Footer {
             InputMode::ErTablePicker => vec![
                 er_picker::ENTER_GENERATE.as_hint(),
                 er_picker::SELECT.as_hint(),
-                er_picker::SELECT_ALL.as_hint(),
+                crate::app::update::input::keybindings::er_picker_select_all(
+                    state.settings.saved_keymap_preset(),
+                )
+                .as_hint(),
                 er_picker::TYPE_FILTER.as_hint(),
                 er_picker::ESC_CLOSE.as_hint(),
             ],

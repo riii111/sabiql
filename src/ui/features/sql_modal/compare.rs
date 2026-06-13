@@ -39,8 +39,12 @@ pub fn render(
     }
 
     if lines.is_empty() {
+        let explain_key = crate::app::update::input::keybindings::sql_modal_compare_explain(
+            state.settings.saved_keymap_preset(),
+        )
+        .key;
         lines.push(Line::from(Span::styled(
-            " Run EXPLAIN (Ctrl+E) to start comparing.",
+            format!(" Run EXPLAIN ({explain_key}) to start comparing."),
             Style::default().fg(theme.semantic.text.placeholder),
         )));
         flash_mask.push(false);

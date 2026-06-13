@@ -37,8 +37,9 @@ impl SettingsSection {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum KeymapPreset {
+    #[default]
     Default,
     Ide,
 }
@@ -82,12 +83,6 @@ impl KeymapPreset {
             .position(|preset| *preset == self)
             .unwrap_or(0);
         Self::ALL[index.saturating_sub(1)]
-    }
-}
-
-impl Default for KeymapPreset {
-    fn default() -> Self {
-        Self::Default
     }
 }
 

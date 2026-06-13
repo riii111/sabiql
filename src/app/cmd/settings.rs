@@ -71,7 +71,7 @@ mod tests {
             Effect::SaveSettings {
                 settings: AppSettings {
                     theme_id: ThemeId::Light,
-                    keymap_preset: Default::default(),
+                    keymap_preset: crate::model::shared::settings::KeymapPreset::default(),
                     er_browser: Some("Firefox".to_string()),
                 },
             },
@@ -102,7 +102,7 @@ mod tests {
             Effect::SaveSettings {
                 settings: AppSettings {
                     theme_id: ThemeId::Light,
-                    keymap_preset: Default::default(),
+                    keymap_preset: crate::model::shared::settings::KeymapPreset::default(),
                     er_browser: None,
                 },
             },

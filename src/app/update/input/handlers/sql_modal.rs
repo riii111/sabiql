@@ -1,4 +1,5 @@
 use crate::model::shared::key_sequence::Prefix;
+use crate::model::shared::settings::KeymapPreset;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::update::action::{
     Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
@@ -15,7 +16,14 @@ pub fn handle_sql_modal_keys(
     status: &SqlModalStatus,
     active_tab: SqlModalTab,
 ) -> Action {
-    handle_sql_modal_keys_with_prefix(combo, completion_visible, status, active_tab, None)
+    handle_sql_modal_keys_with_prefix(
+        combo,
+        completion_visible,
+        status,
+        active_tab,
+        None,
+        KeymapPreset::Default,
+    )
 }
 
 pub fn handle_sql_modal_keys_with_prefix(
@@ -24,6 +32,7 @@ pub fn handle_sql_modal_keys_with_prefix(
     status: &SqlModalStatus,
     active_tab: SqlModalTab,
     pending_prefix: Option<Prefix>,
+    keymap_preset: KeymapPreset,
 ) -> Action {
     use crate::update::action::CursorMove;
 
@@ -59,7 +68,10 @@ pub fn handle_sql_modal_keys_with_prefix(
             };
         }
 
-        if ctrl && combo.key == Key::Char('e') {
+        if crate::update::input::keybindings::sql_modal_plan_explain(keymap_preset)
+            .combos
+            .contains(&combo)
+        {
             return Action::ExplainRequest;
         }
 
@@ -107,7 +119,10 @@ pub fn handle_sql_modal_keys_with_prefix(
         if alt && combo.key == Key::Char('e') {
             return Action::ExplainAnalyzeRequest;
         }
-        if ctrl && combo.key == Key::Char('o') {
+        if crate::update::input::keybindings::sql_modal_normal_query_history(keymap_preset)
+            .combos
+            .contains(&combo)
+        {
             return Action::OpenModal(ModalKind::QueryHistoryPicker);
         }
         if ctrl && combo.key == Key::Char('l') {
@@ -272,12 +287,17 @@ pub fn handle_sql_modal_keys_with_prefix(
         return Action::SqlModalSubmit;
     }
 
-    if ctrl && combo.key == Key::Char('o') {
+    if keymap_preset == KeymapPreset::Default && ctrl && combo.key == Key::Char('o') {
         return Action::OpenModal(ModalKind::QueryHistoryPicker);
     }
 
-    if ctrl && combo.key == Key::Char('e') {
+    if keymap_preset == KeymapPreset::Default && ctrl && combo.key == Key::Char('e') {
         return Action::ExplainRequest;
+    }
+
+    if keymap_preset == KeymapPreset::Ide && ctrl_only && matches!(combo.key, Key::Char('o' | 'e'))
+    {
+        return Action::None;
     }
 
     if ctrl && combo.key == Key::Char('l') {
@@ -787,6 +807,7 @@ mod tests {
                 &SqlModalStatus::Normal,
                 SqlModalTab::Sql,
                 Some(Prefix::G),
+                KeymapPreset::Default,
             );
 
             assert_action(result, Expected::SqlModalMoveCursor(CursorMove::FirstLine));
@@ -800,6 +821,7 @@ mod tests {
                 &SqlModalStatus::Normal,
                 SqlModalTab::Sql,
                 Some(Prefix::G),
+                KeymapPreset::Default,
             );
 
             assert!(matches!(result, Action::CancelKeySequence));
@@ -813,9 +835,55 @@ mod tests {
                 &SqlModalStatus::Normal,
                 SqlModalTab::Sql,
                 Some(Prefix::G),
+                KeymapPreset::Default,
             );
 
             assert!(matches!(result, Action::CancelKeySequence));
+        }
+
+        #[test]
+        fn ide_normal_uses_plain_history_key() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo(Key::Char('O')),
+                false,
+                &SqlModalStatus::Normal,
+                SqlModalTab::Sql,
+                None,
+                KeymapPreset::Ide,
+            );
+
+            assert!(matches!(
+                result,
+                Action::OpenModal(ModalKind::QueryHistoryPicker)
+            ));
+        }
+
+        #[test]
+        fn ide_normal_disables_ctrl_history_key() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_ctrl(Key::Char('o')),
+                false,
+                &SqlModalStatus::Normal,
+                SqlModalTab::Sql,
+                None,
+                KeymapPreset::Ide,
+            );
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn ide_editing_ctrl_history_key_is_ignored() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_ctrl(Key::Char('o')),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+                None,
+                KeymapPreset::Ide,
+            );
+
+            assert!(matches!(result, Action::None));
         }
 
         #[rstest]

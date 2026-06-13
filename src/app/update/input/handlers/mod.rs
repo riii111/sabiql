@@ -56,13 +56,14 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
                     .db_capabilities
                     .normalize_sql_modal_tab(state.sql_modal.active_tab()),
                 state.ui.key_sequence.pending_prefix(),
+                state.settings.saved_keymap_preset(),
             )
         }
         InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
         InputMode::ConnectionError => connections::handle_connection_error_keys(combo),
         InputMode::ConfirmDialog => overlays::handle_confirm_dialog_keys(combo),
         InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
-        InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo),
+        InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
         InputMode::JsonbDetail => {
             let is_searching = state.jsonb_detail.search().active;

@@ -1,4 +1,5 @@
 use super::keybindings::{KeyBinding, global};
+use crate::model::shared::settings::KeymapPreset;
 use crate::update::action::Action;
 
 // Deliberate opt-in list in display order — not derived from GLOBAL_KEYS, so an
@@ -20,18 +21,41 @@ const PALETTE_COMMANDS: &[KeyBinding] = &[
     global::QUERY_HISTORY,
 ];
 
-pub fn palette_command_count() -> usize {
-    PALETTE_COMMANDS.len()
+const IDE_PALETTE_COMMANDS: &[KeyBinding] = &[
+    global::QUIT,
+    global::HELP,
+    global::TABLE_PICKER_IDE,
+    global::SETTINGS_IDE,
+    global::FOCUS,
+    global::RELOAD,
+    global::SQL,
+    global::ER_DIAGRAM,
+    global::CONNECTIONS,
+    global::CSV_EXPORT_IDE,
+    global::READ_ONLY_IDE,
+    global::EXIT_READ_ONLY_IDE,
+    global::QUERY_HISTORY_IDE,
+];
+
+fn palette_commands_for(preset: KeymapPreset) -> &'static [KeyBinding] {
+    match preset {
+        KeymapPreset::Default => PALETTE_COMMANDS,
+        KeymapPreset::Ide => IDE_PALETTE_COMMANDS,
+    }
 }
 
-pub fn palette_action_for_index(index: usize) -> Action {
-    PALETTE_COMMANDS
+pub fn palette_command_count(preset: KeymapPreset) -> usize {
+    palette_commands_for(preset).len()
+}
+
+pub fn palette_action_for_index(index: usize, preset: KeymapPreset) -> Action {
+    palette_commands_for(preset)
         .get(index)
         .map_or(Action::None, |kb| kb.action.clone())
 }
 
-pub fn palette_commands() -> impl Iterator<Item = &'static KeyBinding> {
-    PALETTE_COMMANDS.iter()
+pub fn palette_commands(preset: KeymapPreset) -> impl Iterator<Item = &'static KeyBinding> {
+    palette_commands_for(preset).iter()
 }
 
 #[cfg(test)]
@@ -89,7 +113,7 @@ mod tests {
 
     #[test]
     fn palette_commands_contains_no_none_actions() {
-        let none_entries: Vec<_> = palette_commands()
+        let none_entries: Vec<_> = palette_commands(KeymapPreset::Default)
             .filter(|kb| matches!(kb.action, Action::None))
             .collect();
 

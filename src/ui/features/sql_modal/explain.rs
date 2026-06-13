@@ -115,8 +115,12 @@ pub fn render(
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         area.height
     } else {
+        let explain_key = crate::app::update::input::keybindings::sql_modal_plan_explain(
+            state.settings.saved_keymap_preset(),
+        )
+        .key;
         let placeholder = Line::from(Span::styled(
-            " Press Ctrl+E to run EXPLAIN",
+            format!(" Press {explain_key} to run EXPLAIN"),
             Style::default().fg(theme.semantic.text.placeholder),
         ));
         frame.render_widget(Paragraph::new(vec![placeholder]), area);

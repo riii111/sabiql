@@ -3,8 +3,9 @@ mod editors;
 mod normal;
 mod overlays;
 
+use crate::model::shared::settings::KeymapPreset;
 pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
-use crate::update::action::Action;
+use crate::update::action::{Action, ModalKind};
 pub use connections::*;
 pub use editors::*;
 pub use normal::*;
@@ -130,6 +131,21 @@ pub fn is_focus_toggle(combo: &KeyCombo) -> bool {
 
 pub fn is_reload(combo: &KeyCombo) -> bool {
     global::RELOAD.combos.contains(combo)
+}
+
+pub fn global_action_for(combo: &KeyCombo, preset: KeymapPreset) -> Option<Action> {
+    normal::global_keys_for(preset)
+        .iter()
+        .filter(|binding| {
+            !matches!(
+                &binding.action,
+                Action::OpenModal(
+                    ModalKind::SqlModal | ModalKind::ErTablePicker | ModalKind::ConnectionSelector
+                )
+            )
+        })
+        .find(|binding| binding.combos.contains(combo))
+        .map(|binding| binding.action.clone())
 }
 
 // Action has payload variants without PartialEq, so tests compare by

@@ -96,7 +96,9 @@ impl SqlModal {
             }
         } else {
             let hint = match state.sql_modal.status() {
-                SqlModalStatus::Editing => Self::editing_hint(services),
+                SqlModalStatus::Editing => {
+                    Self::editing_hint(services, state.settings.saved_keymap_preset())
+                }
                 SqlModalStatus::Running => FooterHintBar::message("Running\u{2026}"),
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     input, target_name, ..
@@ -114,7 +116,12 @@ impl SqlModal {
                 _ => {
                     let compare_can_yank =
                         state.explain.left.is_some() && state.explain.right.is_some();
-                    Self::border_hint(active_tab, compare_can_yank, services)
+                    Self::border_hint(
+                        active_tab,
+                        compare_can_yank,
+                        services,
+                        state.settings.saved_keymap_preset(),
+                    )
                 }
             };
             Self::render_modal_with_tabs(frame, active_tab, hint, services, theme)
@@ -247,13 +254,17 @@ impl SqlModal {
         tab: SqlModalTab,
         compare_can_yank: bool,
         services: &AppServices,
+        keymap_preset: crate::app::model::shared::settings::KeymapPreset,
     ) -> FooterHintBar {
         match tab {
             SqlModalTab::Sql if services.db_capabilities.supported_sql_modal_tabs().len() == 1 => {
                 if services.db_capabilities.supports_explain() {
                     FooterHintBar::new([
                         sql_modal_normal::RUN.as_hint(),
-                        sql_modal_plan::EXPLAIN.as_hint(),
+                        crate::app::update::input::keybindings::sql_modal_plan_explain(
+                            keymap_preset,
+                        )
+                        .as_hint(),
                         sql_modal_normal::ENTER_INSERT.as_hint(),
                         sql_modal_normal::CLOSE.as_hint(),
                     ])
@@ -285,7 +296,10 @@ impl SqlModal {
                 if services.db_capabilities.supports_explain() {
                     FooterHintBar::new([
                         sql_modal_normal::RUN.as_hint(),
-                        sql_modal_plan::EXPLAIN.as_hint(),
+                        crate::app::update::input::keybindings::sql_modal_plan_explain(
+                            keymap_preset,
+                        )
+                        .as_hint(),
                         sql_modal_normal::ENTER_INSERT.as_hint(),
                         ("Tab/⇧Tab", sql_modal_plan::TAB.as_hint().1),
                         sql_modal_normal::CLOSE.as_hint(),
@@ -302,22 +316,33 @@ impl SqlModal {
         }
     }
 
-    fn editing_hint(services: &AppServices) -> FooterHintBar {
-        if services.db_capabilities.supports_explain() {
-            FooterHintBar::new([
+    fn editing_hint(
+        services: &AppServices,
+        keymap_preset: crate::app::model::shared::settings::KeymapPreset,
+    ) -> FooterHintBar {
+        match (services.db_capabilities.supports_explain(), keymap_preset) {
+            (true, crate::app::model::shared::settings::KeymapPreset::Default) => {
+                FooterHintBar::new([
+                    sql_modal::RUN.as_hint(),
+                    sql_modal_plan::EXPLAIN.as_hint(),
+                    sql_modal::CLEAR.as_hint(),
+                    sql_modal::QUERY_HISTORY.as_hint(),
+                    sql_modal::ESC_NORMAL.as_hint(),
+                ])
+            }
+            (false, crate::app::model::shared::settings::KeymapPreset::Default) => {
+                FooterHintBar::new([
+                    sql_modal::RUN.as_hint(),
+                    sql_modal::CLEAR.as_hint(),
+                    sql_modal::QUERY_HISTORY.as_hint(),
+                    sql_modal::ESC_NORMAL.as_hint(),
+                ])
+            }
+            _ => FooterHintBar::new([
                 sql_modal::RUN.as_hint(),
-                sql_modal_plan::EXPLAIN.as_hint(),
                 sql_modal::CLEAR.as_hint(),
-                sql_modal::QUERY_HISTORY.as_hint(),
                 sql_modal::ESC_NORMAL.as_hint(),
-            ])
-        } else {
-            FooterHintBar::new([
-                sql_modal::RUN.as_hint(),
-                sql_modal::CLEAR.as_hint(),
-                sql_modal::QUERY_HISTORY.as_hint(),
-                sql_modal::ESC_NORMAL.as_hint(),
-            ])
+            ]),
         }
     }
 }

@@ -6,6 +6,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
+use crate::app::update::input::keybindings::connection_setup_save;
 use crate::domain::connection::SslMode;
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
@@ -50,7 +51,10 @@ impl ConnectionSetup {
             FooterHintBar::new([
                 ("Tab", "Next"),
                 ("Shift+Tab", "Prev"),
-                ("Ctrl+S", submit_desc),
+                (
+                    connection_setup_save(state.settings.saved_keymap_preset()).key,
+                    submit_desc,
+                ),
                 ("Esc", "Cancel"),
             ]),
             theme,

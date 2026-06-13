@@ -308,7 +308,7 @@ mod tests {
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
-                        keymap_preset: Default::default(),
+                        keymap_preset: crate::model::shared::settings::KeymapPreset::default(),
                         er_browser: Some("Google Chrome".to_string()),
                     }),
                     Instant::now(),

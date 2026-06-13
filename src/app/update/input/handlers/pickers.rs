@@ -80,12 +80,15 @@ pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
     }
 }
 
-pub fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
-    if let Some(action) = keybindings::ER_PICKER.resolve(&combo) {
+pub fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
+    if let Some(action) = crate::update::input::keymap::resolve_mode(
+        &combo,
+        keybindings::er_picker_rows(state.settings.saved_keymap_preset()),
+    ) {
         return action;
     }
     match combo.key {
-        Key::Char(c) => Action::TextInput {
+        Key::Char(c) if combo.modifiers.is_empty() => Action::TextInput {
             target: InputTarget::ErFilter,
             ch: c,
         },
@@ -96,6 +99,7 @@ pub fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::settings::KeymapPreset;
     use crate::update::action::ModalKind;
     use crate::update::action::{ListMotion, ListTarget};
     use crate::update::input::keybindings::{Key, KeyCombo};
@@ -371,9 +375,20 @@ mod tests {
     mod er_table_picker {
         use super::*;
 
+        fn state() -> AppState {
+            AppState::new("test".to_string())
+        }
+
+        fn state_with_preset(preset: KeymapPreset) -> AppState {
+            let mut state = state();
+            state.settings.load_keymap_preset(preset);
+            state
+        }
+
         #[test]
         fn esc_returns_close_er_table_picker() {
-            let result = handle_er_table_picker_keys(combo(Key::Esc));
+            let state = state();
+            let result = handle_er_table_picker_keys(combo(Key::Esc), &state);
 
             assert!(matches!(
                 result,
@@ -383,14 +398,16 @@ mod tests {
 
         #[test]
         fn enter_returns_er_confirm_selection() {
-            let result = handle_er_table_picker_keys(combo(Key::Enter));
+            let state = state();
+            let result = handle_er_table_picker_keys(combo(Key::Enter), &state);
 
             assert!(matches!(result, Action::ErConfirmSelection));
         }
 
         #[test]
         fn up_returns_select_previous() {
-            let result = handle_er_table_picker_keys(combo(Key::Up));
+            let state = state();
+            let result = handle_er_table_picker_keys(combo(Key::Up), &state);
 
             assert!(matches!(
                 result,
@@ -403,7 +420,8 @@ mod tests {
 
         #[test]
         fn down_returns_select_next() {
-            let result = handle_er_table_picker_keys(combo(Key::Down));
+            let state = state();
+            let result = handle_er_table_picker_keys(combo(Key::Down), &state);
 
             assert!(matches!(
                 result,
@@ -416,7 +434,8 @@ mod tests {
 
         #[test]
         fn backspace_returns_er_filter_backspace() {
-            let result = handle_er_table_picker_keys(combo(Key::Backspace));
+            let state = state();
+            let result = handle_er_table_picker_keys(combo(Key::Backspace), &state);
 
             assert!(matches!(
                 result,
@@ -428,7 +447,8 @@ mod tests {
 
         #[test]
         fn char_input_returns_er_filter_input() {
-            let result = handle_er_table_picker_keys(combo(Key::Char('a')));
+            let state = state();
+            let result = handle_er_table_picker_keys(combo(Key::Char('a')), &state);
 
             assert!(matches!(
                 result,
@@ -439,11 +459,36 @@ mod tests {
             ));
         }
 
+        #[test]
+        fn default_ctrl_a_selects_all() {
+            let state = state_with_preset(KeymapPreset::Default);
+            let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('a')), &state);
+
+            assert!(matches!(result, Action::ErSelectAll));
+        }
+
+        #[test]
+        fn ide_a_selects_all() {
+            let state = state_with_preset(KeymapPreset::Ide);
+            let result = handle_er_table_picker_keys(combo(Key::Char('A')), &state);
+
+            assert!(matches!(result, Action::ErSelectAll));
+        }
+
+        #[test]
+        fn ide_ctrl_a_is_ignored() {
+            let state = state_with_preset(KeymapPreset::Ide);
+            let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('a')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
         #[rstest]
         #[case(Key::Char('p'), ListMotion::Previous)]
         #[case(Key::Char('n'), ListMotion::Next)]
         fn ctrl_alias_selects_expected_motion(#[case] key: Key, #[case] motion: ListMotion) {
-            let result = handle_er_table_picker_keys(combo_ctrl(key));
+            let state = state();
+            let result = handle_er_table_picker_keys(combo_ctrl(key), &state);
 
             assert!(matches!(
                 result,

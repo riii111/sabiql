@@ -1,5 +1,6 @@
 use super::KeyBinding;
 use super::{Key, KeyCombo};
+use crate::model::shared::settings::KeymapPreset;
 use crate::update::action::Action;
 
 // =============================================================================
@@ -37,13 +38,34 @@ pub mod global {
         combos: &[KeyCombo::ctrl(Key::Char('p'))],
     };
 
+    pub const TABLE_PICKER_IDE: KeyBinding = KeyBinding {
+        key_short: "T",
+        key: "T",
+        desc_short: "Tables",
+        description: "Open Table Picker",
+        action: Action::OpenModal(ModalKind::TablePicker),
+        combos: &[KeyCombo::plain(Key::Char('T'))],
+    };
+
     pub const SETTINGS: KeyBinding = KeyBinding {
-        key_short: "^K",
-        key: "Ctrl+K",
+        key_short: "S/^K",
+        key: "S / Ctrl+K",
         desc_short: "Settings",
         description: "Open Settings",
         action: Action::OpenModal(ModalKind::Settings),
-        combos: &[KeyCombo::ctrl(Key::Char('k'))],
+        combos: &[
+            KeyCombo::plain(Key::Char('S')),
+            KeyCombo::ctrl(Key::Char('k')),
+        ],
+    };
+
+    pub const SETTINGS_IDE: KeyBinding = KeyBinding {
+        key_short: "S",
+        key: "S",
+        desc_short: "Settings",
+        description: "Open Settings",
+        action: Action::OpenModal(ModalKind::Settings),
+        combos: &[KeyCombo::plain(Key::Char('S'))],
     };
 
     pub const COMMAND_LINE: KeyBinding = KeyBinding {
@@ -62,6 +84,15 @@ pub mod global {
         description: "Open Command Palette",
         action: Action::OpenModal(ModalKind::CommandPalette),
         combos: &[KeyCombo::plain(Key::F(1))],
+    };
+
+    pub const COMMAND_PALETTE_IDE: KeyBinding = KeyBinding {
+        key_short: "P",
+        key: "P",
+        desc_short: "Palette",
+        description: "Open Command Palette",
+        action: Action::OpenModal(ModalKind::CommandPalette),
+        combos: &[KeyCombo::plain(Key::Char('P'))],
     };
 
     // FOCUS / EXIT_FOCUS share the same combo for the same Action::ToggleFocus.
@@ -148,6 +179,15 @@ pub mod global {
         combos: &[KeyCombo::ctrl(Key::Char('e'))],
     };
 
+    pub const CSV_EXPORT_IDE: KeyBinding = KeyBinding {
+        key_short: "E",
+        key: "E",
+        desc_short: "Export",
+        description: "Export result to CSV",
+        action: Action::RequestCsvExport,
+        combos: &[KeyCombo::plain(Key::Char('E'))],
+    };
+
     // READ_ONLY / EXIT_READ_ONLY share the same combo for the same
     // Action::ToggleReadOnly. Two entries exist because the footer shows
     // different labels depending on whether read-only mode is active.
@@ -160,6 +200,15 @@ pub mod global {
         combos: &[KeyCombo::ctrl(Key::Char('r'))],
     };
 
+    pub const READ_ONLY_IDE: KeyBinding = KeyBinding {
+        key_short: "R",
+        key: "R",
+        desc_short: "Read-Only",
+        description: "Enable Read-Only mode",
+        action: Action::ToggleReadOnly,
+        combos: &[KeyCombo::plain(Key::Char('R'))],
+    };
+
     pub const EXIT_READ_ONLY: KeyBinding = KeyBinding {
         key_short: "^R",
         key: "Ctrl+R",
@@ -167,6 +216,15 @@ pub mod global {
         description: "Disable Read-Only mode",
         action: Action::ToggleReadOnly,
         combos: &[KeyCombo::ctrl(Key::Char('r'))],
+    };
+
+    pub const EXIT_READ_ONLY_IDE: KeyBinding = KeyBinding {
+        key_short: "R",
+        key: "R",
+        desc_short: "Read-Write",
+        description: "Disable Read-Only mode",
+        action: Action::ToggleReadOnly,
+        combos: &[KeyCombo::plain(Key::Char('R'))],
     };
 
     pub const QUERY_HISTORY: KeyBinding = KeyBinding {
@@ -177,9 +235,18 @@ pub mod global {
         action: Action::OpenModal(ModalKind::QueryHistoryPicker),
         combos: &[KeyCombo::ctrl(Key::Char('o'))],
     };
+
+    pub const QUERY_HISTORY_IDE: KeyBinding = KeyBinding {
+        key_short: "O",
+        key: "O",
+        desc_short: "History",
+        description: "Open Query History",
+        action: Action::OpenModal(ModalKind::QueryHistoryPicker),
+        combos: &[KeyCombo::plain(Key::Char('O'))],
+    };
 }
 
-pub const GLOBAL_KEYS: &[KeyBinding] = &[
+pub const DEFAULT_GLOBAL_KEYS: &[KeyBinding] = &[
     global::QUIT,
     global::HELP,
     global::TABLE_PICKER,
@@ -199,6 +266,85 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
     global::EXIT_READ_ONLY,
     global::QUERY_HISTORY,
 ];
+
+pub const IDE_GLOBAL_KEYS: &[KeyBinding] = &[
+    global::QUIT,
+    global::HELP,
+    global::TABLE_PICKER_IDE,
+    global::SETTINGS_IDE,
+    global::COMMAND_LINE,
+    global::COMMAND_PALETTE_IDE,
+    global::FOCUS,
+    global::EXIT_FOCUS,
+    global::PANE_SWITCH,
+    global::INSPECTOR_TABS,
+    global::RELOAD,
+    global::SQL,
+    global::ER_DIAGRAM,
+    global::CONNECTIONS,
+    global::CSV_EXPORT_IDE,
+    global::READ_ONLY_IDE,
+    global::EXIT_READ_ONLY_IDE,
+    global::QUERY_HISTORY_IDE,
+];
+
+pub const GLOBAL_KEYS: &[KeyBinding] = DEFAULT_GLOBAL_KEYS;
+
+pub fn global_keys_for(preset: KeymapPreset) -> &'static [KeyBinding] {
+    match preset {
+        KeymapPreset::Default => DEFAULT_GLOBAL_KEYS,
+        KeymapPreset::Ide => IDE_GLOBAL_KEYS,
+    }
+}
+
+pub fn table_picker(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &global::TABLE_PICKER,
+        KeymapPreset::Ide => &global::TABLE_PICKER_IDE,
+    }
+}
+
+pub fn settings(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &global::SETTINGS,
+        KeymapPreset::Ide => &global::SETTINGS_IDE,
+    }
+}
+
+pub fn command_palette(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &global::COMMAND_PALETTE,
+        KeymapPreset::Ide => &global::COMMAND_PALETTE_IDE,
+    }
+}
+
+pub fn csv_export(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &global::CSV_EXPORT,
+        KeymapPreset::Ide => &global::CSV_EXPORT_IDE,
+    }
+}
+
+pub fn read_only(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &global::READ_ONLY,
+        KeymapPreset::Ide => &global::READ_ONLY_IDE,
+    }
+}
+
+pub fn exit_read_only(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &global::EXIT_READ_ONLY,
+        KeymapPreset::Ide => &global::EXIT_READ_ONLY_IDE,
+    }
+}
+
+pub fn query_history(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &global::QUERY_HISTORY,
+        KeymapPreset::Ide => &global::QUERY_HISTORY_IDE,
+    }
+}
 
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     KeyBinding {
