@@ -18,6 +18,14 @@ Destructive operations are guarded. Inline edits and row deletions always show a
 
 Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featured alternative to GUI tools like DBeaver or DataGrip, without ever leaving the terminal.
 
+## Query Safety
+
+sabiql treats the SQL modal as SQL-only input. CLI meta-commands such as psql backslash commands and sqlite3 dot commands are rejected instead of being passed to the underlying client.
+
+Read-only mode combines app-level write blocking with the database client guard available for the active adapter. PostgreSQL uses a read-only session option; SQLite uses sqlite3's read-only mode.
+
+PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement write SQL is wrapped in an explicit transaction unless the input already contains transaction control statements.
+
 ## Features
 ![hero_1000_20fps](https://github.com/user-attachments/assets/06e1900d-b044-4f29-a2a8-7d7bab5bd3a1)
 

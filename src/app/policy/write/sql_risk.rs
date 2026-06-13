@@ -46,6 +46,71 @@ pub enum MultiStatementDecision {
     },
 }
 
+fn contains_cli_meta_command(sql: &str) -> bool {
+    let chars: Vec<(usize, char)> = sql.char_indices().collect();
+    let mut i = 0;
+    let mut in_string = false;
+    let mut line_leading = true;
+
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+
+        if in_string {
+            if let Some(next_i) = advance_single_quote(&chars, i, ch, &mut in_string) {
+                i = next_i;
+                continue;
+            }
+            if ch == '\n' {
+                line_leading = true;
+            }
+            i += 1;
+            continue;
+        }
+
+        if ch == '\n' {
+            line_leading = true;
+            i += 1;
+            continue;
+        }
+        if line_leading && ch.is_whitespace() {
+            i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_line_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = advance_single_quote(&chars, i, ch, &mut in_string) {
+            line_leading = false;
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_double_quoted_identifier(&chars, i, ch) {
+            line_leading = false;
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_dollar_quoted_string(sql, &chars, i, byte_pos, ch) {
+            line_leading = false;
+            i = next_i;
+            continue;
+        }
+
+        if line_leading && matches!(ch, '.' | '\\') {
+            return true;
+        }
+
+        line_leading = false;
+        i += 1;
+    }
+
+    false
+}
+
 pub fn split_statements(sql: &str) -> Vec<String> {
     // Use sql's own char_indices so byte offsets remain valid for slicing sql.
     // to_lowercase() can change byte lengths (e.g. İ → i̇), which would corrupt offsets.
@@ -209,6 +274,12 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
 }
 
 pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
+    if contains_cli_meta_command(sql) {
+        return MultiStatementDecision::Block {
+            reason: "CLI meta-commands are not supported in SQL input".to_string(),
+        };
+    }
+
     let statements = split_statements(sql);
 
     if statements.is_empty() {
@@ -605,6 +676,34 @@ mod tests {
         fn empty_input_blocked() {
             let result = evaluate_multi_statement("");
             assert!(matches!(result, MultiStatementDecision::Block { .. }));
+        }
+
+        #[rstest]
+        #[case::sqlite_shell(".shell echo injected")]
+        #[case::sqlite_open_after_select("SELECT 1;\n.open writable.db")]
+        #[case::psql_shell("\\! echo injected")]
+        #[case::indented_meta_command("  .output /tmp/out.csv")]
+        fn cli_meta_commands_are_blocked(#[case] sql: &str) {
+            let result = evaluate_multi_statement(sql);
+
+            assert!(matches!(
+                result,
+                MultiStatementDecision::Block { reason }
+                    if reason == "CLI meta-commands are not supported in SQL input"
+            ));
+        }
+
+        #[rstest]
+        #[case::dot_inside_string("SELECT '.shell echo ok'")]
+        #[case::backslash_inside_string("SELECT '\\\\! echo ok'")]
+        #[case::dot_inside_comment("-- .shell ignored\nSELECT 1")]
+        #[case::backslash_inside_block_comment("SELECT /* \\! ignored */ 1")]
+        #[case::backslash_inside_quoted_identifier(r#"SELECT "table\!name" FROM "table\!name""#)]
+        #[case::dot_inside_dollar_quote("SELECT $tag$\n.shell ignored\n$tag$")]
+        fn cli_meta_command_like_text_is_allowed(#[case] sql: &str) {
+            let result = evaluate_multi_statement(sql);
+
+            assert!(matches!(result, MultiStatementDecision::Allow { .. }));
         }
 
         #[test]
