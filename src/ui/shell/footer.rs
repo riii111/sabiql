@@ -403,6 +403,7 @@ mod tests {
         let services = AppServices::stub();
         state.modal.set_mode(InputMode::Settings);
         state.settings.switch_next_section();
+        state.settings.switch_next_section();
         state.settings.start_custom_browser_edit();
         state.settings.stop_custom_browser_edit();
 
@@ -418,6 +419,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let services = AppServices::stub();
         state.modal.set_mode(InputMode::Settings);
+        state.settings.switch_next_section();
         state.settings.switch_next_section();
         state.settings.start_custom_browser_edit();
 

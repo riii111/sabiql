@@ -477,6 +477,7 @@ fn settings_overlay_er_diagram() {
 
     state.settings.open(state.ui.theme_id());
     state.settings.switch_next_section();
+    state.settings.switch_next_section();
     state.modal.set_mode(InputMode::Settings);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -493,6 +494,7 @@ fn settings_overlay_er_diagram_custom_browser() {
         .settings
         .load_er_browser(Some("Brave Browser".to_string()));
     state.settings.open(state.ui.theme_id());
+    state.settings.switch_next_section();
     state.settings.switch_next_section();
     state.modal.set_mode(InputMode::Settings);
 

@@ -238,6 +238,7 @@ mod tests {
                     Instant::now(),
                 );
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
 
                 let effects =
@@ -262,6 +263,7 @@ mod tests {
                     &Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
                 );
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(
                     &mut state,
@@ -306,6 +308,7 @@ mod tests {
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
+                        keymap_preset: Default::default(),
                         er_browser: Some("Google Chrome".to_string()),
                     }),
                     Instant::now(),

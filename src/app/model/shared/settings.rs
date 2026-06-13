@@ -5,15 +5,17 @@ use crate::model::shared::cursor::CursorMove;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
     Appearance,
+    Keymap,
     ErDiagram,
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 2] = [Self::Appearance, Self::ErDiagram];
+    pub const ALL: [Self; 3] = [Self::Appearance, Self::Keymap, Self::ErDiagram];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
+            Self::Keymap => "Keymap",
             Self::ErDiagram => "ER Diagram",
         }
     }
@@ -32,6 +34,60 @@ impl SettingsSection {
             .position(|section| *section == self)
             .unwrap_or(0);
         Self::ALL[(index + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeymapPreset {
+    Default,
+    Ide,
+}
+
+impl KeymapPreset {
+    pub const ALL: [Self; 2] = [Self::Default, Self::Ide];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Default => "Default",
+            Self::Ide => "IDE",
+        }
+    }
+
+    pub fn config_value(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Ide => "ide",
+        }
+    }
+
+    pub fn from_config_value(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "default" => Some(Self::Default),
+            "ide" => Some(Self::Ide),
+            _ => None,
+        }
+    }
+
+    fn next(self) -> Self {
+        let index = Self::ALL
+            .iter()
+            .position(|preset| *preset == self)
+            .unwrap_or(0);
+        Self::ALL[(index + 1).min(Self::ALL.len() - 1)]
+    }
+
+    fn previous(self) -> Self {
+        let index = Self::ALL
+            .iter()
+            .position(|preset| *preset == self)
+            .unwrap_or(0);
+        Self::ALL[index.saturating_sub(1)]
+    }
+}
+
+impl Default for KeymapPreset {
+    fn default() -> Self {
+        Self::Default
     }
 }
 
@@ -126,6 +182,8 @@ impl ErBrowserChoice {
 pub struct SettingsState {
     previous_theme: ThemeId,
     selected_theme: ThemeId,
+    saved_keymap_preset: KeymapPreset,
+    selected_keymap_preset: KeymapPreset,
     saved_er_browser: Option<String>,
     selected_er_browser_choice: ErBrowserChoice,
     custom_er_browser: TextInputState,
@@ -138,6 +196,8 @@ impl Default for SettingsState {
         Self {
             previous_theme: ThemeId::Default,
             selected_theme: ThemeId::Default,
+            saved_keymap_preset: KeymapPreset::Default,
+            selected_keymap_preset: KeymapPreset::Default,
             saved_er_browser: None,
             selected_er_browser_choice: ErBrowserChoice::SystemDefault,
             custom_er_browser: TextInputState::default(),
@@ -155,9 +215,15 @@ impl SettingsState {
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
     }
 
+    pub fn load_keymap_preset(&mut self, keymap_preset: KeymapPreset) {
+        self.saved_keymap_preset = keymap_preset;
+        self.selected_keymap_preset = keymap_preset;
+    }
+
     pub fn open(&mut self, current_theme: ThemeId) {
         self.previous_theme = current_theme;
         self.selected_theme = current_theme;
+        self.selected_keymap_preset = self.saved_keymap_preset;
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
@@ -171,6 +237,14 @@ impl SettingsState {
 
     pub fn selected_theme(&self) -> ThemeId {
         self.selected_theme
+    }
+
+    pub fn saved_keymap_preset(&self) -> KeymapPreset {
+        self.saved_keymap_preset
+    }
+
+    pub fn selected_keymap_preset(&self) -> KeymapPreset {
+        self.selected_keymap_preset
     }
 
     pub fn section(&self) -> SettingsSection {
@@ -220,6 +294,9 @@ impl SettingsState {
             SettingsSection::Appearance => {
                 self.selected_theme = self.selected_theme.next();
             }
+            SettingsSection::Keymap => {
+                self.selected_keymap_preset = self.selected_keymap_preset.next();
+            }
             SettingsSection::ErDiagram => {
                 self.editing_custom_er_browser = false;
                 self.selected_er_browser_choice = self.selected_er_browser_choice.next();
@@ -231,6 +308,9 @@ impl SettingsState {
         match self.section {
             SettingsSection::Appearance => {
                 self.selected_theme = self.selected_theme.previous();
+            }
+            SettingsSection::Keymap => {
+                self.selected_keymap_preset = self.selected_keymap_preset.previous();
             }
             SettingsSection::ErDiagram => {
                 self.editing_custom_er_browser = false;
@@ -274,9 +354,16 @@ impl SettingsState {
         }
     }
 
-    pub fn commit_saved(&mut self, theme: ThemeId, er_browser: Option<String>) {
+    pub fn commit_saved(
+        &mut self,
+        theme: ThemeId,
+        keymap_preset: KeymapPreset,
+        er_browser: Option<String>,
+    ) {
         self.previous_theme = theme;
         self.selected_theme = theme;
+        self.saved_keymap_preset = keymap_preset;
+        self.selected_keymap_preset = keymap_preset;
         self.saved_er_browser = normalize_browser(er_browser);
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
@@ -286,6 +373,7 @@ impl SettingsState {
 
     pub fn discard_selection(&mut self) {
         self.selected_theme = self.previous_theme;
+        self.selected_keymap_preset = self.saved_keymap_preset;
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
@@ -336,6 +424,29 @@ mod tests {
     }
 
     #[test]
+    fn selection_moves_between_keymap_presets() {
+        let mut state = SettingsState::default();
+        state.open(ThemeId::Default);
+        state.switch_next_section();
+
+        state.select_next();
+        assert_eq!(state.selected_keymap_preset(), KeymapPreset::Ide);
+        state.select_previous();
+        assert_eq!(state.selected_keymap_preset(), KeymapPreset::Default);
+    }
+
+    #[test]
+    fn loaded_keymap_preset_is_selected_on_open() {
+        let mut state = SettingsState::default();
+
+        state.load_keymap_preset(KeymapPreset::Ide);
+        state.open(ThemeId::Default);
+
+        assert_eq!(state.saved_keymap_preset(), KeymapPreset::Ide);
+        assert_eq!(state.selected_keymap_preset(), KeymapPreset::Ide);
+    }
+
+    #[test]
     fn discard_selection_returns_to_previous_theme() {
         let mut state = SettingsState::default();
         state.open(ThemeId::Default);
@@ -347,8 +458,21 @@ mod tests {
     }
 
     #[test]
+    fn discard_selection_returns_to_saved_keymap_preset() {
+        let mut state = SettingsState::default();
+        state.load_keymap_preset(KeymapPreset::Ide);
+        state.open(ThemeId::Default);
+        state.select_previous();
+
+        state.discard_selection();
+
+        assert_eq!(state.selected_keymap_preset(), KeymapPreset::Ide);
+    }
+
+    #[test]
     fn custom_browser_normalizes_empty_string_to_none() {
         let mut state = SettingsState::default();
+        state.switch_next_section();
         state.switch_next_section();
         state.start_custom_browser_edit();
 
@@ -358,6 +482,7 @@ mod tests {
     #[test]
     fn known_browser_choice_returns_logical_browser_name() {
         let mut state = SettingsState::default();
+        state.switch_next_section();
         state.switch_next_section();
         state.select_next();
 
@@ -438,6 +563,7 @@ mod tests {
     fn cursor_move_does_not_switch_preset_to_custom() {
         let mut state = SettingsState::default();
         state.switch_next_section();
+        state.switch_next_section();
         state.select_next();
 
         state.move_custom_browser_cursor(CursorMove::Left);
@@ -451,6 +577,7 @@ mod tests {
     #[test]
     fn custom_browser_input_requires_edit_mode() {
         let mut state = SettingsState::default();
+        state.switch_next_section();
         state.switch_next_section();
         state.select_previous();
 
