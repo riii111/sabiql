@@ -274,7 +274,6 @@ mod tests {
             }
 
             #[rstest]
-            #[case(combo_ctrl(Key::Char('k')))]
             #[case(combo(Key::F(1)))]
             #[case(combo_ctrl(Key::Char('r')))]
             #[case(combo_ctrl(Key::Char('o')))]
@@ -284,6 +283,15 @@ mod tests {
                 let result = handle_normal_mode(input, &state);
 
                 assert!(matches!(result, Action::None));
+            }
+
+            #[test]
+            fn ide_preset_keeps_ctrl_k_settings_alias() {
+                let state = browse_state_with_preset(KeymapPreset::Ide);
+
+                let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
+
+                assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
             }
 
             #[test]
