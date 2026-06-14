@@ -46,7 +46,7 @@ pub(in crate::update::input::vim) fn mode_transition(
         (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Result(result_ctx)) => {
             match result_ctx.mode {
                 ResultNavMode::Scroll => Action::ResultActivateCell,
-                ResultNavMode::CellActive => Action::None,
+                ResultNavMode::CellActive => Action::ResultOpenCellDetail,
             }
         }
         (VimModeTransition::Insert, BrowseVimContext::Result(result_ctx))

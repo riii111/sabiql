@@ -117,6 +117,9 @@ pub enum HelpOrigin {
         mode: JsonbHelpMode,
     },
     JsonbEdit,
+    CellDetail {
+        searching: bool,
+    },
 }
 
 impl HelpOrigin {
@@ -137,7 +140,8 @@ impl HelpOrigin {
             | Self::ConnectionSelector
             | Self::QueryHistoryPicker
             | Self::JsonbDetail { .. }
-            | Self::JsonbEdit => KeymapPreset::Default,
+            | Self::JsonbEdit
+            | Self::CellDetail { .. } => KeymapPreset::Default,
         }
     }
 
@@ -172,6 +176,9 @@ impl HelpOrigin {
                 mode: JsonbHelpMode::from_state(state),
             },
             InputMode::JsonbEdit => Self::JsonbEdit,
+            InputMode::CellDetail => Self::CellDetail {
+                searching: state.cell_detail.search().is_active(),
+            },
         }
     }
 
@@ -204,6 +211,8 @@ impl HelpOrigin {
             Self::QueryHistoryPicker => "Query History Picker",
             Self::JsonbDetail { mode } => mode.label(),
             Self::JsonbEdit => "JSONB Edit",
+            Self::CellDetail { searching: true } => "Cell Detail Search",
+            Self::CellDetail { searching: false } => "Cell Detail",
         }
     }
 }

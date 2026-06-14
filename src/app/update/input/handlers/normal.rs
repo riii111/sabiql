@@ -487,6 +487,17 @@ mod tests {
 
                 assert!(matches!(result, Action::ResultActivateCell));
             }
+
+            #[test]
+            fn enter_opens_cell_detail_when_result_cell_is_active() {
+                let mut state = browse_state();
+                state.ui.set_focused_pane(FocusedPane::Result);
+                state.result_interaction.activate_cell(0, 0);
+
+                let result = handle_normal_mode(combo(Key::Enter), &state);
+
+                assert!(matches!(result, Action::ResultOpenCellDetail));
+            }
         }
 
         mod pane_switch_and_tabs {

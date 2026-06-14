@@ -64,6 +64,7 @@ pub enum ScrollTarget {
     ExplainConfirm,
     Explorer,
     JsonbDetail,
+    CellDetail,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,6 +138,7 @@ pub enum InputTarget {
     QueryHistoryFilter,
     JsonbEdit,
     JsonbSearch,
+    CellDetailSearch,
     HelpFilter,
 }
 
@@ -185,6 +187,7 @@ pub enum ModalKind {
     ErTablePicker,
     QueryHistoryPicker,
     JsonbDetail,
+    CellDetail,
     ConnectionSetup,
     ConnectionSelector,
 }
@@ -510,6 +513,7 @@ pub enum Action {
     ClearStagedDeletes,
     RequestDeleteActiveRow,
     ResultEnterCellEdit,
+    ResultOpenCellDetail,
     ResultCancelCellEdit,
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
@@ -567,6 +571,15 @@ pub enum Action {
     JsonbSearchNext,
     JsonbSearchPrev,
     JsonbSearchSubmit,
+
+    // Cell detail
+    CellDetailYankAll,
+    CellDetailYankSuccess,
+    CellDetailEnterSearch,
+    CellDetailExitSearch,
+    CellDetailSearchNext,
+    CellDetailSearchPrev,
+    CellDetailSearchSubmit,
 
     // ER diagrams
     ErToggleSelection,

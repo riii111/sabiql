@@ -89,6 +89,9 @@ pub const JSONB_DETAIL: ModeBindings = ModeBindings {
 pub const JSONB_EDIT: ModeBindings = ModeBindings {
     rows: JSONB_EDIT_ROWS,
 };
+pub const CELL_DETAIL: ModeBindings = ModeBindings {
+    rows: CELL_DETAIL_ROWS,
+};
 
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("HELP", &HELP),
@@ -101,6 +104,7 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
     ("JSONB_DETAIL", &JSONB_DETAIL),
     ("JSONB_EDIT", &JSONB_EDIT),
+    ("CELL_DETAIL", &CELL_DETAIL),
 ];
 
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
@@ -555,7 +559,7 @@ mod tests {
 
             #[test]
             fn all_mode_bindings_count() {
-                assert_eq!(ALL_MODE_BINDINGS.len(), 10);
+                assert_eq!(ALL_MODE_BINDINGS.len(), 11);
             }
         }
     }

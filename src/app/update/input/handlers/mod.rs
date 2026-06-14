@@ -1,3 +1,4 @@
+mod cell_detail;
 mod connections;
 mod editors;
 mod jsonb;
@@ -30,7 +31,8 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::SqlModal
         | InputMode::QueryHistoryPicker
         | InputMode::JsonbEdit
-        | InputMode::JsonbDetail => Action::Paste(text),
+        | InputMode::JsonbDetail
+        | InputMode::CellDetail => Action::Paste(text),
         _ => Action::None,
     }
 }
@@ -74,6 +76,10 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
             )
         }
         InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),
+        InputMode::CellDetail => {
+            let is_searching = state.cell_detail.search().is_active();
+            cell_detail::handle_cell_detail_keys(combo, is_searching)
+        }
     }
 }
 
