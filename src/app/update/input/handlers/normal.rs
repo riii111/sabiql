@@ -29,9 +29,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Ctrl combos
     if combo.modifiers.contains(Modifiers::CTRL) {
         match combo.key {
-            Key::Char('k') if kb::settings(keymap_preset).combos.contains(&combo) => {
-                return Action::OpenModal(ModalKind::Settings);
-            }
             Key::Char('r') if kb::read_only(keymap_preset).combos.contains(&combo) => {
                 return Action::ToggleReadOnly;
             }
@@ -212,33 +209,42 @@ mod tests {
             }
 
             #[test]
-            fn ctrl_k_opens_settings() {
+            fn comma_opens_settings() {
                 let state = browse_state();
 
-                let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
+                let result = handle_normal_mode(combo(Key::Char(',')), &state);
 
                 assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
             }
 
             #[test]
-            fn default_s_also_opens_settings() {
+            fn default_s_no_longer_opens_settings() {
                 let state = browse_state();
 
                 let result = handle_normal_mode(combo(Key::Char('S')), &state);
 
-                assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
+                assert!(matches!(result, Action::None));
+            }
+
+            #[test]
+            fn default_ctrl_k_no_longer_opens_settings() {
+                let state = browse_state();
+
+                let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
+
+                assert!(matches!(result, Action::None));
             }
 
             #[rstest]
             #[case(combo_ctrl(Key::Char('p')), Action::OpenModal(ModalKind::TablePicker))]
-            #[case(combo_ctrl(Key::Char('k')), Action::OpenModal(ModalKind::Settings))]
+            #[case(combo(Key::Char(',')), Action::OpenModal(ModalKind::Settings))]
             #[case(combo(Key::F(1)), Action::OpenModal(ModalKind::CommandPalette))]
             #[case(combo_ctrl(Key::Char('r')), Action::ToggleReadOnly)]
             #[case(
                 combo_ctrl(Key::Char('o')),
                 Action::OpenModal(ModalKind::QueryHistoryPicker)
             )]
-            fn default_preset_keeps_ctrl_and_function_keys(
+            fn default_preset_uses_declared_global_keys(
                 #[case] input: KeyCombo,
                 #[case] expected: Action,
             ) {
@@ -251,14 +257,14 @@ mod tests {
 
             #[rstest]
             #[case(combo(Key::Char('T')), Action::OpenModal(ModalKind::TablePicker))]
-            #[case(combo(Key::Char('S')), Action::OpenModal(ModalKind::Settings))]
+            #[case(combo(Key::Char(',')), Action::OpenModal(ModalKind::Settings))]
             #[case(combo(Key::Char('P')), Action::OpenModal(ModalKind::CommandPalette))]
             #[case(combo(Key::Char('R')), Action::ToggleReadOnly)]
             #[case(
                 combo(Key::Char('O')),
                 Action::OpenModal(ModalKind::QueryHistoryPicker)
             )]
-            fn ide_preset_uses_plain_uppercase_keys(
+            fn ide_preset_uses_declared_replacement_keys(
                 #[case] input: KeyCombo,
                 #[case] expected: Action,
             ) {
@@ -273,21 +279,14 @@ mod tests {
             #[case(combo(Key::F(1)))]
             #[case(combo_ctrl(Key::Char('r')))]
             #[case(combo_ctrl(Key::Char('o')))]
+            #[case(combo_ctrl(Key::Char('k')))]
+            #[case(combo(Key::Char('S')))]
             fn ide_preset_disables_replaced_keys(#[case] input: KeyCombo) {
                 let state = browse_state_with_preset(KeymapPreset::Ide);
 
                 let result = handle_normal_mode(input, &state);
 
                 assert!(matches!(result, Action::None));
-            }
-
-            #[test]
-            fn ide_preset_keeps_ctrl_k_settings_alias() {
-                let state = browse_state_with_preset(KeymapPreset::Ide);
-
-                let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
-
-                assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
             }
 
             #[test]
