@@ -63,7 +63,7 @@ fn search_viewport_offset(input: &str, cursor: usize, visible_width: usize) -> u
     let mut viewport_offset = 0;
     let mut width_before_cursor = display_width(&chars[..cursor.min(chars.len())]);
 
-    while width_before_cursor >= visible_width && viewport_offset < cursor {
+    while width_before_cursor > visible_width && viewport_offset < cursor {
         width_before_cursor =
             width_before_cursor.saturating_sub(char_width(chars[viewport_offset]));
         viewport_offset += 1;
@@ -102,7 +102,12 @@ fn char_width(ch: char) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::slice_chars_fitting_width;
+    use super::{search_viewport_offset, slice_chars_fitting_width};
+
+    #[test]
+    fn search_viewport_offset_keeps_exact_fit_at_start() {
+        assert_eq!(search_viewport_offset("ab", 2, 2), 0);
+    }
 
     #[test]
     fn slice_chars_fitting_width_omits_first_wide_char_when_viewport_is_too_narrow() {

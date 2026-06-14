@@ -217,7 +217,8 @@ pub fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
         while let Some(rel_idx) = folded[search_from..].find(&query_folded) {
             let match_idx = search_from + rel_idx;
             matches.push(offset + original_char_offset_for_folded_byte(&offset_map, match_idx));
-            search_from = match_idx + query_folded.len();
+            search_from =
+                folded_byte_offset_after_original_match(&offset_map, match_idx, query_folded.len());
         }
         offset += segment.chars().count();
     }
@@ -246,6 +247,23 @@ fn original_char_offset_for_folded_byte(
 ) -> usize {
     let idx = offset_map.partition_point(|(byte_offset, _)| *byte_offset <= folded_byte_offset);
     offset_map[idx.saturating_sub(1)].1
+}
+
+fn folded_byte_offset_after_original_match(
+    offset_map: &[(usize, usize)],
+    folded_match_start: usize,
+    folded_match_len: usize,
+) -> usize {
+    let folded_match_end = folded_match_start + folded_match_len;
+    let last_matched_original =
+        original_char_offset_for_folded_byte(offset_map, folded_match_end.saturating_sub(1));
+    offset_map
+        .iter()
+        .find_map(|(byte_offset, original_offset)| {
+            (*byte_offset >= folded_match_end && *original_offset > last_matched_original)
+                .then_some(*byte_offset)
+        })
+        .unwrap_or(folded_match_end)
 }
 
 fn text_input_content(state: &ConnectionSetupState, field: ConnectionField) -> &str {
@@ -294,6 +312,13 @@ mod text_search_tests {
         let matches = find_text_matches("Maße", "MASSE");
 
         assert_eq!(matches, vec![0]);
+    }
+
+    #[test]
+    fn text_matches_do_not_duplicate_expanded_casefold_character() {
+        let matches = find_text_matches("Maße", "s");
+
+        assert_eq!(matches, vec![2]);
     }
 
     #[test]
