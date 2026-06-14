@@ -1,6 +1,6 @@
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, InputTarget};
-use crate::update::input::keybindings::{self, Key, KeyCombo};
+use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 use crate::update::input::keymap::resolve_mode;
 
 pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
@@ -88,8 +88,10 @@ pub fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action 
     ) {
         return action;
     }
+    let ctrl = combo.modifiers.contains(Modifiers::CTRL);
+    let alt = combo.modifiers.contains(Modifiers::ALT);
     match combo.key {
-        Key::Char(c) if combo.modifiers.is_empty() => Action::TextInput {
+        Key::Char(c) if !ctrl || alt => Action::TextInput {
             target: InputTarget::ErFilter,
             ch: c,
         },
@@ -103,7 +105,7 @@ mod tests {
     use crate::model::shared::settings::KeymapPreset;
     use crate::update::action::ModalKind;
     use crate::update::action::{ListMotion, ListTarget};
-    use crate::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::input::keybindings::{Key, KeyCombo, Modifiers};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -496,6 +498,25 @@ mod tests {
             let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('a')), &state);
 
             assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn altgr_char_input_returns_er_filter_input() {
+            let state = state();
+            let altgr = KeyCombo {
+                key: Key::Char('@'),
+                modifiers: Modifiers::CTRL_ALT,
+            };
+
+            let result = handle_er_table_picker_keys(altgr, &state);
+
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::ErFilter,
+                    ch: '@'
+                }
+            ));
         }
 
         #[rstest]

@@ -2756,15 +2756,16 @@ mod tests {
         use crate::update::input::palette::palette_commands;
         use rstest::rstest;
 
-        fn state_in_palette_mode() -> AppState {
+        fn state_in_palette_mode(preset: KeymapPreset) -> AppState {
             let mut state = create_test_state();
+            state.settings.load_keymap_preset(preset);
             state.modal.set_mode(InputMode::CommandPalette);
 
             state
         }
 
-        fn palette_index_of(target: impl Fn(&Action) -> bool) -> usize {
-            palette_commands(KeymapPreset::default())
+        fn palette_index_of(state: &AppState, target: impl Fn(&Action) -> bool) -> usize {
+            palette_commands(state.settings.saved_keymap_preset())
                 .enumerate()
                 .find(|(_, kb)| target(&kb.action))
                 .map(|(i, _)| i)
@@ -2788,9 +2789,8 @@ mod tests {
             #[case] target_action: Action,
             #[case] expected_mode: InputMode,
         ) {
-            let entry_index = palette_index_of(|a| same_palette_action(a, &target_action));
-
-            let mut state = state_in_palette_mode();
+            let mut state = state_in_palette_mode(KeymapPreset::Ide);
+            let entry_index = palette_index_of(&state, |a| same_palette_action(a, &target_action));
             state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 
@@ -2806,9 +2806,8 @@ mod tests {
 
         #[test]
         fn confirm_selection_with_reload_emits_sequence_effect() {
-            let entry_index = palette_index_of(|a| matches!(a, Action::ReloadMetadata));
-
-            let mut state = state_in_palette_mode();
+            let mut state = state_in_palette_mode(KeymapPreset::Ide);
+            let entry_index = palette_index_of(&state, |a| matches!(a, Action::ReloadMetadata));
             state.session.dsn = Some("postgres://localhost/test".to_string());
             state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
@@ -2828,10 +2827,11 @@ mod tests {
 
         #[test]
         fn confirm_selection_open_connection_selector_closes_palette() {
-            let entry_index =
-                palette_index_of(|a| matches!(a, Action::OpenModal(ModalKind::ConnectionSelector)));
+            let mut state = state_in_palette_mode(KeymapPreset::Ide);
+            let entry_index = palette_index_of(&state, |a| {
+                matches!(a, Action::OpenModal(ModalKind::ConnectionSelector))
+            });
 
-            let mut state = state_in_palette_mode();
             state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 

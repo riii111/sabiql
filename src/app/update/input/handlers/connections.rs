@@ -162,6 +162,16 @@ mod tests {
         }
 
         #[test]
+        fn ide_enter_on_ssl_field_toggles_dropdown() {
+            let mut state = setup_state_with_preset(KeymapPreset::Ide);
+            state.connection_setup.focused_field = ConnectionField::SslMode;
+
+            let result = handle_connection_setup_keys(combo(Key::Enter), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
+        }
+
+        #[test]
         fn ide_ctrl_s_is_ignored() {
             let state = setup_state_with_preset(KeymapPreset::Ide);
 

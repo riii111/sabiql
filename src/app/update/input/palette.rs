@@ -25,7 +25,7 @@ const IDE_PALETTE_COMMANDS: &[KeyBinding] = &[
     global::QUIT,
     global::HELP,
     global::TABLE_PICKER_IDE,
-    global::SETTINGS_IDE,
+    global::SETTINGS,
     global::FOCUS,
     global::RELOAD,
     global::SQL,

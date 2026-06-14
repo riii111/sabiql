@@ -309,7 +309,7 @@ mod tests {
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
-                        keymap_preset: KeymapPreset::default(),
+                        keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),
                     }),
                     Instant::now(),
@@ -318,6 +318,7 @@ mod tests {
 
                 assert_eq!(state.ui.theme_id(), ThemeId::Light);
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
+                assert_eq!(state.settings.saved_keymap_preset(), KeymapPreset::Ide);
                 assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
                 assert!(
                     state

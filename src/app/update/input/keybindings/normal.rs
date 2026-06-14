@@ -59,18 +59,6 @@ pub mod global {
         ],
     };
 
-    pub const SETTINGS_IDE: KeyBinding = KeyBinding {
-        key_short: "S/^K",
-        key: "S / Ctrl+K",
-        desc_short: "Settings",
-        description: "Open Settings",
-        action: Action::OpenModal(ModalKind::Settings),
-        combos: &[
-            KeyCombo::plain(Key::Char('S')),
-            KeyCombo::ctrl(Key::Char('k')),
-        ],
-    };
-
     pub const COMMAND_LINE: KeyBinding = KeyBinding {
         key_short: ":",
         key: ":",
@@ -274,7 +262,7 @@ pub const IDE_GLOBAL_KEYS: &[KeyBinding] = &[
     global::QUIT,
     global::HELP,
     global::TABLE_PICKER_IDE,
-    global::SETTINGS_IDE,
+    global::SETTINGS,
     global::COMMAND_LINE,
     global::COMMAND_PALETTE_IDE,
     global::FOCUS,
@@ -307,11 +295,8 @@ pub fn table_picker(preset: KeymapPreset) -> &'static KeyBinding {
     }
 }
 
-pub fn settings(preset: KeymapPreset) -> &'static KeyBinding {
-    match preset {
-        KeymapPreset::Default => &global::SETTINGS,
-        KeymapPreset::Ide => &global::SETTINGS_IDE,
-    }
+pub fn settings(_preset: KeymapPreset) -> &'static KeyBinding {
+    &global::SETTINGS
 }
 
 pub fn command_palette(preset: KeymapPreset) -> &'static KeyBinding {

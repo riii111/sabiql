@@ -291,11 +291,11 @@ pub fn handle_sql_modal_keys_with_prefix(
         return Action::SqlModalSubmit;
     }
 
-    if keymap_preset == KeymapPreset::Default && ctrl && combo.key == Key::Char('o') {
+    if keymap_preset == KeymapPreset::Default && ctrl_only && combo.key == Key::Char('o') {
         return Action::OpenModal(ModalKind::QueryHistoryPicker);
     }
 
-    if keymap_preset == KeymapPreset::Default && ctrl && combo.key == Key::Char('e') {
+    if keymap_preset == KeymapPreset::Default && ctrl_only && combo.key == Key::Char('e') {
         return Action::ExplainRequest;
     }
 
@@ -673,6 +673,18 @@ mod tests {
                 result,
                 Action::OpenModal(ModalKind::QueryHistoryPicker)
             ));
+        }
+
+        #[test]
+        fn ctrl_alt_o_falls_through_to_text_input() {
+            let result = handle_sql_modal_keys(
+                KeyCombo::ctrl_alt(Key::Char('o')),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+            );
+
+            assert_action(result, Expected::SqlModalInput('o'));
         }
 
         #[rstest]
@@ -1184,6 +1196,18 @@ mod tests {
             );
 
             assert_action(result, Expected::ExplainRequest);
+        }
+
+        #[test]
+        fn editing_mode_ctrl_alt_e_does_not_request_explain() {
+            let result = handle_sql_modal_keys(
+                KeyCombo::ctrl_alt(Key::Char('e')),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+            );
+
+            assert!(!matches!(result, Action::ExplainRequest));
         }
     }
 

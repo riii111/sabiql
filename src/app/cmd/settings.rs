@@ -72,7 +72,7 @@ mod tests {
             Effect::SaveSettings {
                 settings: AppSettings {
                     theme_id: ThemeId::Light,
-                    keymap_preset: KeymapPreset::default(),
+                    keymap_preset: KeymapPreset::Ide,
                     er_browser: Some("Firefox".to_string()),
                 },
             },
@@ -86,10 +86,15 @@ mod tests {
             store.saved.lock().unwrap()[0].er_browser.as_deref(),
             Some("Firefox")
         );
+        assert_eq!(
+            store.saved.lock().unwrap()[0].keymap_preset,
+            KeymapPreset::Ide
+        );
         assert!(matches!(
             rx.recv().await,
             Some(Action::SettingsSaved(settings))
                 if settings.theme_id == ThemeId::Light
+                    && settings.keymap_preset == KeymapPreset::Ide
                     && settings.er_browser.as_deref() == Some("Firefox")
         ));
     }
