@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 457
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -20,7 +19,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││  q                  Quit application                                            │                                        │
 │                                       ││  ?                  Toggle help                                                 │                                        │
 │                                       ││  Ctrl+P             Open Table Picker                                           │                                        │
-│                                       ││  S / Ctrl+K         Open Settings                                               │                                        │
+│                                       ││  ,                  Open Settings                                               │                                        │
 │                                       ││  f                  Toggle Focus mode                                           │                                        │
 │                                       ││  r                  Reload metadata                                             │                                        │
 │                                       ││  s                  Open SQL Editor                                             │                                        │
