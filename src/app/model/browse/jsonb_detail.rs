@@ -42,7 +42,7 @@ impl JsonbDetailState {
                 original_json,
                 pretty_original.clone(),
             ),
-            editor: MultiLineInputState::new(pretty_original.clone(), 0),
+            editor: MultiLineInputState::new(pretty_original, 0),
             mode: JsonbDetailMode::Viewing,
             validation_error: None,
             active: true,
