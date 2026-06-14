@@ -140,6 +140,15 @@ mod tests {
 
             assert!(matches!(result, Action::SqlModalEnterInsert));
         }
+
+        #[test]
+        fn cell_detail_mode_routes_to_cell_detail_handler() {
+            let state = make_state(InputMode::CellDetail);
+
+            let result = handle_key_event(combo(Key::Char('/')), &state);
+
+            assert!(matches!(result, Action::CellDetailEnterSearch));
+        }
     }
 
     mod paste_event {
@@ -185,6 +194,15 @@ mod tests {
             let result = handle_paste_event("users".to_string(), &state);
 
             assert!(matches!(result, Action::Paste(t) if t == "users"));
+        }
+
+        #[test]
+        fn cell_detail_pastes_text() {
+            let state = make_state(InputMode::CellDetail);
+
+            let result = handle_paste_event("needle".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "needle"));
         }
 
         #[test]

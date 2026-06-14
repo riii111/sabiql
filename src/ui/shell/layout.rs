@@ -7,7 +7,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::explorer_content_width_from_pane_width;
 use crate::app::model::shared::viewport::ViewportPlan;
-use crate::app::ports::outbound::RenderOutput;
+use crate::app::ports::outbound::{CellDetailViewport, RenderOutput};
 use crate::app::services::AppServices;
 use crate::features::browse::cell_detail::{CellDetail, CellDetailRenderMetrics};
 use crate::features::browse::explorer::Explorer;
@@ -157,7 +157,10 @@ impl MainLayout {
                 |CellDetailRenderMetrics {
                      visible_rows,
                      viewport_width,
-                 }| (visible_rows, viewport_width),
+                 }| CellDetailViewport {
+                    visible_rows,
+                    viewport_width,
+                },
             ),
             _ => None,
         };

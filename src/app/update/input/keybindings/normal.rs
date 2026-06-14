@@ -613,7 +613,6 @@ pub mod result_active {
 }
 
 pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
-    result_active::ENTER_DEEPEN,
     result_active::DETAIL,
     result_active::YANK,
     result_active::STAGE_DELETE,

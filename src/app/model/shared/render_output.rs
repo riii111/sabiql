@@ -1,5 +1,11 @@
 use crate::model::shared::viewport::{ColumnWidthsCache, ViewportPlan};
 
+#[derive(Clone, Copy)]
+pub struct CellDetailViewport {
+    pub visible_rows: usize,
+    pub viewport_width: usize,
+}
+
 /// Pane geometry measured during a draw. Owned by the model so state
 /// write-back (`AppState::apply_render_output`) stays port-agnostic; the
 /// renderer port re-exports this type as its output.
@@ -21,7 +27,7 @@ pub struct RenderOutput {
     pub query_history_picker_pane_height: Option<u16>,
     pub query_history_picker_filter_visible_width: Option<usize>,
     pub jsonb_detail_editor_visible_rows: Option<usize>,
-    pub cell_detail_viewport: Option<(usize, usize)>,
+    pub cell_detail_viewport: Option<CellDetailViewport>,
     pub confirm_preview_viewport_height: Option<u16>,
     pub confirm_preview_content_height: Option<u16>,
     pub confirm_preview_scroll: u16,

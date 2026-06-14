@@ -323,6 +323,16 @@ mod tests {
     }
 
     #[test]
+    fn result_cell_enter_opens_cell_detail() {
+        let action = action_for_command(
+            VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter),
+            browse_result(result_ctx(ResultNavMode::CellActive)),
+        );
+
+        assert!(matches!(action, Some(Action::ResultOpenCellDetail)));
+    }
+
+    #[test]
     fn result_scroll_mode_move_down_resolves_to_result_line_scroll() {
         let action = action_for_command(
             VimCommand::Navigation(VimNavigation::MoveDown),

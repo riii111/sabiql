@@ -162,9 +162,9 @@ impl AppState {
             self.ui.set_jsonb_detail_editor_visible_rows(visible_rows);
             self.jsonb_detail.editor_mut().update_scroll(visible_rows);
         }
-        if let Some((visible_rows, viewport_width)) = output.cell_detail_viewport {
+        if let Some(viewport) = output.cell_detail_viewport {
             self.cell_detail
-                .set_viewport_metrics(visible_rows, viewport_width);
+                .set_viewport_metrics(viewport.visible_rows, viewport.viewport_width);
         }
         self.confirm_dialog.apply_preview_metrics(
             output.confirm_preview_viewport_height,

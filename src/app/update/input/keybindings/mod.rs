@@ -269,6 +269,7 @@ mod tests {
                 check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
                 check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_non_none_have_combos(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
             }
 
             fn check_mode_rows_exec_valid(rows: &[ModeRow], name: &str) {
@@ -334,6 +335,10 @@ mod tests {
                 );
                 check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
                 check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_none_action_entries_have_no_combos(
+                    CELL_DETAIL_SEARCH_KEYS,
+                    "CELL_DETAIL_SEARCH_KEYS",
+                );
             }
         }
 
@@ -398,6 +403,7 @@ mod tests {
                 check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_no_duplicate_combos(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
                 check_no_conflicting_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_no_conflicting_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 for (name, mb) in ALL_MODE_BINDINGS {
@@ -454,6 +460,7 @@ mod tests {
                 check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_keymap_roundtrip(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
                 check_keymap_roundtrip(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_keymap_roundtrip(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 for (name, mb) in ALL_MODE_BINDINGS {
