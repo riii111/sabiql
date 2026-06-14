@@ -1,6 +1,7 @@
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo};
+use crate::update::input::keymap::resolve_mode;
 
 pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::TABLE_PICKER.resolve(&combo) {
@@ -81,7 +82,7 @@ pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
 }
 
 pub fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
-    if let Some(action) = crate::update::input::keymap::resolve_mode(
+    if let Some(action) = resolve_mode(
         &combo,
         keybindings::er_picker_rows(state.settings.saved_keymap_preset()),
     ) {

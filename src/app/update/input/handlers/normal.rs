@@ -146,7 +146,7 @@ mod tests {
         CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
         SelectMotion,
     };
-    use crate::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::input::keybindings::{Key, KeyCombo, same_payload_free_action};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -246,9 +246,7 @@ mod tests {
 
                 let result = handle_normal_mode(input, &state);
 
-                assert!(crate::update::input::keybindings::same_payload_free_action(
-                    &result, &expected
-                ));
+                assert!(same_payload_free_action(&result, &expected));
             }
 
             #[rstest]
@@ -268,9 +266,7 @@ mod tests {
 
                 let result = handle_normal_mode(input, &state);
 
-                assert!(crate::update::input::keybindings::same_payload_free_action(
-                    &result, &expected
-                ));
+                assert!(same_payload_free_action(&result, &expected));
             }
 
             #[rstest]

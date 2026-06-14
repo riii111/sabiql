@@ -4,7 +4,10 @@ use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::update::action::{
     Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
-use crate::update::input::keybindings::{Key, KeyCombo, Modifiers};
+use crate::update::input::keybindings::{
+    Key, KeyCombo, Modifiers, sql_modal_compare_explain, sql_modal_normal_query_history,
+    sql_modal_plan_explain,
+};
 use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
@@ -69,12 +72,8 @@ pub fn handle_sql_modal_keys_with_prefix(
         }
 
         let explain_binding = match active_tab {
-            SqlModalTab::Compare => {
-                crate::update::input::keybindings::sql_modal_compare_explain(keymap_preset)
-            }
-            SqlModalTab::Sql | SqlModalTab::Plan => {
-                crate::update::input::keybindings::sql_modal_plan_explain(keymap_preset)
-            }
+            SqlModalTab::Compare => sql_modal_compare_explain(keymap_preset),
+            SqlModalTab::Sql | SqlModalTab::Plan => sql_modal_plan_explain(keymap_preset),
         };
         if explain_binding.combos.contains(&combo) {
             return Action::ExplainRequest;
@@ -124,7 +123,7 @@ pub fn handle_sql_modal_keys_with_prefix(
         if alt && combo.key == Key::Char('e') {
             return Action::ExplainAnalyzeRequest;
         }
-        if crate::update::input::keybindings::sql_modal_normal_query_history(keymap_preset)
+        if sql_modal_normal_query_history(keymap_preset)
             .combos
             .contains(&combo)
         {

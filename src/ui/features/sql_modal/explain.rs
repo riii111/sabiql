@@ -11,6 +11,7 @@ use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::services::AppServices;
+use crate::app::update::input::keybindings::sql_modal_plan_explain;
 use crate::primitives::atoms::text_cursor_spans;
 use crate::theme::ThemePalette;
 
@@ -115,10 +116,7 @@ pub fn render(
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         area.height
     } else {
-        let explain_key = crate::app::update::input::keybindings::sql_modal_plan_explain(
-            state.settings.saved_keymap_preset(),
-        )
-        .key;
+        let explain_key = sql_modal_plan_explain(state.settings.saved_keymap_preset()).key;
         let placeholder = Line::from(Span::styled(
             format!(" Press {explain_key} to run EXPLAIN"),
             Style::default().fg(theme.semantic.text.placeholder),

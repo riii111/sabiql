@@ -9,6 +9,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::update::input::keybindings::sql_modal_compare_explain;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
@@ -39,10 +40,7 @@ pub fn render(
     }
 
     if lines.is_empty() {
-        let explain_key = crate::app::update::input::keybindings::sql_modal_compare_explain(
-            state.settings.saved_keymap_preset(),
-        )
-        .key;
+        let explain_key = sql_modal_compare_explain(state.settings.saved_keymap_preset()).key;
         lines.push(Line::from(Span::styled(
             format!(" Run EXPLAIN ({explain_key}) to start comparing."),
             Style::default().fg(theme.semantic.text.placeholder),

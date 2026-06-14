@@ -6,6 +6,7 @@ mod overlays;
 use crate::model::shared::settings::KeymapPreset;
 pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::update::action::{Action, ModalKind};
+use crate::update::input::keymap::resolve_mode;
 pub use connections::*;
 pub use editors::*;
 pub use normal::*;
@@ -56,7 +57,7 @@ pub struct ModeBindings {
 
 impl ModeBindings {
     pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
-        crate::update::input::keymap::resolve_mode(combo, self.rows)
+        resolve_mode(combo, self.rows)
     }
 }
 
