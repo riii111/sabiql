@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/table_explorer.rs
+assertion_line: 44
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -51,4 +52,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                                                                                                                                                   │
 │                                                                                                                                                                   │
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Select  ^E:Export  ]/[:Page  ?:Help  ^K:Settings  f:Exit Focus  q:Quit
+Enter:Select  ^E:Export  ]/[:Page  ?:Help  S/^K:Settings  f:Exit Focus  q:Quit

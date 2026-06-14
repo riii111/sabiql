@@ -24,8 +24,12 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
         };
     }
 
-    // Ctrl+S: save
-    if ctrl && combo.key == Key::Char('s') {
+    if keybindings::connection_setup_save(state.settings.saved_keymap_preset())
+        .combos
+        .contains(&combo)
+        && !(combo.key == Key::Enter
+            && state.connection_setup.focused_field == ConnectionField::SslMode)
+    {
         return Action::ConnectionSetupSave;
     }
 
@@ -86,6 +90,7 @@ pub fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
 mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::settings::KeymapPreset;
     use crate::update::action::{
         ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
@@ -114,6 +119,12 @@ mod tests {
             state
         }
 
+        fn setup_state_with_preset(preset: KeymapPreset) -> AppState {
+            let mut state = setup_state();
+            state.settings.load_keymap_preset(preset);
+            state
+        }
+
         #[test]
         fn tab_moves_to_next_field() {
             let state = setup_state();
@@ -139,6 +150,34 @@ mod tests {
             let result = handle_connection_setup_keys(combo_ctrl(Key::Char('s')), &state);
 
             assert!(matches!(result, Action::ConnectionSetupSave));
+        }
+
+        #[test]
+        fn ide_enter_saves() {
+            let state = setup_state_with_preset(KeymapPreset::Ide);
+
+            let result = handle_connection_setup_keys(combo(Key::Enter), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupSave));
+        }
+
+        #[test]
+        fn ide_enter_on_ssl_field_toggles_dropdown() {
+            let mut state = setup_state_with_preset(KeymapPreset::Ide);
+            state.connection_setup.focused_field = ConnectionField::SslMode;
+
+            let result = handle_connection_setup_keys(combo(Key::Enter), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
+        }
+
+        #[test]
+        fn ide_ctrl_s_is_ignored() {
+            let state = setup_state_with_preset(KeymapPreset::Ide);
+
+            let result = handle_connection_setup_keys(combo_ctrl(Key::Char('s')), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]

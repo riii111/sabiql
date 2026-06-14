@@ -28,6 +28,7 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::model::shared::confirm_dialog::ConfirmIntent;
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::settings::KeymapPreset;
     use crate::ports::outbound::AppSettings;
     use crate::update::action::{
         InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
@@ -238,6 +239,7 @@ mod tests {
                     Instant::now(),
                 );
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
 
                 let effects =
@@ -262,6 +264,7 @@ mod tests {
                     &Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
                 );
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(
                     &mut state,
@@ -306,6 +309,7 @@ mod tests {
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
+                        keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),
                     }),
                     Instant::now(),
@@ -314,6 +318,7 @@ mod tests {
 
                 assert_eq!(state.ui.theme_id(), ThemeId::Light);
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
+                assert_eq!(state.settings.saved_keymap_preset(), KeymapPreset::Ide);
                 assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
                 assert!(
                     state

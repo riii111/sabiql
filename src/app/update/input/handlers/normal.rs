@@ -11,6 +11,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let browse_ctx = BrowseVimContext::from(state);
     let result_navigation = browse_ctx.is_result();
     let inspector_navigation = browse_ctx.is_inspector();
+    let keymap_preset = state.settings.saved_keymap_preset();
 
     // Key sequence FSM: two-key sequences (zz, zt, zb)
     // Must be resolved before Ctrl/global actions so that the second key is
@@ -28,27 +29,30 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Ctrl combos
     if combo.modifiers.contains(Modifiers::CTRL) {
         match combo.key {
-            Key::Char('k') => {
+            Key::Char('k') if kb::settings(keymap_preset).combos.contains(&combo) => {
                 return Action::OpenModal(ModalKind::Settings);
             }
-            Key::Char('r') => {
+            Key::Char('r') if kb::read_only(keymap_preset).combos.contains(&combo) => {
                 return Action::ToggleReadOnly;
             }
-            Key::Char('o') => {
+            Key::Char('o') if kb::query_history(keymap_preset).combos.contains(&combo) => {
                 return Action::OpenModal(ModalKind::QueryHistoryPicker);
             }
-            Key::Char('e') if state.can_request_csv_export() => {
+            Key::Char('e')
+                if kb::csv_export(keymap_preset).combos.contains(&combo)
+                    && state.can_request_csv_export() =>
+            {
                 return Action::RequestCsvExport;
             }
-            Key::Char('p') => {
+            Key::Char('p') if kb::table_picker(keymap_preset).combos.contains(&combo) => {
                 return Action::OpenModal(ModalKind::TablePicker);
             }
-            // Ctrl+N navigation disabled on main screen; use j/k or arrows.
-            // Modals/pickers handle Ctrl+N via their own bindings.
-            // NOTE: vim/classify.rs still maps Ctrl+N → MoveDown for modal
+            // Ctrl+N/P navigation disabled on main screen; use j/k or arrows.
+            // Modals/pickers handle Ctrl+N/P via their own bindings.
+            // NOTE: vim/classify.rs still maps Ctrl+N/P → MoveDown/MoveUp for modal
             // contexts (SQL Modal Plan/Compare). This catch-all prevents that
             // mapping from reaching the main screen.
-            Key::Char('n') => {
+            Key::Char('n' | 'p') => {
                 return Action::None;
             }
             _ => {
@@ -61,23 +65,11 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     }
 
     // Global actions (predicate-based, no modifiers)
-    if kb::is_quit(&combo) {
-        return Action::Quit;
-    }
-    if kb::is_help(&combo) {
-        return Action::ToggleModal(ModalKind::Help);
-    }
-    if kb::is_command_line(&combo) {
-        return Action::EnterCommandLine;
-    }
-    if kb::is_command_palette(&combo) {
-        return Action::OpenModal(ModalKind::CommandPalette);
-    }
-    if kb::is_reload(&combo) {
-        return Action::ReloadMetadata;
-    }
-    if kb::is_focus_toggle(&combo) {
-        return Action::ToggleFocus;
+    if let Some(action) = kb::global_action_for(&combo, keymap_preset) {
+        if matches!(action, Action::RequestCsvExport) && !state.can_request_csv_export() {
+            return Action::None;
+        }
+        return action;
     }
     if combo.key == Key::Enter
         && combo.modifiers.is_empty()
@@ -148,12 +140,13 @@ mod tests {
     use super::*;
     use crate::model::connection::error::ConnectionErrorInfo;
     use crate::model::shared::key_sequence::KeySequenceState;
+    use crate::model::shared::settings::KeymapPreset;
     use crate::model::shared::ui_state::FocusMode;
     use crate::update::action::{
         CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
         SelectMotion,
     };
-    use crate::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::input::keybindings::{Key, KeyCombo, same_payload_free_action};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -166,6 +159,12 @@ mod tests {
 
     fn browse_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    fn browse_state_with_preset(preset: KeymapPreset) -> AppState {
+        let mut state = browse_state();
+        state.settings.load_keymap_preset(preset);
+        state
     }
 
     fn focus_mode_state() -> AppState {
@@ -219,6 +218,85 @@ mod tests {
                 let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
 
                 assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
+            }
+
+            #[test]
+            fn default_s_also_opens_settings() {
+                let state = browse_state();
+
+                let result = handle_normal_mode(combo(Key::Char('S')), &state);
+
+                assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
+            }
+
+            #[rstest]
+            #[case(combo_ctrl(Key::Char('p')), Action::OpenModal(ModalKind::TablePicker))]
+            #[case(combo_ctrl(Key::Char('k')), Action::OpenModal(ModalKind::Settings))]
+            #[case(combo(Key::F(1)), Action::OpenModal(ModalKind::CommandPalette))]
+            #[case(combo_ctrl(Key::Char('r')), Action::ToggleReadOnly)]
+            #[case(
+                combo_ctrl(Key::Char('o')),
+                Action::OpenModal(ModalKind::QueryHistoryPicker)
+            )]
+            fn default_preset_keeps_ctrl_and_function_keys(
+                #[case] input: KeyCombo,
+                #[case] expected: Action,
+            ) {
+                let state = browse_state_with_preset(KeymapPreset::Default);
+
+                let result = handle_normal_mode(input, &state);
+
+                assert!(same_payload_free_action(&result, &expected));
+            }
+
+            #[rstest]
+            #[case(combo(Key::Char('T')), Action::OpenModal(ModalKind::TablePicker))]
+            #[case(combo(Key::Char('S')), Action::OpenModal(ModalKind::Settings))]
+            #[case(combo(Key::Char('P')), Action::OpenModal(ModalKind::CommandPalette))]
+            #[case(combo(Key::Char('R')), Action::ToggleReadOnly)]
+            #[case(
+                combo(Key::Char('O')),
+                Action::OpenModal(ModalKind::QueryHistoryPicker)
+            )]
+            fn ide_preset_uses_plain_uppercase_keys(
+                #[case] input: KeyCombo,
+                #[case] expected: Action,
+            ) {
+                let state = browse_state_with_preset(KeymapPreset::Ide);
+
+                let result = handle_normal_mode(input, &state);
+
+                assert!(same_payload_free_action(&result, &expected));
+            }
+
+            #[rstest]
+            #[case(combo(Key::F(1)))]
+            #[case(combo_ctrl(Key::Char('r')))]
+            #[case(combo_ctrl(Key::Char('o')))]
+            fn ide_preset_disables_replaced_keys(#[case] input: KeyCombo) {
+                let state = browse_state_with_preset(KeymapPreset::Ide);
+
+                let result = handle_normal_mode(input, &state);
+
+                assert!(matches!(result, Action::None));
+            }
+
+            #[test]
+            fn ide_preset_keeps_ctrl_k_settings_alias() {
+                let state = browse_state_with_preset(KeymapPreset::Ide);
+
+                let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
+
+                assert!(matches!(result, Action::OpenModal(ModalKind::Settings)));
+            }
+
+            #[test]
+            fn ide_preset_ctrl_p_does_not_open_table_picker() {
+                let state = browse_state_with_preset(KeymapPreset::Ide);
+
+                let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
+
+                assert!(!matches!(result, Action::OpenModal(ModalKind::TablePicker)));
             }
 
             #[test]

@@ -1,5 +1,6 @@
 use super::KeyBinding;
 use super::{Key, KeyCombo};
+use crate::model::shared::settings::KeymapPreset;
 use crate::update::action::{Action, ModalKind};
 
 // =============================================================================
@@ -99,6 +100,15 @@ pub mod sql_modal_normal {
         action: Action::OpenModal(ModalKind::QueryHistoryPicker),
         combos: &[KeyCombo::ctrl(Key::Char('o'))],
     };
+
+    pub const QUERY_HISTORY_IDE: KeyBinding = KeyBinding {
+        key_short: "O",
+        key: "O",
+        desc_short: "History",
+        description: "Open Query History",
+        action: Action::OpenModal(ModalKind::QueryHistoryPicker),
+        combos: &[KeyCombo::plain(Key::Char('O'))],
+    };
 }
 
 pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
@@ -129,6 +139,15 @@ pub mod sql_modal_plan {
         description: "Run EXPLAIN on current query",
         action: Action::ExplainRequest,
         combos: &[KeyCombo::ctrl(Key::Char('e'))],
+    };
+
+    pub const EXPLAIN_IDE: KeyBinding = KeyBinding {
+        key_short: "E",
+        key: "E",
+        desc_short: "Explain",
+        description: "Run EXPLAIN on current query",
+        action: Action::ExplainRequest,
+        combos: &[KeyCombo::plain(Key::Char('E'))],
     };
 
     pub const ANALYZE: KeyBinding = KeyBinding {
@@ -211,6 +230,15 @@ pub mod sql_modal_compare {
         description: "Run EXPLAIN on current query",
         action: Action::ExplainRequest,
         combos: &[KeyCombo::ctrl(Key::Char('e'))],
+    };
+
+    pub const EXPLAIN_IDE: KeyBinding = KeyBinding {
+        key_short: "E",
+        key: "E",
+        desc_short: "Explain",
+        description: "Run EXPLAIN on current query",
+        action: Action::ExplainRequest,
+        combos: &[KeyCombo::plain(Key::Char('E'))],
     };
 
     pub const ANALYZE: KeyBinding = KeyBinding {
@@ -369,6 +397,27 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
     sql_modal::CLEAR,
     sql_modal::QUERY_HISTORY,
 ];
+
+pub fn sql_modal_normal_query_history(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &sql_modal_normal::QUERY_HISTORY,
+        KeymapPreset::Ide => &sql_modal_normal::QUERY_HISTORY_IDE,
+    }
+}
+
+pub fn sql_modal_plan_explain(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &sql_modal_plan::EXPLAIN,
+        KeymapPreset::Ide => &sql_modal_plan::EXPLAIN_IDE,
+    }
+}
+
+pub fn sql_modal_compare_explain(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &sql_modal_compare::EXPLAIN,
+        KeymapPreset::Ide => &sql_modal_compare::EXPLAIN_IDE,
+    }
+}
 
 pub mod sql_modal_confirming {
     use crate::update::action::Action;

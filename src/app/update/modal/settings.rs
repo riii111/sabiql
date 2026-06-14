@@ -72,6 +72,7 @@ pub(super) fn reduce_settings(
             let theme_id = state.settings.selected_theme();
             let settings = AppSettings {
                 theme_id,
+                keymap_preset: state.settings.selected_keymap_preset(),
                 er_browser: state.settings.selected_er_browser(),
             };
             DispatchResult::handled_with(vec![Effect::SaveSettings { settings }])
@@ -83,9 +84,11 @@ pub(super) fn reduce_settings(
         }
         Action::SettingsSaved(settings) => {
             state.ui.set_theme(settings.theme_id);
-            state
-                .settings
-                .commit_saved(settings.theme_id, settings.er_browser.clone());
+            state.settings.commit_saved(
+                settings.theme_id,
+                settings.keymap_preset,
+                settings.er_browser.clone(),
+            );
             state
                 .messages
                 .set_success_at("Settings saved".to_string(), now);

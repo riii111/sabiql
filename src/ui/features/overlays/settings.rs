@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::settings::{ErBrowserChoice, SettingsSection};
+use crate::app::model::shared::settings::{ErBrowserChoice, KeymapPreset, SettingsSection};
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::features::settings::hints::settings_modal_hint_bar;
 use crate::primitives::atoms::{CursorKind, text_cursor_spans_with_kind};
@@ -44,6 +44,7 @@ impl SettingsOverlay {
 
         match state.settings.section() {
             SettingsSection::Appearance => Self::render_appearance(frame, content, state, theme),
+            SettingsSection::Keymap => Self::render_keymap(frame, content, state, theme),
             SettingsSection::ErDiagram => Self::render_er_diagram(frame, content, state, theme),
         }
     }
@@ -108,6 +109,42 @@ impl SettingsOverlay {
         );
 
         Self::render_theme_preview(frame, preview, palette_for(state.settings.selected_theme()));
+    }
+
+    fn render_keymap(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {
+        let mut lines = vec![
+            Line::raw(""),
+            Line::from(Span::styled(
+                "Keymap",
+                Style::default()
+                    .fg(theme.semantic.text.primary)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::raw(""),
+            Line::from(Span::styled(
+                "Keymap preset",
+                Style::default().fg(theme.semantic.text.primary),
+            )),
+            Line::raw(""),
+        ];
+
+        for preset in KeymapPreset::ALL {
+            let selected = state.settings.selected_keymap_preset() == preset;
+            let saved = state.settings.saved_keymap_preset() == preset;
+            let marker = if selected { ">" } else { " " };
+            let saved_label = if saved { " saved" } else { "" };
+            let style = if selected {
+                theme.picker_selected_style()
+            } else {
+                Style::default().fg(theme.semantic.text.secondary)
+            };
+            lines.push(Line::from(Span::styled(
+                format!("  {marker} {:<14}{saved_label}", preset.label()),
+                style,
+            )));
+        }
+
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
     }
 
     fn render_er_diagram(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {

@@ -22,7 +22,7 @@ impl CommandPalette {
             theme,
         );
 
-        let items: Vec<ListItem> = palette_commands()
+        let items: Vec<ListItem> = palette_commands(state.settings.saved_keymap_preset())
             .enumerate()
             .map(|(i, kb)| {
                 let style = if i == state.ui.table_picker.selected() {

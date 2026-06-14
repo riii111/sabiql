@@ -3,6 +3,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
+use crate::model::shared::settings::KeymapPreset;
 #[allow(
     clippy::wildcard_imports,
     reason = "help catalog enumerates nearly every keybindings table; explicit list is churn"
@@ -23,7 +24,12 @@ const SECTION_HEADER_LINE_COUNT: usize = 1;
 impl HelpDocument {
     pub fn from_state(state: &AppState) -> Self {
         let filter = state.ui.help.filter();
-        Self::new_with_cursor(state.ui.help.origin(), filter.content(), filter.cursor())
+        Self::new_with_cursor_and_preset(
+            state.ui.help.origin(),
+            filter.content(),
+            filter.cursor(),
+            state.settings.saved_keymap_preset(),
+        )
     }
 
     pub fn new(origin: HelpOrigin, filter: &str) -> Self {
@@ -31,9 +37,18 @@ impl HelpDocument {
     }
 
     pub fn new_with_cursor(origin: HelpOrigin, filter: &str, filter_cursor: usize) -> Self {
+        Self::new_with_cursor_and_preset(origin, filter, filter_cursor, origin.keymap_preset())
+    }
+
+    fn new_with_cursor_and_preset(
+        origin: HelpOrigin,
+        filter: &str,
+        filter_cursor: usize,
+        keymap_preset: KeymapPreset,
+    ) -> Self {
         let normalized = filter.trim().to_lowercase();
         let mut sections = vec![current_section(origin)];
-        sections.extend(reference_sections());
+        sections.extend(reference_sections(keymap_preset));
 
         if !normalized.is_empty() {
             sections = sections
@@ -198,11 +213,12 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
         ]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
+            keymap_preset,
             ..
         } => rows_from_binding_refs(&[
             &result_active::ENTER_DEEPEN,
             &footer_nav::PAGE_NAV,
-            &global::CSV_EXPORT,
+            csv_export(keymap_preset),
         ]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Inspector,
@@ -210,20 +226,38 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
         } => rows_from_binding_refs(&[&global::INSPECTOR_TABS, &inspector_ddl::YANK]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Explorer,
+            keymap_preset,
             ..
-        } => rows_from_binding_refs(&[&global::TABLE_PICKER, &global::CONNECTIONS, &global::SQL]),
+        } => rows_from_binding_refs(&[
+            table_picker(keymap_preset),
+            &global::CONNECTIONS,
+            &global::SQL,
+        ]),
         HelpOrigin::CommandLine => rows_from_bindings(COMMAND_LINE_KEYS),
         HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
         HelpOrigin::TablePicker => rows_from_mode_rows(TABLE_PICKER_ROWS),
         HelpOrigin::CommandPalette => rows_from_mode_rows(COMMAND_PALETTE_ROWS),
         HelpOrigin::Settings => rows_from_mode_rows(SETTINGS_ROWS),
         HelpOrigin::Help => rows_from_mode_rows(HELP_ROWS),
-        HelpOrigin::SqlModal { mode } => sql_current_rows(mode),
-        HelpOrigin::ConnectionSetup => rows_from_bindings(CONNECTION_SETUP_KEYS),
+        HelpOrigin::SqlModal {
+            mode,
+            keymap_preset,
+        } => sql_current_rows(mode, keymap_preset),
+        HelpOrigin::ConnectionSetup { keymap_preset } => rows_from_binding_refs(&[
+            &connection_setup::TAB_NAV,
+            &connection_setup::TAB_NEXT,
+            &connection_setup::TAB_PREV,
+            connection_setup_save(keymap_preset),
+            &connection_setup::ESC_CANCEL,
+            &connection_setup::ENTER_DROPDOWN,
+            &connection_setup::DROPDOWN_NAV,
+        ]),
         HelpOrigin::ConnectionError => rows_from_mode_rows(CONNECTION_ERROR_ROWS),
         HelpOrigin::ConfirmDialog => rows_from_bindings(CONFIRM_DIALOG_KEYS),
         HelpOrigin::ConnectionSelector => rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
-        HelpOrigin::ErTablePicker => rows_from_mode_rows(ER_PICKER_ROWS),
+        HelpOrigin::ErTablePicker { keymap_preset } => {
+            rows_from_mode_rows(er_picker_rows(keymap_preset))
+        }
         HelpOrigin::QueryHistoryPicker => rows_from_mode_rows(QUERY_HISTORY_PICKER_ROWS),
         HelpOrigin::JsonbDetail { mode } => jsonb_current_rows(mode),
         HelpOrigin::JsonbEdit => rows_from_mode_rows(JSONB_EDIT_ROWS),
@@ -235,29 +269,29 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
     }
 }
 
-fn reference_sections() -> Vec<HelpSection> {
+fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
     vec![
         section(
             "Common",
             rows_from_binding_refs(&[
                 &global::HELP,
                 &global::QUIT,
-                &global::SETTINGS,
-                &global::COMMAND_PALETTE,
+                settings(keymap_preset),
+                command_palette(keymap_preset),
                 &global::COMMAND_LINE,
                 &global::FOCUS,
-                &global::READ_ONLY,
+                read_only(keymap_preset),
             ]),
         ),
         section("Navigation", rows_from_bindings(NAVIGATION_KEYS)),
         section(
             "Open / Switch",
             rows_from_binding_refs(&[
-                &global::TABLE_PICKER,
+                table_picker(keymap_preset),
                 &global::SQL,
                 &global::ER_DIAGRAM,
                 &global::CONNECTIONS,
-                &global::QUERY_HISTORY,
+                query_history(keymap_preset),
                 &global::PANE_SWITCH,
                 &global::INSPECTOR_TABS,
             ]),
@@ -267,7 +301,7 @@ fn reference_sections() -> Vec<HelpSection> {
             merge_rows(&[
                 rows_from_binding_refs(&[
                     &global::RELOAD,
-                    &global::CSV_EXPORT,
+                    csv_export(keymap_preset),
                     &result_active::YANK,
                     &result_active::ROW_YANK,
                     &result_active::STAGE_DELETE,
@@ -280,8 +314,8 @@ fn reference_sections() -> Vec<HelpSection> {
         section(
             "Editing",
             merge_rows(&[
-                rows_from_bindings(SQL_MODAL_NORMAL_KEYS),
-                rows_from_bindings(SQL_MODAL_KEYS),
+                sql_current_rows(SqlHelpMode::Normal, keymap_preset),
+                sql_current_rows(SqlHelpMode::Insert, keymap_preset),
                 rows_from_bindings(CELL_EDIT_KEYS),
                 rows_from_mode_rows(JSONB_EDIT_ROWS),
                 rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
@@ -302,7 +336,15 @@ fn reference_sections() -> Vec<HelpSection> {
         section(
             "Connections",
             merge_rows(&[
-                rows_from_bindings(CONNECTION_SETUP_KEYS),
+                rows_from_binding_refs(&[
+                    &connection_setup::TAB_NAV,
+                    &connection_setup::TAB_NEXT,
+                    &connection_setup::TAB_PREV,
+                    connection_setup_save(keymap_preset),
+                    &connection_setup::ESC_CANCEL,
+                    &connection_setup::ENTER_DROPDOWN,
+                    &connection_setup::DROPDOWN_NAV,
+                ]),
                 rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
                 rows_from_mode_rows(CONNECTION_ERROR_ROWS),
             ]),
@@ -318,21 +360,59 @@ fn reference_sections() -> Vec<HelpSection> {
         section(
             "Advanced",
             merge_rows(&[
-                rows_from_bindings(SQL_MODAL_PLAN_KEYS),
-                rows_from_bindings(SQL_MODAL_COMPARE_KEYS),
-                rows_from_mode_rows(ER_PICKER_ROWS),
+                sql_current_rows(SqlHelpMode::Plan, keymap_preset),
+                sql_current_rows(SqlHelpMode::Compare, keymap_preset),
+                rows_from_mode_rows(er_picker_rows(keymap_preset)),
                 rows_from_mode_rows(JSONB_DETAIL_ROWS),
             ]),
         ),
     ]
 }
 
-fn sql_current_rows(mode: SqlHelpMode) -> Vec<HelpRow> {
+fn sql_current_rows(mode: SqlHelpMode, keymap_preset: KeymapPreset) -> Vec<HelpRow> {
     match mode {
-        SqlHelpMode::Normal => rows_from_bindings(SQL_MODAL_NORMAL_KEYS),
-        SqlHelpMode::Insert | SqlHelpMode::Running => rows_from_bindings(SQL_MODAL_KEYS),
-        SqlHelpMode::Plan => rows_from_bindings(SQL_MODAL_PLAN_KEYS),
-        SqlHelpMode::Compare => rows_from_bindings(SQL_MODAL_COMPARE_KEYS),
+        SqlHelpMode::Normal => rows_from_binding_refs(&[
+            &sql_modal_normal::RUN,
+            &sql_modal_normal::YANK,
+            &sql_modal_normal::ENTER_INSERT,
+            &sql_modal_normal::APPEND,
+            &sql_modal_normal::MOVE,
+            &sql_modal_normal::HOME_END,
+            &sql_modal_normal::VIEWPORT,
+            &sql_modal_normal::CLOSE,
+            &sql_modal_normal::CLEAR,
+            sql_modal_normal_query_history(keymap_preset),
+        ]),
+        SqlHelpMode::Insert | SqlHelpMode::Running => match keymap_preset {
+            KeymapPreset::Default => rows_from_bindings(SQL_MODAL_KEYS),
+            KeymapPreset::Ide => rows_from_binding_refs(&[
+                &sql_modal::RUN,
+                &sql_modal::ESC_NORMAL,
+                &sql_modal::MOVE,
+                &sql_modal::HOME_END,
+                &sql_modal::TAB,
+                &sql_modal::CLEAR,
+            ]),
+        },
+        SqlHelpMode::Plan => rows_from_binding_refs(&[
+            sql_modal_plan_explain(keymap_preset),
+            &sql_modal_plan::ANALYZE,
+            &sql_modal_plan::YANK,
+            &sql_modal_plan::SCROLL,
+            &sql_modal_plan::TAB,
+            &sql_modal_plan::BACKTAB,
+            &sql_modal_plan::CLOSE,
+        ]),
+        SqlHelpMode::Compare => rows_from_binding_refs(&[
+            sql_modal_compare_explain(keymap_preset),
+            &sql_modal_compare::ANALYZE,
+            &sql_modal_compare::EDIT_QUERY,
+            &sql_modal_compare::YANK,
+            &sql_modal_compare::SCROLL,
+            &sql_modal_compare::TAB,
+            &sql_modal_compare::BACKTAB,
+            &sql_modal_compare::CLOSE,
+        ]),
         SqlHelpMode::Confirm => rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
     }
 }
@@ -440,6 +520,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
+                keymap_preset: KeymapPreset::default(),
             },
             "",
         );
@@ -459,6 +540,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
+                keymap_preset: KeymapPreset::default(),
             },
             "copy",
         );
@@ -480,6 +562,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
+                keymap_preset: KeymapPreset::default(),
             },
             "navigation",
         );
@@ -498,6 +581,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
+                keymap_preset: KeymapPreset::default(),
             },
             "zz-no-match",
         );
@@ -515,6 +599,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
+                keymap_preset: KeymapPreset::default(),
             },
             "",
         );
