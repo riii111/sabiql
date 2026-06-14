@@ -1,5 +1,6 @@
+use crate::model::shared::detail_view::{DetailContentState, DetailSearchState};
 use crate::model::shared::multi_line_input::MultiLineInputState;
-use crate::model::shared::text_input::{TextInputLike, TextInputState};
+use crate::model::shared::text_input::TextInputLike;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JsonbDetailMode {
@@ -9,83 +10,15 @@ pub enum JsonbDetailMode {
     Searching,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct JsonbSearchState {
-    pub(crate) input: TextInputState,
-    pub(crate) matches: Vec<usize>,
-    pub(crate) current_match: usize,
-    pub(crate) active: bool,
-}
-
-impl JsonbSearchState {
-    pub fn input(&self) -> &TextInputState {
-        &self.input
-    }
-
-    pub fn input_mut(&mut self) -> &mut TextInputState {
-        &mut self.input
-    }
-
-    pub fn matches(&self) -> &[usize] {
-        &self.matches
-    }
-
-    pub fn current_match(&self) -> usize {
-        self.current_match
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.active
-    }
-
-    pub fn set_matches(&mut self, matches: Vec<usize>) {
-        self.matches = matches;
-        self.current_match = 0;
-    }
-
-    pub fn advance_to_next_match(&mut self) {
-        if !self.matches.is_empty() {
-            self.current_match = (self.current_match + 1) % self.matches.len();
-        }
-    }
-
-    pub fn advance_to_prev_match(&mut self) {
-        if self.matches.is_empty() {
-            return;
-        }
-        self.current_match = if self.current_match == 0 {
-            self.matches.len() - 1
-        } else {
-            self.current_match - 1
-        };
-    }
-
-    pub fn activate(&mut self) {
-        self.active = true;
-    }
-
-    pub fn deactivate(&mut self) {
-        self.active = false;
-    }
-
-    pub fn reset(&mut self) {
-        self.input.set_content(String::new());
-        self.matches.clear();
-        self.current_match = 0;
-    }
-}
+pub type JsonbSearchState = DetailSearchState;
 
 #[derive(Debug, Clone, Default)]
 pub struct JsonbDetailState {
-    row: usize,
-    col: usize,
-    column_name: String,
-    original_json: String,
-    pretty_original: String,
+    detail: DetailContentState,
     mode: JsonbDetailMode,
     editor: MultiLineInputState,
+    search: DetailSearchState,
     validation_error: Option<String>,
-    search: JsonbSearchState,
     pub(crate) active: bool,
 }
 
@@ -103,15 +36,17 @@ impl JsonbDetailState {
         pretty_original: String,
     ) -> Self {
         Self {
-            row,
-            col,
-            column_name,
-            original_json,
-            editor: MultiLineInputState::new(pretty_original.clone(), 0),
-            pretty_original,
+            detail: DetailContentState::new(
+                row,
+                col,
+                column_name,
+                original_json,
+                pretty_original.clone(),
+            ),
+            editor: MultiLineInputState::new(pretty_original, 0),
+            search: DetailSearchState::default(),
             mode: JsonbDetailMode::Viewing,
             validation_error: None,
-            search: JsonbSearchState::default(),
             active: true,
         }
     }
@@ -137,23 +72,23 @@ impl JsonbDetailState {
     }
 
     pub fn row(&self) -> usize {
-        self.row
+        self.detail.row()
     }
 
     pub fn col(&self) -> usize {
-        self.col
+        self.detail.col()
     }
 
     pub fn column_name(&self) -> &str {
-        &self.column_name
+        self.detail.column_name()
     }
 
     pub fn original_json(&self) -> &str {
-        &self.original_json
+        self.detail.original_content()
     }
 
     pub fn pretty_original(&self) -> &str {
-        &self.pretty_original
+        self.detail.content()
     }
 
     pub fn editor(&self) -> &MultiLineInputState {
@@ -202,9 +137,9 @@ impl JsonbDetailState {
             serde_json::from_str::<serde_json::Value>(self.editor.content())
                 .ok()
                 .and_then(|v| serde_json::to_string(&v).ok())
-                .unwrap_or_else(|| self.original_json.clone())
+                .unwrap_or_else(|| self.original_json().to_string())
         } else {
-            self.original_json.clone()
+            self.original_json().to_string()
         }
     }
 
@@ -214,7 +149,7 @@ impl JsonbDetailState {
             return false;
         }
         let trimmed = content.trim();
-        trimmed != self.original_json.trim() && trimmed != self.pretty_original.trim()
+        trimmed != self.original_json().trim() && trimmed != self.pretty_original().trim()
     }
 
     pub fn validate_editor_content(&mut self) {

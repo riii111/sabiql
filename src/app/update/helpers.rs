@@ -1,3 +1,5 @@
+use unicode_casefold::UnicodeCaseFold;
+
 use crate::domain::QueryResult;
 use crate::domain::connection::SqliteConnectionConfig;
 use crate::model::app_state::AppState;
@@ -199,6 +201,71 @@ pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
         .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
 
+pub fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let query_folded = query.case_fold().collect::<String>();
+    let mut matches = Vec::new();
+    let mut offset = 0;
+
+    for segment in content.split_inclusive('\n') {
+        let line = segment.strip_suffix('\n').unwrap_or(segment);
+        let (folded, offset_map) = casefold_with_char_offsets(line);
+        let mut search_from = 0;
+        while let Some(rel_idx) = folded[search_from..].find(&query_folded) {
+            let match_idx = search_from + rel_idx;
+            matches.push(offset + original_char_offset_for_folded_byte(&offset_map, match_idx));
+            search_from =
+                folded_byte_offset_after_original_match(&offset_map, match_idx, query_folded.len());
+        }
+        offset += segment.chars().count();
+    }
+
+    matches
+}
+
+fn casefold_with_char_offsets(text: &str) -> (String, Vec<(usize, usize)>) {
+    let mut folded = String::new();
+    let mut offset_map = Vec::new();
+
+    for (original_char_offset, ch) in text.chars().enumerate() {
+        for folded_char in ch.case_fold() {
+            offset_map.push((folded.len(), original_char_offset));
+            folded.push(folded_char);
+        }
+    }
+
+    offset_map.push((folded.len(), text.chars().count()));
+    (folded, offset_map)
+}
+
+fn original_char_offset_for_folded_byte(
+    offset_map: &[(usize, usize)],
+    folded_byte_offset: usize,
+) -> usize {
+    let idx = offset_map.partition_point(|(byte_offset, _)| *byte_offset <= folded_byte_offset);
+    offset_map[idx.saturating_sub(1)].1
+}
+
+fn folded_byte_offset_after_original_match(
+    offset_map: &[(usize, usize)],
+    folded_match_start: usize,
+    folded_match_len: usize,
+) -> usize {
+    let folded_match_end = folded_match_start + folded_match_len;
+    let last_matched_original =
+        original_char_offset_for_folded_byte(offset_map, folded_match_end.saturating_sub(1));
+    offset_map
+        .iter()
+        .find_map(|(byte_offset, original_offset)| {
+            (*byte_offset >= folded_match_end && *original_offset > last_matched_original)
+                .then_some(*byte_offset)
+        })
+        .unwrap_or(folded_match_end)
+}
+
 fn text_input_content(state: &ConnectionSetupState, field: ConnectionField) -> &str {
     state
         .input(field)
@@ -209,6 +276,63 @@ fn text_input_content(state: &ConnectionSetupState, field: ConnectionField) -> &
 fn require_non_empty(state: &mut ConnectionSetupState, field: ConnectionField, message: &str) {
     if text_input_content(state, field).trim().is_empty() {
         state.set_validation_error(field, message);
+    }
+}
+
+#[cfg(test)]
+mod text_search_tests {
+    use super::find_text_matches;
+
+    #[test]
+    fn text_matches_return_first_match_offset_per_line_case_insensitively() {
+        let matches = find_text_matches(
+            "{\n  \"Theme\": \"dark\",\n  \"theme\": \"light\"\n}",
+            "theme",
+        );
+
+        assert_eq!(matches, vec![5, 24]);
+    }
+
+    #[test]
+    fn text_matches_return_empty_for_empty_query() {
+        let matches = find_text_matches("{\n  \"theme\": \"dark\"\n}", "");
+
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn text_matches_map_unicode_casefold_back_to_original_char_offset() {
+        let matches = find_text_matches("İx", "x");
+
+        assert_eq!(matches, vec![1]);
+    }
+
+    #[test]
+    fn text_matches_casefold_german_sharp_s() {
+        let matches = find_text_matches("Maße", "MASSE");
+
+        assert_eq!(matches, vec![0]);
+    }
+
+    #[test]
+    fn text_matches_do_not_duplicate_expanded_casefold_character() {
+        let matches = find_text_matches("Maße", "s");
+
+        assert_eq!(matches, vec![2]);
+    }
+
+    #[test]
+    fn text_matches_casefold_greek_final_sigma() {
+        let matches = find_text_matches("ὈΔΥΣΣΕΎΣ", "ὀδυσσεύς");
+
+        assert_eq!(matches, vec![0]);
+    }
+
+    #[test]
+    fn text_matches_return_all_matches_within_single_line() {
+        let matches = find_text_matches("theme theme", "theme");
+
+        assert_eq!(matches, vec![0, 6]);
     }
 }
 
