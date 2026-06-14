@@ -1,3 +1,4 @@
+mod cell_detail;
 mod connections;
 mod editors;
 mod jsonb;
@@ -30,7 +31,8 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::SqlModal
         | InputMode::QueryHistoryPicker
         | InputMode::JsonbEdit
-        | InputMode::JsonbDetail => Action::Paste(text),
+        | InputMode::JsonbDetail
+        | InputMode::CellDetail => Action::Paste(text),
         _ => Action::None,
     }
 }
@@ -74,6 +76,10 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
             )
         }
         InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),
+        InputMode::CellDetail => {
+            let is_searching = state.cell_detail.search().is_active();
+            cell_detail::handle_cell_detail_keys(combo, is_searching)
+        }
     }
 }
 
@@ -134,6 +140,15 @@ mod tests {
 
             assert!(matches!(result, Action::SqlModalEnterInsert));
         }
+
+        #[test]
+        fn cell_detail_mode_routes_to_cell_detail_handler() {
+            let state = make_state(InputMode::CellDetail);
+
+            let result = handle_key_event(combo(Key::Char('/')), &state);
+
+            assert!(matches!(result, Action::CellDetailEnterSearch));
+        }
     }
 
     mod paste_event {
@@ -179,6 +194,15 @@ mod tests {
             let result = handle_paste_event("users".to_string(), &state);
 
             assert!(matches!(result, Action::Paste(t) if t == "users"));
+        }
+
+        #[test]
+        fn cell_detail_pastes_text() {
+            let state = make_state(InputMode::CellDetail);
+
+            let result = handle_paste_event("needle".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "needle"));
         }
 
         #[test]

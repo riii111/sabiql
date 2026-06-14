@@ -7,8 +7,9 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::explorer_content_width_from_pane_width;
 use crate::app::model::shared::viewport::ViewportPlan;
-use crate::app::ports::outbound::RenderOutput;
+use crate::app::ports::outbound::{CellDetailViewport, RenderOutput};
 use crate::app::services::AppServices;
+use crate::features::browse::cell_detail::{CellDetail, CellDetailRenderMetrics};
 use crate::features::browse::explorer::Explorer;
 use crate::features::browse::inspector::Inspector;
 use crate::features::browse::jsonb_detail::{JsonbDetail, JsonbDetailRenderMetrics};
@@ -151,6 +152,19 @@ impl MainLayout {
             _ => None,
         };
 
+        let cell_detail_viewport = match state.input_mode() {
+            InputMode::CellDetail => CellDetail::render(frame, state, now, theme).map(
+                |CellDetailRenderMetrics {
+                     visible_rows,
+                     viewport_width,
+                 }| CellDetailViewport {
+                    visible_rows,
+                    viewport_width,
+                },
+            ),
+            _ => None,
+        };
+
         match state.input_mode() {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
@@ -170,6 +184,7 @@ impl MainLayout {
             query_history_picker_pane_height,
             query_history_picker_filter_visible_width,
             jsonb_detail_editor_visible_rows,
+            cell_detail_viewport,
             confirm_preview_viewport_height,
             confirm_preview_content_height,
             confirm_preview_scroll,

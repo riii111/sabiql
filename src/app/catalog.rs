@@ -261,6 +261,8 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
         HelpOrigin::QueryHistoryPicker => rows_from_mode_rows(QUERY_HISTORY_PICKER_ROWS),
         HelpOrigin::JsonbDetail { mode } => jsonb_current_rows(mode),
         HelpOrigin::JsonbEdit => rows_from_mode_rows(JSONB_EDIT_ROWS),
+        HelpOrigin::CellDetail { searching: true } => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
+        HelpOrigin::CellDetail { searching: false } => rows_from_mode_rows(CELL_DETAIL_ROWS),
     };
 
     HelpSection {

@@ -512,6 +512,15 @@ pub mod result_active {
         combos: &[KeyCombo::plain(Key::Enter)],
     };
 
+    pub const DETAIL: KeyBinding = KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Detail",
+        description: "Open active cell detail",
+        action: Action::ResultOpenCellDetail,
+        combos: &[KeyCombo::plain(Key::Enter)],
+    };
+
     pub const YANK: KeyBinding = KeyBinding {
         key_short: "Y",
         key: "Y",
@@ -604,7 +613,7 @@ pub mod result_active {
 }
 
 pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
-    result_active::ENTER_DEEPEN,
+    result_active::DETAIL,
     result_active::YANK,
     result_active::STAGE_DELETE,
     result_active::UNSTAGE_DELETE,

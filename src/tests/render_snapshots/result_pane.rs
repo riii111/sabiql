@@ -48,6 +48,26 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     (state, now)
 }
 
+fn cell_detail_state() -> (AppState, std::time::Instant) {
+    let now = test_instant();
+    let mut state = table_detail_loaded_state();
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT id, body FROM notes".to_string(),
+            vec!["id".to_string(), "body".to_string()],
+            vec![vec![
+                "1".to_string(),
+                "Prompt:\nSummarize the incident timeline and include the operator notes.\n\nMemory:\n- User prefers concise status updates\n- Keep markdown bullets intact".to_string(),
+            ]],
+            1,
+            QuerySource::Preview,
+        )));
+    state.ui.set_focused_pane(FocusedPane::Result);
+    state.result_interaction.activate_cell(0, 1);
+    (state, now)
+}
+
 #[test]
 fn result_pane_scrolled_past_wide_column_fills_width() {
     let mut state = table_detail_loaded_state();
@@ -336,6 +356,24 @@ fn result_pane_jsonb_detail_mode() {
         now,
     );
     assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_cell_detail_mode() {
+    let (mut state, now) = cell_detail_state();
+    let mut terminal = create_test_terminal();
+
+    dispatch_result(
+        &mut state,
+        &Action::ResultOpenCellDetail,
+        &AppServices::stub(),
+        now,
+    );
+    assert_eq!(state.input_mode(), InputMode::CellDetail);
 
     let output = render_to_string(&mut terminal, &mut state);
 

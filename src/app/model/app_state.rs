@@ -4,6 +4,7 @@ use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
 use crate::domain::TableSummary;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::browse::query_execution::QueryExecution;
 use crate::model::browse::result_interaction::ResultInteraction;
@@ -41,6 +42,7 @@ pub struct AppState {
     pub connection_error: ConnectionErrorState,
     pub confirm_dialog: ConfirmDialogState,
     pub result_interaction: ResultInteraction,
+    pub cell_detail: CellDetailState,
     pub jsonb_detail: JsonbDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub settings: SettingsState,
@@ -71,6 +73,7 @@ impl AppState {
             connection_error: ConnectionErrorState::default(),
             confirm_dialog: ConfirmDialogState::default(),
             result_interaction: ResultInteraction::default(),
+            cell_detail: CellDetailState::default(),
             jsonb_detail: JsonbDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             settings: SettingsState::default(),
@@ -158,6 +161,10 @@ impl AppState {
         if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
             self.ui.set_jsonb_detail_editor_visible_rows(visible_rows);
             self.jsonb_detail.editor_mut().update_scroll(visible_rows);
+        }
+        if let Some(viewport) = output.cell_detail_viewport {
+            self.cell_detail
+                .set_viewport_metrics(viewport.visible_rows, viewport.viewport_width);
         }
         self.confirm_dialog.apply_preview_metrics(
             output.confirm_preview_viewport_height,

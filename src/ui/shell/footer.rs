@@ -12,11 +12,12 @@ use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::update::input::keybindings::{
-    cell_edit, command_palette, command_palette as command_palette_key, connection_error,
-    connection_selector, connection_setup, connection_setup_save, csv_export, er_picker,
-    er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail,
-    jsonb_edit, jsonb_search, overlay, query_history, query_history_picker, read_only,
-    result_active, settings, sql_modal, sql_modal_confirming, sql_modal_plan, table_picker,
+    cell_detail, cell_detail_search, cell_edit, command_palette,
+    command_palette as command_palette_key, connection_error, connection_selector,
+    connection_setup, connection_setup_save, csv_export, er_picker, er_picker_select_all,
+    exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail, jsonb_edit,
+    jsonb_search, overlay, query_history, query_history_picker, read_only, result_active, settings,
+    sql_modal, sql_modal_confirming, sql_modal_plan, table_picker,
     table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
@@ -97,6 +98,7 @@ impl Footer {
                         ]
                     } else if state.result_interaction.staged_delete_rows().is_empty() {
                         vec![
+                            result_active::DETAIL.as_hint(),
                             result_active::EDIT.as_hint(),
                             result_active::YANK.as_hint(),
                             result_active::ROW_YANK.as_hint(),
@@ -320,6 +322,23 @@ impl Footer {
                 jsonb_edit::MOVE.as_hint(),
                 jsonb_edit::HOME_END.as_hint(),
             ],
+            InputMode::CellDetail => {
+                if state.cell_detail.search().is_active() {
+                    vec![
+                        cell_detail_search::TYPE_SEARCH.as_hint(),
+                        cell_detail_search::CONFIRM.as_hint(),
+                        cell_detail_search::CANCEL.as_hint(),
+                    ]
+                } else {
+                    vec![
+                        cell_detail::YANK.as_hint(),
+                        cell_detail::SEARCH.as_hint(),
+                        cell_detail::NEXT_PREV.as_hint(),
+                        cell_detail::SCROLL.as_hint(),
+                        cell_detail::CLOSE.as_hint(),
+                    ]
+                }
+            }
             InputMode::ConnectionSelector => {
                 use connection_selector as cs;
                 let is_service_selected = crate::app::model::connection::list::is_service_selected(

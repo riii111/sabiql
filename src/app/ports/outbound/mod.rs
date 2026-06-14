@@ -32,7 +32,7 @@ pub use folder_opener::{FolderOpenError, FolderOpener};
 pub use metadata::MetadataProvider;
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};
-pub use renderer::{RenderError, RenderOutput, RenderResult, Renderer};
+pub use renderer::{CellDetailViewport, RenderError, RenderOutput, RenderResult, Renderer};
 pub use service_file::{PgServiceEntryReader, ServiceFileError};
 pub use settings_store::{AppSettings, SettingsStore, SettingsStoreError};
 pub use sql_dialect::SqlDialect;

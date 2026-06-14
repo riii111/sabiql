@@ -46,7 +46,7 @@ pub(in crate::update::input::vim) fn mode_transition(
         (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Result(result_ctx)) => {
             match result_ctx.mode {
                 ResultNavMode::Scroll => Action::ResultActivateCell,
-                ResultNavMode::CellActive => Action::None,
+                ResultNavMode::CellActive => Action::ResultOpenCellDetail,
             }
         }
         (VimModeTransition::Insert, BrowseVimContext::Result(result_ctx))
@@ -320,6 +320,16 @@ mod tests {
         );
 
         assert!(matches!(action, Some(Action::ResultDiscardCellEdit)));
+    }
+
+    #[test]
+    fn result_cell_enter_opens_cell_detail() {
+        let action = action_for_command(
+            VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter),
+            browse_result(result_ctx(ResultNavMode::CellActive)),
+        );
+
+        assert!(matches!(action, Some(Action::ResultOpenCellDetail)));
     }
 
     #[test]
