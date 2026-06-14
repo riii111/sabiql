@@ -6,6 +6,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
+use crate::app::update::input::keybindings::connection_setup_save;
 use crate::domain::connection::{DatabaseType, SslMode};
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
@@ -43,6 +44,7 @@ impl ConnectionSetup {
         } else {
             (" New Connection ", "Connect")
         };
+        let (submit_key, submit_desc) = Self::submit_hint(state, form_state, submit_desc);
         let (_, modal_inner) = render_modal(
             frame,
             Constraint::Length(modal_width),
@@ -51,7 +53,7 @@ impl ConnectionSetup {
             FooterHintBar::new([
                 ("Tab", "Next"),
                 ("Shift+Tab", "Prev"),
-                ("Ctrl+S", submit_desc),
+                (submit_key, submit_desc),
                 ("Esc", "Cancel"),
             ]),
             theme,
@@ -145,6 +147,24 @@ impl ConnectionSetup {
             .copied();
         debug_assert!(area.is_some(), "open dropdown field must be visible");
         area
+    }
+
+    fn submit_hint(
+        state: &AppState,
+        form_state: &ConnectionSetupState,
+        submit_desc: &'static str,
+    ) -> (&'static str, &'static str) {
+        if matches!(
+            form_state.focused_field(),
+            ConnectionField::DatabaseType | ConnectionField::SslMode
+        ) {
+            ("Enter", "Toggle")
+        } else {
+            (
+                connection_setup_save(state.settings.saved_keymap_preset()).key,
+                submit_desc,
+            )
+        }
     }
 
     fn render_text_field(
@@ -330,5 +350,53 @@ fn ssl_mode_label(mode: SslMode) -> &'static str {
         SslMode::Require => "require",
         SslMode::VerifyCa => "verify-ca",
         SslMode::VerifyFull => "verify-full",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::model::shared::settings::KeymapPreset;
+
+    fn focus_field(state: &mut ConnectionSetupState, field: ConnectionField) {
+        while state.focused_field() != field {
+            state.focus_next_field();
+        }
+    }
+
+    #[test]
+    fn submit_hint_uses_toggle_on_ssl_field() {
+        let state = AppState::new("test".to_string());
+        let mut form_state = ConnectionSetupState::default();
+        focus_field(&mut form_state, ConnectionField::SslMode);
+
+        assert_eq!(
+            ConnectionSetup::submit_hint(&state, &form_state, "Connect"),
+            ("Enter", "Toggle")
+        );
+    }
+
+    #[test]
+    fn submit_hint_uses_toggle_on_database_type_field() {
+        let state = AppState::new("test".to_string());
+        let form_state = ConnectionSetupState::default();
+
+        assert_eq!(
+            ConnectionSetup::submit_hint(&state, &form_state, "Connect"),
+            ("Enter", "Toggle")
+        );
+    }
+
+    #[test]
+    fn submit_hint_uses_preset_save_key_off_ssl_field() {
+        let mut state = AppState::new("test".to_string());
+        state.settings.load_keymap_preset(KeymapPreset::Ide);
+        let mut form_state = ConnectionSetupState::default();
+        form_state.focus_next_field();
+
+        assert_eq!(
+            ConnectionSetup::submit_hint(&state, &form_state, "Connect"),
+            ("Enter", "Connect")
+        );
     }
 }

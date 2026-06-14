@@ -5,15 +5,19 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::update::input::keybindings::{
-    cell_edit, command_palette, connection_error, connection_selector, connection_setup, er_picker,
-    footer_nav, global, help, history, inspector_ddl, jsonb_detail, jsonb_edit, jsonb_search,
-    overlay, query_history_picker, result_active, sql_modal, sql_modal_confirming, sql_modal_plan,
-    table_picker,
+    cell_edit, command_palette, command_palette as command_palette_key, connection_error,
+    connection_selector, connection_setup, connection_setup_save, csv_export, er_picker,
+    er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail,
+    jsonb_edit, jsonb_search, overlay, query_history, query_history_picker, read_only,
+    result_active, settings, sql_modal, sql_modal_confirming, sql_modal_plan, table_picker,
+    table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
@@ -77,14 +81,7 @@ impl Footer {
 
         match state.input_mode() {
             InputMode::Normal => {
-                if state.query.is_history_mode() {
-                    return vec![
-                        history::NAV.as_hint(),
-                        global::HELP.as_hint(),
-                        history::EXIT.as_hint(),
-                    ];
-                }
-
+                let keymap_preset = state.settings.saved_keymap_preset();
                 let result_navigation =
                     state.ui.is_focus_mode() || state.ui.focused_pane() == FocusedPane::Result;
                 let nav_mode = state.result_interaction.selection().mode();
@@ -126,13 +123,13 @@ impl Footer {
                         list.push(cell_edit::WRITE.as_hint());
                     }
                     if state.can_request_csv_export() {
-                        list.push(global::CSV_EXPORT.as_hint());
+                        list.push(csv_export(keymap_preset).as_hint());
                     }
                     if state.query.can_paginate_visible_result() {
                         list.push(footer_nav::PAGE_NAV.as_hint());
                     }
                     list.push(global::HELP.as_hint());
-                    list.push(global::SETTINGS.as_hint());
+                    list.push(settings(keymap_preset).as_hint());
                     list.push(global::EXIT_FOCUS.as_hint());
                     list.push(global::QUIT.as_hint());
                     list
@@ -149,19 +146,19 @@ impl Footer {
                     if state.ui.focused_pane() == FocusedPane::Explorer {
                         list.push(global::CONNECTIONS.as_hint());
                     }
-                    list.push(global::TABLE_PICKER.as_hint());
-                    list.push(global::QUERY_HISTORY.as_hint());
+                    list.push(table_picker_key(keymap_preset).as_hint());
+                    list.push(query_history(keymap_preset).as_hint());
                     if state.connection_error.has_error() {
                         list.push(overlay::ERROR_OPEN.as_hint());
                     }
                     if state.session.is_read_only() {
-                        list.push(global::EXIT_READ_ONLY.as_hint());
+                        list.push(exit_read_only(keymap_preset).as_hint());
                     } else {
-                        list.push(global::READ_ONLY.as_hint());
+                        list.push(read_only(keymap_preset).as_hint());
                     }
                     list.push(global::FOCUS.as_hint());
                     if state.can_request_csv_export() {
-                        list.push(global::CSV_EXPORT.as_hint());
+                        list.push(csv_export(keymap_preset).as_hint());
                     }
                     if state.ui.focused_pane() == FocusedPane::Inspector {
                         use crate::app::model::shared::inspector_tab::InspectorTab;
@@ -186,8 +183,8 @@ impl Footer {
                         list.push(global::INSPECTOR_TABS.as_hint());
                     }
                     list.push(global::HELP.as_hint());
-                    list.push(global::COMMAND_PALETTE.as_hint());
-                    list.push(global::SETTINGS.as_hint());
+                    list.push(command_palette_key(keymap_preset).as_hint());
+                    list.push(settings(keymap_preset).as_hint());
                     list.push(global::QUIT.as_hint());
                     list
                 }
@@ -251,18 +248,29 @@ impl Footer {
                     ];
                     if state.session.active_db_capabilities().supports_explain()
                         && state.sql_modal.status() == &SqlModalStatus::Editing
+                        && state.settings.saved_keymap_preset() == KeymapPreset::Default
                     {
                         hints.insert(1, sql_modal_plan::EXPLAIN.as_hint());
                     }
                     hints
                 }
             }
-            InputMode::ConnectionSetup => vec![
-                connection_setup::SAVE.as_hint(),
-                connection_setup::TAB_NEXT.as_hint(),
-                connection_setup::TAB_PREV.as_hint(),
-                connection_setup::ESC_CANCEL.as_hint(),
-            ],
+            InputMode::ConnectionSetup => {
+                let submit_hint = if matches!(
+                    state.connection_setup.focused_field(),
+                    ConnectionField::DatabaseType | ConnectionField::SslMode
+                ) {
+                    connection_setup::ENTER_DROPDOWN.as_hint()
+                } else {
+                    connection_setup_save(state.settings.saved_keymap_preset()).as_hint()
+                };
+                vec![
+                    submit_hint,
+                    connection_setup::TAB_NEXT.as_hint(),
+                    connection_setup::TAB_PREV.as_hint(),
+                    connection_setup::ESC_CANCEL.as_hint(),
+                ]
+            }
             InputMode::ConnectionError => {
                 let first = if state.session.is_service_connection() {
                     connection_error::RETRY.as_hint()
@@ -280,7 +288,7 @@ impl Footer {
             InputMode::ErTablePicker => vec![
                 er_picker::ENTER_GENERATE.as_hint(),
                 er_picker::SELECT.as_hint(),
-                er_picker::SELECT_ALL.as_hint(),
+                er_picker_select_all(state.settings.saved_keymap_preset()).as_hint(),
                 er_picker::TYPE_FILTER.as_hint(),
                 er_picker::ESC_CLOSE.as_hint(),
             ],
@@ -360,9 +368,12 @@ mod tests {
     use super::Footer;
     use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
+    use crate::app::model::connection::setup::ConnectionField;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
-    use crate::app::update::input::keybindings::global;
+    use crate::app::model::shared::settings::KeymapPreset;
+    use crate::app::model::sql_editor::modal::SqlModalStatus;
+    use crate::app::update::input::keybindings::{connection_setup, global};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -370,6 +381,12 @@ mod tests {
         state.modal.set_mode(InputMode::Normal);
         state.ui.set_focused_pane(FocusedPane::Inspector);
         state
+    }
+
+    fn focus_connection_field(state: &mut AppState, field: ConnectionField) {
+        while state.connection_setup.focused_field() != field {
+            state.connection_setup.focus_next_field();
+        }
     }
 
     #[rstest]
@@ -402,6 +419,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Settings);
         state.settings.switch_next_section();
+        state.settings.switch_next_section();
         state.settings.start_custom_browser_edit();
         state.settings.stop_custom_browser_edit();
 
@@ -417,6 +435,7 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Settings);
         state.settings.switch_next_section();
+        state.settings.switch_next_section();
         state.settings.start_custom_browser_edit();
 
         let hints = Footer::get_context_hints(&state);
@@ -425,5 +444,35 @@ mod tests {
             hints,
             vec![("Enter", "Apply"), ("Esc", "Done"), ("Type", "Browser")]
         );
+    }
+
+    #[test]
+    fn ide_sql_editing_footer_omits_explain_hint() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/test",
+        );
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+        state.settings.load_keymap_preset(KeymapPreset::Ide);
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(!hints.contains(&("^E", "Explain")));
+    }
+
+    #[test]
+    fn connection_setup_footer_shows_toggle_on_ssl_field() {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::ConnectionSetup);
+        focus_connection_field(&mut state, ConnectionField::SslMode);
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(hints.contains(&connection_setup::ENTER_DROPDOWN.as_hint()));
+        assert!(!hints.contains(&("Enter", "Connect")));
     }
 }

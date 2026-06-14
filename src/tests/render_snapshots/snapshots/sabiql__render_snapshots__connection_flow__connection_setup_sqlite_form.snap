@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
+assertion_line: 43
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
@@ -31,7 +32,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││(select a │                                                            │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Connect │ Esc: Cancel╯                                                  │
+│                                       ││          ╰ Tab: Next │ Shift+Tab: Prev │ Enter: Toggle │ Esc: Cancel ─╯                                                  │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +52,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-^S:Connect  Tab:Next  ⇧Tab:Prev  Esc:Cancel
+Enter:Toggle  Tab:Next  ⇧Tab:Prev  Esc:Cancel

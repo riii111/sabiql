@@ -24,10 +24,6 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 _ => return DispatchResult::handled(),
             };
 
-            if state.query.is_history_mode() {
-                return DispatchResult::handled();
-            }
-
             let table_detail = match state.session.table_detail() {
                 Some(td)
                     if td.schema == state.query.pagination.schema()

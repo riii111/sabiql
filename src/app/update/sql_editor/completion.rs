@@ -34,7 +34,7 @@ pub(super) fn reduce_completion(
         }
 
         // Completion trigger/update
-        Action::CompletionTrigger => DispatchResult::handled_with(vec![Effect::TriggerCompletion]),
+        Action::CompletionRequest => DispatchResult::handled_with(vec![Effect::TriggerCompletion]),
         Action::CompletionUpdated {
             candidates,
             trigger_position,

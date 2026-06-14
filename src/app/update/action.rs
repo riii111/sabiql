@@ -427,7 +427,7 @@ pub enum Action {
     SqlModalConfirmExecute,
     SqlModalNextTab,
     SqlModalPrevTab,
-    CompletionTrigger,
+    CompletionRequest,
     CompletionUpdated {
         candidates: Vec<CompletionCandidate>,
         trigger_position: usize,
@@ -518,12 +518,6 @@ pub enum Action {
     OpenFolderFailed(FolderOpenError),
     ToggleFocus,
     ToggleReadOnly,
-
-    // Result history
-    OpenResultHistory,
-    HistoryOlder,
-    HistoryNewer,
-    ExitResultHistory,
 
     // Query history
     QueryHistoryLoaded(

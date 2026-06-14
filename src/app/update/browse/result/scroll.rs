@@ -25,9 +25,10 @@ fn ensure_row_visible(state: &mut AppState) {
         if visible == 0 {
             return;
         }
-        if row < state.result_interaction.scroll_offset() {
+        let scroll_offset = state.result_interaction.scroll_offset();
+        if row < scroll_offset {
             state.result_interaction.set_scroll_offset(row);
-        } else if row >= state.result_interaction.scroll_offset() + visible {
+        } else if row >= scroll_offset + visible {
             state
                 .result_interaction
                 .set_scroll_offset(row - visible + 1);
@@ -50,12 +51,13 @@ fn page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
 
 fn scroll_result_by(state: &mut AppState, direction: ScrollDirection, delta: usize) {
     let max_scroll = result_max_scroll(state);
-    let offset = direction.clamp_vertical_offset(
-        state.result_interaction.scroll_offset(),
-        max_scroll,
-        delta,
-    );
-    state.result_interaction.set_scroll_offset(offset);
+    state
+        .result_interaction
+        .set_scroll_offset(direction.clamp_vertical_offset(
+            state.result_interaction.scroll_offset(),
+            max_scroll,
+            delta,
+        ));
 }
 
 fn move_result_row_and_scroll(state: &mut AppState, direction: ScrollDirection, delta: usize) {
@@ -107,9 +109,9 @@ pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
                 .map_or(0, |r| (r + 1).min(max_row));
             move_row_or_scroll(state, new_row, |s| {
                 let max_scroll = result_max_scroll(s);
-                let offset = s.result_interaction.scroll_offset();
-                if offset < max_scroll {
-                    s.result_interaction.set_scroll_offset(offset + 1);
+                if s.result_interaction.scroll_offset() < max_scroll {
+                    s.result_interaction
+                        .set_scroll_offset(s.result_interaction.scroll_offset() + 1);
                 }
             });
             DispatchResult::handled()
@@ -793,70 +795,6 @@ mod tests {
             // row=95, clamped to max_scroll=80
             assert_eq!(state.result_interaction.scroll_offset(), 80);
             assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
-        }
-    }
-
-    mod history_mode_scroll {
-        use super::*;
-
-        fn make_result(
-            rows: usize,
-            source: crate::domain::QuerySource,
-        ) -> Arc<crate::domain::QueryResult> {
-            let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
-            Arc::new(crate::domain::QueryResult::success(
-                String::new(),
-                vec!["id".to_string()],
-                result_rows,
-                1,
-                source,
-            ))
-        }
-
-        #[test]
-        fn page_scroll_uses_history_entry_row_count_not_live_preview() {
-            let mut state = AppState::new("test".to_string());
-            state.ui.set_result_pane_height(25); // visible = 20, half = 10
-            // live preview: 100 rows
-            state
-                .query
-                .set_current_result(make_result(100, crate::domain::QuerySource::Preview));
-            // history entry: 5 rows
-            state
-                .query
-                .push_history(make_result(5, crate::domain::QuerySource::Adhoc));
-            state.query.enter_history(0);
-
-            state.result_interaction.activate_cell(2, 0);
-            state.result_interaction.set_scroll_offset(0);
-
-            reduce_scroll(
-                &mut state,
-                &Action::Scroll {
-                    target: ScrollTarget::Result,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
-                },
-            );
-
-            // Should clamp to history entry max_row=4, not live preview max_row=99
-            assert_eq!(state.result_interaction.selection().row(), Some(4));
-            // max_scroll = 5 - 20 = 0 (history has fewer rows than viewport)
-            assert_eq!(state.result_interaction.scroll_offset(), 0);
-        }
-
-        #[test]
-        fn row_count_reflects_visible_result_in_history_mode() {
-            let mut state = AppState::new("test".to_string());
-            state
-                .query
-                .set_current_result(make_result(100, crate::domain::QuerySource::Preview));
-            state
-                .query
-                .push_history(make_result(7, crate::domain::QuerySource::Adhoc));
-            state.query.enter_history(0);
-
-            assert_eq!(result_row_count(&state), 7);
         }
     }
 }

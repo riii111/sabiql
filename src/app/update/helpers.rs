@@ -10,8 +10,6 @@ use crate::services::AppServices;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum EditGuardrailError {
-    #[error("Editing is unavailable while browsing history")]
-    InHistory,
     #[error("No result to edit")]
     NoResult,
     #[error("Only Preview results are editable")]
@@ -70,10 +68,6 @@ pub struct BulkDeletePreviewResult {
 pub fn editable_preview_base(
     state: &AppState,
 ) -> Result<(&QueryResult, &[String]), EditGuardrailError> {
-    if state.query.is_history_mode() {
-        return Err(EditGuardrailError::InHistory);
-    }
-
     let result = state
         .query
         .visible_result()

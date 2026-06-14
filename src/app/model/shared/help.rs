@@ -2,6 +2,7 @@ use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::settings::KeymapPreset;
 use crate::model::shared::text_input::TextInputState;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 
@@ -19,7 +20,7 @@ impl Default for HelpState {
             origin: HelpOrigin::Normal {
                 focused_pane: FocusedPane::default(),
                 result_active: false,
-                history_mode: false,
+                keymap_preset: KeymapPreset::Default,
             },
             filter: TextInputState::default(),
             scroll_offset: 0,
@@ -90,7 +91,7 @@ pub enum HelpOrigin {
     Normal {
         focused_pane: FocusedPane,
         result_active: bool,
-        history_mode: bool,
+        keymap_preset: KeymapPreset,
     },
     CommandLine,
     CellEdit,
@@ -100,12 +101,17 @@ pub enum HelpOrigin {
     Help,
     SqlModal {
         mode: SqlHelpMode,
+        keymap_preset: KeymapPreset,
     },
-    ConnectionSetup,
+    ConnectionSetup {
+        keymap_preset: KeymapPreset,
+    },
     ConnectionError,
     ConfirmDialog,
     ConnectionSelector,
-    ErTablePicker,
+    ErTablePicker {
+        keymap_preset: KeymapPreset,
+    },
     QueryHistoryPicker,
     JsonbDetail {
         mode: JsonbHelpMode,
@@ -114,12 +120,33 @@ pub enum HelpOrigin {
 }
 
 impl HelpOrigin {
+    pub fn keymap_preset(self) -> KeymapPreset {
+        match self {
+            Self::Normal { keymap_preset, .. }
+            | Self::SqlModal { keymap_preset, .. }
+            | Self::ConnectionSetup { keymap_preset }
+            | Self::ErTablePicker { keymap_preset } => keymap_preset,
+            Self::CommandLine
+            | Self::CellEdit
+            | Self::TablePicker
+            | Self::CommandPalette
+            | Self::Settings
+            | Self::Help
+            | Self::ConnectionError
+            | Self::ConfirmDialog
+            | Self::ConnectionSelector
+            | Self::QueryHistoryPicker
+            | Self::JsonbDetail { .. }
+            | Self::JsonbEdit => KeymapPreset::Default,
+        }
+    }
+
     pub fn from_state(state: &AppState) -> Self {
         match state.input_mode() {
             InputMode::Normal => Self::Normal {
                 focused_pane: state.ui.focused_pane(),
                 result_active: state.result_interaction.selection().cell().is_some(),
-                history_mode: state.query.is_history_mode(),
+                keymap_preset: state.settings.saved_keymap_preset(),
             },
             InputMode::CommandLine => Self::CommandLine,
             InputMode::CellEdit => Self::CellEdit,
@@ -129,12 +156,17 @@ impl HelpOrigin {
             InputMode::Help => Self::Help,
             InputMode::SqlModal => Self::SqlModal {
                 mode: SqlHelpMode::from_state(state),
+                keymap_preset: state.settings.saved_keymap_preset(),
             },
-            InputMode::ConnectionSetup => Self::ConnectionSetup,
+            InputMode::ConnectionSetup => Self::ConnectionSetup {
+                keymap_preset: state.settings.saved_keymap_preset(),
+            },
             InputMode::ConnectionError => Self::ConnectionError,
             InputMode::ConfirmDialog => Self::ConfirmDialog,
             InputMode::ConnectionSelector => Self::ConnectionSelector,
-            InputMode::ErTablePicker => Self::ErTablePicker,
+            InputMode::ErTablePicker => Self::ErTablePicker {
+                keymap_preset: state.settings.saved_keymap_preset(),
+            },
             InputMode::QueryHistoryPicker => Self::QueryHistoryPicker,
             InputMode::JsonbDetail => Self::JsonbDetail {
                 mode: JsonbHelpMode::from_state(state),
@@ -145,9 +177,6 @@ impl HelpOrigin {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::Normal {
-                history_mode: true, ..
-            } => "Result History",
             Self::Normal {
                 focused_pane: FocusedPane::Explorer,
                 ..
@@ -166,12 +195,12 @@ impl HelpOrigin {
             Self::CommandPalette => "Command Palette",
             Self::Settings => "Settings",
             Self::Help => "Help",
-            Self::SqlModal { mode } => mode.label(),
-            Self::ConnectionSetup => "Connection Setup",
+            Self::SqlModal { mode, .. } => mode.label(),
+            Self::ConnectionSetup { .. } => "Connection Setup",
             Self::ConnectionError => "Connection Error",
             Self::ConfirmDialog => "Confirm Dialog",
             Self::ConnectionSelector => "Connection Selector",
-            Self::ErTablePicker => "ER Table Picker",
+            Self::ErTablePicker { .. } => "ER Table Picker",
             Self::QueryHistoryPicker => "Query History Picker",
             Self::JsonbDetail { mode } => mode.label(),
             Self::JsonbEdit => "JSONB Edit",
@@ -265,7 +294,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Inspector,
                 result_active: false,
-                history_mode: false,
+                keymap_preset: KeymapPreset::Default,
             }
         ));
     }
@@ -281,24 +310,6 @@ mod tests {
             origin,
             HelpOrigin::Normal {
                 result_active: true,
-                history_mode: false,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn normal_origin_captures_history_mode() {
-        let mut state = AppState::new("test".to_string());
-        state.query.enter_history(0);
-
-        let origin = HelpOrigin::from_state(&state);
-
-        assert!(matches!(
-            origin,
-            HelpOrigin::Normal {
-                result_active: false,
-                history_mode: true,
                 ..
             }
         ));

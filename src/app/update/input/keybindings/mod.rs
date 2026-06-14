@@ -3,8 +3,10 @@ mod editors;
 mod normal;
 mod overlays;
 
+use crate::model::shared::settings::KeymapPreset;
 pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
-use crate::update::action::Action;
+use crate::update::action::{Action, ModalKind};
+use crate::update::input::keymap::resolve_mode;
 pub use connections::*;
 pub use editors::*;
 pub use normal::*;
@@ -55,7 +57,7 @@ pub struct ModeBindings {
 
 impl ModeBindings {
     pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
-        crate::update::input::keymap::resolve_mode(combo, self.rows)
+        resolve_mode(combo, self.rows)
     }
 }
 
@@ -101,35 +103,22 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("JSONB_EDIT", &JSONB_EDIT),
 ];
 
-// =============================================================================
-// Help Overlay Layout
-// =============================================================================
-
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
 pub const HELP_KEY_DESC_GAP: usize = 2;
 
-pub fn is_quit(combo: &KeyCombo) -> bool {
-    global::QUIT.combos.contains(combo)
-}
-
-pub fn is_help(combo: &KeyCombo) -> bool {
-    global::HELP.combos.contains(combo)
-}
-
-pub fn is_command_line(combo: &KeyCombo) -> bool {
-    global::COMMAND_LINE.combos.contains(combo)
-}
-
-pub fn is_command_palette(combo: &KeyCombo) -> bool {
-    global::COMMAND_PALETTE.combos.contains(combo)
-}
-
-pub fn is_focus_toggle(combo: &KeyCombo) -> bool {
-    global::FOCUS.combos.contains(combo)
-}
-
-pub fn is_reload(combo: &KeyCombo) -> bool {
-    global::RELOAD.combos.contains(combo)
+pub fn global_action_for(combo: &KeyCombo, preset: KeymapPreset) -> Option<Action> {
+    normal::global_keys_for(preset)
+        .iter()
+        .filter(|binding| {
+            !matches!(
+                &binding.action,
+                Action::OpenModal(
+                    ModalKind::SqlModal | ModalKind::ErTablePicker | ModalKind::ConnectionSelector
+                )
+            )
+        })
+        .find(|binding| binding.combos.contains(combo))
+        .map(|binding| binding.action.clone())
 }
 
 // Action has payload variants without PartialEq, so tests compare by
@@ -271,10 +260,10 @@ mod tests {
             #[test]
             fn all_non_none_bindings_have_combos() {
                 check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
+                check_non_none_have_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
-                check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
                 check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             }
 
@@ -299,6 +288,7 @@ mod tests {
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_mode_rows_exec_valid(mb.rows, name);
                 }
+                check_mode_rows_exec_valid(ER_PICKER_ROWS_IDE, "ER_PICKER_ROWS_IDE");
             }
 
             fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
@@ -339,7 +329,6 @@ mod tests {
                     "CONNECTION_SETUP_KEYS",
                 );
                 check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
-                check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
                 check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             }
         }
@@ -360,6 +349,25 @@ mod tests {
                             kb.action
                         );
                         seen.push(*combo);
+                    }
+                }
+            }
+
+            fn check_no_conflicting_combos(bindings: &[KeyBinding], name: &str) {
+                let mut seen: Vec<(&KeyCombo, &Action)> = Vec::new();
+                for kb in bindings
+                    .iter()
+                    .filter(|kb| !matches!(kb.action, Action::None))
+                {
+                    for combo in kb.combos {
+                        if let Some((_, action)) = seen.iter().find(|(seen, _)| *seen == combo) {
+                            assert!(
+                                same_payload_free_action(action, &kb.action),
+                                "{name}: combo {combo:?} maps to both {action:?} and {:?}",
+                                kb.action
+                            );
+                        }
+                        seen.push((combo, &kb.action));
                     }
                 }
             }
@@ -386,9 +394,12 @@ mod tests {
                 check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_no_conflicting_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
+                check_no_conflicting_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_no_duplicate_combos_rows(mb.rows, name);
                 }
+                check_no_duplicate_combos_rows(ER_PICKER_ROWS_IDE, "ER_PICKER_ROWS_IDE");
             }
         }
 
@@ -439,9 +450,12 @@ mod tests {
                 check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_keymap_roundtrip(GLOBAL_KEYS, "GLOBAL_KEYS");
+                check_keymap_roundtrip(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_resolve_mode_roundtrip(mb.rows, name);
                 }
+                check_resolve_mode_roundtrip(ER_PICKER_ROWS_IDE, "ER_PICKER_ROWS_IDE");
             }
         }
 
@@ -509,6 +523,11 @@ mod tests {
             #[test]
             fn er_picker_has_no_plain_char_combos() {
                 check_no_plain_char_in_filter_mode_rows(ER_PICKER_ROWS, "ER_PICKER_ROWS", &[' ']);
+                check_no_plain_char_in_filter_mode_rows(
+                    ER_PICKER_ROWS_IDE,
+                    "ER_PICKER_ROWS_IDE",
+                    &[' '],
+                );
             }
 
             #[test]

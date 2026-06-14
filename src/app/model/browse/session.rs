@@ -275,7 +275,6 @@ impl BrowseSession {
             None => query.clear_current_result(),
         }
         query.restore_history(cache.result_history.clone());
-        query.exit_history();
     }
 
     pub fn restore_from_cache_for_connection(
@@ -307,7 +306,6 @@ impl BrowseSession {
         query.pagination.reset();
         query.clear_current_result();
         query.restore_history(ResultHistory::default());
-        query.exit_history();
     }
 
     // ── Getters ──────────────────────────────────────────────────────
@@ -745,7 +743,6 @@ mod tests {
             assert_eq!(new_session.metadata_state(), &MetadataState::Loaded);
             assert!(query.current_result().is_some());
             assert_eq!(query.result_history().len(), 1);
-            assert!(query.history_index().is_none());
         }
 
         #[test]
@@ -818,8 +815,6 @@ mod tests {
             query.pagination.reset_for_table("public", "users");
             query.pagination.set_total_rows_estimate(Some(1000));
             query.pagination.set_page_result(3, true);
-            query.enter_history(2);
-
             session.reset(&mut query);
 
             assert!(session.connection_state().is_not_connected());
@@ -841,7 +836,6 @@ mod tests {
             assert!(!session.is_reloading());
             assert_eq!(query.pagination.current_page(), 0);
             assert!(query.current_result().is_none());
-            assert!(query.history_index().is_none());
         }
     }
 

@@ -1,4 +1,5 @@
 use super::{KeyBinding, ModeRow};
+use crate::model::shared::settings::KeymapPreset;
 
 // =============================================================================
 // Overlays (common display hints)
@@ -425,6 +426,17 @@ pub mod er_picker {
         }],
     };
 
+    pub const SELECT_ALL_IDE: ModeRow = ModeRow {
+        key_short: "⌥A",
+        key: "Alt+A",
+        desc_short: "All",
+        description: "Select/deselect all tables",
+        bindings: &[ExecBinding {
+            action: Action::ErSelectAll,
+            combos: &[KeyCombo::alt(Key::Char('a'))],
+        }],
+    };
+
     pub const NAVIGATE: ModeRow = ModeRow {
         key_short: "^N/^P/↑↓",
         key: "Ctrl+N / Ctrl+P / ↑ / ↓",
@@ -511,6 +523,29 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
     er_picker::TYPE_FILTER,
     er_picker::ESC_CLOSE,
 ];
+
+pub const ER_PICKER_ROWS_IDE: &[ModeRow] = &[
+    er_picker::ENTER_GENERATE,
+    er_picker::SELECT,
+    er_picker::SELECT_ALL_IDE,
+    er_picker::NAVIGATE,
+    er_picker::TYPE_FILTER,
+    er_picker::ESC_CLOSE,
+];
+
+pub fn er_picker_rows(preset: KeymapPreset) -> &'static [ModeRow] {
+    match preset {
+        KeymapPreset::Default => ER_PICKER_ROWS,
+        KeymapPreset::Ide => ER_PICKER_ROWS_IDE,
+    }
+}
+
+pub fn er_picker_select_all(preset: KeymapPreset) -> &'static ModeRow {
+    match preset {
+        KeymapPreset::Default => &er_picker::SELECT_ALL,
+        KeymapPreset::Ide => &er_picker::SELECT_ALL_IDE,
+    }
+}
 
 // =============================================================================
 // Query History Picker

@@ -1,6 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 446
+assertion_line: 485
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -19,8 +19,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮                                │
 │                                │                  │                                                                              │                                │
 │                                │    Appearance    │ER Diagram                                                                    │                                │
-│                                │  > ER Diagram    │                                                                              │                                │
-│                                │                  │Browser                                                                       │                                │
+│                                │    Keymap        │                                                                              │                                │
+│                                │  > ER Diagram    │Browser                                                                       │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │  > System default     saved                                                  │                                │
 │                                │                  │    Google Chrome                                                             │                                │

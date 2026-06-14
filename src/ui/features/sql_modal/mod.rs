@@ -13,10 +13,11 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::DbCapabilities;
+use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::update::input::keybindings::{
-    sql_modal, sql_modal_compare, sql_modal_normal, sql_modal_plan,
+    sql_modal, sql_modal_compare, sql_modal_normal, sql_modal_plan, sql_modal_plan_explain,
 };
 use crate::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::primitives::molecules::{FooterHintBar, render_modal_with_border_color};
@@ -94,7 +95,9 @@ impl SqlModal {
             }
         } else {
             let hint = match state.sql_modal.status() {
-                SqlModalStatus::Editing => Self::editing_hint(db_capabilities),
+                SqlModalStatus::Editing => {
+                    Self::editing_hint(db_capabilities, state.settings.saved_keymap_preset())
+                }
                 SqlModalStatus::Running => FooterHintBar::message("Running\u{2026}"),
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     input, target_name, ..
@@ -111,7 +114,12 @@ impl SqlModal {
                 }
                 _ => {
                     let compare_can_yank = state.explain.can_yank_compare();
-                    Self::border_hint(active_tab, compare_can_yank, db_capabilities)
+                    Self::border_hint(
+                        active_tab,
+                        compare_can_yank,
+                        db_capabilities,
+                        state.settings.saved_keymap_preset(),
+                    )
                 }
             };
             Self::render_modal_with_tabs(frame, active_tab, hint, db_capabilities, theme)
@@ -243,13 +251,14 @@ impl SqlModal {
         tab: SqlModalTab,
         compare_can_yank: bool,
         db_capabilities: &DbCapabilities,
+        keymap_preset: KeymapPreset,
     ) -> FooterHintBar {
         match tab {
             SqlModalTab::Sql if db_capabilities.supported_sql_modal_tabs().len() == 1 => {
                 if db_capabilities.supports_explain() {
                     FooterHintBar::new([
                         sql_modal_normal::RUN.as_hint(),
-                        sql_modal_plan::EXPLAIN.as_hint(),
+                        sql_modal_plan_explain(keymap_preset).as_hint(),
                         sql_modal_normal::ENTER_INSERT.as_hint(),
                         sql_modal_normal::CLOSE.as_hint(),
                     ])
@@ -281,7 +290,7 @@ impl SqlModal {
                 if db_capabilities.supports_explain() {
                     FooterHintBar::new([
                         sql_modal_normal::RUN.as_hint(),
-                        sql_modal_plan::EXPLAIN.as_hint(),
+                        sql_modal_plan_explain(keymap_preset).as_hint(),
                         sql_modal_normal::ENTER_INSERT.as_hint(),
                         ("Tab/⇧Tab", sql_modal_plan::TAB.as_hint().1),
                         sql_modal_normal::CLOSE.as_hint(),
@@ -298,22 +307,29 @@ impl SqlModal {
         }
     }
 
-    fn editing_hint(db_capabilities: &DbCapabilities) -> FooterHintBar {
-        if db_capabilities.supports_explain() {
-            FooterHintBar::new([
+    fn editing_hint(
+        db_capabilities: &DbCapabilities,
+        keymap_preset: KeymapPreset,
+    ) -> FooterHintBar {
+        match (db_capabilities.supports_explain(), keymap_preset) {
+            (true, KeymapPreset::Default) => FooterHintBar::new([
                 sql_modal::RUN.as_hint(),
                 sql_modal_plan::EXPLAIN.as_hint(),
                 sql_modal::CLEAR.as_hint(),
                 sql_modal::QUERY_HISTORY.as_hint(),
                 sql_modal::ESC_NORMAL.as_hint(),
-            ])
-        } else {
-            FooterHintBar::new([
+            ]),
+            (false, KeymapPreset::Default) => FooterHintBar::new([
                 sql_modal::RUN.as_hint(),
                 sql_modal::CLEAR.as_hint(),
                 sql_modal::QUERY_HISTORY.as_hint(),
                 sql_modal::ESC_NORMAL.as_hint(),
-            ])
+            ]),
+            _ => FooterHintBar::new([
+                sql_modal::RUN.as_hint(),
+                sql_modal::CLEAR.as_hint(),
+                sql_modal::ESC_NORMAL.as_hint(),
+            ]),
         }
     }
 }

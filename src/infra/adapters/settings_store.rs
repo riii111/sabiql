@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
 };
+use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
 use crate::config::connection_config::{
@@ -87,6 +88,7 @@ impl SettingsStore for TomlSettingsStore {
             .unwrap_or_else(|| ConnectionConfigFile {
                 version: CURRENT_VERSION,
                 theme: None,
+                keymap_preset: None,
                 er_browser: None,
                 connections: vec![],
             });
@@ -110,18 +112,25 @@ fn app_settings(config: ConnectionConfigFile) -> AppSettings {
             .as_deref()
             .and_then(ThemeId::from_config_value)
             .unwrap_or_default(),
+        keymap_preset: config
+            .keymap_preset
+            .as_deref()
+            .and_then(KeymapPreset::from_config_value)
+            .unwrap_or(KeymapPreset::Default),
         er_browser: config.er_browser,
     }
 }
 
 fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
     config.theme = Some(settings.theme_id.config_value().to_string());
+    config.keymap_preset = Some(settings.keymap_preset.config_value().to_string());
     config.er_browser = settings.er_browser;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::theme_id::ThemeId;
     use tempfile::TempDir;
 
@@ -133,6 +142,7 @@ mod tests {
         let settings = store.load().unwrap();
 
         assert_eq!(settings.theme_id, ThemeId::Default);
+        assert_eq!(settings.keymap_preset, KeymapPreset::Default);
     }
 
     #[test]
@@ -143,12 +153,14 @@ mod tests {
         store
             .save(AppSettings {
                 theme_id: ThemeId::Light,
+                keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Google Chrome".to_string()),
             })
             .unwrap();
 
         let settings = store.load().unwrap();
         assert_eq!(settings.theme_id, ThemeId::Light);
+        assert_eq!(settings.keymap_preset, KeymapPreset::Ide);
         assert_eq!(settings.er_browser.as_deref(), Some("Google Chrome"));
     }
 
@@ -176,12 +188,14 @@ ssl_mode = "prefer"
         store
             .save(AppSettings {
                 theme_id: ThemeId::Light,
+                keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Firefox".to_string()),
             })
             .unwrap();
 
         let content = fs::read_to_string(temp_dir.path().join(CONFIG_FILE_NAME)).unwrap();
         assert!(content.contains("theme = \"light\""));
+        assert!(content.contains("keymap_preset = \"ide\""));
         assert!(content.contains("er_browser = \"Firefox\""));
         assert!(content.contains("[[connections]]"));
         assert!(content.contains("name = \"Test\""));
@@ -196,6 +210,7 @@ ssl_mode = "prefer"
         let settings = store.load().unwrap();
 
         assert_eq!(settings.theme_id, ThemeId::Default);
+        assert_eq!(settings.keymap_preset, KeymapPreset::Default);
         assert_eq!(settings.er_browser, None);
     }
 
@@ -212,6 +227,7 @@ ssl_mode = "prefer"
         let settings = store.load().unwrap();
 
         assert_eq!(settings.theme_id, ThemeId::Default);
+        assert_eq!(settings.keymap_preset, KeymapPreset::Default);
     }
 
     #[test]
@@ -227,6 +243,22 @@ ssl_mode = "prefer"
         let settings = store.load().unwrap();
 
         assert_eq!(settings.theme_id, ThemeId::Default);
+        assert_eq!(settings.keymap_preset, KeymapPreset::Default);
+    }
+
+    #[test]
+    fn unknown_keymap_preset_falls_back_to_default() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join(CONFIG_FILE_NAME),
+            "version = 2\nkeymap_preset = \"vim\"\nconnections = []\n",
+        )
+        .unwrap();
+        let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
+
+        let settings = store.load().unwrap();
+
+        assert_eq!(settings.keymap_preset, KeymapPreset::Default);
     }
 
     #[test]
@@ -238,6 +270,7 @@ ssl_mode = "prefer"
 
         let result = store.save(AppSettings {
             theme_id: ThemeId::Light,
+            keymap_preset: KeymapPreset::Default,
             er_browser: None,
         });
 
