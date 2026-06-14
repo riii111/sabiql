@@ -47,12 +47,12 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('p') if kb::table_picker(keymap_preset).combos.contains(&combo) => {
                 return Action::OpenModal(ModalKind::TablePicker);
             }
-            // Ctrl+N navigation disabled on main screen; use j/k or arrows.
-            // Modals/pickers handle Ctrl+N via their own bindings.
-            // NOTE: vim/classify.rs still maps Ctrl+N → MoveDown for modal
+            // Ctrl+N/P navigation disabled on main screen; use j/k or arrows.
+            // Modals/pickers handle Ctrl+N/P via their own bindings.
+            // NOTE: vim/classify.rs still maps Ctrl+N/P → MoveDown/MoveUp for modal
             // contexts (SQL Modal Plan/Compare). This catch-all prevents that
             // mapping from reaching the main screen.
-            Key::Char('n') => {
+            Key::Char('n' | 'p') => {
                 return Action::None;
             }
             _ => {
@@ -1339,6 +1339,7 @@ mod tests {
                 #[test]
                 fn ctrl_e_cancels_sequence_even_when_export_is_available() {
                     let state = state_waiting_z_prefix_with_result();
+                    assert!(state.can_request_csv_export());
 
                     let result = handle_normal_mode(combo_ctrl(Key::Char('e')), &state);
 
