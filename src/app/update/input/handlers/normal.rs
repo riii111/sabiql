@@ -13,6 +13,19 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let inspector_navigation = browse_ctx.is_inspector();
     let keymap_preset = state.settings.saved_keymap_preset();
 
+    // Key sequence FSM: two-key sequences (zz, zt, zb)
+    // Must be resolved before Ctrl/global actions so that the second key is
+    // never swallowed and the sequence is always cleared.
+    if let Some(prefix) = state.ui.key_sequence.pending_prefix() {
+        if combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
+            return Action::CancelKeySequence;
+        }
+        return match action_for_input(&combo, Some(prefix), VimSurfaceContext::Browse(browse_ctx)) {
+            Some(Action::None) | None => Action::CancelKeySequence,
+            Some(action) => action,
+        };
+    }
+
     // Ctrl combos
     if combo.modifiers.contains(Modifiers::CTRL) {
         match combo.key {
@@ -49,19 +62,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 }
             }
         }
-    }
-
-    // Key sequence FSM: two-key sequences (zz, zt, zb)
-    // Must be resolved before history whitelist and global actions so that
-    // the second key (t, b, z) is never swallowed and the sequence is always cleared.
-    if let Some(prefix) = state.ui.key_sequence.pending_prefix() {
-        if combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
-            return Action::CancelKeySequence;
-        }
-        return match action_for_input(&combo, Some(prefix), VimSurfaceContext::Browse(browse_ctx)) {
-            Some(Action::None) | None => Action::CancelKeySequence,
-            Some(action) => action,
-        };
     }
 
     // Global actions (predicate-based, no modifiers)
@@ -1271,10 +1271,33 @@ mod tests {
             mod cancel_and_precedence {
                 use super::*;
 
-                #[test]
-                fn unknown_key_cancels_sequence() {
+                fn state_waiting_z_prefix() -> AppState {
                     let mut state = browse_state();
                     state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                }
+
+                fn state_waiting_z_prefix_with_result() -> AppState {
+                    use std::sync::Arc;
+
+                    use crate::domain::{QueryResult, QuerySource};
+
+                    let mut state = state_waiting_z_prefix();
+                    state
+                        .query
+                        .set_current_result(Arc::new(QueryResult::success(
+                            "SELECT 1".to_string(),
+                            vec!["col".to_string()],
+                            vec![vec!["value".to_string()]],
+                            1,
+                            QuerySource::Preview,
+                        )));
+                    state
+                }
+
+                #[test]
+                fn unknown_key_cancels_sequence() {
+                    let state = state_waiting_z_prefix();
 
                     let result = handle_normal_mode(combo(Key::Char('x')), &state);
 
@@ -1283,28 +1306,40 @@ mod tests {
 
                 #[test]
                 fn takes_priority_over_global_actions() {
-                    let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    let state = state_waiting_z_prefix();
 
                     let result = handle_normal_mode(combo(Key::Char('?')), &state);
 
                     assert!(matches!(result, Action::CancelKeySequence));
                 }
 
-                #[test]
-                fn ctrl_modifier_cancels_sequence() {
-                    let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                #[rstest]
+                #[case(Key::Char('k'))]
+                #[case(Key::Char('o'))]
+                #[case(Key::Char('p'))]
+                #[case(Key::Char('r'))]
+                #[case(Key::Char('n'))]
+                #[case(Key::Char('t'))]
+                fn ctrl_modifier_cancels_sequence(#[case] key: Key) {
+                    let state = state_waiting_z_prefix();
 
-                    let result = handle_normal_mode(combo_ctrl(Key::Char('t')), &state);
+                    let result = handle_normal_mode(combo_ctrl(key), &state);
+
+                    assert!(matches!(result, Action::CancelKeySequence));
+                }
+
+                #[test]
+                fn ctrl_e_cancels_sequence_even_when_export_is_available() {
+                    let state = state_waiting_z_prefix_with_result();
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('e')), &state);
 
                     assert!(matches!(result, Action::CancelKeySequence));
                 }
 
                 #[test]
                 fn alt_modifier_cancels_sequence() {
-                    let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    let state = state_waiting_z_prefix();
 
                     let result = handle_normal_mode(KeyCombo::alt(Key::Char('b')), &state);
 
