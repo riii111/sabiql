@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
+use crate::app::update::input::keybindings;
 use crate::domain::er::er_output_filename;
 use crate::theme::ThemePalette;
 
@@ -56,6 +57,8 @@ impl ErTablePicker {
             let selected_vec: Vec<String> = state.ui.er_selected_tables.iter().cloned().collect();
             er_output_filename(&selected_vec, total_count)
         };
+        let select_all_hint =
+            keybindings::er_picker_select_all(state.settings.saved_keymap_preset()).as_hint();
 
         let (_, inner) = render_modal(
             frame,
@@ -66,7 +69,7 @@ impl ErTablePicker {
                 format!("{selected_count}/{total_count} selected"),
                 [
                     ("Space", "Select"),
-                    ("^A", "All"),
+                    select_all_hint,
                     ("Enter", "Generate"),
                     ("Esc", "Cancel"),
                 ],

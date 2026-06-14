@@ -873,9 +873,51 @@ mod tests {
         }
 
         #[test]
+        fn ide_normal_uses_plain_explain_key() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo(Key::Char('E')),
+                false,
+                &SqlModalStatus::Normal,
+                SqlModalTab::Plan,
+                None,
+                KeymapPreset::Ide,
+            );
+
+            assert!(matches!(result, Action::ExplainRequest));
+        }
+
+        #[test]
+        fn ide_normal_disables_ctrl_explain_key() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_ctrl(Key::Char('e')),
+                false,
+                &SqlModalStatus::Normal,
+                SqlModalTab::Plan,
+                None,
+                KeymapPreset::Ide,
+            );
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
         fn ide_editing_ctrl_history_key_is_ignored() {
             let result = handle_sql_modal_keys_with_prefix(
                 combo_ctrl(Key::Char('o')),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+                None,
+                KeymapPreset::Ide,
+            );
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn ide_editing_ctrl_explain_key_is_ignored() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_ctrl(Key::Char('e')),
                 false,
                 &SqlModalStatus::Editing,
                 SqlModalTab::Sql,

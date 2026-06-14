@@ -2752,6 +2752,7 @@ mod tests {
 
     mod command_palette {
         use super::*;
+        use crate::model::shared::settings::KeymapPreset;
         use crate::update::input::palette::palette_commands;
         use rstest::rstest;
 
@@ -2763,7 +2764,7 @@ mod tests {
         }
 
         fn palette_index_of(target: impl Fn(&Action) -> bool) -> usize {
-            palette_commands(crate::model::shared::settings::KeymapPreset::default())
+            palette_commands(KeymapPreset::default())
                 .enumerate()
                 .find(|(_, kb)| target(&kb.action))
                 .map(|(i, _)| i)

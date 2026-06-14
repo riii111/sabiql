@@ -369,10 +369,7 @@ fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
     ]
 }
 
-fn sql_current_rows(
-    mode: SqlHelpMode,
-    keymap_preset: crate::model::shared::settings::KeymapPreset,
-) -> Vec<HelpRow> {
+fn sql_current_rows(mode: SqlHelpMode, keymap_preset: KeymapPreset) -> Vec<HelpRow> {
     match mode {
         SqlHelpMode::Normal => rows_from_binding_refs(&[
             &sql_modal_normal::RUN,
@@ -387,10 +384,8 @@ fn sql_current_rows(
             sql_modal_normal_query_history(keymap_preset),
         ]),
         SqlHelpMode::Insert | SqlHelpMode::Running => match keymap_preset {
-            crate::model::shared::settings::KeymapPreset::Default => {
-                rows_from_bindings(SQL_MODAL_KEYS)
-            }
-            crate::model::shared::settings::KeymapPreset::Ide => rows_from_binding_refs(&[
+            KeymapPreset::Default => rows_from_bindings(SQL_MODAL_KEYS),
+            KeymapPreset::Ide => rows_from_binding_refs(&[
                 &sql_modal::RUN,
                 &sql_modal::ESC_NORMAL,
                 &sql_modal::MOVE,

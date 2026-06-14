@@ -28,6 +28,7 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::model::shared::confirm_dialog::ConfirmIntent;
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::settings::KeymapPreset;
     use crate::ports::outbound::AppSettings;
     use crate::update::action::{
         InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
@@ -308,7 +309,7 @@ mod tests {
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
-                        keymap_preset: crate::model::shared::settings::KeymapPreset::default(),
+                        keymap_preset: KeymapPreset::default(),
                         er_browser: Some("Google Chrome".to_string()),
                     }),
                     Instant::now(),

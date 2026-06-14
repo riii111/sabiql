@@ -102,36 +102,8 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("JSONB_EDIT", &JSONB_EDIT),
 ];
 
-// =============================================================================
-// Help Overlay Layout
-// =============================================================================
-
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
 pub const HELP_KEY_DESC_GAP: usize = 2;
-
-pub fn is_quit(combo: &KeyCombo) -> bool {
-    global::QUIT.combos.contains(combo)
-}
-
-pub fn is_help(combo: &KeyCombo) -> bool {
-    global::HELP.combos.contains(combo)
-}
-
-pub fn is_command_line(combo: &KeyCombo) -> bool {
-    global::COMMAND_LINE.combos.contains(combo)
-}
-
-pub fn is_command_palette(combo: &KeyCombo) -> bool {
-    global::COMMAND_PALETTE.combos.contains(combo)
-}
-
-pub fn is_focus_toggle(combo: &KeyCombo) -> bool {
-    global::FOCUS.combos.contains(combo)
-}
-
-pub fn is_reload(combo: &KeyCombo) -> bool {
-    global::RELOAD.combos.contains(combo)
-}
 
 pub fn global_action_for(combo: &KeyCombo, preset: KeymapPreset) -> Option<Action> {
     normal::global_keys_for(preset)
