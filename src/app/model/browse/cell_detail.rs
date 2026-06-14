@@ -77,7 +77,8 @@ pub struct CellDetailState {
     row: usize,
     col: usize,
     column_name: String,
-    content: String,
+    original_content: String,
+    display_content: String,
     scroll_offset: usize,
     visible_rows: usize,
     viewport_width: usize,
@@ -91,7 +92,8 @@ impl Default for CellDetailState {
             row: 0,
             col: 0,
             column_name: String::new(),
-            content: String::new(),
+            original_content: String::new(),
+            display_content: String::new(),
             scroll_offset: 0,
             visible_rows: DEFAULT_VISIBLE_ROWS,
             viewport_width: DEFAULT_VIEWPORT_WIDTH,
@@ -102,12 +104,19 @@ impl Default for CellDetailState {
 }
 
 impl CellDetailState {
-    pub fn open(row: usize, col: usize, column_name: String, content: String) -> Self {
+    pub fn open(
+        row: usize,
+        col: usize,
+        column_name: String,
+        original_content: String,
+        display_content: String,
+    ) -> Self {
         Self {
             row,
             col,
             column_name,
-            content,
+            original_content,
+            display_content,
             active: true,
             ..Self::default()
         }
@@ -134,7 +143,11 @@ impl CellDetailState {
     }
 
     pub fn content(&self) -> &str {
-        &self.content
+        &self.display_content
+    }
+
+    pub fn original_content(&self) -> &str {
+        &self.original_content
     }
 
     pub fn scroll_offset(&self) -> usize {
@@ -189,7 +202,7 @@ impl CellDetailState {
             return;
         };
         self.scroll_offset =
-            visual_row_for_char_offset(&self.content, match_pos, self.viewport_width)
+            visual_row_for_char_offset(&self.display_content, match_pos, self.viewport_width)
                 .min(self.max_scroll_offset());
     }
 
@@ -198,7 +211,8 @@ impl CellDetailState {
     }
 
     fn max_scroll_offset(&self) -> usize {
-        visual_line_count(&self.content, self.viewport_width).saturating_sub(self.visible_rows)
+        visual_line_count(&self.display_content, self.viewport_width)
+            .saturating_sub(self.visible_rows)
     }
 }
 
@@ -263,7 +277,9 @@ mod tests {
 
         #[test]
         fn long_single_line_uses_wrapped_visual_rows_for_max_scroll() {
-            let mut state = CellDetailState::open(0, 0, "body".to_string(), "a".repeat(100));
+            let content = "a".repeat(100);
+            let mut state =
+                CellDetailState::open(0, 0, "body".to_string(), content.clone(), content);
             state.set_viewport_metrics(3, 10);
 
             state.scroll(ScrollDirection::Down, ScrollAmount::ToEnd);
@@ -273,12 +289,9 @@ mod tests {
 
         #[test]
         fn search_match_scrolls_to_wrapped_visual_row() {
-            let mut state = CellDetailState::open(
-                0,
-                0,
-                "body".to_string(),
-                format!("{}needle", "a".repeat(35)),
-            );
+            let content = format!("{}needle", "a".repeat(35));
+            let mut state =
+                CellDetailState::open(0, 0, "body".to_string(), content.clone(), content);
             state.set_viewport_metrics(3, 10);
             state.search_mut().set_matches(vec![35]);
 

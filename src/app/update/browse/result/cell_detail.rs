@@ -29,7 +29,8 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             };
 
             let display_value = cell_detail_display_value(&cell_value, data_type.as_deref());
-            state.cell_detail = CellDetailState::open(row_idx, col_idx, column_name, display_value);
+            state.cell_detail =
+                CellDetailState::open(row_idx, col_idx, column_name, cell_value, display_value);
             state.modal.push_mode(InputMode::CellDetail);
             DispatchResult::handled()
         }
@@ -39,7 +40,7 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             DispatchResult::handled()
         }
         Action::CellDetailYankAll => DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-            content: state.cell_detail.content().to_string(),
+            content: state.cell_detail.original_content().to_string(),
             on_success: Some(Box::new(Action::CellDetailYankSuccess)),
             on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
                 "Clipboard unavailable".into(),
@@ -309,6 +310,7 @@ mod tests {
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1,\n  \"b\": 2\n}");
+        assert_eq!(state.cell_detail.original_content(), r#"{"b":2,"a":1}"#);
     }
 
     #[test]
@@ -322,6 +324,23 @@ mod tests {
             state.cell_detail.content(),
             "{\n  \"items\": [\n    \"admin\",\n    \"writer\"\n  ]\n}"
         );
+        assert_eq!(
+            state.cell_detail.original_content(),
+            r#"{"items":["admin","writer"]}"#
+        );
+    }
+
+    #[test]
+    fn yank_all_copies_original_cell_value() {
+        let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        let result = reduce_cell_detail(&mut state, &Action::CellDetailYankAll, Instant::now());
+
+        assert!(matches!(
+            result.expect("yank should copy").as_slice(),
+            [Effect::CopyToClipboard { content, .. }] if content == r#"{"b":2,"a":1}"#
+        ));
     }
 
     #[test]
