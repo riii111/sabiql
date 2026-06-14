@@ -48,15 +48,12 @@ pub mod global {
     };
 
     pub const SETTINGS: KeyBinding = KeyBinding {
-        key_short: "S/^K",
-        key: "S / Ctrl+K",
+        key_short: ",",
+        key: ",",
         desc_short: "Settings",
         description: "Open Settings",
         action: Action::OpenModal(ModalKind::Settings),
-        combos: &[
-            KeyCombo::plain(Key::Char('S')),
-            KeyCombo::ctrl(Key::Char('k')),
-        ],
+        combos: &[KeyCombo::plain(Key::Char(','))],
     };
 
     pub const COMMAND_LINE: KeyBinding = KeyBinding {

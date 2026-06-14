@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 398
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -19,7 +18,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │▸ Common                                                                                                        ┃│                        │
 │                        │  ?                                    Toggle help                                                              ┃│                        │
 │                        │  q                                    Quit application                                                         ┃│                        │
-│                        │  S / Ctrl+K                           Open Settings                                                            ┃│                        │
+│                        │  ,                                    Open Settings                                                            ┃│                        │
 │                        │  F1                                   Open Command Palette                                                     ││                        │
 │                        │  :                                    Enter command line                                                       ││                        │
 │                        │  f                                    Toggle Focus mode                                                        ││                        │

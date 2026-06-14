@@ -51,7 +51,7 @@ PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement w
 
 - **Fuzzy Search** (`/`) — Incremental table filtering
 - **Focus Mode** (`f`) — Expand any pane to full screen
-- **Settings** (`Ctrl+K`) — Theme, keymap, and ER diagram preferences
+- **Settings** (`,`) — Theme, keymap, and ER diagram preferences
 - **Command Palette** (`F1`, `:palette`) — Searchable command list
 
 ## Installation
@@ -90,9 +90,9 @@ On first run, enter your connection details. They are saved to your platform con
 
 Press `?` for help.
 
-Open Settings with `Ctrl+K` to switch themes, keymap presets, and the ER diagram browser command.
+Open Settings with `,` to switch themes, keymap presets, and the ER diagram browser command.
 
-> **Note:** If you use sabiql inside an IDE terminal, some default keybindings may conflict with the IDE. Open Settings and switch the keymap preset to make sabiql work comfortably inside your IDE.
+> **Note:** If you use sabiql inside an IDE terminal, some default keybindings may conflict with the IDE. Open Settings with `,` and switch the keymap preset to make sabiql work comfortably inside your IDE.
 
 ## Requirements
 
