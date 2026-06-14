@@ -638,18 +638,50 @@ fn append_changes_query(query: &str) -> String {
     format!("{body}\n;\nSELECT changes() AS affected_rows;")
 }
 
+fn dml_keyword(statement: &str) -> Option<&'static str> {
+    let keyword = first_keyword(statement);
+    if keyword.eq_ignore_ascii_case("INSERT") {
+        return Some("INSERT");
+    }
+    if keyword.eq_ignore_ascii_case("UPDATE") {
+        return Some("UPDATE");
+    }
+    if keyword.eq_ignore_ascii_case("DELETE") {
+        return Some("DELETE");
+    }
+    if !keyword.eq_ignore_ascii_case("WITH") {
+        return None;
+    }
+
+    let mut offset = 0;
+    while let Some((keyword, end)) = next_keyword_from(statement, offset) {
+        if keyword.eq_ignore_ascii_case("INSERT") {
+            return Some("INSERT");
+        }
+        if keyword.eq_ignore_ascii_case("UPDATE") {
+            return Some("UPDATE");
+        }
+        if keyword.eq_ignore_ascii_case("DELETE") {
+            return Some("DELETE");
+        }
+        offset = end;
+    }
+    None
+}
+
 fn is_dml_statement(statement: &str) -> bool {
-    matches!(
-        first_keyword(statement).to_ascii_uppercase().as_str(),
-        "INSERT" | "UPDATE" | "DELETE"
-    )
+    dml_keyword(statement).is_some()
 }
 
 fn statement_returns_rows(statement: &str) -> bool {
     let keyword = first_keyword(statement);
-    keyword.eq_ignore_ascii_case("SELECT")
-        || keyword.eq_ignore_ascii_case("WITH")
-        || (is_dml_statement(statement) && contains_keyword(statement, "RETURNING"))
+    if keyword.eq_ignore_ascii_case("SELECT") {
+        return true;
+    }
+    if is_dml_statement(statement) {
+        return contains_keyword(statement, "RETURNING");
+    }
+    keyword.eq_ignore_ascii_case("WITH")
 }
 
 fn count_result_statements(sql: &str) -> usize {
@@ -914,10 +946,13 @@ fn ddl_tag(query: &str) -> Option<CommandTag> {
     }
 }
 
-fn tcl_tag(query: &str) -> Option<CommandTag> {
+fn transaction_control_tag(query: &str) -> Option<CommandTag> {
     match first_keyword(query).to_ascii_uppercase().as_str() {
         "BEGIN" => Some(CommandTag::Begin),
         "COMMIT" | "END" => Some(CommandTag::Commit),
+        "ROLLBACK" if second_keyword(query).is_some_and(|kw| kw.eq_ignore_ascii_case("TO")) => {
+            Some(CommandTag::Other("ROLLBACK TO".to_string()))
+        }
         "ROLLBACK" => Some(CommandTag::Rollback),
         "SAVEPOINT" => Some(CommandTag::Other("SAVEPOINT".to_string())),
         "RELEASE" => Some(CommandTag::Other("RELEASE".to_string())),
@@ -927,10 +962,10 @@ fn tcl_tag(query: &str) -> Option<CommandTag> {
 
 fn dml_tag(query: &str, affected_rows: usize) -> Option<CommandTag> {
     let affected_rows = affected_rows as u64;
-    match first_keyword(query).to_ascii_uppercase().as_str() {
-        "INSERT" => Some(CommandTag::Insert(affected_rows)),
-        "UPDATE" => Some(CommandTag::Update(affected_rows)),
-        "DELETE" => Some(CommandTag::Delete(affected_rows)),
+    match dml_keyword(query) {
+        Some("INSERT") => Some(CommandTag::Insert(affected_rows)),
+        Some("UPDATE") => Some(CommandTag::Update(affected_rows)),
+        Some("DELETE") => Some(CommandTag::Delete(affected_rows)),
         _ => None,
     }
 }
@@ -942,7 +977,7 @@ fn sqlite_statement_tags(statements: &[&str], changes: &HashMap<usize, usize>) -
         .filter_map(|(index, statement)| {
             dml_tag(statement, *changes.get(&index).unwrap_or(&0))
                 .or_else(|| ddl_tag(statement))
-                .or_else(|| tcl_tag(statement))
+                .or_else(|| transaction_control_tag(statement))
         })
         .collect()
 }
@@ -968,12 +1003,13 @@ fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
                     }
                 }
             }
-            CommandTag::Rollback => {
+            CommandTag::Other(raw) if raw == "ROLLBACK TO" || raw.starts_with("ROLLBACK TO ") => {
                 if frames.len() > 1 {
                     frames.pop();
-                } else {
-                    frames.clear();
                 }
+            }
+            CommandTag::Rollback => {
+                frames.clear();
             }
             CommandTag::Commit => {
                 for frame in frames.drain(..) {
@@ -1551,6 +1587,32 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn full_rollback_inside_savepoint_discards_outer_dml() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "BEGIN;
+                     INSERT INTO users(id) VALUES (1);
+                     SAVEPOINT sp;
+                     INSERT INTO users(id) VALUES (2);
+                     ROLLBACK",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.command_tag, Some(CommandTag::Rollback));
+            assert!(rows.rows.is_empty());
+        }
+
+        #[tokio::test]
         async fn savepoint_rollback_discards_inner_dml_only() {
             let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
@@ -1575,6 +1637,25 @@ mod tests {
 
             assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
             assert_eq!(rows.rows, vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn with_insert_reports_affected_rows_command_tag() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "WITH payload(id) AS (VALUES (1), (2))
+                     INSERT INTO users(id) SELECT id FROM payload",
+                    false,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(result.row_count, 2);
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(2)));
         }
 
         #[tokio::test]
