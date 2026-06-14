@@ -4,13 +4,11 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use unicode_casefold::UnicodeCaseFold;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
-use crate::primitives::atoms::{
-    CursorKind, apply_yank_flash, set_terminal_cursor, text_cursor_spans_with_kind,
-};
+use crate::features::browse::detail_view::{render_detail_search, search_match_status};
+use crate::primitives::atoms::apply_yank_flash;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
@@ -95,11 +93,7 @@ impl CellDetail {
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let search = state.cell_detail.search();
         let status = if search.is_active() {
-            if search.matches().is_empty() {
-                "0/0".to_string()
-            } else {
-                format!("{}/{}", search.current_match() + 1, search.matches().len())
-            }
+            search_match_status(search)
         } else {
             format!("{} chars", state.cell_detail.content().chars().count())
         };
@@ -114,42 +108,7 @@ impl CellDetail {
     }
 
     fn render_search(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
-        let search = state.cell_detail.search();
-        let input = search.input().content();
-        let cursor = search.input().cursor();
-        let match_info = if search.matches().is_empty() {
-            "0/0".to_string()
-        } else {
-            format!("{}/{}", search.current_match() + 1, search.matches().len())
-        };
-        let suffix = format!("  {match_info}");
-        let visible_width = area
-            .width
-            .saturating_sub((1 + UnicodeWidthStr::width(suffix.as_str())) as u16)
-            as usize;
-        let viewport_offset = search_viewport_offset(input, cursor, visible_width);
-        let visible_input = slice_chars_fitting_width(input, viewport_offset, visible_width);
-        let relative_cursor = cursor.saturating_sub(viewport_offset);
-
-        let mut spans = vec![Span::styled(
-            "/",
-            Style::default().fg(theme.semantic.text.accent),
-        )];
-        spans.extend(text_cursor_spans_with_kind(
-            &visible_input,
-            relative_cursor,
-            0,
-            visible_input.chars().count(),
-            CursorKind::Insert,
-            theme,
-        ));
-        spans.push(Span::styled(
-            suffix,
-            Style::default().fg(theme.semantic.text.muted),
-        ));
-
-        frame.render_widget(Paragraph::new(Line::from(spans)), area);
-        set_terminal_cursor(frame, area, &visible_input, 0, relative_cursor, 0, 1);
+        render_detail_search(frame, area, state.cell_detail.search(), theme);
     }
 }
 
@@ -237,52 +196,6 @@ fn folded_match_len(line: &str, match_start: usize, query: &str) -> usize {
     }
 
     original_len
-}
-
-fn search_viewport_offset(input: &str, cursor: usize, visible_width: usize) -> usize {
-    if visible_width == 0 {
-        return cursor;
-    }
-
-    let chars: Vec<char> = input.chars().collect();
-    let mut viewport_offset = 0;
-    let mut width_before_cursor = display_width(&chars[..cursor.min(chars.len())]);
-
-    while width_before_cursor >= visible_width && viewport_offset < cursor {
-        width_before_cursor =
-            width_before_cursor.saturating_sub(char_width(chars[viewport_offset]));
-        viewport_offset += 1;
-    }
-
-    viewport_offset
-}
-
-fn slice_chars_fitting_width(input: &str, start: usize, visible_width: usize) -> String {
-    if visible_width == 0 {
-        return String::new();
-    }
-
-    let mut width = 0;
-    let mut visible = String::new();
-
-    for ch in input.chars().skip(start) {
-        let ch_width = char_width(ch);
-        if width + ch_width > visible_width {
-            break;
-        }
-        width += ch_width;
-        visible.push(ch);
-    }
-
-    visible
-}
-
-fn display_width(chars: &[char]) -> usize {
-    chars.iter().map(|&ch| char_width(ch)).sum()
-}
-
-fn char_width(ch: char) -> usize {
-    UnicodeWidthChar::width(ch).unwrap_or(0)
 }
 
 #[cfg(test)]
