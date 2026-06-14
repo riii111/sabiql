@@ -7,6 +7,7 @@ use ratatui::widgets::Paragraph;
 use crate::app::model::app_state::AppState;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
@@ -278,21 +279,31 @@ impl Footer {
                     ];
                     if services.db_capabilities.supports_explain()
                         && state.sql_modal.status() == &SqlModalStatus::Editing
+                        && state.settings.saved_keymap_preset() == KeymapPreset::Default
                     {
                         hints.insert(1, sql_modal_plan::EXPLAIN.as_hint());
                     }
                     hints
                 }
             }
-            InputMode::ConnectionSetup => vec![
-                crate::app::update::input::keybindings::connection_setup_save(
-                    state.settings.saved_keymap_preset(),
-                )
-                .as_hint(),
-                connection_setup::TAB_NEXT.as_hint(),
-                connection_setup::TAB_PREV.as_hint(),
-                connection_setup::ESC_CANCEL.as_hint(),
-            ],
+            InputMode::ConnectionSetup => {
+                let submit_hint = if state.connection_setup.focused_field
+                    == crate::app::model::connection::setup::ConnectionField::SslMode
+                {
+                    connection_setup::ENTER_DROPDOWN.as_hint()
+                } else {
+                    crate::app::update::input::keybindings::connection_setup_save(
+                        state.settings.saved_keymap_preset(),
+                    )
+                    .as_hint()
+                };
+                vec![
+                    submit_hint,
+                    connection_setup::TAB_NEXT.as_hint(),
+                    connection_setup::TAB_PREV.as_hint(),
+                    connection_setup::ESC_CANCEL.as_hint(),
+                ]
+            }
             InputMode::ConnectionError => {
                 let first = if state.session.is_service_connection() {
                     connection_error::RETRY.as_hint()
@@ -392,12 +403,15 @@ impl Footer {
 mod tests {
     use super::Footer;
     use crate::app::model::app_state::AppState;
+    use crate::app::model::connection::setup::ConnectionField;
     use crate::app::model::shared::db_capabilities::DbCapabilities;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::inspector_tab::InspectorTab;
+    use crate::app::model::shared::settings::KeymapPreset;
+    use crate::app::model::sql_editor::modal::SqlModalStatus;
     use crate::app::services::AppServices;
-    use crate::app::update::input::keybindings::global;
+    use crate::app::update::input::keybindings::{connection_setup, global};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -461,5 +475,32 @@ mod tests {
             hints,
             vec![("Enter", "Apply"), ("Esc", "Done"), ("Type", "Browser")]
         );
+    }
+
+    #[test]
+    fn ide_sql_editing_footer_omits_explain_hint() {
+        let mut state = AppState::new("test".to_string());
+        let mut services = AppServices::stub();
+        services.db_capabilities = DbCapabilities::postgres_like();
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+        state.settings.load_keymap_preset(KeymapPreset::Ide);
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(!hints.contains(&("^E", "Explain")));
+    }
+
+    #[test]
+    fn connection_setup_footer_shows_toggle_on_ssl_field() {
+        let mut state = AppState::new("test".to_string());
+        let services = AppServices::stub();
+        state.modal.set_mode(InputMode::ConnectionSetup);
+        state.connection_setup.focused_field = ConnectionField::SslMode;
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(hints.contains(&connection_setup::ENTER_DROPDOWN.as_hint()));
+        assert!(!hints.contains(&("Enter", "Connect")));
     }
 }

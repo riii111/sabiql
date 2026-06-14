@@ -287,6 +287,7 @@ mod tests {
             #[test]
             fn all_non_none_bindings_have_combos() {
                 check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
+                check_non_none_have_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
@@ -314,6 +315,7 @@ mod tests {
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_mode_rows_exec_valid(mb.rows, name);
                 }
+                check_mode_rows_exec_valid(ER_PICKER_ROWS_IDE, "ER_PICKER_ROWS_IDE");
             }
 
             fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
@@ -378,6 +380,25 @@ mod tests {
                 }
             }
 
+            fn check_no_conflicting_combos(bindings: &[KeyBinding], name: &str) {
+                let mut seen: Vec<(&KeyCombo, &Action)> = Vec::new();
+                for kb in bindings
+                    .iter()
+                    .filter(|kb| !matches!(kb.action, Action::None))
+                {
+                    for combo in kb.combos {
+                        if let Some((_, action)) = seen.iter().find(|(seen, _)| *seen == combo) {
+                            assert!(
+                                same_payload_free_action(action, &kb.action),
+                                "{name}: combo {combo:?} maps to both {action:?} and {:?}",
+                                kb.action
+                            );
+                        }
+                        seen.push((combo, &kb.action));
+                    }
+                }
+            }
+
             fn check_no_duplicate_combos_rows(rows: &[ModeRow], name: &str) {
                 let mut seen: Vec<KeyCombo> = Vec::new();
                 for row in rows {
@@ -400,9 +421,12 @@ mod tests {
                 check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_no_conflicting_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
+                check_no_conflicting_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_no_duplicate_combos_rows(mb.rows, name);
                 }
+                check_no_duplicate_combos_rows(ER_PICKER_ROWS_IDE, "ER_PICKER_ROWS_IDE");
             }
         }
 
@@ -453,9 +477,11 @@ mod tests {
                 check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_keymap_roundtrip(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_resolve_mode_roundtrip(mb.rows, name);
                 }
+                check_resolve_mode_roundtrip(ER_PICKER_ROWS_IDE, "ER_PICKER_ROWS_IDE");
             }
         }
 
@@ -523,6 +549,11 @@ mod tests {
             #[test]
             fn er_picker_has_no_plain_char_combos() {
                 check_no_plain_char_in_filter_mode_rows(ER_PICKER_ROWS, "ER_PICKER_ROWS", &[' ']);
+                check_no_plain_char_in_filter_mode_rows(
+                    ER_PICKER_ROWS_IDE,
+                    "ER_PICKER_ROWS_IDE",
+                    &[' '],
+                );
             }
 
             #[test]

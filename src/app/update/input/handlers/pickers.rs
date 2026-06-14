@@ -468,11 +468,25 @@ mod tests {
         }
 
         #[test]
-        fn ide_a_selects_all() {
+        fn ide_alt_a_selects_all() {
+            let state = state_with_preset(KeymapPreset::Ide);
+            let result = handle_er_table_picker_keys(KeyCombo::alt(Key::Char('a')), &state);
+
+            assert!(matches!(result, Action::ErSelectAll));
+        }
+
+        #[test]
+        fn ide_a_remains_filter_input() {
             let state = state_with_preset(KeymapPreset::Ide);
             let result = handle_er_table_picker_keys(combo(Key::Char('A')), &state);
 
-            assert!(matches!(result, Action::ErSelectAll));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::ErFilter,
+                    ch: 'A'
+                }
+            ));
         }
 
         #[test]
