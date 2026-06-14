@@ -6,7 +6,7 @@ use crate::cmd::effect::Effect;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
-use crate::model::browse::cell_detail::{CellDetailState, is_cell_detail_candidate};
+use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::ClipboardError;
@@ -22,15 +22,14 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
                 ])]);
             }
 
-            let Some((row_idx, col_idx, column_name, cell_value)) = selected_cell_value(state)
+            let Some((row_idx, col_idx, column_name, cell_value, data_type)) =
+                selected_cell_value(state)
             else {
                 return DispatchResult::handled();
             };
-            if !is_cell_detail_candidate(&cell_value) {
-                return DispatchResult::handled();
-            }
 
-            state.cell_detail = CellDetailState::open(row_idx, col_idx, column_name, cell_value);
+            let display_value = cell_detail_display_value(&cell_value, data_type.as_deref());
+            state.cell_detail = CellDetailState::open(row_idx, col_idx, column_name, display_value);
             state.modal.push_mode(InputMode::CellDetail);
             DispatchResult::handled()
         }
@@ -131,28 +130,48 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
     }
 }
 
-fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String)> {
+fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String, Option<String>)> {
     let result = state.query.visible_result().filter(|r| !r.is_error())?;
     let row_idx = state.result_interaction.selection().row()?;
     let col_idx = state.result_interaction.selection().cell()?;
     let column_name = result.columns.get(col_idx)?.clone();
     let cell_value = result.rows.get(row_idx)?.get(col_idx)?.clone();
-    Some((row_idx, col_idx, column_name, cell_value))
+    let data_type = selected_column_data_type(state, col_idx).map(ToString::to_string);
+    Some((row_idx, col_idx, column_name, cell_value, data_type))
 }
 
 fn selected_column_is_jsonb(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
-    let Some(td) = state.session.table_detail() else {
-        return false;
-    };
+    selected_column_data_type(state, col_idx).is_some_and(|data_type| data_type == "jsonb")
+}
+
+fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
+    let td = state.session.table_detail()?;
     if td.schema != state.query.pagination.schema() || td.name != state.query.pagination.table() {
-        return false;
+        return None;
     }
     td.columns
         .get(col_idx)
-        .is_some_and(|column| column.data_type == "jsonb")
+        .map(|column| column.data_type.as_str())
+}
+
+fn cell_detail_display_value(value: &str, data_type: Option<&str>) -> String {
+    let should_pretty_print_json = data_type == Some("json") || looks_like_json_container(value);
+    if !should_pretty_print_json {
+        return value.to_string();
+    }
+
+    serde_json::from_str::<serde_json::Value>(value)
+        .ok()
+        .and_then(|json| serde_json::to_string_pretty(&json).ok())
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn looks_like_json_container(value: &str) -> bool {
+    let trimmed = value.trim_start();
+    trimmed.starts_with('{') || trimmed.starts_with('[')
 }
 
 fn update_search_matches(state: &mut AppState) {
@@ -273,13 +292,36 @@ mod tests {
     }
 
     #[test]
-    fn short_text_cell_does_not_open_detail() {
+    fn short_text_cell_opens_detail() {
         let mut state = state_with_cell("text", "short");
 
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
-        assert_eq!(state.input_mode(), InputMode::Normal);
-        assert!(!state.cell_detail.is_active());
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.content(), "short");
+    }
+
+    #[test]
+    fn json_column_opens_read_only_pretty_detail() {
+        let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
+
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1,\n  \"b\": 2\n}");
+    }
+
+    #[test]
+    fn text_json_container_opens_read_only_pretty_detail() {
+        let mut state = state_with_cell("text", r#"{"items":["admin","writer"]}"#);
+
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(
+            state.cell_detail.content(),
+            "{\n  \"items\": [\n    \"admin\",\n    \"writer\"\n  ]\n}"
+        );
     }
 
     #[test]

@@ -1,9 +1,8 @@
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthChar;
 
 use crate::model::shared::text_input::TextInputState;
 use crate::update::action::{ScrollAmount, ScrollDirection};
 
-const CELL_DETAIL_MIN_DISPLAY_WIDTH: usize = 60;
 const DEFAULT_VIEWPORT_WIDTH: usize = 80;
 const DEFAULT_VISIBLE_ROWS: usize = 8;
 
@@ -203,14 +202,6 @@ impl CellDetailState {
     }
 }
 
-pub fn is_cell_detail_candidate(value: &str) -> bool {
-    if value.is_empty() || value == "NULL" {
-        return false;
-    }
-
-    value.contains('\n') || UnicodeWidthStr::width(value) >= CELL_DETAIL_MIN_DISPLAY_WIDTH
-}
-
 fn visual_line_count(content: &str, width: usize) -> usize {
     content
         .split('\n')
@@ -266,33 +257,6 @@ fn visual_row_for_char_offset(content: &str, target: usize, width: usize) -> usi
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    mod detail_candidate {
-        use super::*;
-
-        #[test]
-        fn excludes_empty_and_null_values() {
-            assert!(!is_cell_detail_candidate(""));
-            assert!(!is_cell_detail_candidate("NULL"));
-        }
-
-        #[test]
-        fn includes_multiline_values() {
-            assert!(is_cell_detail_candidate("hello\nworld"));
-        }
-
-        #[test]
-        fn includes_single_line_values_at_display_width_threshold() {
-            let value = "a".repeat(CELL_DETAIL_MIN_DISPLAY_WIDTH);
-
-            assert!(is_cell_detail_candidate(&value));
-        }
-
-        #[test]
-        fn excludes_short_single_line_values() {
-            assert!(!is_cell_detail_candidate("short text"));
-        }
-    }
 
     mod scrolling {
         use super::*;

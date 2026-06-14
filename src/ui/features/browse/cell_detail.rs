@@ -3,6 +3,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
+use unicode_casefold::UnicodeCaseFold;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::model::app_state::AppState;
@@ -167,7 +168,7 @@ fn content_lines(state: &AppState, theme: &ThemePalette) -> Vec<Line<'static>> {
         .matches()
         .get(state.cell_detail.search().current_match())
         .copied();
-    let query_len = state.cell_detail.search().input().content().chars().count();
+    let query = state.cell_detail.search().input().content().to_string();
     let mut char_offset = 0;
 
     content
@@ -179,8 +180,8 @@ fn content_lines(state: &AppState, theme: &ThemePalette) -> Vec<Line<'static>> {
             char_offset = line_end + 1;
 
             match current_match {
-                Some(pos) if query_len > 0 && pos >= line_start && pos < line_end => {
-                    highlighted_line(line, pos - line_start, query_len, theme)
+                Some(pos) if !query.is_empty() && pos >= line_start && pos < line_end => {
+                    highlighted_line(line, pos - line_start, &query, theme)
                 }
                 _ => Line::from(Span::raw(line.to_string())),
             }
@@ -191,9 +192,10 @@ fn content_lines(state: &AppState, theme: &ThemePalette) -> Vec<Line<'static>> {
 fn highlighted_line(
     line: &str,
     match_start: usize,
-    match_len: usize,
+    query: &str,
     theme: &ThemePalette,
 ) -> Line<'static> {
+    let match_len = folded_match_len(line, match_start, query);
     let mut before = String::new();
     let mut matched = String::new();
     let mut after = String::new();
@@ -219,6 +221,22 @@ fn highlighted_line(
         ),
         Span::raw(after),
     ])
+}
+
+fn folded_match_len(line: &str, match_start: usize, query: &str) -> usize {
+    let target_len = query.case_fold().collect::<String>().chars().count();
+    let mut folded_len = 0;
+    let mut original_len = 0;
+
+    for ch in line.chars().skip(match_start) {
+        folded_len += ch.case_fold().count();
+        original_len += 1;
+        if folded_len >= target_len {
+            break;
+        }
+    }
+
+    original_len
 }
 
 fn search_viewport_offset(input: &str, cursor: usize, visible_width: usize) -> usize {
@@ -265,4 +283,19 @@ fn display_width(chars: &[char]) -> usize {
 
 fn char_width(ch: char) -> usize {
     UnicodeWidthChar::width(ch).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn folded_match_len_keeps_sharp_s_to_one_original_char() {
+        assert_eq!(folded_match_len("straße", 4, "ss"), 1);
+    }
+
+    #[test]
+    fn folded_match_len_keeps_ascii_query_length() {
+        assert_eq!(folded_match_len("alphabet", 2, "pha"), 3);
+    }
 }
