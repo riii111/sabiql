@@ -493,6 +493,19 @@ fn second_keyword(sql: &str) -> Option<&str> {
     next_keyword_from(sql, end).map(|(keyword, _)| keyword)
 }
 
+fn third_keyword(sql: &str) -> Option<&str> {
+    let (_, first_end) = next_keyword_from(sql, 0)?;
+    let (_, second_end) = next_keyword_from(sql, first_end)?;
+    next_keyword_from(sql, second_end).map(|(keyword, _)| keyword)
+}
+
+fn fourth_keyword(sql: &str) -> Option<&str> {
+    let (_, first_end) = next_keyword_from(sql, 0)?;
+    let (_, second_end) = next_keyword_from(sql, first_end)?;
+    let (_, third_end) = next_keyword_from(sql, second_end)?;
+    next_keyword_from(sql, third_end).map(|(keyword, _)| keyword)
+}
+
 fn contains_keyword(sql: &str, expected: &str) -> bool {
     let mut offset = 0;
     while let Some((keyword, end)) = next_keyword_from(sql, offset) {
@@ -951,11 +964,26 @@ fn transaction_control_tag(query: &str) -> Option<CommandTag> {
         "BEGIN" => Some(CommandTag::Begin),
         "COMMIT" | "END" => Some(CommandTag::Commit),
         "ROLLBACK" if second_keyword(query).is_some_and(|kw| kw.eq_ignore_ascii_case("TO")) => {
-            Some(CommandTag::Other("ROLLBACK TO".to_string()))
+            let name =
+                if third_keyword(query).is_some_and(|kw| kw.eq_ignore_ascii_case("SAVEPOINT")) {
+                    fourth_keyword(query)
+                } else {
+                    third_keyword(query)
+                };
+            Some(CommandTag::Other(format!(
+                "ROLLBACK TO {}",
+                name.unwrap_or("")
+            )))
         }
         "ROLLBACK" => Some(CommandTag::Rollback),
-        "SAVEPOINT" => Some(CommandTag::Other("SAVEPOINT".to_string())),
-        "RELEASE" => Some(CommandTag::Other("RELEASE".to_string())),
+        "SAVEPOINT" => Some(CommandTag::Other(format!(
+            "SAVEPOINT {}",
+            second_keyword(query).unwrap_or("")
+        ))),
+        "RELEASE" => Some(CommandTag::Other(format!(
+            "RELEASE {}",
+            second_keyword(query).unwrap_or("")
+        ))),
         _ => None,
     }
 }
@@ -984,40 +1012,45 @@ fn sqlite_statement_tags(statements: &[&str], changes: &HashMap<usize, usize>) -
 
 fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
     let mut effective = Vec::new();
-    let mut frames: Vec<Vec<CommandTag>> = Vec::new();
+    let mut frames: Vec<(Option<String>, Vec<CommandTag>)> = Vec::new();
 
     for tag in tags {
         match tag {
-            CommandTag::Begin => frames.push(Vec::new()),
+            CommandTag::Begin => frames.push((None, Vec::new())),
             CommandTag::Other(raw) if raw == "SAVEPOINT" || raw.starts_with("SAVEPOINT ") => {
-                frames.push(Vec::new());
+                frames.push((tag_name(raw, "SAVEPOINT"), Vec::new()));
             }
             CommandTag::Other(raw) if raw == "RELEASE" || raw.starts_with("RELEASE ") => {
-                if frames.len() > 1
-                    && let Some(inner) = frames.pop()
+                if let Some(index) = savepoint_frame_index(&frames, tag_name(raw, "RELEASE"))
+                    && index > 0
                 {
-                    if let Some(parent) = frames.last_mut() {
-                        parent.extend(inner);
-                    } else {
-                        effective.extend(inner);
+                    let mut merged = Vec::new();
+                    for (_, frame) in frames.drain(index..) {
+                        merged.extend(frame);
+                    }
+                    if let Some((_, parent)) = frames.last_mut() {
+                        parent.extend(merged);
                     }
                 }
             }
             CommandTag::Other(raw) if raw == "ROLLBACK TO" || raw.starts_with("ROLLBACK TO ") => {
-                if frames.len() > 1 {
-                    frames.pop();
+                if let Some(index) = savepoint_frame_index(&frames, tag_name(raw, "ROLLBACK TO")) {
+                    frames.truncate(index + 1);
+                    if let Some((_, frame)) = frames.last_mut() {
+                        frame.clear();
+                    }
                 }
             }
             CommandTag::Rollback => {
                 frames.clear();
             }
             CommandTag::Commit => {
-                for frame in frames.drain(..) {
+                for (_, frame) in frames.drain(..) {
                     effective.extend(frame);
                 }
             }
             _ => {
-                if let Some(frame) = frames.last_mut() {
+                if let Some((_, frame)) = frames.last_mut() {
                     frame.push(tag.clone());
                 } else {
                     effective.push(tag.clone());
@@ -1026,11 +1059,40 @@ fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
         }
     }
 
-    for frame in frames.drain(..) {
+    for (_, frame) in frames.drain(..) {
         effective.extend(frame);
     }
 
     effective
+}
+
+fn tag_name(raw: &str, prefix: &str) -> Option<String> {
+    raw.strip_prefix(prefix)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_ascii_uppercase)
+}
+
+fn savepoint_frame_index(
+    frames: &[(Option<String>, Vec<CommandTag>)],
+    name: Option<String>,
+) -> Option<usize> {
+    frames
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, (frame_name, _))| {
+            if index == 0 {
+                None
+            } else if name
+                .as_ref()
+                .is_none_or(|name| frame_name.as_ref() == Some(name))
+            {
+                Some(index)
+            } else {
+                None
+            }
+        })
 }
 
 fn aggregate_sqlite_command_tag(tags: &[CommandTag]) -> Option<CommandTag> {
@@ -1625,6 +1687,64 @@ mod tests {
                      SAVEPOINT sp;
                      INSERT INTO users(id) VALUES (2);
                      ROLLBACK TO sp;
+                     COMMIT",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+            assert_eq!(rows.rows, vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn rollback_to_keeps_savepoint_for_later_rollback() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "BEGIN;
+                     INSERT INTO users(id) VALUES (1);
+                     SAVEPOINT sp;
+                     INSERT INTO users(id) VALUES (2);
+                     ROLLBACK TO sp;
+                     INSERT INTO users(id) VALUES (3);
+                     ROLLBACK TO sp;
+                     COMMIT",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+            assert_eq!(rows.rows, vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn rollback_to_named_outer_savepoint_discards_nested_frames() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "BEGIN;
+                     INSERT INTO users(id) VALUES (1);
+                     SAVEPOINT outer_sp;
+                     INSERT INTO users(id) VALUES (2);
+                     SAVEPOINT inner_sp;
+                     INSERT INTO users(id) VALUES (3);
+                     ROLLBACK TO outer_sp;
                      COMMIT",
                     false,
                 )
