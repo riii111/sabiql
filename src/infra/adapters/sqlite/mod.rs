@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -551,16 +552,6 @@ fn split_sqlite_statements(sql: &str) -> Vec<&str> {
     statements
 }
 
-fn count_select_statements(sql: &str) -> usize {
-    split_sqlite_statements(sql)
-        .into_iter()
-        .filter(|stmt| {
-            let keyword = first_keyword(stmt);
-            keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("WITH")
-        })
-        .count()
-}
-
 fn is_transaction_control(statement: &str) -> bool {
     matches!(
         first_keyword(statement).to_ascii_uppercase().as_str(),
@@ -595,11 +586,77 @@ fn sqlite_execution_query(query: &str) -> Cow<'_, str> {
     }
 }
 
+fn sqlite_probe_marker() -> String {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    format!(
+        "__sabiql_sqlite_probe_{}_{}_{}",
+        std::process::id(),
+        nanos,
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+fn sqlite_probe_columns(marker: &str) -> (String, String) {
+    (format!("{marker}_stmt"), format!("{marker}_changes"))
+}
+
+fn sqlite_changes_probe(marker: &str, index: usize) -> String {
+    let (stmt_col, changes_col) = sqlite_probe_columns(marker);
+    format!("SELECT {index} AS \"{stmt_col}\", changes() AS \"{changes_col}\"")
+}
+
+fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
+    let statements = split_sqlite_statements(query);
+    if statements.is_empty() {
+        return query.to_string();
+    }
+
+    let wrap = should_wrap_transaction(query);
+    let mut parts = Vec::with_capacity(statements.len() * 2 + usize::from(wrap) * 2);
+    if wrap {
+        parts.push("BEGIN".to_string());
+    }
+    for (index, statement) in statements.iter().enumerate() {
+        parts.push((*statement).to_string());
+        if is_dml_statement(statement) {
+            parts.push(sqlite_changes_probe(marker, index));
+        }
+    }
+    if wrap {
+        parts.push("COMMIT".to_string());
+    }
+    parts.join("\n;\n")
+}
+
 fn append_changes_query(query: &str) -> String {
     let body = sqlite_execution_query(query).trim_end().to_string();
     // The standalone separator also terminates a trailing line comment before
     // appending the changes() probe.
     format!("{body}\n;\nSELECT changes() AS affected_rows;")
+}
+
+fn is_dml_statement(statement: &str) -> bool {
+    matches!(
+        first_keyword(statement).to_ascii_uppercase().as_str(),
+        "INSERT" | "UPDATE" | "DELETE"
+    )
+}
+
+fn statement_returns_rows(statement: &str) -> bool {
+    let keyword = first_keyword(statement);
+    keyword.eq_ignore_ascii_case("SELECT")
+        || keyword.eq_ignore_ascii_case("WITH")
+        || (is_dml_statement(statement) && contains_keyword(statement, "RETURNING"))
+}
+
+fn count_result_statements(sql: &str) -> usize {
+    split_sqlite_statements(sql)
+        .into_iter()
+        .filter(|stmt| statement_returns_rows(stmt))
+        .count()
 }
 
 fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
@@ -622,7 +679,7 @@ fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
         return stdout;
     }
 
-    let expected_sets = count_select_statements(sql);
+    let expected_sets = count_result_statements(sql);
     let first_header = &records[0].1;
     let mut current_fc = first_header.len();
     let mut known_headers = vec![first_header.clone()];
@@ -677,7 +734,7 @@ fn csv_to_query_result(
         ));
     }
 
-    let csv_block = if count_select_statements(query) <= 1 {
+    let csv_block = if count_result_statements(query) <= 1 {
         stdout
     } else {
         extract_last_csv_block(stdout, query)
@@ -698,6 +755,86 @@ fn csv_to_query_result(
         execution_time_ms,
         source,
     ))
+}
+
+fn strip_sqlite_probes(
+    stdout: &str,
+    marker: &str,
+) -> Result<(String, HashMap<usize, usize>), DbOperationError> {
+    if stdout.trim().is_empty() {
+        return Ok((String::new(), HashMap::new()));
+    }
+
+    let (stmt_col, changes_col) = sqlite_probe_columns(marker);
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(stdout.as_bytes());
+    let mut record = csv::ByteRecord::new();
+    let mut records = Vec::new();
+    while reader.read_byte_record(&mut record)? {
+        records.push(record.clone());
+    }
+
+    let mut changes = HashMap::new();
+    let mut kept = Vec::new();
+    let mut removed_probe = false;
+    let mut index = 0;
+    while index < records.len() {
+        let record = &records[index];
+        if record.len() == 2
+            && record.get(0) == Some(stmt_col.as_bytes())
+            && record.get(1) == Some(changes_col.as_bytes())
+        {
+            removed_probe = true;
+            let value = records.get(index + 1).ok_or_else(|| {
+                DbOperationError::CommandTagParseFailed(
+                    "missing SQLite statement probe row".to_string(),
+                )
+            })?;
+            let stmt_index = value
+                .get(0)
+                .and_then(|raw| std::str::from_utf8(raw).ok())
+                .and_then(|raw| raw.parse::<usize>().ok())
+                .ok_or_else(|| {
+                    DbOperationError::CommandTagParseFailed(
+                        "invalid SQLite statement probe index".to_string(),
+                    )
+                })?;
+            let affected_rows = value
+                .get(1)
+                .and_then(|raw| std::str::from_utf8(raw).ok())
+                .and_then(|raw| raw.parse::<usize>().ok())
+                .ok_or_else(|| {
+                    DbOperationError::CommandTagParseFailed(
+                        "invalid SQLite statement probe changes".to_string(),
+                    )
+                })?;
+            changes.insert(stmt_index, affected_rows);
+            index += 2;
+        } else {
+            kept.push(record.clone());
+            index += 1;
+        }
+    }
+
+    if !removed_probe {
+        return Ok((stdout.to_string(), changes));
+    }
+
+    let mut writer = csv::WriterBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_writer(Vec::new());
+    for record in kept {
+        writer.write_byte_record(&record)?;
+    }
+    let bytes = writer.into_inner().map_err(|error| {
+        DbOperationError::QueryFailed(format!("Failed to write filtered SQLite CSV: {error}"))
+    })?;
+    String::from_utf8(bytes)
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
+        .map(|filtered| (filtered, changes))
 }
 
 fn first_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
@@ -775,6 +912,115 @@ fn ddl_tag(query: &str) -> Option<CommandTag> {
     } else {
         None
     }
+}
+
+fn tcl_tag(query: &str) -> Option<CommandTag> {
+    match first_keyword(query).to_ascii_uppercase().as_str() {
+        "BEGIN" => Some(CommandTag::Begin),
+        "COMMIT" | "END" => Some(CommandTag::Commit),
+        "ROLLBACK" => Some(CommandTag::Rollback),
+        "SAVEPOINT" => Some(CommandTag::Other("SAVEPOINT".to_string())),
+        "RELEASE" => Some(CommandTag::Other("RELEASE".to_string())),
+        _ => None,
+    }
+}
+
+fn dml_tag(query: &str, affected_rows: usize) -> Option<CommandTag> {
+    let affected_rows = affected_rows as u64;
+    match first_keyword(query).to_ascii_uppercase().as_str() {
+        "INSERT" => Some(CommandTag::Insert(affected_rows)),
+        "UPDATE" => Some(CommandTag::Update(affected_rows)),
+        "DELETE" => Some(CommandTag::Delete(affected_rows)),
+        _ => None,
+    }
+}
+
+fn sqlite_statement_tags(statements: &[&str], changes: &HashMap<usize, usize>) -> Vec<CommandTag> {
+    statements
+        .iter()
+        .enumerate()
+        .filter_map(|(index, statement)| {
+            dml_tag(statement, *changes.get(&index).unwrap_or(&0))
+                .or_else(|| ddl_tag(statement))
+                .or_else(|| tcl_tag(statement))
+        })
+        .collect()
+}
+
+fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
+    let mut effective = Vec::new();
+    let mut frames: Vec<Vec<CommandTag>> = Vec::new();
+
+    for tag in tags {
+        match tag {
+            CommandTag::Begin => frames.push(Vec::new()),
+            CommandTag::Other(raw) if raw == "SAVEPOINT" || raw.starts_with("SAVEPOINT ") => {
+                frames.push(Vec::new());
+            }
+            CommandTag::Other(raw) if raw == "RELEASE" || raw.starts_with("RELEASE ") => {
+                if frames.len() > 1
+                    && let Some(inner) = frames.pop()
+                {
+                    if let Some(parent) = frames.last_mut() {
+                        parent.extend(inner);
+                    } else {
+                        effective.extend(inner);
+                    }
+                }
+            }
+            CommandTag::Rollback => {
+                if frames.len() > 1 {
+                    frames.pop();
+                } else {
+                    frames.clear();
+                }
+            }
+            CommandTag::Commit => {
+                for frame in frames.drain(..) {
+                    effective.extend(frame);
+                }
+            }
+            _ => {
+                if let Some(frame) = frames.last_mut() {
+                    frame.push(tag.clone());
+                } else {
+                    effective.push(tag.clone());
+                }
+            }
+        }
+    }
+
+    for frame in frames.drain(..) {
+        effective.extend(frame);
+    }
+
+    effective
+}
+
+fn aggregate_sqlite_command_tag(tags: &[CommandTag]) -> Option<CommandTag> {
+    let effective = discard_rolled_back(tags);
+    if let Some(tag) = effective.iter().find(|tag| tag.is_schema_modifying()) {
+        return Some(tag.clone());
+    }
+    if let Some(tag) = effective.iter().rev().find(|tag| tag.needs_refresh()) {
+        return Some(tag.clone());
+    }
+    if tags.iter().any(CommandTag::needs_refresh) {
+        return Some(CommandTag::Rollback);
+    }
+    tags.last().cloned()
+}
+
+fn command_tag_result(
+    query: &str,
+    tag: CommandTag,
+    elapsed: u64,
+    source: QuerySource,
+) -> QueryResult {
+    let mut result =
+        QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source);
+    result.row_count = tag.affected_rows().unwrap_or(0) as usize;
+    result.with_command_tag(tag)
 }
 
 fn parse_fk_action(action: &str) -> Result<FkAction, DbOperationError> {
@@ -869,68 +1115,42 @@ impl QueryExecutor for SqliteAdapter {
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
         let path = Self::path_from_dsn(dsn)?;
-        let keyword = first_keyword(query);
-        let execution_query = sqlite_execution_query(query);
-        if keyword.eq_ignore_ascii_case("INSERT")
-            || keyword.eq_ignore_ascii_case("UPDATE")
-            || keyword.eq_ignore_ascii_case("DELETE")
-        {
-            if contains_keyword(query, "RETURNING") {
-                let mut result = self
-                    .execute_csv_query_with_display_query(
-                        path,
-                        &execution_query,
-                        query,
-                        QuerySource::Adhoc,
-                        read_only,
-                    )
-                    .await?;
-                let affected_rows = result.row_count as u64;
-                let tag = if keyword.eq_ignore_ascii_case("INSERT") {
-                    CommandTag::Insert(affected_rows)
-                } else if keyword.eq_ignore_ascii_case("UPDATE") {
-                    CommandTag::Update(affected_rows)
-                } else {
-                    CommandTag::Delete(affected_rows)
-                };
-                result = result.with_command_tag(tag);
-                return Ok(result);
-            }
+        let marker = sqlite_probe_marker();
+        let execution_query = sqlite_adhoc_execution_query(query, &marker);
+        let statements = split_sqlite_statements(query);
 
-            let (affected_rows, elapsed) =
-                self.execute_changes_query(path, query, read_only).await?;
-            let tag = if keyword.eq_ignore_ascii_case("INSERT") {
-                CommandTag::Insert(affected_rows as u64)
-            } else if keyword.eq_ignore_ascii_case("UPDATE") {
-                CommandTag::Update(affected_rows as u64)
-            } else {
-                CommandTag::Delete(affected_rows as u64)
-            };
-            let mut result = QueryResult::success(
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures sqlite3 execution time at the I/O boundary"
+        )]
+        let start = Instant::now();
+        let stdout = self
+            .cli
+            .execute_csv(path, &execution_query, read_only)
+            .await?;
+        let elapsed = start.elapsed().as_millis() as u64;
+        let (stdout, changes) = strip_sqlite_probes(&stdout, &marker)?;
+        let tag = aggregate_sqlite_command_tag(&sqlite_statement_tags(&statements, &changes));
+
+        if stdout.trim().is_empty() {
+            if let Some(tag) = tag {
+                return Ok(command_tag_result(query, tag, elapsed, QuerySource::Adhoc));
+            }
+            return Ok(QueryResult::success(
                 query.to_string(),
                 Vec::new(),
                 Vec::new(),
                 elapsed,
                 QuerySource::Adhoc,
-            );
-            result.row_count = affected_rows;
-            return Ok(result.with_command_tag(tag));
+            ));
         }
 
-        let mut result = self
-            .execute_csv_query_with_display_query(
-                path,
-                &execution_query,
-                query,
-                QuerySource::Adhoc,
-                read_only,
-            )
-            .await?;
-        if let Some(tag) = ddl_tag(query) {
+        let mut result = csv_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
+        if let Some(tag) = tag {
             result = result.with_command_tag(tag);
-        } else if keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("WITH") {
-            let row_count = result.row_count;
-            result = result.with_command_tag(CommandTag::Select(row_count as u64));
+        } else if statements.iter().any(|stmt| statement_returns_rows(stmt)) {
+            let row_count = result.row_count as u64;
+            result = result.with_command_tag(CommandTag::Select(row_count));
         }
         Ok(result)
     }
