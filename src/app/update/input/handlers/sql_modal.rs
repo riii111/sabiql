@@ -68,10 +68,15 @@ pub fn handle_sql_modal_keys_with_prefix(
             };
         }
 
-        if crate::update::input::keybindings::sql_modal_plan_explain(keymap_preset)
-            .combos
-            .contains(&combo)
-        {
+        let explain_binding = match active_tab {
+            SqlModalTab::Compare => {
+                crate::update::input::keybindings::sql_modal_compare_explain(keymap_preset)
+            }
+            SqlModalTab::Sql | SqlModalTab::Plan => {
+                crate::update::input::keybindings::sql_modal_plan_explain(keymap_preset)
+            }
+        };
+        if explain_binding.combos.contains(&combo) {
             return Action::ExplainRequest;
         }
 

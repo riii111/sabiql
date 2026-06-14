@@ -449,6 +449,7 @@ mod tests {
                 check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_keymap_roundtrip(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_keymap_roundtrip(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 for (name, mb) in ALL_MODE_BINDINGS {
                     check_resolve_mode_roundtrip(mb.rows, name);
