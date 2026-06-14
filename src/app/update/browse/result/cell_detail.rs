@@ -1,7 +1,5 @@
 use std::time::Instant;
 
-use unicode_casefold::UnicodeCaseFold;
-
 use crate::cmd::effect::Effect;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
@@ -12,6 +10,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::find_text_matches;
 
 pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
@@ -179,53 +178,6 @@ fn update_search_matches(state: &mut AppState) {
     let query = state.cell_detail.search().input().content().to_string();
     let matches = find_text_matches(state.cell_detail.content(), &query);
     state.cell_detail.search_mut().set_matches(matches);
-}
-
-fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
-    if query.is_empty() {
-        return Vec::new();
-    }
-
-    let query_folded = query.case_fold().collect::<String>();
-    let mut matches = Vec::new();
-    let mut offset = 0;
-
-    for segment in content.split_inclusive('\n') {
-        let line = segment.strip_suffix('\n').unwrap_or(segment);
-        let (folded, offset_map) = casefold_with_char_offsets(line);
-        let mut search_from = 0;
-        while let Some(rel_idx) = folded[search_from..].find(&query_folded) {
-            let match_idx = search_from + rel_idx;
-            matches.push(offset + original_char_offset_for_folded_byte(&offset_map, match_idx));
-            search_from = match_idx + query_folded.len();
-        }
-        offset += segment.chars().count();
-    }
-
-    matches
-}
-
-fn casefold_with_char_offsets(text: &str) -> (String, Vec<(usize, usize)>) {
-    let mut folded = String::new();
-    let mut offset_map = Vec::new();
-
-    for (original_char_offset, ch) in text.chars().enumerate() {
-        for folded_char in ch.case_fold() {
-            offset_map.push((folded.len(), original_char_offset));
-            folded.push(folded_char);
-        }
-    }
-
-    offset_map.push((folded.len(), text.chars().count()));
-    (folded, offset_map)
-}
-
-fn original_char_offset_for_folded_byte(
-    offset_map: &[(usize, usize)],
-    folded_byte_offset: usize,
-) -> usize {
-    let idx = offset_map.partition_point(|(byte_offset, _)| *byte_offset <= folded_byte_offset);
-    offset_map[idx.saturating_sub(1)].1
 }
 
 #[cfg(test)]

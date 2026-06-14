@@ -1,3 +1,5 @@
+use unicode_casefold::UnicodeCaseFold;
+
 use crate::domain::QueryResult;
 use crate::domain::connection::SqliteConnectionConfig;
 use crate::model::app_state::AppState;
@@ -197,6 +199,53 @@ pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
     s.char_indices()
         .nth(char_idx)
         .map_or(s.len(), |(byte_idx, _)| byte_idx)
+}
+
+pub fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let query_folded = query.case_fold().collect::<String>();
+    let mut matches = Vec::new();
+    let mut offset = 0;
+
+    for segment in content.split_inclusive('\n') {
+        let line = segment.strip_suffix('\n').unwrap_or(segment);
+        let (folded, offset_map) = casefold_with_char_offsets(line);
+        let mut search_from = 0;
+        while let Some(rel_idx) = folded[search_from..].find(&query_folded) {
+            let match_idx = search_from + rel_idx;
+            matches.push(offset + original_char_offset_for_folded_byte(&offset_map, match_idx));
+            search_from = match_idx + query_folded.len();
+        }
+        offset += segment.chars().count();
+    }
+
+    matches
+}
+
+fn casefold_with_char_offsets(text: &str) -> (String, Vec<(usize, usize)>) {
+    let mut folded = String::new();
+    let mut offset_map = Vec::new();
+
+    for (original_char_offset, ch) in text.chars().enumerate() {
+        for folded_char in ch.case_fold() {
+            offset_map.push((folded.len(), original_char_offset));
+            folded.push(folded_char);
+        }
+    }
+
+    offset_map.push((folded.len(), text.chars().count()));
+    (folded, offset_map)
+}
+
+fn original_char_offset_for_folded_byte(
+    offset_map: &[(usize, usize)],
+    folded_byte_offset: usize,
+) -> usize {
+    let idx = offset_map.partition_point(|(byte_offset, _)| *byte_offset <= folded_byte_offset);
+    offset_map[idx.saturating_sub(1)].1
 }
 
 fn text_input_content(state: &ConnectionSetupState, field: ConnectionField) -> &str {

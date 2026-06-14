@@ -267,7 +267,7 @@ pub enum JsonbHelpMode {
 
 impl JsonbHelpMode {
     fn from_state(state: &AppState) -> Self {
-        if state.jsonb_detail.search().active {
+        if state.jsonb_detail.search().is_active() {
             Self::Search
         } else {
             match state.jsonb_detail.mode() {

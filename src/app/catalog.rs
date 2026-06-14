@@ -650,7 +650,7 @@ mod tests {
 
         let mut jsonb_state = AppState::new("test".to_string());
         jsonb_state.modal.set_mode(InputMode::JsonbDetail);
-        jsonb_state.jsonb_detail.search_mut().active = true;
+        jsonb_state.jsonb_detail.search_mut().activate();
         let jsonb_document = HelpDocument::new(HelpOrigin::from_state(&jsonb_state), "");
 
         assert_eq!(
