@@ -966,55 +966,6 @@ mod tests {
         }
     }
 
-    mod search_helpers {
-        use crate::update::helpers::find_text_matches;
-
-        #[test]
-        fn returns_first_match_offset_per_line_case_insensitively() {
-            let matches = find_text_matches(
-                "{\n  \"Theme\": \"dark\",\n  \"theme\": \"light\"\n}",
-                "theme",
-            );
-
-            assert_eq!(matches, vec![5, 24]);
-        }
-
-        #[test]
-        fn empty_query_returns_no_matches() {
-            let matches = find_text_matches("{\n  \"theme\": \"dark\"\n}", "");
-
-            assert!(matches.is_empty());
-        }
-
-        #[test]
-        fn unicode_casefold_match_maps_back_to_original_char_offset() {
-            let matches = find_text_matches("İx", "x");
-
-            assert_eq!(matches, vec![1]);
-        }
-
-        #[test]
-        fn casefold_matches_german_sharp_s() {
-            let matches = find_text_matches("Maße", "MASSE");
-
-            assert_eq!(matches, vec![0]);
-        }
-
-        #[test]
-        fn casefold_matches_greek_final_sigma() {
-            let matches = find_text_matches("ὈΔΥΣΣΕΎΣ", "ὀδυσσεύς");
-
-            assert_eq!(matches, vec![0]);
-        }
-
-        #[test]
-        fn returns_all_matches_within_single_line() {
-            let matches = find_text_matches("theme theme", "theme");
-
-            assert_eq!(matches, vec![0, 6]);
-        }
-    }
-
     mod reducer_chain {
         use super::*;
         use crate::cmd::effect::Effect;

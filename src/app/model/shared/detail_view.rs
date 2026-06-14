@@ -73,38 +73,16 @@ impl DetailSearchState {
 }
 
 #[derive(Debug, Clone)]
-pub struct ReadOnlyDetailState {
+pub struct DetailContentState {
     row: usize,
     col: usize,
     column_name: String,
     original_content: String,
     display_content: String,
-    scroll_offset: usize,
-    visible_rows: usize,
-    viewport_width: usize,
-    search: DetailSearchState,
-    active: bool,
 }
 
-impl Default for ReadOnlyDetailState {
-    fn default() -> Self {
-        Self {
-            row: 0,
-            col: 0,
-            column_name: String::new(),
-            original_content: String::new(),
-            display_content: String::new(),
-            scroll_offset: 0,
-            visible_rows: DEFAULT_VISIBLE_ROWS,
-            viewport_width: DEFAULT_VIEWPORT_WIDTH,
-            search: DetailSearchState::default(),
-            active: false,
-        }
-    }
-}
-
-impl ReadOnlyDetailState {
-    pub fn open(
+impl DetailContentState {
+    pub fn new(
         row: usize,
         col: usize,
         column_name: String,
@@ -117,17 +95,7 @@ impl ReadOnlyDetailState {
             column_name,
             original_content,
             display_content,
-            active: true,
-            ..Self::default()
         }
-    }
-
-    pub fn close(&mut self) {
-        *self = Self::default();
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.active
     }
 
     pub fn row(&self) -> usize {
@@ -148,6 +116,85 @@ impl ReadOnlyDetailState {
 
     pub fn original_content(&self) -> &str {
         &self.original_content
+    }
+}
+
+impl Default for DetailContentState {
+    fn default() -> Self {
+        Self::new(0, 0, String::new(), String::new(), String::new())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ReadOnlyDetailState {
+    content: DetailContentState,
+    scroll_offset: usize,
+    visible_rows: usize,
+    viewport_width: usize,
+    search: DetailSearchState,
+    active: bool,
+}
+
+impl Default for ReadOnlyDetailState {
+    fn default() -> Self {
+        Self {
+            content: DetailContentState::default(),
+            scroll_offset: 0,
+            visible_rows: DEFAULT_VISIBLE_ROWS,
+            viewport_width: DEFAULT_VIEWPORT_WIDTH,
+            search: DetailSearchState::default(),
+            active: false,
+        }
+    }
+}
+
+impl ReadOnlyDetailState {
+    pub fn open(
+        row: usize,
+        col: usize,
+        column_name: String,
+        original_content: String,
+        display_content: String,
+    ) -> Self {
+        Self {
+            content: DetailContentState::new(
+                row,
+                col,
+                column_name,
+                original_content,
+                display_content,
+            ),
+            active: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn close(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
+    pub fn row(&self) -> usize {
+        self.content.row()
+    }
+
+    pub fn col(&self) -> usize {
+        self.content.col()
+    }
+
+    pub fn column_name(&self) -> &str {
+        self.content.column_name()
+    }
+
+    pub fn content(&self) -> &str {
+        self.content.content()
+    }
+
+    pub fn original_content(&self) -> &str {
+        self.content.original_content()
     }
 
     pub fn scroll_offset(&self) -> usize {
@@ -202,7 +249,7 @@ impl ReadOnlyDetailState {
             return;
         };
         self.scroll_offset =
-            visual_row_for_char_offset(&self.display_content, match_pos, self.viewport_width)
+            visual_row_for_char_offset(self.content.content(), match_pos, self.viewport_width)
                 .min(self.max_scroll_offset());
     }
 
@@ -211,7 +258,7 @@ impl ReadOnlyDetailState {
     }
 
     fn max_scroll_offset(&self) -> usize {
-        visual_line_count(&self.display_content, self.viewport_width)
+        visual_line_count(self.content.content(), self.viewport_width)
             .saturating_sub(self.visible_rows)
     }
 }

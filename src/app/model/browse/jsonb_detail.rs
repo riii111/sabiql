@@ -1,4 +1,4 @@
-use crate::model::shared::detail_view::{DetailSearchState, ReadOnlyDetailState};
+use crate::model::shared::detail_view::{DetailContentState, DetailSearchState};
 use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::TextInputLike;
 
@@ -14,9 +14,10 @@ pub type JsonbSearchState = DetailSearchState;
 
 #[derive(Debug, Clone, Default)]
 pub struct JsonbDetailState {
-    detail: ReadOnlyDetailState,
+    detail: DetailContentState,
     mode: JsonbDetailMode,
     editor: MultiLineInputState,
+    search: DetailSearchState,
     validation_error: Option<String>,
     pub(crate) active: bool,
 }
@@ -35,7 +36,7 @@ impl JsonbDetailState {
         pretty_original: String,
     ) -> Self {
         Self {
-            detail: ReadOnlyDetailState::open(
+            detail: DetailContentState::new(
                 row,
                 col,
                 column_name,
@@ -43,6 +44,7 @@ impl JsonbDetailState {
                 pretty_original.clone(),
             ),
             editor: MultiLineInputState::new(pretty_original, 0),
+            search: DetailSearchState::default(),
             mode: JsonbDetailMode::Viewing,
             validation_error: None,
             active: true,
@@ -102,25 +104,26 @@ impl JsonbDetailState {
     }
 
     pub fn search(&self) -> &JsonbSearchState {
-        self.detail.search()
+        &self.search
     }
 
     pub fn search_mut(&mut self) -> &mut JsonbSearchState {
-        self.detail.search_mut()
+        &mut self.search
     }
 
     pub fn enter_search(&mut self) {
         self.mode = JsonbDetailMode::Searching;
-        self.detail.enter_search();
+        self.search.reset();
+        self.search.activate();
     }
 
     pub fn exit_search(&mut self) {
-        self.detail.exit_search();
+        self.search.deactivate();
         self.mode = JsonbDetailMode::Viewing;
     }
 
     pub fn enter_edit(&mut self) {
-        self.detail.exit_search();
+        self.search.deactivate();
         self.validation_error = None;
         self.mode = JsonbDetailMode::Editing;
     }

@@ -261,6 +261,56 @@ fn require_non_empty(state: &mut ConnectionSetupState, field: ConnectionField, m
     }
 }
 
+#[cfg(test)]
+mod text_search_tests {
+    use super::find_text_matches;
+
+    #[test]
+    fn text_matches_return_first_match_offset_per_line_case_insensitively() {
+        let matches = find_text_matches(
+            "{\n  \"Theme\": \"dark\",\n  \"theme\": \"light\"\n}",
+            "theme",
+        );
+
+        assert_eq!(matches, vec![5, 24]);
+    }
+
+    #[test]
+    fn text_matches_return_empty_for_empty_query() {
+        let matches = find_text_matches("{\n  \"theme\": \"dark\"\n}", "");
+
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn text_matches_map_unicode_casefold_back_to_original_char_offset() {
+        let matches = find_text_matches("İx", "x");
+
+        assert_eq!(matches, vec![1]);
+    }
+
+    #[test]
+    fn text_matches_casefold_german_sharp_s() {
+        let matches = find_text_matches("Maße", "MASSE");
+
+        assert_eq!(matches, vec![0]);
+    }
+
+    #[test]
+    fn text_matches_casefold_greek_final_sigma() {
+        let matches = find_text_matches("ὈΔΥΣΣΕΎΣ", "ὀδυσσεύς");
+
+        assert_eq!(matches, vec![0]);
+    }
+
+    #[test]
+    fn text_matches_return_all_matches_within_single_line() {
+        let matches = find_text_matches("theme theme", "theme");
+
+        assert_eq!(matches, vec![0, 6]);
+    }
+}
+
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
     state.clear_validation_error(field);
 
