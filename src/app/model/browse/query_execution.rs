@@ -11,7 +11,6 @@ pub const PREVIEW_PAGE_SIZE: usize = 500;
 pub enum VisibleResultKind {
     LivePreview,
     LiveAdhoc,
-    HistoryEntry(usize),
     Empty,
 }
 
@@ -81,7 +80,6 @@ pub struct QueryExecution {
     start_time: Option<Instant>,
     current_result: Option<Arc<QueryResult>>,
     result_history: ResultHistory,
-    history_index: Option<usize>,
     result_generation: u64,
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
@@ -174,22 +172,6 @@ impl QueryExecution {
         self.result_highlight_until
     }
 
-    // ── History navigation ──────────────────────────────────────────
-
-    pub fn enter_history(&mut self, idx: usize) {
-        self.history_index = Some(idx);
-        self.result_generation += 1;
-    }
-
-    pub fn exit_history(&mut self) {
-        self.history_index = None;
-        self.result_generation += 1;
-    }
-
-    pub fn history_index(&self) -> Option<usize> {
-        self.history_index
-    }
-
     // ── Delete lifecycle ─────────────────────────────────────────────
 
     pub fn set_delete_refresh_target(&mut self, page: usize, row: Option<usize>, count: usize) {
@@ -223,9 +205,6 @@ impl QueryExecution {
     // ── Visible result ─────────────────────────────────────────────
 
     pub fn visible_result_kind(&self) -> VisibleResultKind {
-        if let Some(i) = self.history_index {
-            return VisibleResultKind::HistoryEntry(i);
-        }
         match &self.current_result {
             Some(r) => match r.source {
                 QuerySource::Preview => VisibleResultKind::LivePreview,
@@ -236,14 +215,7 @@ impl QueryExecution {
     }
 
     pub fn visible_result(&self) -> Option<&QueryResult> {
-        match self.history_index {
-            None => self.current_result.as_deref(),
-            Some(i) => self.result_history.get(i),
-        }
-    }
-
-    pub fn is_history_mode(&self) -> bool {
-        self.history_index.is_some()
+        self.current_result.as_deref()
     }
 
     pub fn can_edit_visible_result(&self) -> bool {
@@ -255,15 +227,6 @@ impl QueryExecution {
 
     pub fn can_paginate_visible_result(&self) -> bool {
         self.visible_result_kind() == VisibleResultKind::LivePreview
-    }
-
-    pub fn history_bar(&self) -> Option<(usize, usize)> {
-        self.history_index
-            .map(|idx| (idx, self.result_history.len()))
-    }
-
-    pub fn has_history_hint(&self) -> bool {
-        self.history_index.is_none() && !self.result_history.is_empty()
     }
 }
 
@@ -311,35 +274,13 @@ mod tests {
 
             assert_eq!(qe.visible_result_kind(), VisibleResultKind::LiveAdhoc);
         }
-
-        #[test]
-        fn history_entry_kind_when_history_index_set() {
-            let mut qe = QueryExecution::default();
-            qe.result_history.push(make_result(QuerySource::Adhoc));
-            qe.history_index = Some(0);
-
-            assert_eq!(qe.visible_result_kind(), VisibleResultKind::HistoryEntry(0));
-        }
-
-        #[test]
-        fn history_entry_even_when_index_out_of_range() {
-            let qe = QueryExecution {
-                history_index: Some(99),
-                ..Default::default()
-            };
-
-            assert_eq!(
-                qe.visible_result_kind(),
-                VisibleResultKind::HistoryEntry(99)
-            );
-        }
     }
 
     mod visible_result_tests {
         use super::*;
 
         #[test]
-        fn current_result_when_no_history_index() {
+        fn current_result_when_present() {
             let qe = QueryExecution {
                 current_result: Some(make_result(QuerySource::Preview)),
                 ..Default::default()
@@ -350,24 +291,13 @@ mod tests {
         }
 
         #[test]
-        fn history_entry_when_history_index_set() {
+        fn history_does_not_replace_current_result() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.current_result = Some(make_result(QuerySource::Preview));
-            qe.history_index = Some(0);
 
             assert!(qe.visible_result().is_some());
-            assert_eq!(qe.visible_result().unwrap().source, QuerySource::Adhoc);
-        }
-
-        #[test]
-        fn history_index_out_of_range_returns_none() {
-            let qe = QueryExecution {
-                history_index: Some(99),
-                ..Default::default()
-            };
-
-            assert!(qe.visible_result().is_none());
+            assert_eq!(qe.visible_result().unwrap().source, QuerySource::Preview);
         }
 
         #[test]
@@ -409,17 +339,11 @@ mod tests {
                 ..Default::default()
             };
             let empty = QueryExecution::default();
-            let mut history = QueryExecution::default();
-            history
-                .result_history
-                .push(make_result(QuerySource::Preview));
-            history.history_index = Some(0);
 
             assert!(preview.can_edit_visible_result());
             assert!(!preview_error.can_edit_visible_result());
             assert!(!adhoc.can_edit_visible_result());
             assert!(!empty.can_edit_visible_result());
-            assert!(!history.can_edit_visible_result());
         }
 
         #[test]
@@ -436,67 +360,6 @@ mod tests {
             assert!(preview.can_paginate_visible_result());
             assert!(!adhoc.can_paginate_visible_result());
         }
-
-        #[test]
-        fn is_history_mode_reflects_history_index() {
-            let normal = QueryExecution::default();
-            let history = QueryExecution {
-                history_index: Some(0),
-                ..Default::default()
-            };
-
-            assert!(!normal.is_history_mode());
-            assert!(history.is_history_mode());
-        }
-    }
-
-    mod history_bar_tests {
-        use super::*;
-
-        #[test]
-        fn absent_when_not_in_history() {
-            let qe = QueryExecution::default();
-
-            assert!(qe.history_bar().is_none());
-        }
-
-        #[test]
-        fn shows_index_and_total_when_in_history() {
-            let mut qe = QueryExecution::default();
-            qe.result_history.push(make_result(QuerySource::Adhoc));
-            qe.result_history.push(make_result(QuerySource::Adhoc));
-            qe.history_index = Some(1);
-
-            assert_eq!(qe.history_bar(), Some((1, 2)));
-        }
-    }
-
-    mod has_history_hint_tests {
-        use super::*;
-
-        #[test]
-        fn false_when_no_history() {
-            let qe = QueryExecution::default();
-
-            assert!(!qe.has_history_hint());
-        }
-
-        #[test]
-        fn true_when_history_exists_and_not_browsing() {
-            let mut qe = QueryExecution::default();
-            qe.result_history.push(make_result(QuerySource::Adhoc));
-
-            assert!(qe.has_history_hint());
-        }
-
-        #[test]
-        fn false_when_browsing_history() {
-            let mut qe = QueryExecution::default();
-            qe.result_history.push(make_result(QuerySource::Adhoc));
-            qe.history_index = Some(0);
-
-            assert!(!qe.has_history_hint());
-        }
     }
 
     #[test]
@@ -506,7 +369,6 @@ mod tests {
         assert_eq!(execution.status(), QueryStatus::Idle);
         assert!(execution.start_time().is_none());
         assert!(execution.current_result().is_none());
-        assert!(execution.history_index().is_none());
         assert_eq!(execution.result_generation(), 0);
     }
 
@@ -535,17 +397,6 @@ mod tests {
         }
 
         #[test]
-        fn increments_on_enter_and_exit_history() {
-            let mut qe = QueryExecution::default();
-
-            qe.enter_history(0);
-            assert_eq!(qe.result_generation(), 1);
-
-            qe.exit_history();
-            assert_eq!(qe.result_generation(), 2);
-        }
-
-        #[test]
         fn increments_on_push_history() {
             let mut qe = QueryExecution::default();
 
@@ -563,8 +414,6 @@ mod tests {
             // These should not change generation
             let _ = qe.visible_result();
             let _ = qe.visible_result_kind();
-            let _ = qe.history_bar();
-            let _ = qe.is_history_mode();
 
             assert_eq!(qe.result_generation(), before);
         }

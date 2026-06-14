@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 445
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:54
@@ -9,19 +10,19 @@ test_project | test_db | - | no dsn | localhost:54
 │  publi│                     Move cursor││      │
 │       │                     Line start/││      │
 │       │                     Insert tab ││      │
-│       │                     Trigger com││      │
 │       │                     Preview and││      │
 │       │                     Edit cell v││      │
-│       │                     Move cursor┃│      │
-│       │                     Jump to sta┃│──────┘
-│       │                     Open comman││──────┐
-│       │                     Exit to Cel││      │
+│       │                     Move cursor││      │
+│       │                     Jump to sta┃│      │
+│       │                     Open comman┃│──────┘
+│       │                     Exit to Cel││──────┐
 │       │                     Line start/││      │
 │       │                     Execute the││      │
 │       │                     Cancel and ││      │
 │       │                                ││      │
 │       │                                ││      │
-│       │                     Type to fil▼│      │
+│       │                     Type to fil││      │
+│       │                     Type to sea▼│      │
 │       │ col  25% ◀︎────═════───────────▶︎ │      │
 └───────╰ type: Filter │ Backspace: Edit │╯──────┘
 ←→:H-Scroll  ?:Close

@@ -260,7 +260,7 @@ impl AppState {
     }
 
     pub fn can_request_csv_export(&self) -> bool {
-        !self.query.is_history_mode() && self.query.visible_result().is_some_and(|r| !r.is_error())
+        self.query.visible_result().is_some_and(|r| !r.is_error())
     }
 
     /// True when a run-scoped async response no longer belongs to the active
@@ -682,17 +682,6 @@ mod tests {
                 .set_current_result(make_query_result(QuerySource::Preview));
 
             assert!(state.can_request_csv_export());
-        }
-
-        #[test]
-        fn csv_export_blocked_in_history_mode() {
-            let mut state = make_state();
-            state
-                .query
-                .push_history(make_query_result(QuerySource::Adhoc));
-            state.query.enter_history(0);
-
-            assert!(!state.can_request_csv_export());
         }
     }
 

@@ -276,10 +276,6 @@ pub fn handle_sql_modal_keys_with_prefix(
         return Action::OpenModal(ModalKind::QueryHistoryPicker);
     }
 
-    if ctrl && combo.key == Key::Char(' ') {
-        return Action::CompletionTrigger;
-    }
-
     if ctrl && combo.key == Key::Char('e') {
         return Action::ExplainRequest;
     }
@@ -386,7 +382,6 @@ mod tests {
         SqlModalEnterInsert,
         SqlModalEnterNormal,
         SqlModalYank,
-        CompletionTrigger,
         CompletionAccept,
         CompletionDismiss,
         CompletionPrev,
@@ -445,7 +440,6 @@ mod tests {
                 assert!(matches!(result, Action::SqlModalEnterNormal));
             }
             Expected::SqlModalYank => assert!(matches!(result, Action::SqlModalYank)),
-            Expected::CompletionTrigger => assert!(matches!(result, Action::CompletionTrigger)),
             Expected::CompletionAccept => assert!(matches!(result, Action::CompletionAccept)),
             Expected::CompletionDismiss => assert!(matches!(result, Action::CompletionDismiss)),
             Expected::CompletionPrev => assert!(matches!(result, Action::CompletionPrev)),
@@ -655,18 +649,6 @@ mod tests {
                 result,
                 Action::OpenModal(ModalKind::QueryHistoryPicker)
             ));
-        }
-
-        #[test]
-        fn ctrl_space_triggers_completion() {
-            let result = handle_sql_modal_keys(
-                combo_ctrl(Key::Char(' ')),
-                false,
-                &SqlModalStatus::Editing,
-                SqlModalTab::Sql,
-            );
-
-            assert_action(result, Expected::CompletionTrigger);
         }
 
         #[rstest]

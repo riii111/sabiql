@@ -483,40 +483,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
     result_active::ROW_YANK,
 ];
 
-pub mod history {
-    use crate::update::action::Action;
-    use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
-
-    pub const OPEN: KeyBinding = KeyBinding {
-        key_short: "^H",
-        key: "Ctrl+H",
-        desc_short: "History",
-        description: "Toggle Result History",
-        action: Action::OpenResultHistory,
-        combos: &[KeyCombo::ctrl(Key::Char('h'))],
-    };
-
-    pub const NAV: KeyBinding = KeyBinding {
-        key_short: "]/[",
-        key: "] / [",
-        desc_short: "History",
-        description: "Navigate history newer/older",
-        action: Action::None,
-        combos: &[],
-    };
-
-    pub const EXIT: KeyBinding = KeyBinding {
-        key_short: "^H",
-        key: "Ctrl+H",
-        desc_short: "Back",
-        description: "Exit history (back to latest)",
-        action: Action::None,
-        combos: &[],
-    };
-}
-
-pub const HISTORY_KEYS: &[KeyBinding] = &[history::OPEN, history::NAV, history::EXIT];
-
 pub mod inspector_ddl {
     use crate::update::action::Action;
     use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};

@@ -449,28 +449,19 @@ pub struct ColumnWidthsCache {
     pub ideal_widths: Vec<u16>,
     pub header_min_widths: Vec<u16>,
     generation: u64,
-    history_index: Option<usize>,
 }
 
 impl ColumnWidthsCache {
-    pub fn new(
-        ideal_widths: Vec<u16>,
-        header_min_widths: Vec<u16>,
-        generation: u64,
-        history_index: Option<usize>,
-    ) -> Self {
+    pub fn new(ideal_widths: Vec<u16>, header_min_widths: Vec<u16>, generation: u64) -> Self {
         Self {
             ideal_widths,
             header_min_widths,
             generation,
-            history_index,
         }
     }
 
-    pub fn is_valid(&self, generation: u64, history_index: Option<usize>) -> bool {
-        self.generation == generation
-            && self.history_index == history_index
-            && !self.ideal_widths.is_empty()
+    pub fn is_valid(&self, generation: u64) -> bool {
+        self.generation == generation && !self.ideal_widths.is_empty()
     }
 }
 

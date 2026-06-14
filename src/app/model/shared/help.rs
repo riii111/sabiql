@@ -19,7 +19,6 @@ impl Default for HelpState {
             origin: HelpOrigin::Normal {
                 focused_pane: FocusedPane::default(),
                 result_active: false,
-                history_mode: false,
             },
             filter: TextInputState::default(),
             scroll_offset: 0,
@@ -90,7 +89,6 @@ pub enum HelpOrigin {
     Normal {
         focused_pane: FocusedPane,
         result_active: bool,
-        history_mode: bool,
     },
     CommandLine,
     CellEdit,
@@ -119,7 +117,6 @@ impl HelpOrigin {
             InputMode::Normal => Self::Normal {
                 focused_pane: state.ui.focused_pane,
                 result_active: state.result_interaction.selection().cell().is_some(),
-                history_mode: state.query.is_history_mode(),
             },
             InputMode::CommandLine => Self::CommandLine,
             InputMode::CellEdit => Self::CellEdit,
@@ -145,9 +142,6 @@ impl HelpOrigin {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::Normal {
-                history_mode: true, ..
-            } => "Result History",
             Self::Normal {
                 focused_pane: FocusedPane::Explorer,
                 ..
@@ -265,7 +259,6 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Inspector,
                 result_active: false,
-                history_mode: false,
             }
         ));
     }
@@ -281,24 +274,6 @@ mod tests {
             origin,
             HelpOrigin::Normal {
                 result_active: true,
-                history_mode: false,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn normal_origin_captures_history_mode() {
-        let mut state = AppState::new("test".to_string());
-        state.query.enter_history(0);
-
-        let origin = HelpOrigin::from_state(&state);
-
-        assert!(matches!(
-            origin,
-            HelpOrigin::Normal {
-                result_active: false,
-                history_mode: true,
                 ..
             }
         ));

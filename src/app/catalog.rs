@@ -186,9 +186,6 @@ impl HelpRow {
 fn current_section(origin: HelpOrigin) -> HelpSection {
     let rows = match origin {
         HelpOrigin::Normal {
-            history_mode: true, ..
-        } => rows_from_binding_refs(&[&history::NAV, &history::EXIT]),
-        HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
             result_active: true,
             ..
@@ -443,7 +440,6 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
-                history_mode: false,
             },
             "",
         );
@@ -463,7 +459,6 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
-                history_mode: false,
             },
             "copy",
         );
@@ -485,7 +480,6 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
-                history_mode: false,
             },
             "navigation",
         );
@@ -504,7 +498,6 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
-                history_mode: false,
             },
             "zz-no-match",
         );
@@ -522,7 +515,6 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
-                history_mode: false,
             },
             "",
         );

@@ -12,8 +12,8 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
     cell_edit, command_palette, connection_error, connection_selector, connection_setup, er_picker,
-    footer_nav, global, help, history, inspector_ddl, jsonb_detail, jsonb_edit, jsonb_search,
-    overlay, query_history_picker, result_active, sql_modal, sql_modal_confirming, sql_modal_plan,
+    footer_nav, global, help, inspector_ddl, jsonb_detail, jsonb_edit, jsonb_search, overlay,
+    query_history_picker, result_active, sql_modal, sql_modal_confirming, sql_modal_plan,
     table_picker,
 };
 use crate::features::settings::hints::settings_hints;
@@ -86,14 +86,6 @@ impl Footer {
 
         match state.input_mode() {
             InputMode::Normal => {
-                if state.query.is_history_mode() {
-                    return vec![
-                        history::NAV.as_hint(),
-                        global::HELP.as_hint(),
-                        history::EXIT.as_hint(),
-                    ];
-                }
-
                 let result_navigation =
                     state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result;
                 let nav_mode = state.result_interaction.selection().mode();

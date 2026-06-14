@@ -32,7 +32,6 @@ mod er_diagram;
 mod initial_state;
 mod inspector;
 mod overlays;
-mod result_history;
 mod result_pane;
 mod style_assertions;
 mod table_explorer;

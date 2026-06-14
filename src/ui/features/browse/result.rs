@@ -38,11 +38,9 @@ struct ResultTableParams<'a> {
     stored_plan: &'a ViewportPlan,
     stored_cache: &'a ColumnWidthsCache,
     result_generation: u64,
-    history_index: Option<usize>,
     selection: &'a ResultSelection,
     editing_cell: Option<EditingCellView<'a>>,
     staged_delete_rows: &'a BTreeSet<usize>,
-    history_bar: Option<(usize, usize)>,
     yank_flash: Option<YankFlash>,
     now: Instant,
 }
@@ -62,7 +60,7 @@ impl ResultPane {
             .is_some_and(|t| now < t);
 
         let result = state.query.visible_result();
-        let title = Self::build_title(result, state);
+        let title = Self::build_title(result);
 
         let block = panel_block_highlight(&title, is_focused, should_highlight, theme);
 
@@ -96,11 +94,9 @@ impl ResultPane {
                         stored_plan: &state.ui.result_viewport_plan,
                         stored_cache: &state.ui.result_widths_cache,
                         result_generation: state.query.result_generation(),
-                        history_index: state.query.history_index(),
                         selection: state.result_interaction.selection(),
                         editing_cell,
                         staged_delete_rows: state.result_interaction.staged_delete_rows(),
-                        history_bar: state.query.history_bar(),
                         yank_flash: state.result_interaction.yank_flash,
                         now,
                     },
@@ -113,7 +109,7 @@ impl ResultPane {
         }
     }
 
-    fn build_title(result: Option<&QueryResult>, state: &AppState) -> String {
+    fn build_title(result: Option<&QueryResult>) -> String {
         match result {
             None => " [3] Result ".to_string(),
             Some(r) => {
@@ -122,21 +118,14 @@ impl ResultPane {
                     QuerySource::Adhoc => "Result Query",
                 };
 
-                let history_hint = if state.query.has_history_hint() {
-                    " (history: ^H)"
-                } else {
-                    ""
-                };
-
                 if r.is_error() {
-                    format!(" [3] {name} ERROR{history_hint} ")
+                    format!(" [3] {name} ERROR ")
                 } else {
                     format!(
-                        " [3] {} ({}, {}ms){} ",
+                        " [3] {} ({}, {}ms) ",
                         name,
                         r.row_count_display(),
                         r.execution_time_ms,
-                        history_hint,
                     )
                 }
             }
@@ -190,11 +179,9 @@ impl ResultPane {
             stored_plan,
             stored_cache,
             result_generation,
-            history_index,
             selection,
             editing_cell,
             staged_delete_rows,
-            history_bar,
             yank_flash,
             now,
         } = params;
@@ -205,7 +192,7 @@ impl ResultPane {
             return (ViewportPlan::default(), ColumnWidthsCache::default());
         }
 
-        let cached = stored_cache.is_valid(result_generation, history_index);
+        let cached = stored_cache.is_valid(result_generation);
         let fresh_ideal;
         let fresh_min;
         let (ideal_widths, min_widths) = if cached {
@@ -233,7 +220,6 @@ impl ResultPane {
                 ideal_widths.to_vec(),
                 min_widths.to_vec(),
                 result_generation,
-                history_index,
             )
         };
 
@@ -397,33 +383,9 @@ impl ResultPane {
             },
             theme,
         );
-        // Split bottom row: history bar on left, h-scroll indicator on right
-        let history_bar_width = if let Some((idx, total)) = history_bar {
-            let text = format!("\u{25C0} {}/{} \u{25B6}", idx + 1, total);
-            let render_width = (text.chars().count() as u16).min(inner.width);
-            let bottom_row = inner.y + inner.height.saturating_sub(1);
-            frame.render_widget(
-                Paragraph::new(Line::from(vec![ratatui::text::Span::styled(
-                    text,
-                    Style::default().fg(theme.semantic.text.secondary),
-                )])),
-                Rect::new(inner.x, bottom_row, render_width, 1),
-            );
-            render_width
-        } else {
-            0
-        };
-
-        // Shift h-scroll indicator right to avoid overlapping the history bar
-        let h_scroll_area = Rect::new(
-            inner.x + history_bar_width,
-            inner.y,
-            inner.width.saturating_sub(history_bar_width),
-            inner.height,
-        );
         render_horizontal_scroll_indicator(
             frame,
-            h_scroll_area,
+            inner,
             HorizontalScrollParams {
                 position: clamped_offset,
                 viewport_size: plan.indicator_viewport_size(),
@@ -730,10 +692,10 @@ mod tests {
         // Cached: is_valid check + clone (actual cache-hit path)
         let ideal = calculate_ideal_widths(&headers, &data);
         let min = calculate_header_min_widths(&headers);
-        let cache = ColumnWidthsCache::new(ideal, min, 1, None);
+        let cache = ColumnWidthsCache::new(ideal, min, 1);
         let start = Instant::now();
         for _ in 0..iterations {
-            let valid = std::hint::black_box(cache.is_valid(1, None));
+            let valid = std::hint::black_box(cache.is_valid(1));
             if valid {
                 std::hint::black_box(cache.clone());
             }

@@ -54,7 +54,6 @@ fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
     state
         .query
         .set_result_highlight(now + Duration::from_millis(500));
-    state.query.exit_history();
 }
 
 pub fn reduce_execution(
@@ -509,7 +508,7 @@ mod tests {
         }
 
         #[test]
-        fn adhoc_success_writes_current_result_without_touching_history_index() {
+        fn adhoc_success_writes_current_result_and_records_history() {
             let mut state = create_test_state();
             state.result_interaction.scroll_offset = 50;
             state.result_interaction.horizontal_offset = 10;
@@ -522,7 +521,6 @@ mod tests {
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert_eq!(state.query.result_history().len(), 1);
-            assert_eq!(state.query.history_index(), None);
             assert!(state.query.current_result().is_some());
             assert_eq!(
                 state.query.current_result().unwrap().source,
@@ -547,7 +545,6 @@ mod tests {
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
             assert!(state.query.result_history().is_empty());
-            assert_eq!(state.query.history_index(), None);
             assert_eq!(
                 state.query.current_result().unwrap().source,
                 QuerySource::Preview,
@@ -555,20 +552,6 @@ mod tests {
             assert_eq!(state.result_interaction.scroll_offset, 20);
             assert_eq!(state.result_interaction.horizontal_offset, 5);
             assert_eq!(state.result_interaction.selection().row(), Some(3));
-        }
-
-        #[test]
-        fn preview_clears_history_index() {
-            let mut state = create_test_state();
-            state.session.set_selection_generation(1);
-            state.query.push_history(adhoc_result());
-            state.query.enter_history(0);
-            let action = query_completed_action(&mut state, preview_result(5), 1, Some(0));
-
-            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
-
-            assert_eq!(state.query.history_index(), None);
-            assert!(state.query.current_result().is_some());
         }
 
         #[test]
