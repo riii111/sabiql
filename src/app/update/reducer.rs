@@ -2782,14 +2782,42 @@ mod tests {
         }
 
         #[rstest]
-        #[case(Action::ToggleModal(ModalKind::Help), InputMode::Help)]
-        #[case(Action::OpenModal(ModalKind::TablePicker), InputMode::TablePicker)]
-        #[case(Action::OpenModal(ModalKind::SqlModal), InputMode::SqlModal)]
+        #[case(
+            KeymapPreset::Default,
+            Action::ToggleModal(ModalKind::Help),
+            InputMode::Help
+        )]
+        #[case(
+            KeymapPreset::Default,
+            Action::OpenModal(ModalKind::TablePicker),
+            InputMode::TablePicker
+        )]
+        #[case(
+            KeymapPreset::Default,
+            Action::OpenModal(ModalKind::SqlModal),
+            InputMode::SqlModal
+        )]
+        #[case(
+            KeymapPreset::Ide,
+            Action::ToggleModal(ModalKind::Help),
+            InputMode::Help
+        )]
+        #[case(
+            KeymapPreset::Ide,
+            Action::OpenModal(ModalKind::TablePicker),
+            InputMode::TablePicker
+        )]
+        #[case(
+            KeymapPreset::Ide,
+            Action::OpenModal(ModalKind::SqlModal),
+            InputMode::SqlModal
+        )]
         fn confirm_selection_applies_sub_action(
+            #[case] preset: KeymapPreset,
             #[case] target_action: Action,
             #[case] expected_mode: InputMode,
         ) {
-            let mut state = state_in_palette_mode(KeymapPreset::Ide);
+            let mut state = state_in_palette_mode(preset);
             let entry_index = palette_index_of(&state, |a| same_palette_action(a, &target_action));
             state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
