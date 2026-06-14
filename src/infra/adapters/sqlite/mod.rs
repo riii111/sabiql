@@ -1335,6 +1335,17 @@ mod tests {
         }
 
         #[test]
+        fn strip_sqlite_probes_removes_probe_result_sets() {
+            let marker = "probe";
+            let stdout = "id,name\n1,Alice\nprobe_stmt,probe_changes\n0,2\nvalue\n42\n";
+
+            let (filtered, changes) = strip_sqlite_probes(stdout, marker).unwrap();
+
+            assert_eq!(changes.get(&0), Some(&2));
+            assert_eq!(filtered, "id,name\n1,Alice\nvalue\n42\n");
+        }
+
+        #[test]
         fn parse_count_result_reads_first_result_cell() {
             assert_eq!(parse_count_result("COUNT(*)\n42\n").unwrap(), 42);
         }
@@ -1444,6 +1455,126 @@ mod tests {
 
             assert_eq!(result.row_count, 1);
             assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
+        }
+
+        #[tokio::test]
+        async fn dml_with_following_select_preserves_result_set_and_refresh_tag() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "UPDATE users SET name = 'x' WHERE id = 1; SELECT name FROM users",
+                    false,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(result.columns, vec!["name"]);
+            assert_eq!(result.rows, vec![vec!["x".to_string()]]);
+            assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
+        }
+
+        #[tokio::test]
+        async fn multi_dml_uses_last_effective_refresh_tag() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "INSERT INTO users(id, name) VALUES (2, 'b'), (3, 'c');
+                     UPDATE users SET name = 'z' WHERE id IN (1, 2);
+                     DELETE FROM users WHERE id = 3",
+                    false,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(result.row_count, 1);
+            assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
+        }
+
+        #[tokio::test]
+        async fn ddl_wins_over_later_dml_for_refresh_tag() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY);
+                     INSERT INTO users(id) VALUES (1)",
+                    false,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                result.command_tag,
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+            assert_eq!(result.row_count, 0);
+        }
+
+        #[tokio::test]
+        async fn rolled_back_dml_returns_rollback_tag() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "BEGIN; INSERT INTO users(id) VALUES (1); ROLLBACK",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.command_tag, Some(CommandTag::Rollback));
+            assert!(rows.rows.is_empty());
+        }
+
+        #[tokio::test]
+        async fn savepoint_rollback_discards_inner_dml_only() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "BEGIN;
+                     INSERT INTO users(id) VALUES (1);
+                     SAVEPOINT sp;
+                     INSERT INTO users(id) VALUES (2);
+                     ROLLBACK TO sp;
+                     COMMIT",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+            assert_eq!(rows.rows, vec![vec!["1".to_string()]]);
         }
 
         #[tokio::test]
