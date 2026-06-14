@@ -1257,6 +1257,7 @@ mod tests {
                 #[test]
                 fn ctrl_e_cancels_sequence_even_when_export_is_available() {
                     let state = state_waiting_z_prefix_with_result();
+                    assert!(state.can_request_csv_export());
 
                     let result = handle_normal_mode(combo_ctrl(Key::Char('e')), &state);
 
