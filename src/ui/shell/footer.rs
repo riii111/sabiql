@@ -195,14 +195,21 @@ impl Footer {
                 overlay::ENTER_EXECUTE.as_hint(),
                 overlay::ESC_CANCEL.as_hint(),
             ],
-            InputMode::CellEdit => vec![
-                cell_edit::WRITE.as_hint(),
-                cell_edit::TYPE.as_hint(),
-                cell_edit::MOVE.as_hint(),
-                global::HELP.as_hint(),
-                cell_edit::ESC_CANCEL.as_hint(),
-                global::QUIT.as_hint(),
-            ],
+            InputMode::CellEdit => {
+                let esc_hint = if state.cell_detail.is_active() {
+                    ("Esc", "Back")
+                } else {
+                    cell_edit::ESC_CANCEL.as_hint()
+                };
+                vec![
+                    cell_edit::WRITE.as_hint(),
+                    cell_edit::TYPE.as_hint(),
+                    cell_edit::MOVE.as_hint(),
+                    global::HELP.as_hint(),
+                    esc_hint,
+                    global::QUIT.as_hint(),
+                ]
+            }
             InputMode::TablePicker => vec![
                 table_picker::ENTER_SELECT.as_hint(),
                 table_picker::TYPE_FILTER.as_hint(),
@@ -332,6 +339,7 @@ impl Footer {
                 } else {
                     vec![
                         cell_detail::YANK.as_hint(),
+                        cell_detail::INSERT.as_hint(),
                         cell_detail::SEARCH.as_hint(),
                         cell_detail::NEXT_PREV.as_hint(),
                         cell_detail::SCROLL.as_hint(),

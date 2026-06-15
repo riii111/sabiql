@@ -153,15 +153,17 @@ impl MainLayout {
         };
 
         let cell_detail_viewport = match state.input_mode() {
-            InputMode::CellDetail => CellDetail::render(frame, state, now, theme).map(
-                |CellDetailRenderMetrics {
-                     visible_rows,
-                     viewport_width,
-                 }| CellDetailViewport {
-                    visible_rows,
-                    viewport_width,
-                },
-            ),
+            InputMode::CellDetail | InputMode::CellEdit if state.cell_detail.is_active() => {
+                CellDetail::render(frame, state, now, theme).map(
+                    |CellDetailRenderMetrics {
+                         visible_rows,
+                         viewport_width,
+                     }| CellDetailViewport {
+                        visible_rows,
+                        viewport_width,
+                    },
+                )
+            }
             _ => None,
         };
 

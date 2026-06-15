@@ -63,6 +63,28 @@ fn cell_detail_state() -> (AppState, std::time::Instant) {
             1,
             QuerySource::Preview,
         )));
+    let mut table = fixtures::sample_table_detail();
+    table.name = "notes".to_string();
+    table.columns = vec![
+        Column {
+            name: "id".to_string(),
+            data_type: "integer".to_string(),
+            attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+            default: None,
+            comment: None,
+            ordinal_position: 1,
+        },
+        Column {
+            name: "body".to_string(),
+            data_type: "text".to_string(),
+            attributes: ColumnAttributes::NULLABLE,
+            default: None,
+            comment: None,
+            ordinal_position: 2,
+        },
+    ];
+    let _ = state.session.set_table_detail(table, 0);
+    state.query.pagination.reset_for_table("public", "notes");
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 1);
     (state, now)
@@ -374,6 +396,30 @@ fn result_pane_cell_detail_mode() {
         now,
     );
     assert_eq!(state.input_mode(), InputMode::CellDetail);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_cell_detail_edit_mode() {
+    let (mut state, now) = cell_detail_state();
+    let mut terminal = create_test_terminal();
+
+    dispatch_result(
+        &mut state,
+        &Action::ResultOpenCellDetail,
+        &AppServices::stub(),
+        now,
+    );
+    dispatch_result(
+        &mut state,
+        &Action::ResultEnterCellEdit,
+        &AppServices::stub(),
+        now,
+    );
+    assert_eq!(state.input_mode(), InputMode::CellEdit);
 
     let output = render_to_string(&mut terminal, &mut state);
 

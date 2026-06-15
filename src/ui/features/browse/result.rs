@@ -75,14 +75,18 @@ impl ResultPane {
                 default_result()
             } else {
                 let cell_edit = state.result_interaction.cell_edit();
-                let editing_cell = cell_edit.is_active().then(|| EditingCellView {
-                    row: cell_edit.row().unwrap_or_default(),
-                    col: cell_edit.col().unwrap_or_default(),
-                    draft: cell_edit.draft_value(),
-                    actively_editing: state.input_mode()
-                        == crate::app::model::shared::input_mode::InputMode::CellEdit,
-                    cursor: cell_edit.input().cursor(),
-                });
+                let editing_in_cell_detail = state.cell_detail.is_active()
+                    && state.input_mode()
+                        == crate::app::model::shared::input_mode::InputMode::CellEdit;
+                let editing_cell =
+                    (cell_edit.is_active() && !editing_in_cell_detail).then(|| EditingCellView {
+                        row: cell_edit.row().unwrap_or_default(),
+                        col: cell_edit.col().unwrap_or_default(),
+                        draft: cell_edit.draft_value(),
+                        actively_editing: state.input_mode()
+                            == crate::app::model::shared::input_mode::InputMode::CellEdit,
+                        cursor: cell_edit.input().cursor(),
+                    });
                 Self::render_table(
                     frame,
                     area,

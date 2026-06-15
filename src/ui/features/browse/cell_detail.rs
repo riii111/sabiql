@@ -7,8 +7,9 @@ use unicode_casefold::UnicodeCaseFold;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::input_mode::InputMode;
 use crate::features::browse::detail_view::{render_detail_search, search_match_status};
-use crate::primitives::atoms::apply_yank_flash;
+use crate::primitives::atoms::{apply_yank_flash, text_cursor_spans};
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
@@ -30,11 +31,28 @@ impl CellDetail {
             return None;
         }
 
-        let title = format!(
-            " Cell Detail \u{2500}\u{2500} {}",
-            state.cell_detail.column_name()
-        );
-        let hints = vec![("y", "Copy"), ("/", "Search"), ("Esc", "Close")];
+        let is_editing = is_editing_cell_detail(state);
+        let title = if is_editing {
+            format!(
+                " Cell Detail Edit \u{2500}\u{2500} {}",
+                state.cell_detail.column_name()
+            )
+        } else {
+            format!(
+                " Cell Detail \u{2500}\u{2500} {}",
+                state.cell_detail.column_name()
+            )
+        };
+        let hints = if is_editing {
+            vec![("Enter", "Write"), ("Esc", "Back")]
+        } else {
+            vec![
+                ("i", "Edit"),
+                ("y", "Copy"),
+                ("/", "Search"),
+                ("Esc", "Close"),
+            ]
+        };
         let (_area, inner) = render_modal(
             frame,
             Constraint::Percentage(80),
@@ -44,19 +62,20 @@ impl CellDetail {
             theme,
         );
 
-        let (content_area, status_area, search_area) = if state.cell_detail.search().is_active() {
-            let [content_area, status_area, search_area] = Layout::vertical([
-                Constraint::Min(1),
-                Constraint::Length(1),
-                Constraint::Length(1),
-            ])
-            .areas(inner);
-            (content_area, status_area, Some(search_area))
-        } else {
-            let [content_area, status_area] =
-                Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-            (content_area, status_area, None)
-        };
+        let (content_area, status_area, search_area) =
+            if !is_editing && state.cell_detail.search().is_active() {
+                let [content_area, status_area, search_area] = Layout::vertical([
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                ])
+                .areas(inner);
+                (content_area, status_area, Some(search_area))
+            } else {
+                let [content_area, status_area] =
+                    Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+                (content_area, status_area, None)
+            };
 
         Self::render_content(frame, content_area, state, now, theme);
         Self::render_status(frame, status_area, state, theme);
@@ -92,7 +111,17 @@ impl CellDetail {
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let search = state.cell_detail.search();
-        let status = if search.is_active() {
+        let status = if is_editing_cell_detail(state) {
+            format!(
+                "{} chars",
+                state
+                    .result_interaction
+                    .cell_edit()
+                    .draft_value()
+                    .chars()
+                    .count()
+            )
+        } else if search.is_active() {
             search_match_status(search)
         } else {
             format!("{} chars", state.cell_detail.content().chars().count())
@@ -113,6 +142,10 @@ impl CellDetail {
 }
 
 fn content_lines(state: &AppState, theme: &ThemePalette) -> Vec<Line<'static>> {
+    if is_editing_cell_detail(state) {
+        return editable_content_lines(state, theme);
+    }
+
     let content = state.cell_detail.content();
     if content.is_empty() {
         return vec![Line::from(Span::styled(
@@ -143,6 +176,47 @@ fn content_lines(state: &AppState, theme: &ThemePalette) -> Vec<Line<'static>> {
                     highlighted_line(line, pos - line_start, &query, theme)
                 }
                 _ => Line::from(Span::raw(line.to_string())),
+            }
+        })
+        .collect()
+}
+
+fn is_editing_cell_detail(state: &AppState) -> bool {
+    let edit = state.result_interaction.cell_edit();
+    state.input_mode() == InputMode::CellEdit
+        && state.cell_detail.is_active()
+        && edit.is_active()
+        && edit.row() == Some(state.cell_detail.row())
+        && edit.col() == Some(state.cell_detail.col())
+}
+
+fn editable_content_lines(state: &AppState, theme: &ThemePalette) -> Vec<Line<'static>> {
+    let edit = state.result_interaction.cell_edit();
+    let content = edit.draft_value();
+    if content.is_empty() {
+        return vec![Line::from(text_cursor_spans("", 0, 0, usize::MAX, theme))];
+    }
+
+    let cursor = edit.input().cursor();
+    let mut seen = 0;
+    content
+        .split('\n')
+        .map(|line| {
+            let line_len = line.chars().count();
+            let line_start = seen;
+            let line_end = line_start + line_len;
+            seen = line_end + 1;
+
+            if cursor >= line_start && cursor <= line_end {
+                Line::from(text_cursor_spans(
+                    line,
+                    cursor - line_start,
+                    0,
+                    usize::MAX,
+                    theme,
+                ))
+            } else {
+                Line::from(Span::raw(line.to_string()))
             }
         })
         .collect()
