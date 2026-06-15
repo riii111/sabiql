@@ -354,6 +354,29 @@ mod tests {
     }
 
     #[test]
+    fn cell_detail_edit_origin_tracks_cell_detail_mode() {
+        let mut state = AppState::new("test".to_string());
+        state.cell_detail = crate::model::browse::cell_detail::CellDetailState::open(
+            0,
+            0,
+            "body".to_string(),
+            "hello".to_string(),
+            "hello".to_string(),
+        );
+        state.cell_detail.enter_edit();
+        state.modal.set_mode(InputMode::CellDetail);
+
+        let origin = HelpOrigin::from_state(&state);
+
+        assert!(matches!(
+            origin,
+            HelpOrigin::CellDetail {
+                mode: CellDetailHelpMode::Edit,
+            }
+        ));
+    }
+
+    #[test]
     fn filter_input_resets_offsets() {
         let mut state = HelpState::default();
         state.set_scroll_offset(10);

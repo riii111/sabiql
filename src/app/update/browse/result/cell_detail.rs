@@ -467,6 +467,12 @@ mod tests {
             &services,
         );
 
+        assert!(!state.cell_detail.is_active());
+        assert_eq!(
+            state.result_interaction.cell_edit().draft_value(),
+            "updated"
+        );
+
         let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
         let preview = match effects.first() {
             Some(Effect::DispatchActions(actions)) => match actions.first() {
