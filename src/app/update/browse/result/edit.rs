@@ -61,9 +61,11 @@ fn active_edit_coordinates(state: &AppState) -> Result<(usize, usize), EditGuard
     Ok((row_idx, col_idx))
 }
 
-fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {
-    let (row_idx, col_idx) = active_edit_coordinates(state)?;
-
+pub(super) fn editable_cell_context_at(
+    state: &AppState,
+    row_idx: usize,
+    col_idx: usize,
+) -> Result<String, EditGuardrailError> {
     let (result, pk_cols) = editable_preview_base(state)?;
 
     let column_name = result
@@ -86,6 +88,13 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
         .get(col_idx)
         .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
         .clone();
+
+    Ok(cell_value)
+}
+
+fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {
+    let (row_idx, col_idx) = active_edit_coordinates(state)?;
+    let cell_value = editable_cell_context_at(state, row_idx, col_idx)?;
 
     Ok((row_idx, col_idx, cell_value))
 }

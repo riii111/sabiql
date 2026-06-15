@@ -226,6 +226,22 @@ pub fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
     matches
 }
 
+pub fn casefold_match_len(text: &str, match_start: usize, query: &str) -> usize {
+    let target_len = query.case_fold().count();
+    let mut folded_len = 0;
+    let mut original_len = 0;
+
+    for ch in text.chars().skip(match_start) {
+        folded_len += ch.case_fold().count();
+        original_len += 1;
+        if folded_len >= target_len {
+            break;
+        }
+    }
+
+    original_len
+}
+
 fn casefold_with_char_offsets(text: &str) -> (String, Vec<(usize, usize)>) {
     let mut folded = String::new();
     let mut offset_map = Vec::new();
@@ -281,7 +297,7 @@ fn require_non_empty(state: &mut ConnectionSetupState, field: ConnectionField, m
 
 #[cfg(test)]
 mod text_search_tests {
-    use super::find_text_matches;
+    use super::{casefold_match_len, find_text_matches};
 
     #[test]
     fn text_matches_return_first_match_offset_per_line_case_insensitively() {
@@ -312,6 +328,7 @@ mod text_search_tests {
         let matches = find_text_matches("Maße", "MASSE");
 
         assert_eq!(matches, vec![0]);
+        assert_eq!(casefold_match_len("Maße", matches[0], "MASSE"), 4);
     }
 
     #[test]
@@ -319,6 +336,7 @@ mod text_search_tests {
         let matches = find_text_matches("Maße", "s");
 
         assert_eq!(matches, vec![2]);
+        assert_eq!(casefold_match_len("Maße", matches[0], "s"), 1);
     }
 
     #[test]

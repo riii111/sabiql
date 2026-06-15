@@ -1091,7 +1091,7 @@ pub mod cell_detail {
         key_short: "y",
         key: "y",
         desc_short: "Copy",
-        description: "Copy full cell text",
+        description: "Copy shown cell text",
         bindings: &[ExecBinding {
             action: Action::CellDetailYankAll,
             combos: &[KeyCombo::plain(Key::Char('y'))],
@@ -1112,8 +1112,8 @@ pub mod cell_detail {
     pub const INSERT: ModeRow = ModeRow {
         key_short: "i",
         key: "i / A",
-        desc_short: "Insert",
-        description: "Enter Insert mode / append at line end",
+        desc_short: "Edit",
+        description: "Edit cell text / append at line end",
         bindings: &[
             ExecBinding {
                 action: Action::CellDetailEnterEdit,

@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -8,6 +8,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::cell_detail::CellDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::text_input::TextInputLike;
+use crate::app::update::helpers::casefold_match_len;
 use crate::features::browse::detail_view::{render_detail_search, search_match_status};
 use crate::primitives::atoms::{
     CursorKind, ModalTextSurface, apply_yank_flash, build_modal_text_surface_lines,
@@ -52,7 +53,7 @@ impl CellDetail {
             vec![
                 ("y", "Copy"),
                 ("/", "Search"),
-                ("i", "Insert"),
+                ("i", "Edit"),
                 ("Esc", "Close"),
             ]
         };
@@ -121,10 +122,7 @@ impl CellDetail {
             base_style: Style::default().fg(theme.semantic.text.primary),
             current_line_style: Style::default().bg(theme.component.editor.current_line_bg),
         };
-        let line_spans: Vec<Vec<Span<'static>>> = content
-            .lines()
-            .map(|line| vec![Span::raw(line.to_owned())])
-            .collect();
+        let line_spans = highlighted_line_spans(state, theme);
         let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
         let flash_active = state.flash_timers.is_active(FlashId::CellDetail, now);
@@ -152,5 +150,92 @@ impl CellDetail {
 
     fn render_search(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         render_detail_search(frame, area, state.cell_detail.search(), theme);
+    }
+}
+
+fn highlighted_line_spans(state: &AppState, theme: &ThemePalette) -> Vec<Vec<Span<'static>>> {
+    let content = state.cell_detail.editor().content();
+    let current_match = state
+        .cell_detail
+        .search()
+        .matches()
+        .get(state.cell_detail.search().current_match())
+        .copied();
+    let query = state.cell_detail.search().input().content();
+    let mut char_offset = 0;
+
+    content
+        .lines()
+        .map(|line| {
+            let line_len = line.chars().count();
+            let line_start = char_offset;
+            let line_end = line_start + line_len;
+            char_offset = line_end + 1;
+
+            match current_match {
+                Some(pos) if !query.is_empty() && pos >= line_start && pos < line_end => {
+                    highlighted_spans(line, pos - line_start, query, theme)
+                }
+                _ => vec![Span::raw(line.to_owned())],
+            }
+        })
+        .collect()
+}
+
+fn highlighted_spans(
+    line: &str,
+    match_start: usize,
+    query: &str,
+    theme: &ThemePalette,
+) -> Vec<Span<'static>> {
+    let match_len = casefold_match_len(line, match_start, query);
+    let mut before = String::new();
+    let mut matched = String::new();
+    let mut after = String::new();
+
+    for (idx, ch) in line.chars().enumerate() {
+        if idx < match_start {
+            before.push(ch);
+        } else if idx < match_start + match_len {
+            matched.push(ch);
+        } else {
+            after.push(ch);
+        }
+    }
+
+    vec![
+        Span::raw(before),
+        Span::styled(
+            matched,
+            Style::default()
+                .fg(theme.semantic.text.primary)
+                .bg(theme.semantic.text.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(after),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::DEFAULT_THEME;
+
+    #[test]
+    fn highlighted_spans_marks_current_match() {
+        let spans = highlighted_spans("Alpha", 1, "lp", &DEFAULT_THEME);
+
+        assert_eq!(spans[0].content.as_ref(), "A");
+        assert_eq!(spans[1].content.as_ref(), "lp");
+        assert_eq!(spans[1].style.bg, Some(DEFAULT_THEME.semantic.text.accent));
+        assert_eq!(spans[2].content.as_ref(), "ha");
+    }
+
+    #[test]
+    fn highlighted_spans_uses_casefold_match_length() {
+        let spans = highlighted_spans("Maße", 0, "MASSE", &DEFAULT_THEME);
+
+        assert_eq!(spans[1].content.as_ref(), "Maße");
+        assert_eq!(spans[2].content.as_ref(), "");
     }
 }

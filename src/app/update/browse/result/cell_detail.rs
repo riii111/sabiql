@@ -12,6 +12,7 @@ use crate::model::shared::text_input::TextInputLike;
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::EditGuardrailError;
 use crate::update::helpers::find_text_matches;
 
 pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
@@ -36,7 +37,9 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::CellDetail) => {
-            apply_pending_edit_as_draft(state);
+            if let Err(reason) = apply_pending_edit_as_draft(state) {
+                state.messages.set_error_at(reason.to_string(), now);
+            }
             state.cell_detail.close();
             state.modal.pop_mode();
             DispatchResult::handled()
@@ -53,10 +56,8 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             DispatchResult::handled()
         }
         Action::CellDetailEnterEdit => {
-            if state.session.is_read_only() {
-                state
-                    .messages
-                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+            if let Err(reason) = ensure_cell_detail_editable(state) {
+                state.messages.set_error_at(reason.to_string(), now);
                 return DispatchResult::handled();
             }
             state.cell_detail.enter_edit();
@@ -64,10 +65,8 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             DispatchResult::handled()
         }
         Action::CellDetailAppendInsert => {
-            if state.session.is_read_only() {
-                state
-                    .messages
-                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+            if let Err(reason) = ensure_cell_detail_editable(state) {
+                state.messages.set_error_at(reason.to_string(), now);
                 return DispatchResult::handled();
             }
             state
@@ -250,18 +249,25 @@ fn update_search_matches(state: &mut AppState) {
     state.cell_detail.search_mut().set_matches(matches);
 }
 
-fn apply_pending_edit_as_draft(state: &mut AppState) {
+fn ensure_cell_detail_editable(state: &AppState) -> Result<(), EditGuardrailError> {
+    if state.session.is_read_only() {
+        return Err(EditGuardrailError::GuardrailBlocked(
+            "Read-only mode: editing is disabled".to_string(),
+        ));
+    }
+
+    super::edit::editable_cell_context_at(state, state.cell_detail.row(), state.cell_detail.col())
+        .map(|_| ())
+}
+
+fn apply_pending_edit_as_draft(state: &mut AppState) -> Result<(), EditGuardrailError> {
     if !state.cell_detail.has_pending_changes() {
-        return;
+        return Ok(());
     }
 
     let row = state.cell_detail.row();
     let col = state.cell_detail.col();
-    let original_cell = state
-        .query
-        .visible_result()
-        .and_then(|r| r.rows.get(row).and_then(|r| r.get(col)).cloned())
-        .unwrap_or_else(|| state.cell_detail.original_content().to_string());
+    let original_cell = super::edit::editable_cell_context_at(state, row, col)?;
     let draft = state.cell_detail.editor().content().to_string();
 
     state
@@ -272,6 +278,7 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
         .result_interaction
         .cell_edit_input_mut()
         .set_content(draft);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -445,6 +452,41 @@ mod tests {
         );
 
         assert!(!state.result_interaction.cell_edit().is_active());
+    }
+
+    #[test]
+    fn primary_key_cell_detail_cannot_enter_edit() {
+        let mut state = state_with_cell("integer", "1");
+        state.result_interaction.activate_cell(0, 0);
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        reduce_cell_detail(&mut state, &Action::CellDetailEnterEdit, Instant::now());
+
+        assert_eq!(state.cell_detail.mode(), CellDetailMode::Viewing);
+        assert_eq!(
+            state.messages.last_error.as_deref(),
+            Some("Primary key columns are read-only")
+        );
+    }
+
+    #[test]
+    fn close_does_not_create_draft_when_detail_cell_is_not_editable() {
+        let mut state = state_with_cell("integer", "1");
+        state.result_interaction.activate_cell(0, 0);
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        state.cell_detail.editor_mut().set_content("2".to_string());
+
+        reduce_cell_detail(
+            &mut state,
+            &Action::CloseModal(ModalKind::CellDetail),
+            Instant::now(),
+        );
+
+        assert!(!state.result_interaction.cell_edit().is_active());
+        assert_eq!(
+            state.messages.last_error.as_deref(),
+            Some("Primary key columns are read-only")
+        );
     }
 
     #[test]
