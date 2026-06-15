@@ -2668,7 +2668,6 @@ dependencies = [
  "sabiql-domain",
  "tokio",
  "tokio-util",
- "unicode-casefold",
  "unicode-width",
 ]
 
