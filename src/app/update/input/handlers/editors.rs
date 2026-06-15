@@ -181,6 +181,13 @@ mod tests {
                 }
             ));
         }
+
+        #[test]
+        fn enter_in_inline_cell_edit_is_ignored() {
+            let result = handle_cell_edit_keys(combo(Key::Enter));
+
+            assert!(matches!(result, Action::None));
+        }
     }
 
     mod command_line {

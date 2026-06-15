@@ -139,6 +139,7 @@ pub enum InputTarget {
     JsonbEdit,
     JsonbSearch,
     CellDetailSearch,
+    CellDetailEdit,
     HelpFilter,
 }
 
@@ -575,6 +576,9 @@ pub enum Action {
     // Cell detail
     CellDetailYankAll,
     CellDetailYankSuccess,
+    CellDetailEnterEdit,
+    CellDetailAppendInsert,
+    CellDetailExitEdit,
     CellDetailEnterSearch,
     CellDetailExitSearch,
     CellDetailSearchNext,

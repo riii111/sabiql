@@ -4,11 +4,13 @@ use crate::cmd::effect::Effect;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
-use crate::model::browse::cell_detail::CellDetailState;
+use crate::model::browse::cell_detail::{CellDetailMode, CellDetailState};
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::key_sequence::KeySequenceState;
+use crate::model::shared::text_input::TextInputLike;
 use crate::ports::outbound::ClipboardError;
-use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
+use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::find_text_matches;
 
@@ -34,12 +36,13 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::CellDetail) => {
+            apply_pending_edit_as_draft(state);
             state.cell_detail.close();
             state.modal.pop_mode();
             DispatchResult::handled()
         }
         Action::CellDetailYankAll => DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-            content: state.cell_detail.original_content().to_string(),
+            content: state.cell_detail.content().to_string(),
             on_success: Some(Box::new(Action::CellDetailYankSuccess)),
             on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
                 "Clipboard unavailable".into(),
@@ -47,6 +50,81 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
         }]),
         Action::CellDetailYankSuccess => {
             state.flash_timers.set(FlashId::CellDetail, now);
+            DispatchResult::handled()
+        }
+        Action::CellDetailEnterEdit => {
+            if state.session.is_read_only() {
+                state
+                    .messages
+                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+                return DispatchResult::handled();
+            }
+            state.cell_detail.enter_edit();
+            state.modal.replace_mode(InputMode::CellDetail);
+            DispatchResult::handled()
+        }
+        Action::CellDetailAppendInsert => {
+            if state.session.is_read_only() {
+                state
+                    .messages
+                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+                return DispatchResult::handled();
+            }
+            state
+                .cell_detail
+                .editor_mut()
+                .move_cursor(CursorMove::LineEnd);
+            state.cell_detail.enter_edit();
+            state.modal.replace_mode(InputMode::CellDetail);
+            DispatchResult::handled()
+        }
+        Action::CellDetailExitEdit => {
+            state.cell_detail.exit_edit();
+            state.modal.replace_mode(InputMode::CellDetail);
+            DispatchResult::handled()
+        }
+        Action::TextInput {
+            target: InputTarget::CellDetailEdit,
+            ch,
+        } => {
+            if *ch == '\n' {
+                state.cell_detail.editor_mut().insert_newline();
+            } else if *ch == '\t' {
+                state.cell_detail.editor_mut().insert_tab();
+            } else {
+                state.cell_detail.editor_mut().insert_char(*ch);
+            }
+            state.cell_detail.update_editor_scroll();
+            DispatchResult::handled()
+        }
+        Action::TextBackspace {
+            target: InputTarget::CellDetailEdit,
+        } => {
+            state.cell_detail.editor_mut().backspace();
+            state.cell_detail.update_editor_scroll();
+            DispatchResult::handled()
+        }
+        Action::TextDelete {
+            target: InputTarget::CellDetailEdit,
+        } => {
+            state.cell_detail.editor_mut().delete();
+            state.cell_detail.update_editor_scroll();
+            DispatchResult::handled()
+        }
+        Action::TextMoveCursor {
+            target: InputTarget::CellDetailEdit,
+            direction,
+        } => {
+            state.cell_detail.move_editor_cursor(*direction);
+            state.ui.set_key_sequence(KeySequenceState::Idle);
+            DispatchResult::handled()
+        }
+        Action::Paste(text)
+            if state.input_mode() == InputMode::CellDetail
+                && state.cell_detail.mode() == CellDetailMode::Editing =>
+        {
+            state.cell_detail.editor_mut().insert_str(text);
+            state.cell_detail.update_editor_scroll();
             DispatchResult::handled()
         }
         Action::CellDetailEnterSearch => {
@@ -118,14 +196,6 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             update_search_matches(state);
             DispatchResult::handled()
         }
-        Action::Scroll {
-            target: ScrollTarget::CellDetail,
-            direction: direction @ (ScrollDirection::Down | ScrollDirection::Up),
-            amount,
-        } => {
-            state.cell_detail.scroll(*direction, *amount);
-            DispatchResult::handled()
-        }
         _ => DispatchResult::pass(),
     }
 }
@@ -180,11 +250,37 @@ fn update_search_matches(state: &mut AppState) {
     state.cell_detail.search_mut().set_matches(matches);
 }
 
+fn apply_pending_edit_as_draft(state: &mut AppState) {
+    if !state.cell_detail.has_pending_changes() {
+        return;
+    }
+
+    let row = state.cell_detail.row();
+    let col = state.cell_detail.col();
+    let original_cell = state
+        .query
+        .visible_result()
+        .and_then(|r| r.rows.get(row).and_then(|r| r.get(col)).cloned())
+        .unwrap_or_else(|| state.cell_detail.original_content().to_string());
+    let draft = state.cell_detail.editor().content().to_string();
+
+    state
+        .result_interaction
+        .begin_cell_edit(row, col, original_cell);
+    state.result_interaction.clear_write_preview();
+    state
+        .result_interaction
+        .cell_edit_input_mut()
+        .set_content(draft);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::column::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::services::AppServices;
+    use crate::update::reducer::reduce as reduce_app;
     use std::sync::Arc;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
@@ -283,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn yank_all_copies_original_cell_value() {
+    fn yank_all_copies_current_detail_content() {
         let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
@@ -291,8 +387,104 @@ mod tests {
 
         assert!(matches!(
             result.expect("yank should copy").as_slice(),
-            [Effect::CopyToClipboard { content, .. }] if content == r#"{"b":2,"a":1}"#
+            [Effect::CopyToClipboard { content, .. }] if content == "{\n  \"a\": 1,\n  \"b\": 2\n}"
         ));
+    }
+
+    #[test]
+    fn enter_and_exit_edit_keeps_cell_detail_modal_active() {
+        let mut state = state_with_cell("text", "hello");
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        reduce_cell_detail(&mut state, &Action::CellDetailEnterEdit, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.mode(), CellDetailMode::Editing);
+
+        reduce_cell_detail(&mut state, &Action::CellDetailExitEdit, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.mode(), CellDetailMode::Viewing);
+    }
+
+    #[test]
+    fn close_after_edit_keeps_draft_inline() {
+        let mut state = state_with_cell("text", "hello");
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::CellDetailEnterEdit, Instant::now());
+        state
+            .cell_detail
+            .editor_mut()
+            .set_content("hello world".to_string());
+        reduce_cell_detail(&mut state, &Action::CellDetailExitEdit, Instant::now());
+
+        reduce_cell_detail(
+            &mut state,
+            &Action::CloseModal(ModalKind::CellDetail),
+            Instant::now(),
+        );
+
+        assert_eq!(state.input_mode(), InputMode::Normal);
+        assert_eq!(
+            state.result_interaction.cell_edit().draft_value(),
+            "hello world"
+        );
+    }
+
+    #[test]
+    fn close_without_changes_does_not_start_inline_edit() {
+        let mut state = state_with_cell("text", "hello");
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+        reduce_cell_detail(&mut state, &Action::CellDetailEnterEdit, Instant::now());
+        reduce_cell_detail(&mut state, &Action::CellDetailExitEdit, Instant::now());
+
+        reduce_cell_detail(
+            &mut state,
+            &Action::CloseModal(ModalKind::CellDetail),
+            Instant::now(),
+        );
+
+        assert!(!state.result_interaction.cell_edit().is_active());
+    }
+
+    #[test]
+    fn close_after_edit_can_continue_to_write_preview() {
+        let mut state = state_with_cell("text", "hello");
+        let services = AppServices::stub();
+        let now = Instant::now();
+
+        reduce_app(&mut state, Action::ResultOpenCellDetail, now, &services);
+        reduce_app(&mut state, Action::CellDetailEnterEdit, now, &services);
+        state
+            .cell_detail
+            .editor_mut()
+            .set_content("updated".to_string());
+        reduce_app(&mut state, Action::CellDetailExitEdit, now, &services);
+        reduce_app(
+            &mut state,
+            Action::CloseModal(ModalKind::CellDetail),
+            now,
+            &services,
+        );
+
+        let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
+        let preview = match effects.first() {
+            Some(Effect::DispatchActions(actions)) => match actions.first() {
+                Some(Action::OpenWritePreviewConfirm(preview)) => preview.clone(),
+                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+            },
+            other => panic!("expected DispatchActions, got {other:?}"),
+        };
+
+        reduce_app(
+            &mut state,
+            Action::OpenWritePreviewConfirm(preview),
+            now,
+            &services,
+        );
+
+        assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+        assert!(state.result_interaction.pending_write_preview().is_some());
     }
 
     #[test]

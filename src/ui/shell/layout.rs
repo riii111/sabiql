@@ -153,7 +153,7 @@ impl MainLayout {
         };
 
         let cell_detail_viewport = match state.input_mode() {
-            InputMode::CellDetail | InputMode::CellEdit if state.cell_detail.is_active() => {
+            InputMode::CellDetail if state.cell_detail.is_active() => {
                 CellDetail::render(frame, state, now, theme).map(
                     |CellDetailRenderMetrics {
                          visible_rows,

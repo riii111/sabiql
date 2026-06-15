@@ -76,10 +76,11 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
             )
         }
         InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),
-        InputMode::CellDetail => {
-            let is_searching = state.cell_detail.search().is_active();
-            cell_detail::handle_cell_detail_keys(combo, is_searching)
-        }
+        InputMode::CellDetail => cell_detail::handle_cell_detail_keys(
+            combo,
+            state.cell_detail.mode(),
+            state.ui.key_sequence().pending_prefix(),
+        ),
     }
 }
 

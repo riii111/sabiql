@@ -1,4 +1,5 @@
 use crate::model::app_state::AppState;
+use crate::model::browse::cell_detail::CellDetailMode;
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
@@ -118,7 +119,7 @@ pub enum HelpOrigin {
     },
     JsonbEdit,
     CellDetail {
-        searching: bool,
+        mode: CellDetailHelpMode,
     },
 }
 
@@ -177,7 +178,7 @@ impl HelpOrigin {
             },
             InputMode::JsonbEdit => Self::JsonbEdit,
             InputMode::CellDetail => Self::CellDetail {
-                searching: state.cell_detail.search().is_active(),
+                mode: CellDetailHelpMode::from_state(state),
             },
         }
     }
@@ -211,8 +212,7 @@ impl HelpOrigin {
             Self::QueryHistoryPicker => "Query History Picker",
             Self::JsonbDetail { mode } => mode.label(),
             Self::JsonbEdit => "JSONB Edit",
-            Self::CellDetail { searching: true } => "Cell Detail Search",
-            Self::CellDetail { searching: false } => "Cell Detail",
+            Self::CellDetail { mode } => mode.label(),
         }
     }
 }
@@ -283,6 +283,35 @@ impl JsonbHelpMode {
             Self::Detail => "JSONB Detail",
             Self::Search => "JSONB Search",
             Self::Edit => "JSONB Edit",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CellDetailHelpMode {
+    Detail,
+    Search,
+    Edit,
+}
+
+impl CellDetailHelpMode {
+    fn from_state(state: &AppState) -> Self {
+        if state.cell_detail.search().is_active() {
+            Self::Search
+        } else {
+            match state.cell_detail.mode() {
+                CellDetailMode::Viewing => Self::Detail,
+                CellDetailMode::Editing => Self::Edit,
+                CellDetailMode::Searching => Self::Search,
+            }
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Detail => "Cell Detail",
+            Self::Search => "Cell Detail Search",
+            Self::Edit => "Cell Detail Edit",
         }
     }
 }

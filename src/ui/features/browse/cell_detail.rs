@@ -1,15 +1,18 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Wrap};
-use unicode_casefold::UnicodeCaseFold;
+use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::browse::cell_detail::CellDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::text_input::TextInputLike;
 use crate::features::browse::detail_view::{render_detail_search, search_match_status};
-use crate::primitives::atoms::{apply_yank_flash, text_cursor_spans};
+use crate::primitives::atoms::{
+    CursorKind, ModalTextSurface, apply_yank_flash, build_modal_text_surface_lines,
+    render_modal_text_surface,
+};
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
@@ -31,7 +34,7 @@ impl CellDetail {
             return None;
         }
 
-        let is_editing = is_editing_cell_detail(state);
+        let is_editing = state.cell_detail.mode() == CellDetailMode::Editing;
         let title = if is_editing {
             format!(
                 " Cell Detail Edit \u{2500}\u{2500} {}",
@@ -44,12 +47,12 @@ impl CellDetail {
             )
         };
         let hints = if is_editing {
-            vec![("Enter", "Write"), ("Esc", "Back")]
+            vec![("Esc", "Normal")]
         } else {
             vec![
-                ("i", "Edit"),
                 ("y", "Copy"),
                 ("/", "Search"),
+                ("i", "Insert"),
                 ("Esc", "Close"),
             ]
         };
@@ -62,22 +65,21 @@ impl CellDetail {
             theme,
         );
 
-        let (content_area, status_area, search_area) =
-            if !is_editing && state.cell_detail.search().is_active() {
-                let [content_area, status_area, search_area] = Layout::vertical([
-                    Constraint::Min(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                ])
-                .areas(inner);
-                (content_area, status_area, Some(search_area))
-            } else {
-                let [content_area, status_area] =
-                    Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-                (content_area, status_area, None)
-            };
+        let (content_area, status_area, search_area) = if state.cell_detail.search().is_active() {
+            let [content_area, status_area, search_area] = Layout::vertical([
+                Constraint::Min(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .areas(inner);
+            (content_area, status_area, Some(search_area))
+        } else {
+            let [content_area, status_area] =
+                Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+            (content_area, status_area, None)
+        };
 
-        Self::render_content(frame, content_area, state, now, theme);
+        Self::render_editor_content(frame, content_area, state, is_editing, now, theme);
         Self::render_status(frame, status_area, state, theme);
         if let Some(search_area) = search_area {
             Self::render_search(frame, search_area, state, theme);
@@ -89,39 +91,51 @@ impl CellDetail {
         })
     }
 
-    fn render_content(
+    fn render_editor_content(
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
+        is_editing: bool,
         now: std::time::Instant,
         theme: &ThemePalette,
     ) {
-        let mut lines = content_lines(state, theme);
+        let editor = state.cell_detail.editor();
+        let content = editor.content();
+        let (cursor_row, cursor_col) = editor.cursor_to_position();
+        let cursor_kind = if is_editing {
+            CursorKind::Insert
+        } else {
+            CursorKind::Block
+        };
+        let surface = ModalTextSurface {
+            content,
+            cursor_row,
+            cursor_col,
+            scroll_row: editor.scroll_row(),
+            cursor_kind,
+            empty_placeholder: if is_editing {
+                " Enter value..."
+            } else {
+                " Press i to edit..."
+            },
+            base_style: Style::default().fg(theme.semantic.text.primary),
+            current_line_style: Style::default().bg(theme.component.editor.current_line_bg),
+        };
+        let line_spans: Vec<Vec<Span<'static>>> = content
+            .lines()
+            .map(|line| vec![Span::raw(line.to_owned())])
+            .collect();
+        let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
+
         let flash_active = state.flash_timers.is_active(FlashId::CellDetail, now);
         apply_yank_flash(&mut lines, flash_active, theme);
 
-        frame.render_widget(
-            Paragraph::new(lines)
-                .wrap(Wrap { trim: false })
-                .scroll((state.cell_detail.scroll_offset() as u16, 0))
-                .style(Style::default().fg(theme.semantic.text.primary)),
-            area,
-        );
+        render_modal_text_surface(frame, area, surface, lines);
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let search = state.cell_detail.search();
-        let status = if is_editing_cell_detail(state) {
-            format!(
-                "{} chars",
-                state
-                    .result_interaction
-                    .cell_edit()
-                    .draft_value()
-                    .chars()
-                    .count()
-            )
-        } else if search.is_active() {
+        let status = if search.is_active() {
             search_match_status(search)
         } else {
             format!("{} chars", state.cell_detail.content().chars().count())
@@ -138,151 +152,5 @@ impl CellDetail {
 
     fn render_search(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         render_detail_search(frame, area, state.cell_detail.search(), theme);
-    }
-}
-
-fn content_lines(state: &AppState, theme: &ThemePalette) -> Vec<Line<'static>> {
-    if is_editing_cell_detail(state) {
-        return editable_content_lines(state, theme);
-    }
-
-    let content = state.cell_detail.content();
-    if content.is_empty() {
-        return vec![Line::from(Span::styled(
-            "No content",
-            Style::default().fg(theme.semantic.text.placeholder),
-        ))];
-    }
-
-    let current_match = state
-        .cell_detail
-        .search()
-        .matches()
-        .get(state.cell_detail.search().current_match())
-        .copied();
-    let query = state.cell_detail.search().input().content().to_string();
-    let mut char_offset = 0;
-
-    content
-        .split('\n')
-        .map(|line| {
-            let line_len = line.chars().count();
-            let line_start = char_offset;
-            let line_end = line_start + line_len;
-            char_offset = line_end + 1;
-
-            match current_match {
-                Some(pos) if !query.is_empty() && pos >= line_start && pos < line_end => {
-                    highlighted_line(line, pos - line_start, &query, theme)
-                }
-                _ => Line::from(Span::raw(line.to_string())),
-            }
-        })
-        .collect()
-}
-
-fn is_editing_cell_detail(state: &AppState) -> bool {
-    let edit = state.result_interaction.cell_edit();
-    state.input_mode() == InputMode::CellEdit
-        && state.cell_detail.is_active()
-        && edit.is_active()
-        && edit.row() == Some(state.cell_detail.row())
-        && edit.col() == Some(state.cell_detail.col())
-}
-
-fn editable_content_lines(state: &AppState, theme: &ThemePalette) -> Vec<Line<'static>> {
-    let edit = state.result_interaction.cell_edit();
-    let content = edit.draft_value();
-    if content.is_empty() {
-        return vec![Line::from(text_cursor_spans("", 0, 0, usize::MAX, theme))];
-    }
-
-    let cursor = edit.input().cursor();
-    let mut seen = 0;
-    content
-        .split('\n')
-        .map(|line| {
-            let line_len = line.chars().count();
-            let line_start = seen;
-            let line_end = line_start + line_len;
-            seen = line_end + 1;
-
-            if cursor >= line_start && cursor <= line_end {
-                Line::from(text_cursor_spans(
-                    line,
-                    cursor - line_start,
-                    0,
-                    usize::MAX,
-                    theme,
-                ))
-            } else {
-                Line::from(Span::raw(line.to_string()))
-            }
-        })
-        .collect()
-}
-
-fn highlighted_line(
-    line: &str,
-    match_start: usize,
-    query: &str,
-    theme: &ThemePalette,
-) -> Line<'static> {
-    let match_len = folded_match_len(line, match_start, query);
-    let mut before = String::new();
-    let mut matched = String::new();
-    let mut after = String::new();
-
-    for (idx, ch) in line.chars().enumerate() {
-        if idx < match_start {
-            before.push(ch);
-        } else if idx < match_start + match_len {
-            matched.push(ch);
-        } else {
-            after.push(ch);
-        }
-    }
-
-    Line::from(vec![
-        Span::raw(before),
-        Span::styled(
-            matched,
-            Style::default()
-                .fg(theme.semantic.text.primary)
-                .bg(theme.semantic.text.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(after),
-    ])
-}
-
-fn folded_match_len(line: &str, match_start: usize, query: &str) -> usize {
-    let target_len = query.case_fold().collect::<String>().chars().count();
-    let mut folded_len = 0;
-    let mut original_len = 0;
-
-    for ch in line.chars().skip(match_start) {
-        folded_len += ch.case_fold().count();
-        original_len += 1;
-        if folded_len >= target_len {
-            break;
-        }
-    }
-
-    original_len
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn folded_match_len_keeps_sharp_s_to_one_original_char() {
-        assert_eq!(folded_match_len("straße", 4, "ss"), 1);
-    }
-
-    #[test]
-    fn folded_match_len_keeps_ascii_query_length() {
-        assert_eq!(folded_match_len("alphabet", 2, "pha"), 3);
     }
 }

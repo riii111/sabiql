@@ -4,6 +4,7 @@ use crossterm::cursor::SetCursorStyle;
 use crossterm::execute;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::browse::cell_detail::CellDetailMode;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::ports::outbound::renderer::{RenderOutput, RenderResult, Renderer};
 use crate::app::services::AppServices;
@@ -55,7 +56,10 @@ fn uses_insert_cursor(state: &AppState) -> bool {
     match state.input_mode() {
         InputMode::JsonbEdit => true,
         InputMode::JsonbDetail => state.jsonb_detail.search().is_active(),
-        InputMode::CellDetail => state.cell_detail.search().is_active(),
+        InputMode::CellDetail => {
+            state.cell_detail.search().is_active()
+                || state.cell_detail.mode() == CellDetailMode::Editing
+        }
         InputMode::SqlModal => matches!(
             state.sql_modal.status(),
             crate::app::model::sql_editor::modal::SqlModalStatus::Editing

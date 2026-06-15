@@ -415,11 +415,11 @@ fn result_pane_cell_detail_edit_mode() {
     );
     dispatch_result(
         &mut state,
-        &Action::ResultEnterCellEdit,
+        &Action::CellDetailEnterEdit,
         &AppServices::stub(),
         now,
     );
-    assert_eq!(state.input_mode(), InputMode::CellEdit);
+    assert_eq!(state.input_mode(), InputMode::CellDetail);
 
     let output = render_to_string(&mut terminal, &mut state);
 

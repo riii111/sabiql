@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::browse::cell_detail::CellDetailMode;
 use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
@@ -12,7 +13,7 @@ use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::update::input::keybindings::{
-    cell_detail, cell_detail_search, cell_edit, command_palette,
+    cell_detail, cell_detail_edit, cell_detail_search, cell_edit, command_palette,
     command_palette as command_palette_key, connection_error, connection_selector,
     connection_setup, connection_setup_save, csv_export, er_picker, er_picker_select_all,
     exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail, jsonb_edit,
@@ -196,17 +197,12 @@ impl Footer {
                 overlay::ESC_CANCEL.as_hint(),
             ],
             InputMode::CellEdit => {
-                let esc_hint = if state.cell_detail.is_active() {
-                    ("Esc", "Back")
-                } else {
-                    cell_edit::ESC_CANCEL.as_hint()
-                };
                 vec![
                     cell_edit::WRITE.as_hint(),
                     cell_edit::TYPE.as_hint(),
                     cell_edit::MOVE.as_hint(),
                     global::HELP.as_hint(),
-                    esc_hint,
+                    cell_edit::ESC_CANCEL.as_hint(),
                     global::QUIT.as_hint(),
                 ]
             }
@@ -336,13 +332,19 @@ impl Footer {
                         cell_detail_search::CONFIRM.as_hint(),
                         cell_detail_search::CANCEL.as_hint(),
                     ]
+                } else if state.cell_detail.mode() == CellDetailMode::Editing {
+                    vec![
+                        cell_detail_edit::ESC_NORMAL.as_hint(),
+                        cell_detail_edit::MOVE.as_hint(),
+                        cell_detail_edit::HOME_END.as_hint(),
+                    ]
                 } else {
                     vec![
                         cell_detail::YANK.as_hint(),
                         cell_detail::INSERT.as_hint(),
                         cell_detail::SEARCH.as_hint(),
                         cell_detail::NEXT_PREV.as_hint(),
-                        cell_detail::SCROLL.as_hint(),
+                        cell_detail::MOVE.as_hint(),
                         cell_detail::CLOSE.as_hint(),
                     ]
                 }

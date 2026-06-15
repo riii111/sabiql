@@ -2,7 +2,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
-use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
+use crate::model::shared::help::{CellDetailHelpMode, HelpOrigin, JsonbHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
 #[allow(
     clippy::wildcard_imports,
@@ -261,8 +261,7 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
         HelpOrigin::QueryHistoryPicker => rows_from_mode_rows(QUERY_HISTORY_PICKER_ROWS),
         HelpOrigin::JsonbDetail { mode } => jsonb_current_rows(mode),
         HelpOrigin::JsonbEdit => rows_from_mode_rows(JSONB_EDIT_ROWS),
-        HelpOrigin::CellDetail { searching: true } => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
-        HelpOrigin::CellDetail { searching: false } => rows_from_mode_rows(CELL_DETAIL_ROWS),
+        HelpOrigin::CellDetail { mode } => cell_detail_current_rows(mode),
     };
 
     HelpSection {
@@ -424,6 +423,14 @@ fn jsonb_current_rows(mode: JsonbHelpMode) -> Vec<HelpRow> {
         JsonbHelpMode::Detail => rows_from_mode_rows(JSONB_DETAIL_ROWS),
         JsonbHelpMode::Search => rows_from_bindings(JSONB_SEARCH_KEYS),
         JsonbHelpMode::Edit => rows_from_mode_rows(JSONB_EDIT_ROWS),
+    }
+}
+
+fn cell_detail_current_rows(mode: CellDetailHelpMode) -> Vec<HelpRow> {
+    match mode {
+        CellDetailHelpMode::Detail => rows_from_mode_rows(CELL_DETAIL_ROWS),
+        CellDetailHelpMode::Search => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
+        CellDetailHelpMode::Edit => rows_from_mode_rows(CELL_DETAIL_EDIT_ROWS),
     }
 }
 

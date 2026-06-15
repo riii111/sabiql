@@ -47,19 +47,7 @@ fn should_edit_in_modal(value: &str, data_type: Option<&str>) -> bool {
         || value.chars().count() > MODAL_EDIT_CHAR_THRESHOLD
 }
 
-fn is_editing_cell_detail(state: &AppState) -> bool {
-    let edit = state.result_interaction.cell_edit();
-    state.cell_detail.is_active()
-        && edit.is_active()
-        && edit.row() == Some(state.cell_detail.row())
-        && edit.col() == Some(state.cell_detail.col())
-}
-
 fn active_edit_coordinates(state: &AppState) -> Result<(usize, usize), EditGuardrailError> {
-    if state.input_mode() == InputMode::CellDetail && state.cell_detail.is_active() {
-        return Ok((state.cell_detail.row(), state.cell_detail.col()));
-    }
-
     let row_idx = state
         .result_interaction
         .selection()
@@ -126,7 +114,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
                 if should_edit_in_modal(&value, data_type) {
                     return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
                         Action::ResultOpenCellDetail,
-                        Action::ResultEnterCellEdit,
+                        Action::CellDetailEnterEdit,
                     ])]);
                 }
             }
@@ -141,11 +129,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
                             .begin_cell_edit(row_idx, col_idx, value);
                         state.result_interaction.clear_write_preview();
                     }
-                    if state.input_mode() == InputMode::CellDetail {
-                        state.modal.replace_mode(InputMode::CellEdit);
-                    } else {
-                        state.modal.set_mode(InputMode::CellEdit);
-                    }
+                    state.modal.set_mode(InputMode::CellEdit);
                     DispatchResult::handled()
                 }
                 Err(reason) => {
@@ -155,27 +139,17 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             }
         }
         Action::ResultCancelCellEdit => {
-            let return_to_cell_detail = is_editing_cell_detail(state);
             if state.result_interaction.cell_edit().has_pending_draft() {
                 state.result_interaction.clear_write_preview();
             } else {
                 state.result_interaction.discard_cell_edit();
             }
-            if return_to_cell_detail {
-                state.modal.replace_mode(InputMode::CellDetail);
-            } else {
-                state.modal.set_mode(InputMode::Normal);
-            }
+            state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
         Action::ResultDiscardCellEdit => {
-            let return_to_cell_detail = is_editing_cell_detail(state);
             state.result_interaction.discard_cell_edit();
-            if return_to_cell_detail {
-                state.modal.replace_mode(InputMode::CellDetail);
-            } else {
-                state.modal.set_mode(InputMode::Normal);
-            }
+            state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
         Action::TextInput {
@@ -424,7 +398,6 @@ mod tests {
 
     mod detail_edit_entry {
         use super::*;
-        use crate::model::browse::cell_detail::CellDetailState;
         use rstest::rstest;
 
         fn preview_state_with_body(value: &str) -> AppState {
@@ -477,55 +450,9 @@ mod tests {
                 [Effect::DispatchActions(actions)]
                     if matches!(
                         actions.as_slice(),
-                        [Action::ResultOpenCellDetail, Action::ResultEnterCellEdit]
+                        [Action::ResultOpenCellDetail, Action::CellDetailEnterEdit]
                     )
             ));
-        }
-
-        #[test]
-        fn cell_detail_edit_uses_detail_coordinates() {
-            let mut state = preview_state_with_body("body");
-            state.result_interaction.activate_cell(0, 0);
-            state.cell_detail = CellDetailState::open(
-                0,
-                1,
-                "body".to_string(),
-                "body".to_string(),
-                "body".to_string(),
-            );
-            state.modal.push_mode(InputMode::CellDetail);
-
-            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
-
-            assert!(effects.is_empty());
-            assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert_eq!(state.result_interaction.cell_edit().col(), Some(1));
-            assert_eq!(state.result_interaction.cell_edit().draft_value(), "body");
-        }
-
-        #[test]
-        fn cancel_detail_edit_returns_to_detail() {
-            let mut state = preview_state_with_body("body");
-            state.cell_detail = CellDetailState::open(
-                0,
-                1,
-                "body".to_string(),
-                "body".to_string(),
-                "body".to_string(),
-            );
-            state
-                .result_interaction
-                .begin_cell_edit(0, 1, "body".to_string());
-            state.modal.set_mode(InputMode::CellEdit);
-
-            reduce_edit(&mut state, &Action::ResultCancelCellEdit, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
-
-            assert_eq!(state.input_mode(), InputMode::CellDetail);
-            assert!(!state.result_interaction.cell_edit().is_active());
         }
     }
 

@@ -1084,7 +1084,7 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
 // =============================================================================
 
 pub mod cell_detail {
-    use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
     use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
 
     pub const YANK: ModeRow = ModeRow {
@@ -1111,13 +1111,19 @@ pub mod cell_detail {
 
     pub const INSERT: ModeRow = ModeRow {
         key_short: "i",
-        key: "i",
-        desc_short: "Edit",
-        description: "Edit cell value",
-        bindings: &[ExecBinding {
-            action: Action::ResultEnterCellEdit,
-            combos: &[KeyCombo::plain(Key::Char('i'))],
-        }],
+        key: "i / A",
+        desc_short: "Insert",
+        description: "Enter Insert mode / append at line end",
+        bindings: &[
+            ExecBinding {
+                action: Action::CellDetailEnterEdit,
+                combos: &[KeyCombo::plain(Key::Char('i'))],
+            },
+            ExecBinding {
+                action: Action::CellDetailAppendInsert,
+                combos: &[KeyCombo::plain(Key::Char('A'))],
+            },
+        ],
     };
 
     pub const NEXT_PREV: ModeRow = ModeRow {
@@ -1137,17 +1143,30 @@ pub mod cell_detail {
         ],
     };
 
-    pub const SCROLL: ModeRow = ModeRow {
-        key_short: "j/k/↑↓",
-        key: "j / k / Ctrl+N / Ctrl+P / ↑ / ↓",
-        desc_short: "Scroll",
-        description: "Scroll text down / up",
+    pub const MOVE: ModeRow = ModeRow {
+        key_short: "hjkl/↑↓←→",
+        key: "h / j / k / l / ↑↓←→",
+        desc_short: "Move",
+        description: "Move cursor",
         bindings: &[
             ExecBinding {
-                action: Action::Scroll {
-                    target: ScrollTarget::CellDetail,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::Line,
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::Left,
+                },
+                combos: &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::Right,
+                },
+                combos: &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::Down,
                 },
                 combos: &[
                     KeyCombo::plain(Key::Char('j')),
@@ -1156,10 +1175,9 @@ pub mod cell_detail {
                 ],
             },
             ExecBinding {
-                action: Action::Scroll {
-                    target: ScrollTarget::CellDetail,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::Line,
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::Up,
                 },
                 combos: &[
                     KeyCombo::plain(Key::Char('k')),
@@ -1170,68 +1188,76 @@ pub mod cell_detail {
         ],
     };
 
-    pub const PAGE: ModeRow = ModeRow {
-        key_short: "^D/^U Pg",
-        key: "Ctrl+D / Ctrl+U / PageDown / PageUp",
-        desc_short: "Page",
-        description: "Scroll by page",
+    pub const JUMP: ModeRow = ModeRow {
+        key_short: "0$wb",
+        key: "0 / $ / w / b / Home / End",
+        desc_short: "Jump",
+        description: "Move by word or line boundary",
         bindings: &[
             ExecBinding {
-                action: Action::Scroll {
-                    target: ScrollTarget::CellDetail,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::HalfPage,
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::LineStart,
                 },
-                combos: &[KeyCombo::ctrl(Key::Char('d'))],
+                combos: &[KeyCombo::plain(Key::Char('0'))],
             },
             ExecBinding {
-                action: Action::Scroll {
-                    target: ScrollTarget::CellDetail,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::HalfPage,
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::LineEnd,
                 },
-                combos: &[KeyCombo::ctrl(Key::Char('u'))],
+                combos: &[KeyCombo::plain(Key::Char('$'))],
             },
             ExecBinding {
-                action: Action::Scroll {
-                    target: ScrollTarget::CellDetail,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::FullPage,
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::WordForward,
                 },
-                combos: &[KeyCombo::plain(Key::PageDown)],
+                combos: &[KeyCombo::plain(Key::Char('w'))],
             },
             ExecBinding {
-                action: Action::Scroll {
-                    target: ScrollTarget::CellDetail,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::FullPage,
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::WordBackward,
                 },
-                combos: &[KeyCombo::plain(Key::PageUp)],
+                combos: &[KeyCombo::plain(Key::Char('b'))],
             },
         ],
     };
 
-    pub const TOP_BOTTOM: ModeRow = ModeRow {
-        key_short: "Home/End",
-        key: "Home / End",
-        desc_short: "Top/Btm",
-        description: "Jump to top / bottom",
+    pub const VIEW: ModeRow = ModeRow {
+        key_short: "ggGHML",
+        key: "gg / G / H / M / L",
+        desc_short: "View",
+        description: "Jump by buffer or viewport",
         bindings: &[
             ExecBinding {
-                action: Action::Scroll {
-                    target: ScrollTarget::CellDetail,
-                    direction: ScrollDirection::Up,
-                    amount: ScrollAmount::ToStart,
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::LastLine,
                 },
-                combos: &[KeyCombo::plain(Key::Home)],
+                combos: &[KeyCombo::plain(Key::Char('G'))],
             },
             ExecBinding {
-                action: Action::Scroll {
-                    target: ScrollTarget::CellDetail,
-                    direction: ScrollDirection::Down,
-                    amount: ScrollAmount::ToEnd,
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::ViewportTop,
                 },
-                combos: &[KeyCombo::plain(Key::End)],
+                combos: &[KeyCombo::plain(Key::Char('H'))],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::ViewportMiddle,
+                },
+                combos: &[KeyCombo::plain(Key::Char('M'))],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::ViewportBottom,
+                },
+                combos: &[KeyCombo::plain(Key::Char('L'))],
             },
         ],
     };
@@ -1253,10 +1279,96 @@ pub const CELL_DETAIL_ROWS: &[ModeRow] = &[
     cell_detail::INSERT,
     cell_detail::SEARCH,
     cell_detail::NEXT_PREV,
-    cell_detail::SCROLL,
-    cell_detail::PAGE,
-    cell_detail::TOP_BOTTOM,
+    cell_detail::MOVE,
+    cell_detail::JUMP,
+    cell_detail::VIEW,
     cell_detail::CLOSE,
+];
+
+// =============================================================================
+// Cell Detail Edit
+// =============================================================================
+
+pub mod cell_detail_edit {
+    use crate::update::action::{Action, CursorMove, InputTarget};
+    use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
+
+    pub const ESC_NORMAL: ModeRow = ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Normal",
+        description: "Return to Normal mode",
+        bindings: &[ExecBinding {
+            action: Action::CellDetailExitEdit,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    };
+
+    pub const MOVE: ModeRow = ModeRow {
+        key_short: "↑↓←→",
+        key: "↑↓←→",
+        desc_short: "Move",
+        description: "Move cursor",
+        bindings: &[
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::Left,
+                },
+                combos: &[KeyCombo::plain(Key::Left)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::Right,
+                },
+                combos: &[KeyCombo::plain(Key::Right)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::Up,
+                },
+                combos: &[KeyCombo::plain(Key::Up)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::Down,
+                },
+                combos: &[KeyCombo::plain(Key::Down)],
+            },
+        ],
+    };
+
+    pub const HOME_END: ModeRow = ModeRow {
+        key_short: "Home/End",
+        key: "Home / End",
+        desc_short: "Line",
+        description: "Line start/end",
+        bindings: &[
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::Home,
+                },
+                combos: &[KeyCombo::plain(Key::Home)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::CellDetailEdit,
+                    direction: CursorMove::End,
+                },
+                combos: &[KeyCombo::plain(Key::End)],
+            },
+        ],
+    };
+}
+
+pub const CELL_DETAIL_EDIT_ROWS: &[ModeRow] = &[
+    cell_detail_edit::ESC_NORMAL,
+    cell_detail_edit::MOVE,
+    cell_detail_edit::HOME_END,
 ];
 
 // =============================================================================

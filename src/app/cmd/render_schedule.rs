@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::model::app_state::AppState;
+use crate::model::browse::cell_detail::CellDetailMode;
 use crate::model::er_state::ErStatus;
 use crate::model::shared::input_mode::InputMode;
 
@@ -46,6 +47,11 @@ fn has_active_spinner(state: &AppState) -> bool {
 }
 
 fn has_blinking_cursor(state: &AppState) -> bool {
+    if state.input_mode() == InputMode::CellDetail {
+        return state.cell_detail.search().is_active()
+            || state.cell_detail.mode() == CellDetailMode::Editing;
+    }
+
     matches!(
         state.input_mode(),
         InputMode::SqlModal
