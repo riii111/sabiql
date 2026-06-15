@@ -1109,6 +1109,17 @@ pub mod cell_detail {
         }],
     };
 
+    pub const INSERT: ModeRow = ModeRow {
+        key_short: "i",
+        key: "i",
+        desc_short: "Edit",
+        description: "Edit cell value",
+        bindings: &[ExecBinding {
+            action: Action::ResultEnterCellEdit,
+            combos: &[KeyCombo::plain(Key::Char('i'))],
+        }],
+    };
+
     pub const NEXT_PREV: ModeRow = ModeRow {
         key_short: "n/N",
         key: "n / N",
@@ -1239,6 +1250,7 @@ pub mod cell_detail {
 
 pub const CELL_DETAIL_ROWS: &[ModeRow] = &[
     cell_detail::YANK,
+    cell_detail::INSERT,
     cell_detail::SEARCH,
     cell_detail::NEXT_PREV,
     cell_detail::SCROLL,

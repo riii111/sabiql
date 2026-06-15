@@ -11,6 +11,8 @@ use crate::update::dispatch_result::DispatchResult;
 
 use crate::update::helpers::{EditGuardrailError, editable_preview_base};
 
+const MODAL_EDIT_CHAR_THRESHOLD: usize = 80;
+
 fn is_jsonb_cell(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
@@ -27,7 +29,37 @@ fn is_jsonb_cell(state: &AppState) -> bool {
         .is_some_and(|c| c.data_type == "jsonb")
 }
 
-fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {
+fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
+    let td = state.session.table_detail()?;
+    if td.schema != state.query.pagination.schema() || td.name != state.query.pagination.table() {
+        return None;
+    }
+    td.columns
+        .get(col_idx)
+        .map(|column| column.data_type.as_str())
+}
+
+fn should_edit_in_modal(value: &str, data_type: Option<&str>) -> bool {
+    data_type == Some("json")
+        || value.contains('\n')
+        || value.trim_start().starts_with('{')
+        || value.trim_start().starts_with('[')
+        || value.chars().count() > MODAL_EDIT_CHAR_THRESHOLD
+}
+
+fn is_editing_cell_detail(state: &AppState) -> bool {
+    let edit = state.result_interaction.cell_edit();
+    state.cell_detail.is_active()
+        && edit.is_active()
+        && edit.row() == Some(state.cell_detail.row())
+        && edit.col() == Some(state.cell_detail.col())
+}
+
+fn active_edit_coordinates(state: &AppState) -> Result<(usize, usize), EditGuardrailError> {
+    if state.input_mode() == InputMode::CellDetail && state.cell_detail.is_active() {
+        return Ok((state.cell_detail.row(), state.cell_detail.col()));
+    }
+
     let row_idx = state
         .result_interaction
         .selection()
@@ -38,6 +70,11 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
         .selection()
         .cell()
         .ok_or(EditGuardrailError::NoActiveCell)?;
+    Ok((row_idx, col_idx))
+}
+
+fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {
+    let (row_idx, col_idx) = active_edit_coordinates(state)?;
 
     let (result, pk_cols) = editable_preview_base(state)?;
 
@@ -82,6 +119,18 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
                 ])]);
             }
 
+            if state.input_mode() != InputMode::CellDetail
+                && let Ok((_, col_idx, value)) = editable_cell_context(state)
+            {
+                let data_type = selected_column_data_type(state, col_idx);
+                if should_edit_in_modal(&value, data_type) {
+                    return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
+                        Action::ResultOpenCellDetail,
+                        Action::ResultEnterCellEdit,
+                    ])]);
+                }
+            }
+
             match editable_cell_context(state) {
                 Ok((row_idx, col_idx, value)) => {
                     if state.result_interaction.cell_edit().row() != Some(row_idx)
@@ -92,7 +141,11 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
                             .begin_cell_edit(row_idx, col_idx, value);
                         state.result_interaction.clear_write_preview();
                     }
-                    state.modal.set_mode(InputMode::CellEdit);
+                    if state.input_mode() == InputMode::CellDetail {
+                        state.modal.replace_mode(InputMode::CellEdit);
+                    } else {
+                        state.modal.set_mode(InputMode::CellEdit);
+                    }
                     DispatchResult::handled()
                 }
                 Err(reason) => {
@@ -102,17 +155,27 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             }
         }
         Action::ResultCancelCellEdit => {
+            let return_to_cell_detail = is_editing_cell_detail(state);
             if state.result_interaction.cell_edit().has_pending_draft() {
                 state.result_interaction.clear_write_preview();
             } else {
                 state.result_interaction.discard_cell_edit();
             }
-            state.modal.set_mode(InputMode::Normal);
+            if return_to_cell_detail {
+                state.modal.replace_mode(InputMode::CellDetail);
+            } else {
+                state.modal.set_mode(InputMode::Normal);
+            }
             DispatchResult::handled()
         }
         Action::ResultDiscardCellEdit => {
+            let return_to_cell_detail = is_editing_cell_detail(state);
             state.result_interaction.discard_cell_edit();
-            state.modal.set_mode(InputMode::Normal);
+            if return_to_cell_detail {
+                state.modal.replace_mode(InputMode::CellDetail);
+            } else {
+                state.modal.set_mode(InputMode::Normal);
+            }
             DispatchResult::handled()
         }
         Action::TextInput {
@@ -356,6 +419,113 @@ mod tests {
                 &effects[0],
                 Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
             ));
+        }
+    }
+
+    mod detail_edit_entry {
+        use super::*;
+        use crate::model::browse::cell_detail::CellDetailState;
+        use rstest::rstest;
+
+        fn preview_state_with_body(value: &str) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    String::new(),
+                    vec!["id".to_string(), "body".to_string()],
+                    vec![vec!["1".to_string(), value.to_string()]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.query.pagination.reset_for_table("public", "users");
+            state.result_interaction.activate_cell(0, 1);
+            state
+                .session
+                .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
+            state
+        }
+
+        #[test]
+        fn short_cell_enters_inline_edit() {
+            let mut state = preview_state_with_body("short");
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "short");
+        }
+
+        #[rstest]
+        #[case(
+            "This is a long prompt body that should be edited in detail instead of inline because the grid is too narrow."
+        )]
+        #[case("first line\nsecond line")]
+        #[case(r#"{"prompt":"summarize","tokens":1200}"#)]
+        fn non_inline_friendly_cell_dispatches_detail_then_edit(#[case] value: &str) {
+            let mut state = preview_state_with_body(value);
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::DispatchActions(actions)]
+                    if matches!(
+                        actions.as_slice(),
+                        [Action::ResultOpenCellDetail, Action::ResultEnterCellEdit]
+                    )
+            ));
+        }
+
+        #[test]
+        fn cell_detail_edit_uses_detail_coordinates() {
+            let mut state = preview_state_with_body("body");
+            state.result_interaction.activate_cell(0, 0);
+            state.cell_detail = CellDetailState::open(
+                0,
+                1,
+                "body".to_string(),
+                "body".to_string(),
+                "body".to_string(),
+            );
+            state.modal.push_mode(InputMode::CellDetail);
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert_eq!(state.result_interaction.cell_edit().col(), Some(1));
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "body");
+        }
+
+        #[test]
+        fn cancel_detail_edit_returns_to_detail() {
+            let mut state = preview_state_with_body("body");
+            state.cell_detail = CellDetailState::open(
+                0,
+                1,
+                "body".to_string(),
+                "body".to_string(),
+                "body".to_string(),
+            );
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "body".to_string());
+            state.modal.set_mode(InputMode::CellEdit);
+
+            reduce_edit(&mut state, &Action::ResultCancelCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert_eq!(state.input_mode(), InputMode::CellDetail);
+            assert!(!state.result_interaction.cell_edit().is_active());
         }
     }
 

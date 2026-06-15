@@ -106,4 +106,11 @@ mod tests {
 
         assert!(matches!(result, Action::CellDetailEnterSearch));
     }
+
+    #[test]
+    fn i_enters_cell_edit_when_not_searching() {
+        let result = handle_cell_detail_keys(combo(Key::Char('i')), false);
+
+        assert!(matches!(result, Action::ResultEnterCellEdit));
+    }
 }
