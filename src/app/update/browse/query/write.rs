@@ -7,7 +7,7 @@ use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSe
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::write::write_guardrails::{
-    ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
+    ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::{
     build_pk_pairs, escape_preview_value, normalize_for_diff,
@@ -68,7 +68,7 @@ fn build_update_preview(
     if let Some(pairs) = pk_pairs.as_deref() {
         reject_sqlite_null_pk(state.session.active_database_type_or_default(), pairs)?;
     }
-    let target = crate::policy::write::write_guardrails::TargetSummary {
+    let target = TargetSummary {
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
         key_values: pk_pairs.clone().unwrap_or_default(),
@@ -384,6 +384,7 @@ pub fn reduce_write(
 mod tests {
     use super::*;
 
+    use crate::domain::connection::ConnectionId;
     use crate::domain::{DatabaseType, QueryResult, QuerySource};
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
@@ -580,7 +581,7 @@ mod tests {
         fn sqlite_active_database_type_uses_sqlite_update_preview() {
             let mut state = editable_state();
             state.session.activate_connection_with_dsn(
-                &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
+                &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
                 DatabaseType::SQLite,
                 "sqlite:///tmp/app.db",
@@ -617,7 +618,7 @@ mod tests {
         fn sqlite_update_rejects_null_primary_key_value() {
             let mut state = editable_state();
             state.session.activate_connection_with_dsn(
-                &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
+                &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
                 DatabaseType::SQLite,
                 "sqlite:///tmp/app.db",

@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 
 #[cfg(any(test, feature = "test-support"))]
-use crate::domain::{DatabaseType, QueryValue};
+use crate::domain::{DatabaseType, QueryValue, Table};
 
 use super::ports::outbound::{DdlGenerator, SqlDialect};
 pub struct AppServices {
@@ -50,18 +50,10 @@ impl AppServices {
 
         struct StubDdlGenerator;
         impl DdlGenerator for StubDdlGenerator {
-            fn generate_ddl(
-                &self,
-                _database_type: DatabaseType,
-                _table: &crate::domain::Table,
-            ) -> String {
+            fn generate_ddl(&self, _database_type: DatabaseType, _table: &Table) -> String {
                 unimplemented!("inject a real DdlGenerator via AppServices")
             }
-            fn ddl_line_count(
-                &self,
-                _database_type: DatabaseType,
-                _table: &crate::domain::Table,
-            ) -> usize {
+            fn ddl_line_count(&self, _database_type: DatabaseType, _table: &Table) -> usize {
                 0
             }
         }
@@ -96,8 +88,8 @@ impl AppServices {
                 schema: &str,
                 table: &str,
                 column: &str,
-                new_value: &crate::domain::QueryValue,
-                pk_pairs: &[(String, crate::domain::QueryValue)],
+                new_value: &QueryValue,
+                pk_pairs: &[(String, QueryValue)],
             ) -> String {
                 let set_clause =
                     format!("\"{column}\" = {}", sql_literal(database_type, new_value));
@@ -122,7 +114,7 @@ impl AppServices {
                 database_type: DatabaseType,
                 schema: &str,
                 table: &str,
-                pk_pairs_per_row: &[Vec<(String, crate::domain::QueryValue)>],
+                pk_pairs_per_row: &[Vec<(String, QueryValue)>],
             ) -> String {
                 let where_clause = pk_pairs_per_row
                     .iter()

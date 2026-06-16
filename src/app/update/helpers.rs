@@ -411,6 +411,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use crate::domain::connection::ConnectionId;
     use crate::domain::{Column, ColumnAttributes, DatabaseType, QuerySource, Table};
     use rstest::rstest;
 
@@ -586,7 +587,7 @@ mod tests {
                 DatabaseType::SQLite => "sqlite:///tmp/app.db",
             };
             state.session.activate_connection_with_dsn(
-                &crate::domain::connection::ConnectionId::from_string("test-connection"),
+                &ConnectionId::from_string("test-connection"),
                 "test",
                 database_type,
                 dsn,
