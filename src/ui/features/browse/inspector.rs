@@ -724,7 +724,7 @@ impl Inspector {
 fn index_row(index: &Index, show_type: bool) -> Vec<String> {
     let mut row = vec![index.name.clone(), index.columns.join(", ")];
     if show_type {
-        row.push(index.index_type.to_string());
+        row.push(index_type_label(&index.index_type).unwrap_or_default());
     }
     row.push(if index.is_unique() {
         "✓".to_string()
@@ -732,6 +732,13 @@ fn index_row(index: &Index, show_type: bool) -> Vec<String> {
         String::new()
     });
     row
+}
+
+fn index_type_label(index_type: &IndexType) -> Option<String> {
+    match index_type {
+        IndexType::Unknown => None,
+        _ => Some(index_type.to_string()),
+    }
 }
 
 fn foreign_key_row(fk: &ForeignKey) -> Vec<String> {

@@ -70,7 +70,7 @@ pub enum IndexType {
 impl std::fmt::Display for IndexType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unknown => Ok(()),
+            Self::Unknown => write!(f, "unknown"),
             Self::BTree => write!(f, "btree"),
             Self::Hash => write!(f, "hash"),
             Self::Gist => write!(f, "gist"),
@@ -86,7 +86,7 @@ impl FromStr for IndexType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_ascii_lowercase().as_str() {
-            "" => Self::Unknown,
+            "" | "unknown" => Self::Unknown,
             "btree" => Self::BTree,
             "hash" => Self::Hash,
             "gist" => Self::Gist,
