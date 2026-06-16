@@ -856,7 +856,7 @@ mod tests {
         #[test]
         fn no_command_tag_emits_no_effects() {
             let mut state = state_with_table("public", "users");
-            let result = Arc::new(crate::domain::QueryResult::success(
+            let result = Arc::new(QueryResult::success(
                 "SELECT 1".to_string(),
                 vec!["?column?".to_string()],
                 vec![vec!["1".to_string()]],

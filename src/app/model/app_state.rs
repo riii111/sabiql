@@ -279,9 +279,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::domain::DatabaseMetadata;
-    use crate::domain::QuerySource;
-    use crate::domain::Table;
+    use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, Table};
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::update::action::Action;
@@ -291,8 +289,8 @@ mod tests {
         AppState::new("test".to_string())
     }
 
-    fn make_query_result(source: QuerySource) -> Arc<crate::domain::QueryResult> {
-        Arc::new(crate::domain::QueryResult::success(
+    fn make_query_result(source: QuerySource) -> Arc<QueryResult> {
+        Arc::new(QueryResult::success(
             "SELECT 1".to_string(),
             vec!["col".to_string()],
             vec![vec!["val".to_string()]],
@@ -690,7 +688,7 @@ mod tests {
         #[test]
         fn csv_export_blocked_for_mutating_result_query() {
             let mut state = make_state();
-            let result = crate::domain::QueryResult::success(
+            let result = QueryResult::success(
                 "UPDATE users SET name = 'b' WHERE id = 1 RETURNING id".to_string(),
                 vec!["id".to_string()],
                 vec![vec!["1".to_string()]],
