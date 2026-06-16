@@ -57,6 +57,23 @@ impl SqliteCli {
         Ok(output.stdout)
     }
 
+    pub(super) async fn execute_quote(
+        &self,
+        path: &str,
+        sql: &str,
+        read_only: bool,
+    ) -> Result<String, DbOperationError> {
+        let mut args = vec!["-batch", "-bail", "-quote", "-header"];
+        if read_only {
+            args.push("-readonly");
+        }
+        let output = self.run(path, &args, sql).await?;
+        if !output.status.success() {
+            return Err(DbOperationError::QueryFailed(output.stderr));
+        }
+        Ok(output.stdout)
+    }
+
     pub(super) async fn export_csv(
         &self,
         path: &str,

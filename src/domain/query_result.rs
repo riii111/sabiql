@@ -1,5 +1,43 @@
 use super::CommandTag;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueryValue {
+    Null,
+    Text(String),
+    Blob(Vec<u8>),
+    SqlLiteral(String),
+}
+
+impl QueryValue {
+    #[must_use]
+    pub fn text(value: impl Into<String>) -> Self {
+        Self::Text(value.into())
+    }
+
+    #[must_use]
+    pub fn display_value(&self) -> String {
+        match self {
+            Self::Null => "NULL".to_string(),
+            Self::Text(value) | Self::SqlLiteral(value) => value.clone(),
+            Self::Blob(bytes) => {
+                let preview = bytes
+                    .iter()
+                    .take(8)
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if preview.is_empty() {
+                    "BLOB (0 bytes)".to_string()
+                } else if bytes.len() > 8 {
+                    format!("BLOB ({} bytes) {preview} ...", bytes.len())
+                } else {
+                    format!("BLOB ({} bytes) {preview}", bytes.len())
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuerySource {
     Preview,
@@ -11,6 +49,7 @@ pub struct QueryResult {
     pub query: String,
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
+    pub values: Vec<Vec<QueryValue>>,
     pub row_count: usize,
     pub execution_time_ms: u64,
     pub source: QuerySource,
@@ -28,10 +67,41 @@ impl QueryResult {
         source: QuerySource,
     ) -> Self {
         let row_count = rows.len();
+        let values = rows
+            .iter()
+            .map(|row| row.iter().cloned().map(QueryValue::Text).collect())
+            .collect();
         Self {
             query,
             columns,
             rows,
+            values,
+            row_count,
+            execution_time_ms,
+            source,
+            error: None,
+            command_tag: None,
+        }
+    }
+
+    #[must_use]
+    pub fn success_with_values(
+        query: String,
+        columns: Vec<String>,
+        values: Vec<Vec<QueryValue>>,
+        execution_time_ms: u64,
+        source: QuerySource,
+    ) -> Self {
+        let rows = values
+            .iter()
+            .map(|row| row.iter().map(QueryValue::display_value).collect())
+            .collect();
+        let row_count = values.len();
+        Self {
+            query,
+            columns,
+            rows,
+            values,
             row_count,
             execution_time_ms,
             source,
@@ -51,6 +121,7 @@ impl QueryResult {
             query,
             columns: Vec::new(),
             rows: Vec::new(),
+            values: Vec::new(),
             row_count: 0,
             execution_time_ms,
             source,
@@ -75,6 +146,10 @@ impl QueryResult {
         } else {
             format!("{} rows", self.row_count)
         }
+    }
+
+    pub fn value_at(&self, row: usize, col: usize) -> Option<&QueryValue> {
+        self.values.get(row)?.get(col)
     }
 }
 

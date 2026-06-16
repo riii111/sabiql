@@ -9,8 +9,8 @@ use serde::Deserialize;
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider, QueryExecutor};
 use crate::domain::{
     Column, ColumnAttributes, CommandTag, DatabaseMetadata, FkAction, ForeignKey, Index,
-    IndexAttributes, IndexType, QueryResult, QuerySource, Schema, Table, TableSignature,
-    TableSummary, WriteExecutionResult,
+    IndexAttributes, IndexType, QueryResult, QuerySource, QueryValue, Schema, Table,
+    TableSignature, TableSummary, WriteExecutionResult,
 };
 
 mod cli;
@@ -164,11 +164,11 @@ impl SqliteAdapter {
         source: QuerySource,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
-        self.execute_csv_query_with_display_query(path, query, query, source, read_only)
+        self.execute_quoted_query_with_display_query(path, query, query, source, read_only)
             .await
     }
 
-    async fn execute_csv_query_with_display_query(
+    async fn execute_quoted_query_with_display_query(
         &self,
         path: &str,
         execution_query: &str,
@@ -183,10 +183,10 @@ impl SqliteAdapter {
         let start = Instant::now();
         let stdout = self
             .cli
-            .execute_csv(path, execution_query, read_only)
+            .execute_quote(path, execution_query, read_only)
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
-        let mut result = csv_to_query_result(execution_query, &stdout, source, elapsed)?;
+        let mut result = quoted_to_query_result(execution_query, &stdout, source, elapsed)?;
         result.query = display_query.to_string();
         Ok(result)
     }
@@ -704,43 +704,146 @@ fn count_result_statements(sql: &str) -> usize {
         .count()
 }
 
-fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(false)
-        .flexible(true)
-        .from_reader(stdout.as_bytes());
-    let mut record = csv::ByteRecord::new();
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct QuotedRecord {
+    offset: usize,
+    values: Vec<QueryValue>,
+}
+
+fn split_quoted_records(stdout: &str) -> Vec<(usize, String)> {
     let mut records = Vec::new();
-    loop {
-        let position = reader.position().clone();
-        match reader.read_byte_record(&mut record) {
-            Ok(true) => records.push((position.byte() as usize, record.clone())),
-            Ok(false) => break,
-            Err(_) => return stdout,
+    let mut start = 0usize;
+    let mut in_quote = false;
+    let bytes = stdout.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' if in_quote && i + 1 < bytes.len() && bytes[i + 1] == b'\'' => {
+                i += 2;
+            }
+            b'\'' => {
+                in_quote = !in_quote;
+                i += 1;
+            }
+            b'\n' if !in_quote => {
+                records.push((start, stdout[start..i].trim_end_matches('\r').to_string()));
+                start = i + 1;
+                i += 1;
+            }
+            _ => i += 1,
         }
     }
+    if start < stdout.len() {
+        records.push((start, stdout[start..].trim_end_matches('\r').to_string()));
+    }
+    records.retain(|(_, record)| !record.is_empty());
+    records
+}
 
+fn split_quoted_fields(record: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut start = 0usize;
+    let mut in_quote = false;
+    let bytes = record.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' if in_quote && i + 1 < bytes.len() && bytes[i + 1] == b'\'' => {
+                i += 2;
+            }
+            b'\'' => {
+                in_quote = !in_quote;
+                i += 1;
+            }
+            b',' if !in_quote => {
+                fields.push(record[start..i].to_string());
+                start = i + 1;
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    fields.push(record[start..].to_string());
+    fields
+}
+
+fn unquote_sql_text(value: &str) -> String {
+    value[1..value.len() - 1].replace("''", "'")
+}
+
+fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
+    if !hex.len().is_multiple_of(2) {
+        return Err(DbOperationError::MetadataParseFailed(
+            "invalid SQLite BLOB hex literal".to_string(),
+        ));
+    }
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    let mut chars = hex.as_bytes().chunks_exact(2);
+    for pair in &mut chars {
+        let raw = std::str::from_utf8(pair)
+            .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
+        let byte = u8::from_str_radix(raw, 16)
+            .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
+        bytes.push(byte);
+    }
+    Ok(bytes)
+}
+
+fn parse_quoted_value(value: &str) -> Result<QueryValue, DbOperationError> {
+    if value == "NULL" {
+        return Ok(QueryValue::Null);
+    }
+    if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
+        return Ok(QueryValue::Text(unquote_sql_text(value)));
+    }
+    if value.len() >= 3
+        && value.as_bytes()[1] == b'\''
+        && value.ends_with('\'')
+        && value.as_bytes()[0].eq_ignore_ascii_case(&b'X')
+    {
+        return Ok(QueryValue::Blob(decode_hex_bytes(
+            &value[2..value.len() - 1],
+        )?));
+    }
+    Ok(QueryValue::SqlLiteral(value.to_string()))
+}
+
+fn parse_quoted_records(stdout: &str) -> Result<Vec<QuotedRecord>, DbOperationError> {
+    split_quoted_records(stdout)
+        .into_iter()
+        .map(|(offset, record)| {
+            split_quoted_fields(&record)
+                .into_iter()
+                .map(|field| parse_quoted_value(&field))
+                .collect::<Result<Vec<_>, _>>()
+                .map(|values| QuotedRecord { offset, values })
+        })
+        .collect()
+}
+
+fn extract_last_quoted_block<'a>(stdout: &'a str, sql: &str) -> Result<&'a str, DbOperationError> {
+    let records = parse_quoted_records(stdout)?;
     if records.len() <= 2 {
-        return stdout;
+        return Ok(stdout);
     }
 
     let expected_sets = count_result_statements(sql);
-    let first_header = &records[0].1;
+    let first_header = &records[0].values;
     let mut current_fc = first_header.len();
     let mut known_headers = vec![first_header.clone()];
     let mut last_header_idx = 0;
     let mut data_rows_since_header = 0usize;
 
-    for (i, (_, record)) in records.iter().enumerate().skip(1) {
-        let fc = record.len();
+    for (i, record) in records.iter().enumerate().skip(1) {
+        let fc = record.values.len();
         if fc != current_fc {
             last_header_idx = i;
             current_fc = fc;
             data_rows_since_header = 0;
-            if !known_headers.contains(record) {
-                known_headers.push(record.clone());
+            if !known_headers.contains(&record.values) {
+                known_headers.push(record.values.clone());
             }
-        } else if known_headers.contains(record) {
+        } else if known_headers.contains(&record.values) {
             last_header_idx = i;
             data_rows_since_header = 0;
         } else if expected_sets > 1
@@ -748,7 +851,7 @@ fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
             && known_headers.len() < expected_sets
         {
             last_header_idx = i;
-            known_headers.push(record.clone());
+            known_headers.push(record.values.clone());
             data_rows_since_header = 0;
         } else {
             data_rows_since_header += 1;
@@ -756,13 +859,13 @@ fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
     }
 
     if last_header_idx == 0 {
-        return stdout;
+        return Ok(stdout);
     }
 
-    &stdout[records[last_header_idx].0..]
+    Ok(&stdout[records[last_header_idx].offset..])
 }
 
-fn csv_to_query_result(
+fn quoted_to_query_result(
     query: &str,
     stdout: &str,
     source: QuerySource,
@@ -779,24 +882,32 @@ fn csv_to_query_result(
         ));
     }
 
-    let csv_block = if count_result_statements(query) <= 1 {
+    let quoted_block = if count_result_statements(query) <= 1 {
         stdout
     } else {
-        extract_last_csv_block(stdout, query)
+        extract_last_quoted_block(stdout, query)?
     };
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_reader(csv_block.as_bytes());
-    let columns = reader.headers()?.iter().map(ToString::to_string).collect();
-    let mut rows = Vec::new();
-    for result in reader.records() {
-        rows.push(result?.iter().map(ToString::to_string).collect());
-    }
+    let mut records = parse_quoted_records(quoted_block)?;
+    let Some(header) = records.first() else {
+        return Ok(QueryResult::success(
+            query.to_string(),
+            Vec::new(),
+            Vec::new(),
+            execution_time_ms,
+            source,
+        ));
+    };
+    let columns = header
+        .values
+        .iter()
+        .map(QueryValue::display_value)
+        .collect();
+    let values = records.drain(1..).map(|record| record.values).collect();
 
-    Ok(QueryResult::success(
+    Ok(QueryResult::success_with_values(
         query.to_string(),
         columns,
-        rows,
+        values,
         execution_time_ms,
         source,
     ))
@@ -811,15 +922,8 @@ fn strip_sqlite_probes(
     }
 
     let (stmt_col, changes_col) = sqlite_probe_columns(marker);
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(false)
-        .flexible(true)
-        .from_reader(stdout.as_bytes());
-    let mut record = csv::ByteRecord::new();
-    let mut records = Vec::new();
-    while reader.read_byte_record(&mut record)? {
-        records.push(record.clone());
-    }
+    let raw_records = split_quoted_records(stdout);
+    let records = parse_quoted_records(stdout)?;
 
     let mut changes = HashMap::new();
     let mut kept = Vec::new();
@@ -827,9 +931,9 @@ fn strip_sqlite_probes(
     let mut index = 0;
     while index < records.len() {
         let record = &records[index];
-        if record.len() == 2
-            && record.get(0) == Some(stmt_col.as_bytes())
-            && record.get(1) == Some(changes_col.as_bytes())
+        if record.values.len() == 2
+            && record.values[0].display_value() == stmt_col
+            && record.values[1].display_value() == changes_col
         {
             removed_probe = true;
             let value = records.get(index + 1).ok_or_else(|| {
@@ -838,18 +942,18 @@ fn strip_sqlite_probes(
                 )
             })?;
             let stmt_index = value
-                .get(0)
-                .and_then(|raw| std::str::from_utf8(raw).ok())
-                .and_then(|raw| raw.parse::<usize>().ok())
+                .values
+                .first()
+                .and_then(|raw| raw.display_value().parse::<usize>().ok())
                 .ok_or_else(|| {
                     DbOperationError::CommandTagParseFailed(
                         "invalid SQLite statement probe index".to_string(),
                     )
                 })?;
             let affected_rows = value
+                .values
                 .get(1)
-                .and_then(|raw| std::str::from_utf8(raw).ok())
-                .and_then(|raw| raw.parse::<usize>().ok())
+                .and_then(|raw| raw.display_value().parse::<usize>().ok())
                 .ok_or_else(|| {
                     DbOperationError::CommandTagParseFailed(
                         "invalid SQLite statement probe changes".to_string(),
@@ -858,7 +962,7 @@ fn strip_sqlite_probes(
             changes.insert(stmt_index, affected_rows);
             index += 2;
         } else {
-            kept.push(record.clone());
+            kept.push(raw_records[index].1.clone());
             index += 1;
         }
     }
@@ -867,19 +971,7 @@ fn strip_sqlite_probes(
         return Ok((stdout.to_string(), changes));
     }
 
-    let mut writer = csv::WriterBuilder::new()
-        .has_headers(false)
-        .flexible(true)
-        .from_writer(Vec::new());
-    for record in kept {
-        writer.write_byte_record(&record)?;
-    }
-    let bytes = writer.into_inner().map_err(|error| {
-        DbOperationError::QueryFailed(format!("Failed to write filtered SQLite CSV: {error}"))
-    })?;
-    String::from_utf8(bytes)
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
-        .map(|filtered| (filtered, changes))
+    Ok((kept.join("\n"), changes))
 }
 
 fn first_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
@@ -1224,7 +1316,7 @@ impl QueryExecutor for SqliteAdapter {
         let start = Instant::now();
         let stdout = self
             .cli
-            .execute_csv(path, &execution_query, read_only)
+            .execute_quote(path, &execution_query, read_only)
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
         let (stdout, changes) = strip_sqlite_probes(&stdout, &marker)?;
@@ -1243,7 +1335,7 @@ impl QueryExecutor for SqliteAdapter {
             ));
         }
 
-        let mut result = csv_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
+        let mut result = quoted_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
         if let Some(tag) = tag {
             result = result.with_command_tag(tag);
         } else if statements.iter().any(|stmt| statement_returns_rows(stmt)) {
@@ -1393,28 +1485,12 @@ mod tests {
         use super::*;
 
         #[test]
-        fn csv_to_query_result_preserves_quoted_newline_for_single_statement() {
-            let csv = "body,marker\n\"line 1\nline 2\",ok\n";
+        fn quoted_to_query_result_preserves_newline_for_single_statement() {
+            let quoted = "'body','marker'\n'line 1\nline 2','ok'\n";
 
-            let result =
-                csv_to_query_result("SELECT body, marker FROM notes", csv, QuerySource::Adhoc, 1)
-                    .unwrap();
-
-            assert_eq!(result.columns, vec!["body", "marker"]);
-            assert_eq!(
-                result.rows,
-                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
-            );
-        }
-
-        #[test]
-        fn csv_to_query_result_uses_last_result_set_for_multi_select() {
-            let sqlite_csv_with_ignored_first_result_set =
-                "ignored\n1\nbody,marker\n\"line 1\nline 2\",ok\n";
-
-            let result = csv_to_query_result(
-                "SELECT 1 AS ignored; SELECT body, marker FROM notes",
-                sqlite_csv_with_ignored_first_result_set,
+            let result = quoted_to_query_result(
+                "SELECT body, marker FROM notes",
+                quoted,
                 QuerySource::Adhoc,
                 1,
             )
@@ -1428,6 +1504,58 @@ mod tests {
         }
 
         #[test]
+        fn quoted_to_query_result_uses_last_result_set_for_multi_select() {
+            let sqlite_output_with_ignored_first_result_set =
+                "'ignored'\n1\n'body','marker'\n'line 1\nline 2','ok'\n";
+
+            let result = quoted_to_query_result(
+                "SELECT 1 AS ignored; SELECT body, marker FROM notes",
+                sqlite_output_with_ignored_first_result_set,
+                QuerySource::Adhoc,
+                1,
+            )
+            .unwrap();
+
+            assert_eq!(result.columns, vec!["body", "marker"]);
+            assert_eq!(
+                result.rows,
+                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+            );
+        }
+
+        #[test]
+        fn quoted_to_query_result_preserves_sqlite_value_kinds() {
+            let quoted = "'a','b','c','d'\nNULL,'','NULL',X'00FF41'\n";
+
+            let result =
+                quoted_to_query_result("SELECT a, b, c, d FROM t", quoted, QuerySource::Adhoc, 1)
+                    .unwrap();
+
+            assert_eq!(
+                result.rows,
+                vec![vec![
+                    "NULL".to_string(),
+                    String::new(),
+                    "NULL".to_string(),
+                    "BLOB (3 bytes) 00 FF 41".to_string()
+                ]]
+            );
+            assert!(matches!(result.value_at(0, 0), Some(QueryValue::Null)));
+            assert_eq!(
+                result.value_at(0, 1),
+                Some(&QueryValue::Text(String::new()))
+            );
+            assert_eq!(
+                result.value_at(0, 2),
+                Some(&QueryValue::Text("NULL".to_string()))
+            );
+            assert_eq!(
+                result.value_at(0, 3),
+                Some(&QueryValue::Blob(vec![0, 255, 65]))
+            );
+        }
+
+        #[test]
         fn parse_affected_rows_reads_trailing_changes_cell() {
             assert_eq!(parse_affected_rows("changes()\n3\n").unwrap(), 3);
         }
@@ -1435,12 +1563,12 @@ mod tests {
         #[test]
         fn strip_sqlite_probes_removes_probe_result_sets() {
             let marker = "probe";
-            let stdout = "id,name\n1,Alice\nprobe_stmt,probe_changes\n0,2\nvalue\n42\n";
+            let stdout = "'id','name'\n1,'Alice'\n'probe_stmt','probe_changes'\n0,2\n'value'\n42\n";
 
             let (filtered, changes) = strip_sqlite_probes(stdout, marker).unwrap();
 
             assert_eq!(changes.get(&0), Some(&2));
-            assert_eq!(filtered, "id,name\n1,Alice\nvalue\n42\n");
+            assert_eq!(filtered, "'id','name'\n1,'Alice'\n'value'\n42");
         }
 
         #[test]
