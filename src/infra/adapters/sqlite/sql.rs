@@ -31,6 +31,8 @@ fn sql_literal(value: &QueryValue) -> String {
 fn equality_predicate(column: &str, value: &QueryValue) -> String {
     let column = quote_ident(column);
     match value {
+        // App-layer write flows reject SQLite NULL primary keys before SQL generation.
+        // Reaching this branch means a caller bypassed that guardrail.
         QueryValue::Null => panic!("SQLite write predicates require non-NULL primary key values"),
         _ => format!("{column} = {}", sql_literal(value)),
     }
