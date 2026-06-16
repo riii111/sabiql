@@ -1,5 +1,6 @@
 use unicode_casefold::UnicodeCaseFold;
 
+use crate::domain::DatabaseType;
 use crate::domain::connection::SqliteConnectionConfig;
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
@@ -56,6 +57,8 @@ pub enum EditGuardrailError {
     CellIndexOutOfBounds,
     #[error("Only text cells can be edited inline")]
     NonTextInlineEdit,
+    #[error("SQLite writes require non-NULL primary key values")]
+    SqliteNullPrimaryKey,
     #[error("{0}")]
     GuardrailBlocked(String),
 }
@@ -64,6 +67,20 @@ pub struct BulkDeletePreviewResult {
     pub preview: WritePreview,
     pub target_page: usize,
     pub target_row: Option<usize>,
+}
+
+pub fn reject_sqlite_null_pk(
+    database_type: DatabaseType,
+    pk_pairs: &[(String, QueryValue)],
+) -> Result<(), EditGuardrailError> {
+    if database_type == DatabaseType::SQLite
+        && pk_pairs
+            .iter()
+            .any(|(_, value)| matches!(value, QueryValue::Null))
+    {
+        return Err(EditGuardrailError::SqliteNullPrimaryKey);
+    }
+    Ok(())
 }
 
 // Entry checks in navigation and submit-time checks in query should both use this.
@@ -134,6 +151,7 @@ pub fn build_bulk_delete_preview(
             .ok_or(EditGuardrailError::StagedRowIndexOutOfBounds(row_idx))?;
         let pairs = build_pk_pairs(&result.columns, row, pk_cols)
             .ok_or(EditGuardrailError::StableKeyColumnsMissing)?;
+        reject_sqlite_null_pk(state.session.active_database_type_or_default(), &pairs)?;
         pk_pairs_per_row.push(pairs);
     }
 
@@ -627,6 +645,27 @@ mod tests {
                 result.preview.sql,
                 "DELETE FROM \"users\" WHERE \"id\" = '1'"
             );
+        }
+
+        #[test]
+        fn sqlite_database_type_rejects_null_primary_key_value() {
+            let mut state = editable_state(DatabaseType::SQLite);
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    "SELECT * FROM users".to_string(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec![QueryValue::Null, QueryValue::text("Alice")]],
+                    10,
+                    QuerySource::Preview,
+                )));
+
+            let result = build_bulk_delete_preview(&state, &AppServices::stub());
+
+            assert!(matches!(
+                result,
+                Err(EditGuardrailError::SqliteNullPrimaryKey)
+            ));
         }
     }
 }
