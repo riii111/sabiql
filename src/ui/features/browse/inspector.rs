@@ -288,7 +288,15 @@ impl Inspector {
             return ViewportPlan::default();
         }
 
-        let headers = vec!["Name", "Type", "Null", "PK", "Default", "Comment"];
+        let headers = vec![
+            "Name",
+            "Type",
+            "Null",
+            "PK",
+            "Read-only",
+            "Default",
+            "Comment",
+        ];
 
         let data_rows: Vec<Vec<String>> = table
             .columns
@@ -307,6 +315,7 @@ impl Inspector {
                     } else {
                         String::new()
                     },
+                    col.read_only_reason().unwrap_or_default().to_string(),
                     col.default.clone().unwrap_or_default(),
                     col.comment.clone().unwrap_or_default(),
                 ]
@@ -389,10 +398,12 @@ impl Inspector {
                         let text = row.get(col_idx).map_or("", String::as_str);
                         let display = truncate_to_width(text, col_width as usize);
 
-                        // Special styling for PK and Comment columns
+                        // Special styling for PK, read-only reason, and Comment columns
                         let cell_style = if col_idx == 3 && !text.is_empty() {
                             Style::default().fg(theme.semantic.text.accent)
-                        } else if col_idx == 5 {
+                        } else if col_idx == 4 && !text.is_empty() {
+                            Style::default().fg(theme.semantic.status.warning)
+                        } else if col_idx == 6 {
                             Style::default().fg(theme.semantic.text.muted)
                         } else {
                             Style::default()
@@ -450,10 +461,20 @@ impl Inspector {
             .indexes
             .iter()
             .any(|index| index.index_type != IndexType::Unknown);
+        let has_details = table.indexes.iter().any(|index| {
+            index.is_partial() || index.has_expression() || index.definition.is_some()
+        });
+        let headers_with_type_and_details =
+            ["Name", "Columns", "Type", "Unique", "Partial", "Detail"];
         let headers_with_type = ["Name", "Columns", "Type", "Unique"];
+        let headers_without_type_and_details = ["Name", "Columns", "Unique", "Partial", "Detail"];
         let headers_without_type = ["Name", "Columns", "Unique"];
-        let headers = if show_type {
+        let headers = if show_type && has_details {
+            &headers_with_type_and_details[..]
+        } else if show_type {
             &headers_with_type[..]
+        } else if has_details {
+            &headers_without_type_and_details[..]
         } else {
             &headers_without_type[..]
         };
@@ -463,7 +484,7 @@ impl Inspector {
             .indexes
             .iter()
             .take(50)
-            .map(|index| index_row(index, show_type))
+            .map(|index| index_row(index, show_type, has_details))
             .collect();
         let col_widths = calculate_column_widths(headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
@@ -481,7 +502,7 @@ impl Inspector {
             scroll_offset,
             theme,
             |idx| {
-                index_row(&table.indexes[idx], show_type)
+                index_row(&table.indexes[idx], show_type, has_details)
                     .into_iter()
                     .map(Cell::from)
                     .collect()
@@ -721,7 +742,7 @@ impl Inspector {
     }
 }
 
-fn index_row(index: &Index, show_type: bool) -> Vec<String> {
+fn index_row(index: &Index, show_type: bool, show_details: bool) -> Vec<String> {
     let mut row = vec![index.name.clone(), index.columns.join(", ")];
     if show_type {
         row.push(index_type_label(&index.index_type).unwrap_or_default());
@@ -731,7 +752,26 @@ fn index_row(index: &Index, show_type: bool) -> Vec<String> {
     } else {
         String::new()
     });
+    if show_details {
+        row.push(if index.is_partial() {
+            "✓".to_string()
+        } else {
+            String::new()
+        });
+        row.push(index_detail(index));
+    }
     row
+}
+
+fn index_detail(index: &Index) -> String {
+    let mut details = Vec::new();
+    if index.has_expression() {
+        details.push("expression".to_string());
+    }
+    if let Some(definition) = &index.definition {
+        details.push(definition.clone());
+    }
+    details.join("; ")
 }
 
 fn index_type_label(index_type: &IndexType) -> Option<String> {

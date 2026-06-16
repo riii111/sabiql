@@ -95,13 +95,29 @@ pub fn render_and_get_buffer_at_with_theme(
     now: Instant,
     theme: &ThemePalette,
 ) -> Buffer {
+    render_and_get_buffer_at_with_theme_and_services(
+        terminal,
+        state,
+        now,
+        theme,
+        &AppServices::stub(),
+    )
+}
+
+pub fn render_and_get_buffer_at_with_theme_and_services(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+    now: Instant,
+    theme: &ThemePalette,
+    services: &AppServices,
+) -> Buffer {
     terminal
         .draw(|frame| {
             let output = MainLayout::render_with_theme(
                 frame,
                 state,
                 Some(FIXED_TIME_MS),
-                &AppServices::stub(),
+                services,
                 now,
                 theme,
             );
@@ -124,6 +140,21 @@ pub fn render_and_get_buffer_at_with_theme(
 
 pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
     let buffer = render_and_get_buffer(terminal, state);
+    buffer_to_string(&buffer)
+}
+
+pub fn render_to_string_with_services(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+    services: &AppServices,
+) -> String {
+    let buffer = render_and_get_buffer_at_with_theme_and_services(
+        terminal,
+        state,
+        test_instant(),
+        palette_for(state.ui.theme_id()),
+        services,
+    );
     buffer_to_string(&buffer)
 }
 
