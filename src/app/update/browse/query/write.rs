@@ -17,7 +17,8 @@ use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
-    EditGuardrailError, build_bulk_delete_preview, editable_preview_base, reject_sqlite_null_pk,
+    EditGuardrailError, build_bulk_delete_preview, editable_preview_base, ensure_column_writable,
+    reject_sqlite_null_pk,
 };
 
 fn build_update_preview(
@@ -51,9 +52,7 @@ fn build_update_preview(
         .ok_or(EditGuardrailError::ColumnIndexOutOfBounds)?
         .clone();
 
-    if pk_cols.iter().any(|pk| pk == &column_name) {
-        return Err(EditGuardrailError::PrimaryKeyColumnsReadOnly);
-    }
+    ensure_column_writable(state, &column_name, pk_cols)?;
     let new_value = match row_values
         .get(col_idx)
         .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
@@ -385,7 +384,7 @@ mod tests {
     use super::*;
 
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{DatabaseType, QueryResult, QuerySource};
+    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource};
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
     };
@@ -549,6 +548,34 @@ mod tests {
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Only text cells can be edited inline")
+            );
+        }
+
+        #[test]
+        fn submit_rejects_read_only_column() {
+            let mut state = editable_state();
+            if let Some(mut detail) = state.session.table_detail().cloned() {
+                detail.columns[1].attributes =
+                    ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
+                state.session.set_table_detail_raw(Some(detail));
+            }
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(
+                effects
+                    .into_effects()
+                    .expect("reducer should handle action")
+                    .is_empty()
+            );
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Read-only column cannot be edited: name (generated)")
             );
         }
 
