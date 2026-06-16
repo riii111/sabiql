@@ -22,7 +22,7 @@ use crate::model::shared::settings::SettingsState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
-use crate::policy::sql::export::can_rerun_for_csv_export;
+use crate::policy::sql::result_query::is_rerunnable_select;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -263,7 +263,7 @@ impl AppState {
     pub fn can_request_csv_export(&self) -> bool {
         self.query
             .visible_result()
-            .is_some_and(|r| !r.is_error() && can_rerun_for_csv_export(&r.query))
+            .is_some_and(|r| !r.is_error() && is_rerunnable_select(&r.query))
     }
 
     /// True when a run-scoped async response no longer belongs to the active

@@ -1,6 +1,6 @@
 use super::statement_classifier::{self, StatementKind};
 
-pub fn can_rerun_for_csv_export(sql: &str) -> bool {
+pub fn is_rerunnable_select(sql: &str) -> bool {
     matches!(statement_classifier::classify(sql), StatementKind::Select)
 }
 
@@ -13,7 +13,7 @@ mod tests {
     #[case::select("SELECT * FROM users")]
     #[case::show("SHOW search_path")]
     fn allows_read_only_result_queries(#[case] sql: &str) {
-        assert!(can_rerun_for_csv_export(sql));
+        assert!(is_rerunnable_select(sql));
     }
 
     #[rstest]
@@ -26,6 +26,6 @@ mod tests {
     #[case::multi_statement("SELECT 1; DELETE FROM users RETURNING id")]
     #[case::explain_analyze_update("EXPLAIN ANALYZE UPDATE users SET name = 'b' RETURNING id")]
     fn blocks_queries_that_could_mutate_on_rerun(#[case] sql: &str) {
-        assert!(!can_rerun_for_csv_export(sql));
+        assert!(!is_rerunnable_select(sql));
     }
 }
