@@ -407,6 +407,9 @@ mod tests {
 
     mod detail_edit_entry {
         use super::*;
+        use crate::model::browse::cell_detail::CellDetailMode;
+        use crate::services::AppServices;
+        use crate::update::browse::result::dispatch_result;
         use rstest::rstest;
 
         fn preview_state_with_body(value: &str) -> AppState {
@@ -462,6 +465,35 @@ mod tests {
                         [Action::ResultOpenCellDetail, Action::CellDetailEnterEdit]
                     )
             ));
+        }
+
+        #[test]
+        fn re_entering_non_inline_cell_with_pending_draft_opens_detail_with_draft() {
+            let original = "first line\nsecond line";
+            let mut state = preview_state_with_body(original);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, original.to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content("edited draft".to_string());
+            let now = Instant::now();
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, now)
+                .into_effects()
+                .expect("reducer should handle action");
+
+            let [Effect::DispatchActions(actions)] = effects.as_slice() else {
+                panic!("expected detail edit dispatch");
+            };
+            for action in actions {
+                dispatch_result(&mut state, action, &AppServices::stub(), now);
+            }
+
+            assert_eq!(state.input_mode(), InputMode::CellDetail);
+            assert_eq!(state.cell_detail.mode(), CellDetailMode::Editing);
+            assert_eq!(state.cell_detail.current_content(), "edited draft");
         }
     }
 

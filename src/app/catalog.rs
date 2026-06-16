@@ -309,7 +309,7 @@ fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
                     &result_active::UNSTAGE_DELETE,
                     &inspector_ddl::YANK,
                 ]),
-                rows_from_mode_row_refs(&[&jsonb_detail::YANK]),
+                rows_from_mode_row_refs(&[&jsonb_detail::YANK, &cell_detail::YANK]),
             ]),
         ),
         section(
@@ -319,6 +319,7 @@ fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
                 sql_current_rows(SqlHelpMode::Insert, keymap_preset),
                 rows_from_bindings(CELL_EDIT_KEYS),
                 rows_from_mode_rows(JSONB_EDIT_ROWS),
+                rows_from_mode_rows(CELL_DETAIL_EDIT_ROWS),
                 rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
             ]),
         ),
@@ -331,6 +332,7 @@ fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
                     &query_history_picker::TYPE_FILTER,
                 ]),
                 rows_from_bindings(JSONB_SEARCH_KEYS),
+                rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
                 rows_from_mode_rows(HELP_ROWS),
             ]),
         ),
@@ -365,6 +367,7 @@ fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
                 sql_current_rows(SqlHelpMode::Compare, keymap_preset),
                 rows_from_mode_rows(er_picker_rows(keymap_preset)),
                 rows_from_mode_rows(JSONB_DETAIL_ROWS),
+                rows_from_mode_rows(CELL_DETAIL_ROWS),
             ]),
         ),
     ]

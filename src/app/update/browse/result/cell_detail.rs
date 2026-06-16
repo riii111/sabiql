@@ -30,7 +30,10 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
                 return DispatchResult::handled();
             };
 
-            let display_value = cell_detail_display_value(&cell_value, data_type.as_deref());
+            let display_value = active_cell_detail_draft(state, row_idx, col_idx).map_or_else(
+                || cell_detail_display_value(&cell_value, data_type.as_deref()),
+                ToString::to_string,
+            );
             state.cell_detail =
                 CellDetailState::open(row_idx, col_idx, column_name, cell_value, display_value);
             state.modal.push_mode(InputMode::CellDetail);
@@ -224,6 +227,11 @@ fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
     td.columns
         .get(col_idx)
         .map(|column| column.data_type.as_str())
+}
+
+fn active_cell_detail_draft(state: &AppState, row: usize, col: usize) -> Option<&str> {
+    let edit = state.result_interaction.cell_edit();
+    (edit.row() == Some(row) && edit.col() == Some(col)).then(|| edit.draft_value())
 }
 
 fn cell_detail_display_value(value: &str, data_type: Option<&str>) -> String {
@@ -440,6 +448,20 @@ mod tests {
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
         reduce_cell_detail(&mut state, &Action::CellDetailEnterEdit, Instant::now());
         reduce_cell_detail(&mut state, &Action::CellDetailExitEdit, Instant::now());
+
+        reduce_cell_detail(
+            &mut state,
+            &Action::CloseModal(ModalKind::CellDetail),
+            Instant::now(),
+        );
+
+        assert!(!state.result_interaction.cell_edit().is_active());
+    }
+
+    #[test]
+    fn close_without_changes_on_pretty_json_does_not_start_inline_edit() {
+        let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
         reduce_cell_detail(
             &mut state,

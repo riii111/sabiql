@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 383
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -20,18 +19,18 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  y, y  Copy the active row values to clipboard (TSV)                                                            │                        │
 │                        │  y     Copy DDL to clipboard                                                                                    │                        │
 │                        │  y     Copy full JSON                                                                                           │                        │
+│                        │  y     Copy shown cell text                                                                                     │                        │
 │                        │                                                                                                                 │                        │
 │                        │▸ Editing                                                                                                        │                        │
 │                        │  y     Copy query to clipboard                                                                                  │                        │
 │                        │                                                                                                                 │                        │
 │                        │▸ Connections                                                                                                    │                        │
 │                        │  y     Copy error to clipboard                                                                                  │                        │
-│                        │                                                                                                                 │                        │
-│                        │▸ Advanced                                                                                                       │────────────────────────┘
-│                        │  y     Copy to clipboard                                                                                        │────────────────────────┐
+│                        │                                                                                                                 │────────────────────────┘
+│                        │▸ Advanced                                                                                                       │────────────────────────┐
+│                        │  y     Copy to clipboard                                                                                        │                        │
 │                        │  y     Copy full JSON                                                                                           │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
+│                        │  y     Copy shown cell text                                                                                     │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │

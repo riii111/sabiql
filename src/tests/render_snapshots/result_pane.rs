@@ -1,6 +1,7 @@
 use super::*;
 use harness::{table_detail_loaded_state, with_current_result};
 use sabiql_app::model::app_state::AppState;
+use sabiql_app::model::browse::cell_detail::CellDetailMode;
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
@@ -420,6 +421,7 @@ fn result_pane_cell_detail_edit_mode() {
         now,
     );
     assert_eq!(state.input_mode(), InputMode::CellDetail);
+    assert_eq!(state.cell_detail.mode(), CellDetailMode::Editing);
 
     let output = render_to_string(&mut terminal, &mut state);
 

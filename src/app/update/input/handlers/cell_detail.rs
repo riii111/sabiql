@@ -274,6 +274,28 @@ mod tests {
     }
 
     #[test]
+    fn pending_prefix_with_modified_key_cancels_sequence() {
+        let result = handle_cell_detail_keys(
+            modified_combo(Key::Char('g'), Modifiers::CTRL),
+            CellDetailMode::Viewing,
+            Some(Prefix::G),
+        );
+
+        assert!(matches!(result, Action::CancelKeySequence));
+    }
+
+    #[test]
+    fn pending_prefix_with_invalid_second_key_cancels_sequence() {
+        let result = handle_cell_detail_keys(
+            combo(Key::Char('x')),
+            CellDetailMode::Viewing,
+            Some(Prefix::G),
+        );
+
+        assert!(matches!(result, Action::CancelKeySequence));
+    }
+
+    #[test]
     fn i_enters_cell_detail_edit_when_viewing() {
         let result = handle_cell_detail_keys(combo(Key::Char('i')), CellDetailMode::Viewing, None);
 

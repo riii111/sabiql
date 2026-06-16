@@ -293,6 +293,7 @@ mod tests {
 
     mod has_blinking_cursor_tests {
         use super::*;
+        use crate::model::browse::cell_detail::CellDetailState;
 
         #[test]
         fn normal_mode_returns_false() {
@@ -321,6 +322,53 @@ mod tests {
         fn command_line_returns_true() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::CommandLine);
+
+            assert!(has_blinking_cursor(&state));
+        }
+
+        #[test]
+        fn cell_detail_viewing_returns_false() {
+            let mut state = create_test_state();
+            state.cell_detail = CellDetailState::open(
+                0,
+                0,
+                "body".to_string(),
+                "value".to_string(),
+                "value".to_string(),
+            );
+            state.modal.set_mode(InputMode::CellDetail);
+
+            assert!(!has_blinking_cursor(&state));
+        }
+
+        #[test]
+        fn cell_detail_editing_returns_true() {
+            let mut state = create_test_state();
+            state.cell_detail = CellDetailState::open(
+                0,
+                0,
+                "body".to_string(),
+                "value".to_string(),
+                "value".to_string(),
+            );
+            state.cell_detail.enter_edit();
+            state.modal.set_mode(InputMode::CellDetail);
+
+            assert!(has_blinking_cursor(&state));
+        }
+
+        #[test]
+        fn cell_detail_search_returns_true() {
+            let mut state = create_test_state();
+            state.cell_detail = CellDetailState::open(
+                0,
+                0,
+                "body".to_string(),
+                "value".to_string(),
+                "value".to_string(),
+            );
+            state.cell_detail.enter_search();
+            state.modal.set_mode(InputMode::CellDetail);
 
             assert!(has_blinking_cursor(&state));
         }
