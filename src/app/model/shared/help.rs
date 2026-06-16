@@ -1,5 +1,5 @@
 use crate::model::app_state::AppState;
-use crate::model::browse::cell_detail::{CellDetailMode, CellDetailState};
+use crate::model::browse::cell_detail::CellDetailMode;
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
@@ -319,6 +319,7 @@ impl CellDetailHelpMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::browse::cell_detail::CellDetailState;
 
     #[test]
     fn normal_origin_captures_focused_pane() {
