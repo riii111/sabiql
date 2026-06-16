@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::cmd::effect::Effect;
 #[cfg(test)]
-use crate::domain::ColumnAttributes;
+use crate::domain::{ColumnAttributes, QueryResult, QuerySource};
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -151,12 +151,12 @@ mod tests {
                 .collect();
             state
                 .query
-                .set_current_result(Arc::new(crate::domain::QueryResult::success(
+                .set_current_result(Arc::new(QueryResult::success(
                     String::new(),
                     columns,
                     result_rows,
                     1,
-                    crate::domain::QuerySource::Preview,
+                    QuerySource::Preview,
                 )));
             state
         }
@@ -286,12 +286,12 @@ mod tests {
             let rows = vec![values.iter().map(ToString::to_string).collect()];
             state
                 .query
-                .set_current_result(Arc::new(crate::domain::QueryResult::success(
+                .set_current_result(Arc::new(QueryResult::success(
                     String::new(),
                     columns,
                     rows,
                     1,
-                    crate::domain::QuerySource::Preview,
+                    QuerySource::Preview,
                 )));
             state
         }

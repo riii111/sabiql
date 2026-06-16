@@ -256,6 +256,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::domain::{QueryResult, QuerySource};
     use crate::model::shared::key_sequence::Prefix;
 
     fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
@@ -264,12 +265,12 @@ mod tests {
         let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
         state
             .query
-            .set_current_result(Arc::new(crate::domain::QueryResult::success(
+            .set_current_result(Arc::new(QueryResult::success(
                 String::new(),
                 vec!["id".to_string()],
                 result_rows,
                 1,
-                crate::domain::QuerySource::Preview,
+                QuerySource::Preview,
             )));
         state
     }

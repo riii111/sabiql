@@ -22,6 +22,7 @@ use crate::model::shared::settings::SettingsState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
+use crate::policy::sql::result_query::is_rerunnable_select;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -260,7 +261,9 @@ impl AppState {
     }
 
     pub fn can_request_csv_export(&self) -> bool {
-        self.query.visible_result().is_some_and(|r| !r.is_error())
+        self.query
+            .visible_result()
+            .is_some_and(|r| !r.is_error() && is_rerunnable_select(&r.query))
     }
 
     /// True when a run-scoped async response no longer belongs to the active
@@ -276,9 +279,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::domain::DatabaseMetadata;
-    use crate::domain::QuerySource;
-    use crate::domain::Table;
+    use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, Table};
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::update::action::Action;
@@ -288,8 +289,8 @@ mod tests {
         AppState::new("test".to_string())
     }
 
-    fn make_query_result(source: QuerySource) -> Arc<crate::domain::QueryResult> {
-        Arc::new(crate::domain::QueryResult::success(
+    fn make_query_result(source: QuerySource) -> Arc<QueryResult> {
+        Arc::new(QueryResult::success(
             "SELECT 1".to_string(),
             vec!["col".to_string()],
             vec![vec!["val".to_string()]],
@@ -682,6 +683,21 @@ mod tests {
                 .set_current_result(make_query_result(QuerySource::Preview));
 
             assert!(state.can_request_csv_export());
+        }
+
+        #[test]
+        fn csv_export_blocked_for_mutating_result_query() {
+            let mut state = make_state();
+            let result = QueryResult::success(
+                "UPDATE users SET name = 'b' WHERE id = 1 RETURNING id".to_string(),
+                vec!["id".to_string()],
+                vec![vec!["1".to_string()]],
+                10,
+                QuerySource::Adhoc,
+            );
+            state.query.set_current_result(Arc::new(result));
+
+            assert!(!state.can_request_csv_export());
         }
     }
 
