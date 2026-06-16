@@ -334,7 +334,7 @@ mod tests {
             "users",
             "name",
             &QueryValue::text("Bob"),
-            &[("id".into(), "1".into())],
+            &[("id".into(), QueryValue::text("1"))],
         );
         let delete_sql =
             registry.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "users", &rows);
@@ -362,7 +362,7 @@ mod tests {
             "users",
             "name",
             &QueryValue::text("Bob"),
-            &[("id".into(), "1".into())],
+            &[("id".into(), QueryValue::text("1"))],
         );
         let delete_sql =
             registry.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);

@@ -1,10 +1,13 @@
 use super::CommandTag;
 
+const BLOB_PREVIEW_BYTES: usize = 8;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryValue {
     Null,
     Text(String),
     Blob(Vec<u8>),
+    /// Raw SQL literal emitted by a trusted database adapter parser.
     SqlLiteral(String),
 }
 
@@ -22,31 +25,19 @@ impl QueryValue {
             Self::Blob(bytes) => {
                 let preview = bytes
                     .iter()
-                    .take(8)
+                    .take(BLOB_PREVIEW_BYTES)
                     .map(|byte| format!("{byte:02X}"))
                     .collect::<Vec<_>>()
                     .join(" ");
                 if preview.is_empty() {
                     "BLOB (0 bytes)".to_string()
-                } else if bytes.len() > 8 {
+                } else if bytes.len() > BLOB_PREVIEW_BYTES {
                     format!("BLOB ({} bytes) {preview} ...", bytes.len())
                 } else {
                     format!("BLOB ({} bytes) {preview}", bytes.len())
                 }
             }
         }
-    }
-}
-
-impl From<String> for QueryValue {
-    fn from(value: String) -> Self {
-        Self::Text(value)
-    }
-}
-
-impl From<&str> for QueryValue {
-    fn from(value: &str) -> Self {
-        Self::Text(value.to_string())
     }
 }
 

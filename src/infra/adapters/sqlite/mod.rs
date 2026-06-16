@@ -157,7 +157,7 @@ impl SqliteAdapter {
             .unwrap_or_default()
     }
 
-    async fn execute_csv_query(
+    async fn execute_quoted_query(
         &self,
         path: &str,
         query: &str,
@@ -710,11 +710,11 @@ struct QuotedRecord {
     values: Vec<QueryValue>,
 }
 
-fn split_quoted_records(stdout: &str) -> Vec<(usize, String)> {
-    let mut records = Vec::new();
+fn split_outside_sqlite_quotes(input: &str, delimiter: u8) -> Vec<(usize, String)> {
+    let mut segments = Vec::new();
     let mut start = 0usize;
     let mut in_quote = false;
-    let bytes = stdout.as_bytes();
+    let bytes = input.as_bytes();
     let mut i = 0usize;
     while i < bytes.len() {
         match bytes[i] {
@@ -725,46 +725,32 @@ fn split_quoted_records(stdout: &str) -> Vec<(usize, String)> {
                 in_quote = !in_quote;
                 i += 1;
             }
-            b'\n' if !in_quote => {
-                records.push((start, stdout[start..i].trim_end_matches('\r').to_string()));
+            byte if byte == delimiter && !in_quote => {
+                segments.push((start, input[start..i].to_string()));
                 start = i + 1;
                 i += 1;
             }
             _ => i += 1,
         }
     }
-    if start < stdout.len() {
-        records.push((start, stdout[start..].trim_end_matches('\r').to_string()));
-    }
+    segments.push((start, input[start..].to_string()));
+    segments
+}
+
+fn split_quoted_records(stdout: &str) -> Vec<(usize, String)> {
+    let mut records = split_outside_sqlite_quotes(stdout, b'\n')
+        .into_iter()
+        .map(|(offset, record)| (offset, record.trim_end_matches('\r').to_string()))
+        .collect::<Vec<_>>();
     records.retain(|(_, record)| !record.is_empty());
     records
 }
 
 fn split_quoted_fields(record: &str) -> Vec<String> {
-    let mut fields = Vec::new();
-    let mut start = 0usize;
-    let mut in_quote = false;
-    let bytes = record.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\'' if in_quote && i + 1 < bytes.len() && bytes[i + 1] == b'\'' => {
-                i += 2;
-            }
-            b'\'' => {
-                in_quote = !in_quote;
-                i += 1;
-            }
-            b',' if !in_quote => {
-                fields.push(record[start..i].to_string());
-                start = i + 1;
-                i += 1;
-            }
-            _ => i += 1,
-        }
-    }
-    fields.push(record[start..].to_string());
-    fields
+    split_outside_sqlite_quotes(record, b',')
+        .into_iter()
+        .map(|(_, field)| field)
+        .collect()
 }
 
 fn unquote_sql_text(value: &str) -> String {
@@ -1294,7 +1280,7 @@ impl QueryExecutor for SqliteAdapter {
         let path = Self::path_from_dsn(dsn)?;
         let order_columns = self.preview_order_columns(path, table).await;
         let query = sql::build_preview_query(table, &order_columns, limit, offset);
-        self.execute_csv_query(path, &query, QuerySource::Preview, read_only)
+        self.execute_quoted_query(path, &query, QuerySource::Preview, read_only)
             .await
     }
 

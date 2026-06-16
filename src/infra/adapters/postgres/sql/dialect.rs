@@ -7,7 +7,6 @@ use super::{quote_ident, quote_literal};
 fn sql_literal_or_null(value: &QueryValue) -> String {
     match value {
         QueryValue::Null => "NULL".to_string(),
-        QueryValue::Text(value) if value == "NULL" => "NULL".to_string(),
         QueryValue::Text(value) | QueryValue::SqlLiteral(value) => quote_literal(value),
         QueryValue::Blob(bytes) => quote_literal(&String::from_utf8_lossy(bytes)),
     }
@@ -122,7 +121,7 @@ mod tests {
                 "users",
                 "name",
                 &QueryValue::text("O'Reilly"),
-                &[("id".into(), "42".into())],
+                &[("id".into(), QueryValue::text("42"))],
             );
 
             assert_eq!(
@@ -141,7 +140,10 @@ mod tests {
                 "t",
                 "name",
                 &QueryValue::text("new"),
-                &[("id".into(), "1".into()), ("tenant_id".into(), "7".into())],
+                &[
+                    ("id".into(), QueryValue::text("1")),
+                    ("tenant_id".into(), QueryValue::text("7")),
+                ],
             );
 
             assert_eq!(
@@ -187,13 +189,32 @@ mod tests {
                 "public",
                 "users",
                 "name",
-                &QueryValue::text("NULL"),
-                &[("id".into(), "1".into())],
+                &QueryValue::Null,
+                &[("id".into(), QueryValue::text("1"))],
             );
 
             assert_eq!(
                 sql,
                 "UPDATE \"public\".\"users\"\nSET \"name\" = NULL\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn text_null_value_generates_quoted_text() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                DatabaseType::PostgreSQL,
+                "public",
+                "users",
+                "name",
+                &QueryValue::text("NULL"),
+                &[("id".into(), QueryValue::text("1"))],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"name\" = 'NULL'\nWHERE \"id\" = '1';"
             );
         }
 
@@ -207,7 +228,7 @@ mod tests {
                 "users",
                 "name",
                 &QueryValue::text(""),
-                &[("id".into(), "1".into())],
+                &[("id".into(), QueryValue::text("1"))],
             );
 
             assert_eq!(
@@ -226,7 +247,7 @@ mod tests {
                 "users",
                 "my\"col",
                 &QueryValue::text("val"),
-                &[("id".into(), "1".into())],
+                &[("id".into(), QueryValue::text("1"))],
             );
 
             assert_eq!(
@@ -245,7 +266,7 @@ mod tests {
                 "users",
                 "path",
                 &QueryValue::text("C:\\Users\\test"),
-                &[("id".into(), "1".into())],
+                &[("id".into(), QueryValue::text("1"))],
             );
 
             assert_eq!(
@@ -315,7 +336,7 @@ mod tests {
         #[test]
         fn null_pk_value_uses_null_literal() {
             let adapter = PostgresAdapter::new();
-            let rows = vec![vec![("id".to_string(), QueryValue::text("NULL"))]];
+            let rows = vec![vec![("id".to_string(), QueryValue::Null)]];
 
             let sql = adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "t", &rows);
 
@@ -365,7 +386,7 @@ mod tests {
         use rstest::rstest;
 
         #[rstest]
-        #[case("NULL", "NULL")]
+        #[case("NULL", "'NULL'")]
         #[case("null", "'null'")]
         #[case("", "''")]
         #[case("hello", "'hello'")]
@@ -373,6 +394,16 @@ mod tests {
         #[case("NULL ", "'NULL '")]
         fn formats_sql_literal_or_null(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(sql_literal_or_null(&QueryValue::text(input)), expected);
+        }
+
+        #[test]
+        fn formats_non_text_query_values() {
+            assert_eq!(sql_literal_or_null(&QueryValue::Null), "NULL");
+            assert_eq!(sql_literal_or_null(&QueryValue::Blob(vec![65, 66])), "'AB'");
+            assert_eq!(
+                sql_literal_or_null(&QueryValue::SqlLiteral("42".to_string())),
+                "'42'"
+            );
         }
     }
 }
