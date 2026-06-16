@@ -23,10 +23,27 @@ fn sql_literal_or_null(value: &str) -> String {
 
 pub(super) fn user_tables_query() -> &'static str {
     r"
-    SELECT name, sql
-    FROM sqlite_master
-    WHERE type = 'table'
-      AND name NOT LIKE 'sqlite_%'
+    WITH fts5_tables AS (
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND lower(sql) LIKE 'create virtual table%using fts5%'
+    )
+    SELECT m.name, m.sql
+    FROM sqlite_master m
+    WHERE m.type = 'table'
+      AND m.name NOT LIKE 'sqlite_%'
+      AND NOT EXISTS (
+          SELECT 1
+          FROM fts5_tables f
+          WHERE m.name IN (
+              f.name || '_data',
+              f.name || '_idx',
+              f.name || '_content',
+              f.name || '_docsize',
+              f.name || '_config'
+          )
+      )
     ORDER BY name
     "
 }
