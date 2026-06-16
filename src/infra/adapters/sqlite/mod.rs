@@ -40,6 +40,8 @@ struct RawColumn {
     notnull: i64,
     dflt_value: Option<String>,
     pk: i64,
+    #[serde(default)]
+    hidden: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,12 +49,21 @@ struct RawIndex {
     name: String,
     unique: i64,
     origin: String,
+    #[serde(default)]
+    partial: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct RawIndexColumn {
     seqno: i64,
+    cid: i64,
     name: Option<String>,
+    key: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RawSql {
+    sql: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -105,6 +116,16 @@ impl SqliteAdapter {
         rows.ok()
             .and_then(|rows| rows.into_iter().next())
             .map(|row| row.count)
+    }
+
+    async fn table_definition(&self, path: &str, table: &str) -> Option<String> {
+        let rows: Result<Vec<RawSql>, DbOperationError> = self
+            .cli
+            .execute_json(path, &sql::table_definition_query(table))
+            .await;
+        rows.ok()
+            .and_then(|rows| rows.into_iter().next())
+            .and_then(|row| row.sql)
     }
 
     async fn columns(&self, path: &str, table: &str) -> Result<Vec<RawColumn>, DbOperationError> {
@@ -220,22 +241,56 @@ impl SqliteAdapter {
         for raw in raw_indexes {
             let mut columns: Vec<RawIndexColumn> = self
                 .cli
-                .execute_json(path, &sql::index_info_query(&raw.name))
+                .execute_json(path, &sql::index_xinfo_query(&raw.name))
                 .await?;
             columns.sort_by_key(|col| col.seqno);
-            let columns: Vec<String> = columns.into_iter().filter_map(|col| col.name).collect();
+            let has_expression = columns.iter().any(|col| col.key != 0 && col.cid == -2);
+            let has_auxiliary_columns = columns.iter().any(|col| col.key == 0);
+            let columns: Vec<String> = columns
+                .into_iter()
+                .filter(|col| col.key != 0)
+                .filter_map(|col| {
+                    if col.cid == -2 {
+                        Some("<expression>".to_string())
+                    } else {
+                        col.name
+                    }
+                })
+                .collect();
+            let definition = self.index_definition(path, &raw.name).await;
+
+            let mut attributes = IndexAttributes::from_parts(raw.unique != 0, raw.origin == "pk");
+            if raw.partial != 0 {
+                attributes = attributes | IndexAttributes::PARTIAL;
+            }
+            if has_expression {
+                attributes = attributes | IndexAttributes::EXPRESSION;
+            }
+            if has_auxiliary_columns {
+                attributes = attributes | IndexAttributes::AUXILIARY_COLUMNS;
+            }
 
             indexes.push(Index {
                 name: raw.name,
                 columns,
-                attributes: IndexAttributes::from_parts(raw.unique != 0, raw.origin == "pk"),
+                attributes,
                 index_type: IndexType::Unknown,
-                definition: None,
+                definition,
             });
         }
 
         indexes.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(indexes)
+    }
+
+    async fn index_definition(&self, path: &str, index: &str) -> Option<String> {
+        let rows: Result<Vec<RawSql>, DbOperationError> = self
+            .cli
+            .execute_json(path, &sql::index_definition_query(index))
+            .await;
+        rows.ok()
+            .and_then(|rows| rows.into_iter().next())
+            .and_then(|row| row.sql)
     }
 
     async fn foreign_keys(
@@ -339,15 +394,29 @@ impl SqliteAdapter {
             .into_iter()
             .map(|column| {
                 let is_pk = column.pk > 0;
+                let is_hidden = column.hidden == 1;
+                let is_generated = column.hidden == 2 || column.hidden == 3;
+                let is_read_only = is_hidden || is_generated;
+                let mut attributes = ColumnAttributes::from_parts(
+                    column.notnull == 0 && !is_pk,
+                    is_pk,
+                    unique_single_columns.contains(column.name.as_str()),
+                );
+                if is_read_only {
+                    attributes = attributes | ColumnAttributes::READ_ONLY;
+                }
+                if is_hidden {
+                    attributes = attributes | ColumnAttributes::HIDDEN;
+                }
+                if is_generated {
+                    attributes = attributes | ColumnAttributes::GENERATED;
+                }
+
                 Column {
                     name: column.name.clone(),
                     data_type: column.data_type,
                     default: column.dflt_value,
-                    attributes: ColumnAttributes::from_parts(
-                        column.notnull == 0 && !is_pk,
-                        is_pk,
-                        unique_single_columns.contains(column.name.as_str()),
-                    ),
+                    attributes,
                     comment: None,
                     ordinal_position: column.cid + 1,
                 }
@@ -367,6 +436,7 @@ impl SqliteAdapter {
             triggers: Vec::new(),
             row_count_estimate: self.row_count(path, table).await,
             comment: None,
+            source_ddl: self.table_definition(path, table).await,
         })
     }
 
@@ -379,20 +449,27 @@ impl SqliteAdapter {
         let mut parts = vec![format!("sql={}", table.sql.clone().unwrap_or_default())];
         parts.extend(detail.columns.iter().map(|column| {
             format!(
-                "col={}:{}:{}:{}",
+                "col={}:{}:{}:{}:{}:{}:{}",
                 column.name,
                 column.data_type,
                 column.is_nullable(),
-                column.default.clone().unwrap_or_default()
+                column.default.clone().unwrap_or_default(),
+                column.is_read_only(),
+                column.is_hidden(),
+                column.is_generated()
             )
         }));
         parts.extend(detail.indexes.iter().map(|index| {
             format!(
-                "idx={}:{}:{}:{}",
+                "idx={}:{}:{}:{}:{}:{}:{}:{}",
                 index.name,
                 index.columns.join(","),
                 index.is_unique(),
-                index.is_primary()
+                index.is_primary(),
+                index.is_partial(),
+                index.has_expression(),
+                index.has_auxiliary_columns(),
+                index.definition.clone().unwrap_or_default()
             )
         }));
         parts.extend(detail.foreign_keys.iter().map(|fk| {
@@ -1434,8 +1511,8 @@ impl QueryExecutor for SqliteAdapter {
 #[cfg(test)]
 mod tests {
     use crate::adapters::test_support::make_sqlite_db;
-    use crate::app::ports::outbound::{MetadataProvider, QueryExecutor};
-    use crate::domain::{CommandTag, QuerySource};
+    use crate::app::ports::outbound::{DdlGenerator, MetadataProvider, QueryExecutor};
+    use crate::domain::{CommandTag, DatabaseType, QuerySource};
 
     use super::*;
 
@@ -2493,6 +2570,117 @@ mod tests {
                     .iter()
                     .any(|column| column.name == "email" && column.is_unique())
             );
+        }
+
+        #[tokio::test]
+        async fn generated_and_hidden_columns_are_read_only() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                name_upper TEXT GENERATED ALWAYS AS (upper(name)) STORED
+            );
+            CREATE VIRTUAL TABLE notes_fts USING fts5(body);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let users = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+            let generated = users
+                .columns
+                .iter()
+                .find(|column| column.name == "name_upper")
+                .unwrap();
+            assert!(generated.is_read_only());
+            assert!(generated.is_generated());
+            assert_eq!(generated.read_only_reason(), Some("generated"));
+
+            let fts = adapter
+                .fetch_table_detail(&dsn, "main", "notes_fts")
+                .await
+                .unwrap();
+            let hidden = fts
+                .columns
+                .iter()
+                .find(|column| column.name == "notes_fts")
+                .unwrap();
+            assert!(hidden.is_read_only());
+            assert!(hidden.is_hidden());
+            assert_eq!(hidden.read_only_reason(), Some("hidden"));
+        }
+
+        #[tokio::test]
+        async fn source_ddl_preserves_without_rowid_and_virtual_table_syntax() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE settings(
+                key TEXT PRIMARY KEY,
+                value TEXT
+            ) WITHOUT ROWID;
+            CREATE VIRTUAL TABLE notes_fts USING fts5(body);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let without_rowid = adapter
+                .fetch_table_detail(&dsn, "main", "settings")
+                .await
+                .unwrap();
+            assert!(
+                without_rowid
+                    .source_ddl()
+                    .is_some_and(|ddl| ddl.contains("WITHOUT ROWID"))
+            );
+            assert_eq!(
+                adapter.generate_ddl(DatabaseType::SQLite, &without_rowid),
+                without_rowid.source_ddl().unwrap()
+            );
+
+            let virtual_table = adapter
+                .fetch_table_detail(&dsn, "main", "notes_fts")
+                .await
+                .unwrap();
+            assert!(
+                virtual_table
+                    .source_ddl()
+                    .is_some_and(|ddl| ddl.starts_with("CREATE VIRTUAL TABLE"))
+            );
+        }
+
+        #[tokio::test]
+        async fn partial_expression_index_preserves_metadata_and_definition() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT);
+            CREATE INDEX idx_users_email_lower
+                ON users(lower(email))
+                WHERE email IS NOT NULL;
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+            let index = detail
+                .indexes
+                .iter()
+                .find(|index| index.name == "idx_users_email_lower")
+                .unwrap();
+
+            assert_eq!(index.columns, vec!["<expression>".to_string()]);
+            assert!(index.is_partial());
+            assert!(index.has_expression());
+            assert!(index.has_auxiliary_columns());
+            assert!(index.definition.as_deref().is_some_and(|definition| {
+                definition.contains("lower(email)")
+                    && definition.contains("WHERE email IS NOT NULL")
+            }));
         }
     }
 

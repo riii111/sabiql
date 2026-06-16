@@ -14,9 +14,12 @@ pub struct Column {
 pub struct ColumnAttributes(u8);
 
 impl ColumnAttributes {
-    pub const NULLABLE: Self = Self(0b001);
-    pub const PRIMARY_KEY: Self = Self(0b010);
-    pub const UNIQUE: Self = Self(0b100);
+    pub const NULLABLE: Self = Self(0b00_0001);
+    pub const PRIMARY_KEY: Self = Self(0b00_0010);
+    pub const UNIQUE: Self = Self(0b00_0100);
+    pub const READ_ONLY: Self = Self(0b00_1000);
+    pub const HIDDEN: Self = Self(0b01_0000);
+    pub const GENERATED: Self = Self(0b10_0000);
 
     pub const fn empty() -> Self {
         Self(0)
@@ -61,6 +64,30 @@ impl Column {
 
     pub const fn is_unique(&self) -> bool {
         self.attributes.contains(ColumnAttributes::UNIQUE)
+    }
+
+    pub const fn is_read_only(&self) -> bool {
+        self.attributes.contains(ColumnAttributes::READ_ONLY)
+    }
+
+    pub const fn is_hidden(&self) -> bool {
+        self.attributes.contains(ColumnAttributes::HIDDEN)
+    }
+
+    pub const fn is_generated(&self) -> bool {
+        self.attributes.contains(ColumnAttributes::GENERATED)
+    }
+
+    pub const fn read_only_reason(&self) -> Option<&'static str> {
+        if self.is_generated() {
+            Some("generated")
+        } else if self.is_hidden() {
+            Some("hidden")
+        } else if self.is_read_only() {
+            Some("read-only")
+        } else {
+            None
+        }
     }
 
     pub fn type_display(&self) -> String {
@@ -129,6 +156,39 @@ mod tests {
             let attributes = ColumnAttributes::NULLABLE | ColumnAttributes::PRIMARY_KEY;
 
             assert_eq!(attributes, ColumnAttributes::from_parts(true, true, false));
+        }
+
+        #[rstest]
+        #[case(true, false, false, Some("read-only"))]
+        #[case(true, true, false, Some("hidden"))]
+        #[case(true, false, true, Some("generated"))]
+        #[case(false, false, false, None)]
+        fn metadata_flags_report_read_only_reason(
+            #[case] read_only: bool,
+            #[case] hidden: bool,
+            #[case] generated: bool,
+            #[case] expected: Option<&str>,
+        ) {
+            let mut attributes = ColumnAttributes::from_parts(true, false, false);
+            if read_only {
+                attributes = attributes | ColumnAttributes::READ_ONLY;
+            }
+            if hidden {
+                attributes = attributes | ColumnAttributes::HIDDEN;
+            }
+            if generated {
+                attributes = attributes | ColumnAttributes::GENERATED;
+            }
+            let column = Column {
+                name: "col".to_string(),
+                data_type: "text".to_string(),
+                default: None,
+                attributes,
+                comment: None,
+                ordinal_position: 1,
+            };
+
+            assert_eq!(column.read_only_reason(), expected);
         }
     }
 

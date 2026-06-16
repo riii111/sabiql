@@ -149,6 +149,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: Some(0),
                 comment: None,
+                source_ddl: None,
             }));
             state
         }

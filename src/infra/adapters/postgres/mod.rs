@@ -92,6 +92,7 @@ impl MetadataProvider for PostgresAdapter {
             triggers,
             row_count_estimate: table_info.row_count_estimate,
             comment: table_info.comment,
+            source_ddl: None,
         })
     }
 
@@ -118,6 +119,7 @@ impl MetadataProvider for PostgresAdapter {
             triggers: Vec::new(),
             row_count_estimate: None,
             comment: None,
+            source_ddl: None,
         })
     }
 }

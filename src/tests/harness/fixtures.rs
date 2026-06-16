@@ -89,6 +89,7 @@ pub fn sample_table_detail() -> Table {
         }],
         row_count_estimate: Some(100),
         comment: Some("User accounts".to_string()),
+        source_ddl: None,
     }
 }
 

@@ -13,8 +13,11 @@ pub struct Index {
 pub struct IndexAttributes(u8);
 
 impl IndexAttributes {
-    pub const UNIQUE: Self = Self(0b01);
-    pub const PRIMARY: Self = Self(0b10);
+    pub const UNIQUE: Self = Self(0b0_0001);
+    pub const PRIMARY: Self = Self(0b0_0010);
+    pub const PARTIAL: Self = Self(0b0_0100);
+    pub const EXPRESSION: Self = Self(0b0_1000);
+    pub const AUXILIARY_COLUMNS: Self = Self(0b1_0000);
 
     pub const fn empty() -> Self {
         Self(0)
@@ -52,6 +55,18 @@ impl Index {
 
     pub const fn is_primary(&self) -> bool {
         self.attributes.contains(IndexAttributes::PRIMARY)
+    }
+
+    pub const fn is_partial(&self) -> bool {
+        self.attributes.contains(IndexAttributes::PARTIAL)
+    }
+
+    pub const fn has_expression(&self) -> bool {
+        self.attributes.contains(IndexAttributes::EXPRESSION)
+    }
+
+    pub const fn has_auxiliary_columns(&self) -> bool {
+        self.attributes.contains(IndexAttributes::AUXILIARY_COLUMNS)
     }
 }
 
@@ -144,6 +159,18 @@ mod tests {
 
             assert!(attributes.contains(IndexAttributes::UNIQUE));
             assert!(attributes.contains(IndexAttributes::PRIMARY));
+        }
+
+        #[test]
+        fn metadata_flags_report_expected_state() {
+            let attributes = IndexAttributes::PARTIAL
+                | IndexAttributes::EXPRESSION
+                | IndexAttributes::AUXILIARY_COLUMNS;
+            let index = make_index(attributes);
+
+            assert!(index.is_partial());
+            assert!(index.has_expression());
+            assert!(index.has_auxiliary_columns());
         }
     }
 

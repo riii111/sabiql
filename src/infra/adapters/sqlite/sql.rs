@@ -133,12 +133,26 @@ pub(super) fn table_info_query(table: &str) -> String {
     format!("PRAGMA table_info({})", quote_ident(table))
 }
 
+pub(super) fn table_definition_query(table: &str) -> String {
+    format!(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = {} LIMIT 1",
+        quote_literal(table)
+    )
+}
+
 pub(super) fn index_list_query(table: &str) -> String {
     format!("PRAGMA index_list({})", quote_ident(table))
 }
 
-pub(super) fn index_info_query(index: &str) -> String {
-    format!("PRAGMA index_info({})", quote_ident(index))
+pub(super) fn index_xinfo_query(index: &str) -> String {
+    format!("PRAGMA index_xinfo({})", quote_ident(index))
+}
+
+pub(super) fn index_definition_query(index: &str) -> String {
+    format!(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = {} LIMIT 1",
+        quote_literal(index)
+    )
 }
 
 pub(super) fn foreign_key_list_query(table: &str) -> String {
@@ -147,6 +161,10 @@ pub(super) fn foreign_key_list_query(table: &str) -> String {
 
 impl DdlGenerator for SqliteAdapter {
     fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
+        if let Some(source_ddl) = table.source_ddl() {
+            return source_ddl.to_string();
+        }
+
         let mut ddl = format!("CREATE TABLE {} (\n", quote_ident(&table.name));
         let has_primary_key = table.primary_key.as_ref().is_some_and(|pk| !pk.is_empty());
 
@@ -273,6 +291,7 @@ mod tests {
             triggers: vec![],
             row_count_estimate: None,
             comment: None,
+            source_ddl: None,
         }
     }
 
@@ -354,8 +373,8 @@ mod tests {
             r#"PRAGMA foreign_key_list("my""table")"#
         );
         assert_eq!(
-            index_info_query(r#"my"index"#),
-            r#"PRAGMA index_info("my""index")"#
+            index_xinfo_query(r#"my"index"#),
+            r#"PRAGMA index_xinfo("my""index")"#
         );
     }
 

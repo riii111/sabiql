@@ -446,6 +446,7 @@ mod tests {
             triggers: vec![],
             row_count_estimate: Some(100),
             comment: None,
+            source_ddl: None,
         }
     }
 

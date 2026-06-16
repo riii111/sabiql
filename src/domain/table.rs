@@ -29,6 +29,7 @@ pub struct Table {
     pub triggers: Vec<Trigger>,
     pub row_count_estimate: Option<i64>,
     pub comment: Option<String>,
+    pub source_ddl: Option<String>,
 }
 
 impl Table {
@@ -38,6 +39,10 @@ impl Table {
 
     pub fn display_name(&self, omit_public: bool) -> String {
         make_display_name(&self.schema, &self.name, omit_public)
+    }
+
+    pub fn source_ddl(&self) -> Option<&str> {
+        self.source_ddl.as_deref()
     }
 }
 
@@ -111,6 +116,7 @@ mod tests {
             triggers: Vec::new(),
             row_count_estimate: None,
             comment: None,
+            source_ddl: None,
         }
     }
 
