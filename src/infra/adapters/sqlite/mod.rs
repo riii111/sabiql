@@ -649,7 +649,7 @@ fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
         if is_dml_statement(statement) {
             parts.push(sqlite_changes_probe(marker, index));
         }
-        if statement_returns_rows(statement) {
+        if statement_emits_result_set(statement) {
             parts.push(sqlite_result_probe(marker, index));
         }
     }
@@ -701,7 +701,7 @@ fn is_dml_statement(statement: &str) -> bool {
     dml_keyword(statement).is_some()
 }
 
-fn statement_returns_rows(statement: &str) -> bool {
+fn statement_emits_result_set(statement: &str) -> bool {
     let keyword = first_keyword(statement);
     if keyword.eq_ignore_ascii_case("SELECT")
         || keyword.eq_ignore_ascii_case("PRAGMA")
@@ -714,6 +714,11 @@ fn statement_returns_rows(statement: &str) -> bool {
         return contains_keyword(statement, "RETURNING");
     }
     keyword.eq_ignore_ascii_case("WITH")
+}
+
+fn statement_counts_as_select_tag(statement: &str) -> bool {
+    let keyword = first_keyword(statement);
+    keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("WITH")
 }
 
 fn csv_to_query_result(
@@ -880,19 +885,7 @@ fn strip_sqlite_probes(
         return Ok((stdout.to_string(), changes));
     }
 
-    let mut writer = csv::WriterBuilder::new()
-        .has_headers(false)
-        .flexible(true)
-        .from_writer(Vec::new());
-    for record in kept {
-        writer.write_byte_record(&record)?;
-    }
-    let bytes = writer.into_inner().map_err(|error| {
-        DbOperationError::QueryFailed(format!("Failed to write filtered SQLite CSV: {error}"))
-    })?;
-    String::from_utf8(bytes)
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
-        .map(|filtered| (filtered, changes))
+    csv_from_byte_records(&kept).map(|filtered| (filtered, changes))
 }
 
 fn first_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
@@ -1255,7 +1248,10 @@ impl QueryExecutor for SqliteAdapter {
                 elapsed,
                 QuerySource::Adhoc,
             );
-            if statements.iter().any(|stmt| statement_returns_rows(stmt)) {
+            if statements
+                .iter()
+                .any(|stmt| statement_counts_as_select_tag(stmt))
+            {
                 result = result.with_command_tag(CommandTag::Select(0));
             }
             return Ok(result);
@@ -1264,7 +1260,10 @@ impl QueryExecutor for SqliteAdapter {
         let mut result = csv_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
         if let Some(tag) = tag {
             result = result.with_command_tag(tag);
-        } else if statements.iter().any(|stmt| statement_returns_rows(stmt)) {
+        } else if statements
+            .iter()
+            .any(|stmt| statement_counts_as_select_tag(stmt))
+        {
             let row_count = result.row_count as u64;
             result = result.with_command_tag(CommandTag::Select(row_count));
         }
@@ -1566,6 +1565,37 @@ mod tests {
             assert!(result.columns.is_empty());
             assert!(result.rows.is_empty());
             assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
+        }
+
+        #[tokio::test]
+        async fn pragma_result_does_not_get_select_command_tag() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "PRAGMA table_info(users)", true)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                result.columns,
+                vec!["cid", "name", "type", "notnull", "dflt_value", "pk"]
+            );
+            assert_eq!(result.command_tag, None);
+        }
+
+        #[tokio::test]
+        async fn values_result_does_not_get_select_command_tag() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "VALUES (1)", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+            assert_eq!(result.command_tag, None);
         }
 
         #[tokio::test]
