@@ -1,5 +1,5 @@
 use crate::model::app_state::AppState;
-use crate::model::browse::cell_detail::CellDetailMode;
+use crate::model::browse::cell_detail::{CellDetailMode, CellDetailState};
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn cell_detail_edit_origin_tracks_cell_detail_mode() {
         let mut state = AppState::new("test".to_string());
-        state.cell_detail = crate::model::browse::cell_detail::CellDetailState::open(
+        state.cell_detail = CellDetailState::open(
             0,
             0,
             "body".to_string(),
