@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use crate::app::ports::outbound::SqlDialect;
 use crate::domain::{DatabaseType, QueryValue};
 
@@ -9,7 +11,13 @@ fn sql_literal(value: &QueryValue) -> String {
         QueryValue::Null => "NULL".to_string(),
         QueryValue::Text(value) => quote_literal(value),
         QueryValue::SqlLiteral(value) => value.clone(),
-        QueryValue::Blob(bytes) => quote_literal(&String::from_utf8_lossy(bytes)),
+        QueryValue::Blob(bytes) => {
+            let mut hex = String::with_capacity(bytes.len() * 2);
+            for byte in bytes {
+                let _ = write!(hex, "{byte:02x}");
+            }
+            format!("'\\x{hex}'")
+        }
     }
 }
 
@@ -419,7 +427,10 @@ mod tests {
         #[test]
         fn formats_non_text_query_values() {
             assert_eq!(sql_literal(&QueryValue::Null), "NULL");
-            assert_eq!(sql_literal(&QueryValue::Blob(vec![65, 66])), "'AB'");
+            assert_eq!(
+                sql_literal(&QueryValue::Blob(vec![0, 255, 65])),
+                "'\\x00ff41'"
+            );
             assert_eq!(sql_literal(&QueryValue::SqlLiteral("42".to_string())), "42");
         }
     }

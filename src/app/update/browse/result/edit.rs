@@ -162,6 +162,7 @@ mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
     use crate::update::action::CursorMove;
+    use rstest::rstest;
     use std::sync::Arc;
 
     mod cell_edit_entry_guardrails {
@@ -248,15 +249,18 @@ mod tests {
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "alice");
         }
 
-        #[test]
-        fn non_text_cell_blocks_cell_edit_entry() {
+        #[rstest]
+        #[case(QueryValue::Null)]
+        #[case(QueryValue::Blob(vec![0, 255]))]
+        #[case(QueryValue::SqlLiteral("42".to_string()))]
+        fn non_text_cell_blocks_cell_edit_entry(#[case] cell_value: QueryValue) {
             let mut state = AppState::new("test".to_string());
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success_with_values(
                     String::new(),
                     vec!["id".to_string(), "payload".to_string()],
-                    vec![vec![QueryValue::text("1"), QueryValue::Null]],
+                    vec![vec![QueryValue::text("1"), cell_value]],
                     1,
                     QuerySource::Preview,
                 )));
