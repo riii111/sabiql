@@ -50,14 +50,17 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     }
 
     let row = result
-        .rows
+        .values
         .get(row_idx)
         .ok_or(EditGuardrailError::RowIndexOutOfBounds)?;
     if build_pk_pairs(&result.columns, row, pk_cols).is_none() {
         return Err(EditGuardrailError::StableKeyColumnsMissing);
     }
 
-    let cell_value = row
+    let cell_value = result
+        .rows
+        .get(row_idx)
+        .ok_or(EditGuardrailError::RowIndexOutOfBounds)?
         .get(col_idx)
         .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
         .clone();

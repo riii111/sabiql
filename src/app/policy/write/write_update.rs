@@ -1,3 +1,5 @@
+use crate::domain::QueryValue;
+
 /// Normalize a cell value for diff display.
 /// If the value is valid JSON, re-serialize it so both before/after
 /// share the same key ordering and formatting.
@@ -28,9 +30,9 @@ pub fn preview_value_expr(value: &str) -> String {
 
 pub fn build_pk_pairs(
     columns: &[String],
-    row: &[String],
+    row: &[QueryValue],
     pk_columns: &[String],
-) -> Option<Vec<(String, String)>> {
+) -> Option<Vec<(String, QueryValue)>> {
     let mut pairs = Vec::with_capacity(pk_columns.len());
     for pk_col in pk_columns {
         let idx = columns.iter().position(|c| c == pk_col)?;
@@ -84,15 +86,15 @@ mod tests {
         #[test]
         fn existing_pk_columns_returns_pk_pairs() {
             let columns = vec!["id".to_string(), "name".to_string()];
-            let row = vec!["1".to_string(), "alice".to_string()];
+            let row = vec![QueryValue::text("1"), QueryValue::text("alice")];
             let pairs = build_pk_pairs(&columns, &row, &["id".to_string()]).unwrap();
-            assert_eq!(pairs, vec![("id".to_string(), "1".to_string())]);
+            assert_eq!(pairs, vec![("id".to_string(), QueryValue::text("1"))]);
         }
 
         #[test]
         fn missing_pk_column_returns_none() {
             let columns = vec!["name".to_string()];
-            let row = vec!["alice".to_string()];
+            let row = vec![QueryValue::text("alice")];
             let pairs = build_pk_pairs(&columns, &row, &["id".to_string()]);
             assert!(pairs.is_none());
         }

@@ -38,6 +38,18 @@ impl QueryValue {
     }
 }
 
+impl From<String> for QueryValue {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<&str> for QueryValue {
+    fn from(value: &str) -> Self {
+        Self::Text(value.to_string())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuerySource {
     Preview,

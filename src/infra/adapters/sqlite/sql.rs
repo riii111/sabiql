@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 
 use crate::app::ports::outbound::{DdlGenerator, SqlDialect};
-use crate::domain::{DatabaseType, Table};
+use crate::domain::{DatabaseType, QueryValue, Table};
 
 use super::SqliteAdapter;
 
@@ -13,11 +13,18 @@ fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-fn sql_literal_or_null(value: &str) -> String {
-    if value == "NULL" {
-        "NULL".to_string()
-    } else {
-        quote_literal(value)
+fn sql_literal(value: &QueryValue) -> String {
+    match value {
+        QueryValue::Null => "NULL".to_string(),
+        QueryValue::Text(value) => quote_literal(value),
+        QueryValue::SqlLiteral(value) => value.clone(),
+        QueryValue::Blob(bytes) => {
+            let mut hex = String::with_capacity(bytes.len() * 2);
+            for byte in bytes {
+                let _ = write!(hex, "{byte:02X}");
+            }
+            format!("X'{hex}'")
+        }
     }
 }
 
@@ -163,12 +170,12 @@ impl SqlDialect for SqliteAdapter {
         _schema: &str,
         table: &str,
         column: &str,
-        new_value: &str,
-        pk_pairs: &[(String, String)],
+        new_value: &QueryValue,
+        pk_pairs: &[(String, QueryValue)],
     ) -> String {
         let where_clause = pk_pairs
             .iter()
-            .map(|(col, val)| format!("{} = {}", quote_ident(col), quote_literal(val)))
+            .map(|(col, val)| format!("{} = {}", quote_ident(col), sql_literal(val)))
             .collect::<Vec<_>>()
             .join(" AND ");
 
@@ -176,7 +183,7 @@ impl SqlDialect for SqliteAdapter {
             "UPDATE {}\nSET {} = {}\nWHERE {};",
             quote_ident(table),
             quote_ident(column),
-            sql_literal_or_null(new_value),
+            sql_literal(new_value),
             where_clause
         )
     }
@@ -186,7 +193,7 @@ impl SqlDialect for SqliteAdapter {
         _database_type: DatabaseType,
         _schema: &str,
         table: &str,
-        pk_pairs_per_row: &[Vec<(String, String)>],
+        pk_pairs_per_row: &[Vec<(String, QueryValue)>],
     ) -> String {
         assert!(
             !pk_pairs_per_row.is_empty(),
@@ -198,7 +205,7 @@ impl SqlDialect for SqliteAdapter {
             let col = quote_ident(&pk_pairs_per_row[0][0].0);
             let values = pk_pairs_per_row
                 .iter()
-                .map(|pairs| sql_literal_or_null(&pairs[0].1))
+                .map(|pairs| sql_literal(&pairs[0].1))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{col} IN ({values})")
@@ -213,7 +220,7 @@ impl SqlDialect for SqliteAdapter {
                 .map(|pairs| {
                     let vals = pairs
                         .iter()
-                        .map(|(_, val)| sql_literal_or_null(val))
+                        .map(|(_, val)| sql_literal(val))
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!("({vals})")
@@ -274,10 +281,12 @@ mod tests {
     }
 
     #[test]
-    fn sql_literal_or_null_preserves_only_uppercase_null_as_null() {
-        assert_eq!(sql_literal_or_null("NULL"), "NULL");
-        assert_eq!(sql_literal_or_null("null"), "'null'");
-        assert_eq!(sql_literal_or_null("NULL "), "'NULL '");
+    fn sql_literal_preserves_typed_values() {
+        assert_eq!(sql_literal(&QueryValue::Null), "NULL");
+        assert_eq!(sql_literal(&QueryValue::text("NULL")), "'NULL'");
+        assert_eq!(sql_literal(&QueryValue::text("null")), "'null'");
+        assert_eq!(sql_literal(&QueryValue::Blob(vec![0, 255])), "X'00FF'");
+        assert_eq!(sql_literal(&QueryValue::SqlLiteral("42".to_string())), "42");
     }
 
     #[test]
@@ -352,8 +361,8 @@ mod tests {
                 "main",
                 "users",
                 "name",
-                "O'Reilly",
-                &[("id".into(), "42".into())],
+                &QueryValue::text("O'Reilly"),
+                &[("id".into(), QueryValue::text("42"))],
             );
 
             assert_eq!(
@@ -371,8 +380,11 @@ mod tests {
                 "main",
                 "users",
                 "name",
-                "new",
-                &[("id".into(), "1".into()), ("tenant_id".into(), "7".into())],
+                &QueryValue::text("new"),
+                &[
+                    ("id".into(), QueryValue::text("1")),
+                    ("tenant_id".into(), QueryValue::text("7")),
+                ],
             );
 
             assert_eq!(
@@ -390,13 +402,32 @@ mod tests {
                 "main",
                 "users",
                 "name",
-                "NULL",
-                &[("id".into(), "1".into())],
+                &QueryValue::Null,
+                &[("id".into(), QueryValue::text("1"))],
             );
 
             assert_eq!(
                 sql,
                 "UPDATE \"users\"\nSET \"name\" = NULL\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn text_null_value_generates_quoted_text() {
+            let adapter = SqliteAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                DatabaseType::SQLite,
+                "main",
+                "users",
+                "name",
+                &QueryValue::text("NULL"),
+                &[("id".into(), QueryValue::text("1"))],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"users\"\nSET \"name\" = 'NULL'\nWHERE \"id\" = '1';"
             );
         }
     }
@@ -408,8 +439,8 @@ mod tests {
         fn single_pk_multiple_rows_returns_in_clause() {
             let adapter = SqliteAdapter::new();
             let rows = vec![
-                vec![("id".to_string(), "1".to_string())],
-                vec![("id".to_string(), "2".to_string())],
+                vec![("id".to_string(), QueryValue::text("1"))],
+                vec![("id".to_string(), QueryValue::text("2"))],
             ];
 
             let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
@@ -422,12 +453,12 @@ mod tests {
             let adapter = SqliteAdapter::new();
             let rows = vec![
                 vec![
-                    ("id".to_string(), "1".to_string()),
-                    ("tenant_id".to_string(), "10".to_string()),
+                    ("id".to_string(), QueryValue::text("1")),
+                    ("tenant_id".to_string(), QueryValue::text("10")),
                 ],
                 vec![
-                    ("id".to_string(), "2".to_string()),
-                    ("tenant_id".to_string(), "20".to_string()),
+                    ("id".to_string(), QueryValue::text("2")),
+                    ("tenant_id".to_string(), QueryValue::text("20")),
                 ],
             ];
 
@@ -442,7 +473,7 @@ mod tests {
         #[test]
         fn null_pk_value_uses_null_literal() {
             let adapter = SqliteAdapter::new();
-            let rows = vec![vec![("id".to_string(), "NULL".to_string())]];
+            let rows = vec![vec![("id".to_string(), QueryValue::Null)]];
 
             let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
 
@@ -453,8 +484,8 @@ mod tests {
         fn composite_pk_null_value_uses_null_literal() {
             let adapter = SqliteAdapter::new();
             let rows = vec![vec![
-                ("id".to_string(), "NULL".to_string()),
-                ("tenant_id".to_string(), "10".to_string()),
+                ("id".to_string(), QueryValue::Null),
+                ("tenant_id".to_string(), QueryValue::text("10")),
             ]];
 
             let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
@@ -463,6 +494,16 @@ mod tests {
                 sql,
                 "DELETE FROM \"users\"\nWHERE (\"id\", \"tenant_id\") IN ((NULL, '10'));"
             );
+        }
+
+        #[test]
+        fn blob_pk_value_uses_blob_literal() {
+            let adapter = SqliteAdapter::new();
+            let rows = vec![vec![("id".to_string(), QueryValue::Blob(vec![0, 255, 65]))]];
+
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+
+            assert_eq!(sql, "DELETE FROM \"users\"\nWHERE \"id\" IN (X'00FF41');");
         }
     }
 

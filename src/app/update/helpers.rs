@@ -1,7 +1,7 @@
 use unicode_casefold::UnicodeCaseFold;
 
-use crate::domain::QueryResult;
 use crate::domain::connection::SqliteConnectionConfig;
+use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
 use crate::policy::write::write_guardrails::{
@@ -124,10 +124,10 @@ pub fn build_bulk_delete_preview(
         other => other,
     })?;
 
-    let mut pk_pairs_per_row: Vec<Vec<(String, String)>> = Vec::new();
+    let mut pk_pairs_per_row: Vec<Vec<(String, QueryValue)>> = Vec::new();
     for &row_idx in state.result_interaction.staged_delete_rows() {
         let row = result
-            .rows
+            .values
             .get(row_idx)
             .ok_or(EditGuardrailError::StagedRowIndexOutOfBounds(row_idx))?;
         let pairs = build_pk_pairs(&result.columns, row, pk_cols)

@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::input_mode::InputMode;
@@ -40,8 +41,8 @@ fn build_update_preview(
         .col
         .ok_or(EditGuardrailError::NoColumnSelectedForEdit)?;
 
-    let row = result
-        .rows
+    let row_values = result
+        .values
         .get(row_idx)
         .ok_or(EditGuardrailError::RowIndexOutOfBounds)?;
     let column_name = result
@@ -54,7 +55,7 @@ fn build_update_preview(
         return Err(EditGuardrailError::PrimaryKeyColumnsReadOnly);
     }
 
-    let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
+    let pk_pairs = build_pk_pairs(&result.columns, row_values, pk_cols);
     let target = crate::policy::write::write_guardrails::TargetSummary {
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
@@ -75,7 +76,7 @@ fn build_update_preview(
         &target.schema,
         &target.table,
         &column_name,
-        state.result_interaction.cell_edit().draft_value(),
+        &QueryValue::text(state.result_interaction.cell_edit().draft_value()),
         &target.key_values,
     );
     let preview = WritePreview {
@@ -760,7 +761,7 @@ mod tests {
                 target_summary: TargetSummary {
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    key_values: vec![("id".to_string(), "2".to_string())],
+                    key_values: vec![("id".to_string(), QueryValue::text("2"))],
                 },
                 diff: vec![],
                 guardrail: GuardrailDecision {

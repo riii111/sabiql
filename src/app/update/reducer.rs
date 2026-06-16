@@ -1823,7 +1823,7 @@ mod tests {
                 target_summary: TargetSummary {
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    key_values: vec![("id".to_string(), "2".to_string())],
+                    key_values: vec![("id".to_string(), crate::domain::QueryValue::text("2"))],
                 },
                 diff: vec![],
                 guardrail: GuardrailDecision {
