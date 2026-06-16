@@ -54,6 +54,8 @@ pub enum EditGuardrailError {
     NoActiveCell,
     #[error("Cell index out of bounds")]
     CellIndexOutOfBounds,
+    #[error("Only text cells can be edited inline")]
+    NonTextInlineEdit,
     #[error("{0}")]
     GuardrailBlocked(String),
 }

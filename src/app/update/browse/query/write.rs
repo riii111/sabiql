@@ -54,6 +54,15 @@ fn build_update_preview(
     if pk_cols.iter().any(|pk| pk == &column_name) {
         return Err(EditGuardrailError::PrimaryKeyColumnsReadOnly);
     }
+    let new_value = match row_values
+        .get(col_idx)
+        .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
+    {
+        QueryValue::Text(_) => QueryValue::text(state.result_interaction.cell_edit().draft_value()),
+        QueryValue::Null | QueryValue::Blob(_) | QueryValue::SqlLiteral(_) => {
+            return Err(EditGuardrailError::NonTextInlineEdit);
+        }
+    };
 
     let pk_pairs = build_pk_pairs(&result.columns, row_values, pk_cols);
     let target = crate::policy::write::write_guardrails::TargetSummary {
@@ -76,7 +85,7 @@ fn build_update_preview(
         &target.schema,
         &target.table,
         &column_name,
-        &QueryValue::text(state.result_interaction.cell_edit().draft_value()),
+        &new_value,
         &target.key_values,
     );
     let preview = WritePreview {
@@ -372,7 +381,7 @@ pub fn reduce_write(
 mod tests {
     use super::*;
 
-    use crate::domain::DatabaseType;
+    use crate::domain::{DatabaseType, QueryResult, QuerySource};
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
     };
@@ -383,6 +392,7 @@ mod tests {
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
     use crate::update::test_support::activate_postgres_connection;
+    use std::sync::Arc;
 
     fn write_succeeded_action(state: &mut AppState, affected_rows: usize) -> Action {
         let run_id = begin_query_run(state);
@@ -493,6 +503,41 @@ mod tests {
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Table metadata does not match current preview target")
+            );
+        }
+
+        #[test]
+        fn submit_rejects_non_text_active_cell_edit() {
+            let mut state = editable_state();
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec![QueryValue::text("1"), QueryValue::Null]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "NULL".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(
+                effects
+                    .into_effects()
+                    .expect("reducer should handle action")
+                    .is_empty()
+            );
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Only text cells can be edited inline")
             );
         }
 

@@ -13,6 +13,38 @@ fn sql_literal(value: &QueryValue) -> String {
     }
 }
 
+fn equality_predicate(column: &str, value: &QueryValue) -> String {
+    let column = quote_ident(column);
+    match value {
+        QueryValue::Null => format!("{column} IS NULL"),
+        _ => format!("{column} = {}", sql_literal(value)),
+    }
+}
+
+fn row_predicate(pk_pairs: &[(String, QueryValue)]) -> String {
+    pk_pairs
+        .iter()
+        .map(|(col, val)| equality_predicate(col, val))
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
+fn rows_predicate(pk_pairs_per_row: &[Vec<(String, QueryValue)>]) -> String {
+    let predicates = pk_pairs_per_row
+        .iter()
+        .map(|pairs| row_predicate(pairs))
+        .collect::<Vec<_>>();
+    if predicates.len() == 1 {
+        predicates[0].clone()
+    } else {
+        predicates
+            .into_iter()
+            .map(|predicate| format!("({predicate})"))
+            .collect::<Vec<_>>()
+            .join(" OR ")
+    }
+}
+
 impl SqlDialect for PostgresAdapter {
     fn build_explain_sql(&self, _database_type: DatabaseType, query: &str) -> Option<String> {
         Some(format!("EXPLAIN {query}"))
@@ -37,7 +69,7 @@ impl SqlDialect for PostgresAdapter {
     ) -> String {
         let where_clause = pk_pairs
             .iter()
-            .map(|(col, val)| format!("{} = {}", quote_ident(col), sql_literal(val)))
+            .map(|(col, val)| equality_predicate(col, val))
             .collect::<Vec<_>>()
             .join(" AND ");
 
@@ -63,36 +95,7 @@ impl SqlDialect for PostgresAdapter {
             "pk_pairs_per_row must not be empty"
         );
 
-        let pk_count = pk_pairs_per_row[0].len();
-
-        let where_clause = if pk_count == 1 {
-            let col = quote_ident(&pk_pairs_per_row[0][0].0);
-            let values = pk_pairs_per_row
-                .iter()
-                .map(|pairs| sql_literal(&pairs[0].1))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{col} IN ({values})")
-        } else {
-            let cols = pk_pairs_per_row[0]
-                .iter()
-                .map(|(col, _)| quote_ident(col))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let rows = pk_pairs_per_row
-                .iter()
-                .map(|pairs| {
-                    let vals = pairs
-                        .iter()
-                        .map(|(_, val)| sql_literal(val))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!("({vals})")
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("({cols}) IN ({rows})")
-        };
+        let where_clause = rows_predicate(pk_pairs_per_row);
 
         format!(
             "DELETE FROM {}.{}\nWHERE {};",
@@ -281,21 +284,18 @@ mod tests {
         use super::*;
 
         #[test]
-        fn single_pk_single_row_returns_in_clause() {
+        fn single_pk_single_row_returns_predicate() {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), QueryValue::text("1"))]];
 
             let sql =
                 adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "users", &rows);
 
-            assert_eq!(
-                sql,
-                "DELETE FROM \"public\".\"users\"\nWHERE \"id\" IN ('1');"
-            );
+            assert_eq!(sql, "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '1';");
         }
 
         #[test]
-        fn single_pk_multiple_rows_returns_in_clause_with_all_values() {
+        fn single_pk_multiple_rows_returns_or_predicates() {
             let adapter = PostgresAdapter::new();
             let rows = vec![
                 vec![("id".to_string(), QueryValue::text("1"))],
@@ -308,12 +308,12 @@ mod tests {
 
             assert_eq!(
                 sql,
-                "DELETE FROM \"public\".\"users\"\nWHERE \"id\" IN ('1', '2', '3');"
+                "DELETE FROM \"public\".\"users\"\nWHERE (\"id\" = '1') OR (\"id\" = '2') OR (\"id\" = '3');"
             );
         }
 
         #[test]
-        fn composite_pk_returns_row_constructor_in_clause() {
+        fn composite_pk_returns_or_predicates() {
             let adapter = PostgresAdapter::new();
             let rows = vec![
                 vec![
@@ -330,18 +330,37 @@ mod tests {
 
             assert_eq!(
                 sql,
-                "DELETE FROM \"s\".\"t\"\nWHERE (\"id\", \"tenant_id\") IN (('1', 'a'), ('2', 'b'));"
+                "DELETE FROM \"s\".\"t\"\nWHERE (\"id\" = '1' AND \"tenant_id\" = 'a') OR (\"id\" = '2' AND \"tenant_id\" = 'b');"
             );
         }
 
         #[test]
-        fn null_pk_value_uses_null_literal() {
+        fn null_pk_value_uses_is_null_predicate() {
             let adapter = PostgresAdapter::new();
             let rows = vec![vec![("id".to_string(), QueryValue::Null)]];
 
             let sql = adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "t", &rows);
 
-            assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN (NULL);");
+            assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IS NULL;");
+        }
+
+        #[test]
+        fn update_null_pk_value_uses_is_null_predicate() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                DatabaseType::PostgreSQL,
+                "public",
+                "users",
+                "name",
+                &QueryValue::text("new"),
+                &[("id".into(), QueryValue::Null)],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"name\" = 'new'\nWHERE \"id\" IS NULL;"
+            );
         }
 
         #[test]
@@ -353,7 +372,7 @@ mod tests {
 
             assert_eq!(
                 sql,
-                "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('O''Reilly');"
+                "DELETE FROM \"public\".\"t\"\nWHERE \"id\" = 'O''Reilly';"
             );
         }
 
@@ -364,7 +383,7 @@ mod tests {
 
             let sql = adapter.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "t", &rows);
 
-            assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('');");
+            assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" = '';");
         }
 
         #[test]
@@ -376,7 +395,7 @@ mod tests {
 
             assert_eq!(
                 sql,
-                "DELETE FROM \"public\".\"t\"\nWHERE \"my\"\"pk\" IN ('1');"
+                "DELETE FROM \"public\".\"t\"\nWHERE \"my\"\"pk\" = '1';"
             );
         }
     }

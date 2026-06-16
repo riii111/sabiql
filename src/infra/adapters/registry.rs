@@ -346,7 +346,7 @@ mod tests {
         );
         assert_eq!(
             delete_sql,
-            "DELETE FROM \"public\".\"users\"\nWHERE \"id\" IN ('1');"
+            "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '1';"
         );
         assert!(ddl.contains("CREATE TABLE \"main\".\"users\""));
     }
@@ -372,7 +372,7 @@ mod tests {
             update_sql,
             "UPDATE \"users\"\nSET \"name\" = 'Bob'\nWHERE \"id\" = '1';"
         );
-        assert_eq!(delete_sql, "DELETE FROM \"users\"\nWHERE \"id\" IN ('1');");
+        assert_eq!(delete_sql, "DELETE FROM \"users\"\nWHERE \"id\" = '1';");
         assert!(ddl.contains("CREATE TABLE \"users\""));
         assert!(!ddl.contains("\"main\".\"users\""));
     }

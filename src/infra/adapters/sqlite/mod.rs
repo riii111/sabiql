@@ -812,6 +812,12 @@ fn parse_quoted_value(value: &str) -> Result<QueryValue, DbOperationError> {
             &value[2..value.len() - 1],
         )?));
     }
+    if value == "Inf" {
+        return Ok(QueryValue::SqlLiteral("1e999".to_string()));
+    }
+    if value == "-Inf" {
+        return Ok(QueryValue::SqlLiteral("-1e999".to_string()));
+    }
     Ok(QueryValue::SqlLiteral(value.to_string()))
 }
 
@@ -1563,6 +1569,24 @@ mod tests {
             assert_eq!(
                 result.value_at(0, 3),
                 Some(&QueryValue::Blob(vec![0, 255, 65]))
+            );
+        }
+
+        #[test]
+        fn quoted_to_query_result_normalizes_infinite_numeric_literals() {
+            let quoted = "'pos','neg'\nInf,-Inf\n";
+
+            let result =
+                quoted_to_query_result("SELECT 1e999, -1e999", quoted, QuerySource::Adhoc, 1)
+                    .unwrap();
+
+            assert_eq!(
+                result.value_at(0, 0),
+                Some(&QueryValue::SqlLiteral("1e999".to_string()))
+            );
+            assert_eq!(
+                result.value_at(0, 1),
+                Some(&QueryValue::SqlLiteral("-1e999".to_string()))
             );
         }
 

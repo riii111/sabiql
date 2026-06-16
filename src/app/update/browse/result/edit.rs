@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::write::write_update::build_pk_pairs;
@@ -57,10 +58,15 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
         return Err(EditGuardrailError::StableKeyColumnsMissing);
     }
 
-    let cell_value = result
+    let cell_value = match result
         .value_at(row_idx, col_idx)
         .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
-        .display_value();
+    {
+        QueryValue::Text(value) => value.clone(),
+        QueryValue::Null | QueryValue::Blob(_) | QueryValue::SqlLiteral(_) => {
+            return Err(EditGuardrailError::NonTextInlineEdit);
+        }
+    };
 
     Ok((row_idx, col_idx, cell_value))
 }
@@ -154,7 +160,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
     use crate::update::action::CursorMove;
     use std::sync::Arc;
 
@@ -240,6 +246,36 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(state.result_interaction.cell_edit().col(), Some(1));
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "alice");
+        }
+
+        #[test]
+        fn non_text_cell_blocks_cell_edit_entry() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![vec![QueryValue::text("1"), QueryValue::Null]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.query.pagination.reset_for_table("public", "users");
+            state.result_interaction.activate_cell(0, 1);
+            state
+                .session
+                .set_table_detail_raw(Some(minimal_users_table()));
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Only text cells can be edited inline")
+            );
         }
 
         #[test]
