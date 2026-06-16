@@ -127,7 +127,7 @@ pub fn build_bulk_delete_preview(
     let mut pk_pairs_per_row: Vec<Vec<(String, QueryValue)>> = Vec::new();
     for &row_idx in state.result_interaction.staged_delete_rows() {
         let row = result
-            .values
+            .values()
             .get(row_idx)
             .ok_or(EditGuardrailError::StagedRowIndexOutOfBounds(row_idx))?;
         let pairs = build_pk_pairs(&result.columns, row, pk_cols)
@@ -150,7 +150,7 @@ pub fn build_bulk_delete_preview(
         .next()
         .unwrap();
     let (target_page, target_row) = deletion_refresh_target_bulk(
-        result.rows.len(),
+        result.rows().len(),
         staged_count,
         first_deleted_idx,
         state.query.pagination.current_page(),

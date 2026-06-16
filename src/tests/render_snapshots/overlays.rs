@@ -281,17 +281,17 @@ fn sql_modal_success_dml_with_command_tag() {
         execution_time_ms: 12,
     });
     // DML: row_count carries affected rows, not result rows (executor's command-tag path)
-    let mut result = QueryResult::success(
-        "DELETE FROM users WHERE id = 1".to_string(),
-        vec![],
-        vec![],
-        12,
-        QuerySource::Adhoc,
-    );
-    result.row_count = 3;
-    state
-        .query
-        .set_current_result(Arc::new(result.with_command_tag(CommandTag::Delete(3))));
+    state.query.set_current_result(Arc::new(
+        QueryResult::success(
+            "DELETE FROM users WHERE id = 1".to_string(),
+            vec![],
+            vec![],
+            12,
+            QuerySource::Adhoc,
+        )
+        .with_row_count(3)
+        .with_command_tag(CommandTag::Delete(3)),
+    ));
 
     let output = render_to_string(&mut terminal, &mut state);
 

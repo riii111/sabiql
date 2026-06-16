@@ -42,7 +42,7 @@ fn build_update_preview(
         .ok_or(EditGuardrailError::NoColumnSelectedForEdit)?;
 
     let row_values = result
-        .values
+        .values()
         .get(row_idx)
         .ok_or(EditGuardrailError::RowIndexOutOfBounds)?;
     let column_name = result

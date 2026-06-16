@@ -50,7 +50,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     }
 
     let row = result
-        .values
+        .values()
         .get(row_idx)
         .ok_or(EditGuardrailError::RowIndexOutOfBounds)?;
     if build_pk_pairs(&result.columns, row, pk_cols).is_none() {
@@ -58,7 +58,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     }
 
     let cell_value = result
-        .rows
+        .rows()
         .get(row_idx)
         .ok_or(EditGuardrailError::RowIndexOutOfBounds)?
         .get(col_idx)

@@ -51,13 +51,13 @@ pub enum QuerySource {
 pub struct QueryResult {
     pub query: String,
     pub columns: Vec<String>,
-    pub rows: Vec<Vec<String>>,
-    pub values: Vec<Vec<QueryValue>>,
-    pub row_count: usize,
     pub execution_time_ms: u64,
     pub source: QuerySource,
     pub error: Option<String>,
     pub command_tag: Option<CommandTag>,
+    rows: Vec<Vec<String>>,
+    values: Vec<Vec<QueryValue>>,
+    row_count: usize,
 }
 
 impl QueryResult {
@@ -139,8 +139,26 @@ impl QueryResult {
         self
     }
 
+    #[must_use]
+    pub fn with_row_count(mut self, row_count: usize) -> Self {
+        self.row_count = row_count;
+        self
+    }
+
     pub fn is_error(&self) -> bool {
         self.error.is_some()
+    }
+
+    pub fn rows(&self) -> &[Vec<String>] {
+        &self.rows
+    }
+
+    pub fn values(&self) -> &[Vec<QueryValue>] {
+        &self.values
+    }
+
+    pub fn row_count(&self) -> usize {
+        self.row_count
     }
 
     pub fn row_count_display(&self) -> String {
@@ -176,8 +194,8 @@ mod tests {
 
             assert_eq!(result.query, "SELECT 1");
             assert_eq!(result.columns, vec!["id"]);
-            assert_eq!(result.rows, vec![vec!["1"]]);
-            assert_eq!(result.row_count, 1);
+            assert_eq!(result.rows(), vec![vec!["1"]]);
+            assert_eq!(result.row_count(), 1);
             assert_eq!(result.execution_time_ms, 42);
             assert_eq!(result.source, QuerySource::Adhoc);
             assert!(result.error.is_none());
@@ -195,7 +213,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            assert_eq!(result.row_count, 3);
+            assert_eq!(result.row_count(), 3);
         }
     }
 
@@ -214,8 +232,8 @@ mod tests {
             assert!(result.is_error());
             assert_eq!(result.error.as_deref(), Some("syntax error"));
             assert!(result.columns.is_empty());
-            assert!(result.rows.is_empty());
-            assert_eq!(result.row_count, 0);
+            assert!(result.rows().is_empty());
+            assert_eq!(result.row_count(), 0);
         }
     }
 
@@ -240,9 +258,9 @@ mod tests {
         #[case(1, "1 row")]
         #[case(5, "5 rows")]
         fn formats_row_count_display(#[case] count: usize, #[case] expected: &str) {
-            let mut result =
-                QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc);
-            result.row_count = count;
+            let result =
+                QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc)
+                    .with_row_count(count);
 
             assert_eq!(result.row_count_display(), expected);
         }

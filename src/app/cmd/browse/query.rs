@@ -162,7 +162,7 @@ pub async fn run(
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
                         let plan_text = result
-                            .rows
+                            .rows()
                             .iter()
                             .filter_map(|row| row.first())
                             .cloned()

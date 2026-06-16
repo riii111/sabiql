@@ -70,7 +70,7 @@ impl ResultPane {
             if result.is_error() {
                 Self::render_error(frame, area, result, block, theme);
                 default_result()
-            } else if result.rows.is_empty() {
+            } else if result.rows().is_empty() {
                 Self::render_empty(frame, area, block, theme);
                 default_result()
             } else {
@@ -201,7 +201,7 @@ impl ResultPane {
                 &stored_cache.header_min_widths[..],
             )
         } else {
-            fresh_ideal = calculate_ideal_widths(&result.columns, &result.rows);
+            fresh_ideal = calculate_ideal_widths(&result.columns, result.rows());
             fresh_min = calculate_header_min_widths(&result.columns);
             (&fresh_ideal[..], &fresh_min[..])
         };
@@ -266,7 +266,7 @@ impl ResultPane {
         let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
 
         let rows: Vec<Row> = result
-            .rows
+            .rows()
             .iter()
             .enumerate()
             .skip(scroll_offset)
@@ -364,7 +364,7 @@ impl ResultPane {
         frame.render_widget(table, inner);
 
         // Scroll indicators (pass inner area, not outer with border)
-        let total_rows = result.rows.len();
+        let total_rows = result.rows().len();
         let total_cols = result.columns.len();
 
         use crate::primitives::atoms::scroll_indicator::{

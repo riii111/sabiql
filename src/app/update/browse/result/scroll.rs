@@ -7,7 +7,7 @@ use crate::update::action::{
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn result_row_count(state: &AppState) -> usize {
-    state.query.visible_result().map_or(0, |r| r.rows.len())
+    state.query.visible_result().map_or(0, |r| r.rows().len())
 }
 
 pub(super) fn result_col_count(state: &AppState) -> usize {
