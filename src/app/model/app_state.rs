@@ -22,6 +22,7 @@ use crate::model::shared::settings::SettingsState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
+use crate::policy::sql::export::can_rerun_for_csv_export;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -260,7 +261,9 @@ impl AppState {
     }
 
     pub fn can_request_csv_export(&self) -> bool {
-        self.query.visible_result().is_some_and(|r| !r.is_error())
+        self.query
+            .visible_result()
+            .is_some_and(|r| !r.is_error() && can_rerun_for_csv_export(&r.query))
     }
 
     /// True when a run-scoped async response no longer belongs to the active
@@ -682,6 +685,21 @@ mod tests {
                 .set_current_result(make_query_result(QuerySource::Preview));
 
             assert!(state.can_request_csv_export());
+        }
+
+        #[test]
+        fn csv_export_blocked_for_mutating_result_query() {
+            let mut state = make_state();
+            let result = crate::domain::QueryResult::success(
+                "UPDATE users SET name = 'b' WHERE id = 1 RETURNING id".to_string(),
+                vec!["id".to_string()],
+                vec![vec!["1".to_string()]],
+                10,
+                QuerySource::Adhoc,
+            );
+            state.query.set_current_result(Arc::new(result));
+
+            assert!(!state.can_request_csv_export());
         }
     }
 
