@@ -2111,6 +2111,29 @@ mod tests {
 
             assert_eq!(table_names, vec!["notes", "notes_fts"]);
         }
+
+        #[tokio::test]
+        async fn hides_fts5_shadow_tables_with_wrapped_virtual_table_ddl() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);
+            CREATE VIRTUAL
+            TABLE notes_fts
+            USING
+            	fts5(body);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+            let table_names: Vec<_> = metadata
+                .table_summaries
+                .iter()
+                .map(|summary| summary.name.as_str())
+                .collect();
+
+            assert_eq!(table_names, vec!["notes", "notes_fts"]);
+        }
     }
 
     mod table_detail {

@@ -27,7 +27,13 @@ pub(super) fn user_tables_query() -> &'static str {
         SELECT name
         FROM sqlite_master
         WHERE type = 'table'
-          AND lower(sql) LIKE 'create virtual table%using fts5%'
+          AND replace(
+                  replace(
+                      replace(lower(sql), char(13), ' '),
+                      char(10), ' '
+                  ),
+                  char(9), ' '
+              ) LIKE 'create%virtual%table%using%fts5%'
     )
     SELECT m.name, m.sql
     FROM sqlite_master m
