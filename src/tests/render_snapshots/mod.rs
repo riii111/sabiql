@@ -21,7 +21,7 @@ use sabiql_app::policy::write::write_guardrails::{
     WritePreview,
 };
 use sabiql_app::policy::write::write_update::normalize_for_diff;
-use sabiql_domain::{CommandTag, ConnectionId, DatabaseType, QuerySource};
+use sabiql_domain::{CommandTag, ConnectionId, DatabaseType, IndexType, QuerySource};
 
 mod confirm_dialogs;
 mod connection_flow;

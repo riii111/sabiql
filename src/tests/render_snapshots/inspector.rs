@@ -88,6 +88,30 @@ fn inspector_indexes_tab_with_data() {
 }
 
 #[test]
+fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    for index in &mut table.indexes {
+        index.index_type = IndexType::Unknown;
+    }
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Indexes);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inspector_foreign_keys_tab_with_data() {
     let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
