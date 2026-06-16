@@ -4,10 +4,11 @@ use crate::domain::{DatabaseType, QueryValue};
 use super::super::PostgresAdapter;
 use super::{quote_ident, quote_literal};
 
-fn sql_literal_or_null(value: &QueryValue) -> String {
+fn sql_literal(value: &QueryValue) -> String {
     match value {
         QueryValue::Null => "NULL".to_string(),
-        QueryValue::Text(value) | QueryValue::SqlLiteral(value) => quote_literal(value),
+        QueryValue::Text(value) => quote_literal(value),
+        QueryValue::SqlLiteral(value) => value.clone(),
         QueryValue::Blob(bytes) => quote_literal(&String::from_utf8_lossy(bytes)),
     }
 }
@@ -36,7 +37,7 @@ impl SqlDialect for PostgresAdapter {
     ) -> String {
         let where_clause = pk_pairs
             .iter()
-            .map(|(col, val)| format!("{} = {}", quote_ident(col), sql_literal_or_null(val)))
+            .map(|(col, val)| format!("{} = {}", quote_ident(col), sql_literal(val)))
             .collect::<Vec<_>>()
             .join(" AND ");
 
@@ -45,7 +46,7 @@ impl SqlDialect for PostgresAdapter {
             quote_ident(schema),
             quote_ident(table),
             quote_ident(column),
-            sql_literal_or_null(new_value),
+            sql_literal(new_value),
             where_clause
         )
     }
@@ -68,7 +69,7 @@ impl SqlDialect for PostgresAdapter {
             let col = quote_ident(&pk_pairs_per_row[0][0].0);
             let values = pk_pairs_per_row
                 .iter()
-                .map(|pairs| sql_literal_or_null(&pairs[0].1))
+                .map(|pairs| sql_literal(&pairs[0].1))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{col} IN ({values})")
@@ -83,7 +84,7 @@ impl SqlDialect for PostgresAdapter {
                 .map(|pairs| {
                     let vals = pairs
                         .iter()
-                        .map(|(_, val)| sql_literal_or_null(val))
+                        .map(|(_, val)| sql_literal(val))
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!("({vals})")
@@ -380,8 +381,8 @@ mod tests {
         }
     }
 
-    mod sql_literal_or_null_tests {
-        use super::super::sql_literal_or_null;
+    mod sql_literal_tests {
+        use super::super::sql_literal;
         use crate::domain::QueryValue;
         use rstest::rstest;
 
@@ -392,18 +393,15 @@ mod tests {
         #[case("hello", "'hello'")]
         #[case("it's", "'it''s'")]
         #[case("NULL ", "'NULL '")]
-        fn formats_sql_literal_or_null(#[case] input: &str, #[case] expected: &str) {
-            assert_eq!(sql_literal_or_null(&QueryValue::text(input)), expected);
+        fn formats_sql_literal(#[case] input: &str, #[case] expected: &str) {
+            assert_eq!(sql_literal(&QueryValue::text(input)), expected);
         }
 
         #[test]
         fn formats_non_text_query_values() {
-            assert_eq!(sql_literal_or_null(&QueryValue::Null), "NULL");
-            assert_eq!(sql_literal_or_null(&QueryValue::Blob(vec![65, 66])), "'AB'");
-            assert_eq!(
-                sql_literal_or_null(&QueryValue::SqlLiteral("42".to_string())),
-                "'42'"
-            );
+            assert_eq!(sql_literal(&QueryValue::Null), "NULL");
+            assert_eq!(sql_literal(&QueryValue::Blob(vec![65, 66])), "'AB'");
+            assert_eq!(sql_literal(&QueryValue::SqlLiteral("42".to_string())), "42");
         }
     }
 }

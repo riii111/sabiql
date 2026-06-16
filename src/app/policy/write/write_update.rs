@@ -16,18 +16,6 @@ pub fn escape_preview_value(value: &str) -> String {
         .replace('\n', "\\n")
 }
 
-fn preview_quote_literal(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
-}
-
-pub fn preview_value_expr(value: &str) -> String {
-    if value == "NULL" {
-        "NULL".to_string()
-    } else {
-        preview_quote_literal(value)
-    }
-}
-
 pub fn build_pk_pairs(
     columns: &[String],
     row: &[QueryValue],
@@ -45,18 +33,9 @@ pub fn build_pk_pairs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rstest::rstest;
 
-    mod value_expr {
+    mod value_preview {
         use super::*;
-
-        #[rstest]
-        #[case("NULL", "NULL")]
-        #[case("alice", "'alice'")]
-        #[case("O'Reilly", "'O''Reilly'")]
-        fn formats_input_as_sql_expr(#[case] input: &str, #[case] expected: &str) {
-            assert_eq!(preview_value_expr(input), expected);
-        }
 
         #[test]
         fn value_with_control_chars_returns_escaped_preview_value() {

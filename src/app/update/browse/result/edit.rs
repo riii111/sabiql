@@ -58,12 +58,9 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     }
 
     let cell_value = result
-        .rows()
-        .get(row_idx)
-        .ok_or(EditGuardrailError::RowIndexOutOfBounds)?
-        .get(col_idx)
+        .value_at(row_idx, col_idx)
         .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
-        .clone();
+        .display_value();
 
     Ok((row_idx, col_idx, cell_value))
 }

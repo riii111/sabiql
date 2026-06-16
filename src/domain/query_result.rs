@@ -7,7 +7,7 @@ pub enum QueryValue {
     Null,
     Text(String),
     Blob(Vec<u8>),
-    /// Raw SQL literal emitted by a trusted database adapter parser.
+    /// Unquoted SQL literal emitted by a trusted database adapter parser.
     SqlLiteral(String),
 }
 
@@ -37,6 +37,14 @@ impl QueryValue {
                     format!("BLOB ({} bytes) {preview}", bytes.len())
                 }
             }
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::Text(value) | Self::SqlLiteral(value) => Some(value),
+            Self::Null | Self::Blob(_) => None,
         }
     }
 }
@@ -145,22 +153,27 @@ impl QueryResult {
         self
     }
 
+    #[must_use]
     pub fn is_error(&self) -> bool {
         self.error.is_some()
     }
 
+    #[must_use]
     pub fn rows(&self) -> &[Vec<String>] {
         &self.rows
     }
 
+    #[must_use]
     pub fn values(&self) -> &[Vec<QueryValue>] {
         &self.values
     }
 
+    #[must_use]
     pub fn row_count(&self) -> usize {
         self.row_count
     }
 
+    #[must_use]
     pub fn row_count_display(&self) -> String {
         if self.row_count == 1 {
             "1 row".to_string()
@@ -169,6 +182,7 @@ impl QueryResult {
         }
     }
 
+    #[must_use]
     pub fn value_at(&self, row: usize, col: usize) -> Option<&QueryValue> {
         self.values.get(row)?.get(col)
     }

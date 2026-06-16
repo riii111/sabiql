@@ -710,7 +710,16 @@ struct QuotedRecord {
     values: Vec<QueryValue>,
 }
 
-fn split_outside_sqlite_quotes(input: &str, delimiter: u8) -> Vec<(usize, String)> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SplitSegment {
+    offset: usize,
+    text: String,
+}
+
+fn split_outside_sqlite_quotes(
+    input: &str,
+    delimiter: u8,
+) -> Result<Vec<SplitSegment>, DbOperationError> {
     let mut segments = Vec::new();
     let mut start = 0usize;
     let mut in_quote = false;
@@ -726,31 +735,43 @@ fn split_outside_sqlite_quotes(input: &str, delimiter: u8) -> Vec<(usize, String
                 i += 1;
             }
             byte if byte == delimiter && !in_quote => {
-                segments.push((start, input[start..i].to_string()));
+                segments.push(SplitSegment {
+                    offset: start,
+                    text: input[start..i].to_string(),
+                });
                 start = i + 1;
                 i += 1;
             }
             _ => i += 1,
         }
     }
-    segments.push((start, input[start..].to_string()));
-    segments
+    if in_quote {
+        return Err(DbOperationError::MetadataParseFailed(
+            "unterminated SQLite quoted output".to_string(),
+        ));
+    }
+    segments.push(SplitSegment {
+        offset: start,
+        text: input[start..].to_string(),
+    });
+    Ok(segments)
 }
 
-fn split_quoted_records(stdout: &str) -> Vec<(usize, String)> {
-    let mut records = split_outside_sqlite_quotes(stdout, b'\n')
+fn split_quoted_records(stdout: &str) -> Result<Vec<SplitSegment>, DbOperationError> {
+    let mut records = split_outside_sqlite_quotes(stdout, b'\n')?
         .into_iter()
-        .map(|(offset, record)| (offset, record.trim_end_matches('\r').to_string()))
+        .map(|segment| SplitSegment {
+            offset: segment.offset,
+            text: segment.text.trim_end_matches('\r').to_string(),
+        })
         .collect::<Vec<_>>();
-    records.retain(|(_, record)| !record.is_empty());
-    records
+    records.retain(|segment| !segment.text.is_empty());
+    Ok(records)
 }
 
-fn split_quoted_fields(record: &str) -> Vec<String> {
+fn split_quoted_fields(record: &str) -> Result<Vec<String>, DbOperationError> {
     split_outside_sqlite_quotes(record, b',')
-        .into_iter()
-        .map(|(_, field)| field)
-        .collect()
+        .map(|segments| segments.into_iter().map(|segment| segment.text).collect())
 }
 
 fn unquote_sql_text(value: &str) -> String {
@@ -795,14 +816,17 @@ fn parse_quoted_value(value: &str) -> Result<QueryValue, DbOperationError> {
 }
 
 fn parse_quoted_records(stdout: &str) -> Result<Vec<QuotedRecord>, DbOperationError> {
-    split_quoted_records(stdout)
+    split_quoted_records(stdout)?
         .into_iter()
-        .map(|(offset, record)| {
-            split_quoted_fields(&record)
+        .map(|segment| {
+            split_quoted_fields(&segment.text)?
                 .into_iter()
                 .map(|field| parse_quoted_value(&field))
                 .collect::<Result<Vec<_>, _>>()
-                .map(|values| QuotedRecord { offset, values })
+                .map(|values| QuotedRecord {
+                    offset: segment.offset,
+                    values,
+                })
         })
         .collect()
 }
@@ -908,7 +932,7 @@ fn strip_sqlite_probes(
     }
 
     let (stmt_col, changes_col) = sqlite_probe_columns(marker);
-    let raw_records = split_quoted_records(stdout);
+    let raw_records = split_quoted_records(stdout)?;
     let records = parse_quoted_records(stdout)?;
 
     let mut changes = HashMap::new();
@@ -918,8 +942,8 @@ fn strip_sqlite_probes(
     while index < records.len() {
         let record = &records[index];
         if record.values.len() == 2
-            && record.values[0].display_value() == stmt_col
-            && record.values[1].display_value() == changes_col
+            && record.values[0].as_str() == Some(stmt_col.as_str())
+            && record.values[1].as_str() == Some(changes_col.as_str())
         {
             removed_probe = true;
             let value = records.get(index + 1).ok_or_else(|| {
@@ -930,7 +954,8 @@ fn strip_sqlite_probes(
             let stmt_index = value
                 .values
                 .first()
-                .and_then(|raw| raw.display_value().parse::<usize>().ok())
+                .and_then(QueryValue::as_str)
+                .and_then(|raw| raw.parse::<usize>().ok())
                 .ok_or_else(|| {
                     DbOperationError::CommandTagParseFailed(
                         "invalid SQLite statement probe index".to_string(),
@@ -939,7 +964,8 @@ fn strip_sqlite_probes(
             let affected_rows = value
                 .values
                 .get(1)
-                .and_then(|raw| raw.display_value().parse::<usize>().ok())
+                .and_then(QueryValue::as_str)
+                .and_then(|raw| raw.parse::<usize>().ok())
                 .ok_or_else(|| {
                     DbOperationError::CommandTagParseFailed(
                         "invalid SQLite statement probe changes".to_string(),
@@ -948,7 +974,7 @@ fn strip_sqlite_probes(
             changes.insert(stmt_index, affected_rows);
             index += 2;
         } else {
-            kept.push(raw_records[index].1.clone());
+            kept.push(raw_records[index].text.clone());
             index += 1;
         }
     }
@@ -1538,6 +1564,22 @@ mod tests {
                 result.value_at(0, 3),
                 Some(&QueryValue::Blob(vec![0, 255, 65]))
             );
+        }
+
+        #[test]
+        fn quoted_to_query_result_rejects_unterminated_quote() {
+            let result = quoted_to_query_result(
+                "SELECT body FROM notes",
+                "'body'\n'unclosed\nnext",
+                QuerySource::Adhoc,
+                1,
+            );
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::MetadataParseFailed(message))
+                    if message == "unterminated SQLite quoted output"
+            ));
         }
 
         #[test]
