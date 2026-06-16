@@ -136,7 +136,10 @@ impl CellDetail {
         let status = if search.is_active() {
             search_match_status(search)
         } else {
-            format!("{} chars", state.cell_detail.content().chars().count())
+            format!(
+                "{} chars",
+                state.cell_detail.current_content().chars().count()
+            )
         };
 
         frame.render_widget(

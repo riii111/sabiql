@@ -139,7 +139,7 @@ pub enum InputTarget {
     JsonbEdit,
     JsonbSearch,
     CellDetailSearch,
-    CellDetailEdit,
+    CellDetailContent,
     HelpFilter,
 }
 

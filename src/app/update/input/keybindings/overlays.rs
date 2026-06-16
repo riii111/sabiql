@@ -1151,21 +1151,21 @@ pub mod cell_detail {
         bindings: &[
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::Left,
                 },
                 combos: &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::Right,
                 },
                 combos: &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::Down,
                 },
                 combos: &[
@@ -1176,7 +1176,7 @@ pub mod cell_detail {
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::Up,
                 },
                 combos: &[
@@ -1196,28 +1196,28 @@ pub mod cell_detail {
         bindings: &[
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::LineStart,
                 },
                 combos: &[KeyCombo::plain(Key::Char('0'))],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::LineEnd,
                 },
                 combos: &[KeyCombo::plain(Key::Char('$'))],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::WordForward,
                 },
                 combos: &[KeyCombo::plain(Key::Char('w'))],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::WordBackward,
                 },
                 combos: &[KeyCombo::plain(Key::Char('b'))],
@@ -1233,28 +1233,28 @@ pub mod cell_detail {
         bindings: &[
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::LastLine,
                 },
                 combos: &[KeyCombo::plain(Key::Char('G'))],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::ViewportTop,
                 },
                 combos: &[KeyCombo::plain(Key::Char('H'))],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::ViewportMiddle,
                 },
                 combos: &[KeyCombo::plain(Key::Char('M'))],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::ViewportBottom,
                 },
                 combos: &[KeyCombo::plain(Key::Char('L'))],
@@ -1312,28 +1312,28 @@ pub mod cell_detail_edit {
         bindings: &[
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::Left,
                 },
                 combos: &[KeyCombo::plain(Key::Left)],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::Right,
                 },
                 combos: &[KeyCombo::plain(Key::Right)],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::Up,
                 },
                 combos: &[KeyCombo::plain(Key::Up)],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::Down,
                 },
                 combos: &[KeyCombo::plain(Key::Down)],
@@ -1349,14 +1349,14 @@ pub mod cell_detail_edit {
         bindings: &[
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::Home,
                 },
                 combos: &[KeyCombo::plain(Key::Home)],
             },
             ExecBinding {
                 action: Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::End,
                 },
                 combos: &[KeyCombo::plain(Key::End)],

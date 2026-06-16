@@ -45,7 +45,7 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             DispatchResult::handled()
         }
         Action::CellDetailYankAll => DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-            content: state.cell_detail.content().to_string(),
+            content: state.cell_detail.current_content().to_string(),
             on_success: Some(Box::new(Action::CellDetailYankSuccess)),
             on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
                 "Clipboard unavailable".into(),
@@ -83,7 +83,7 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             DispatchResult::handled()
         }
         Action::TextInput {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             ch,
         } => {
             if *ch == '\n' {
@@ -97,21 +97,21 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             DispatchResult::handled()
         }
         Action::TextBackspace {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
         } => {
             state.cell_detail.editor_mut().backspace();
             state.cell_detail.update_editor_scroll();
             DispatchResult::handled()
         }
         Action::TextDelete {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
         } => {
             state.cell_detail.editor_mut().delete();
             state.cell_detail.update_editor_scroll();
             DispatchResult::handled()
         }
         Action::TextMoveCursor {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             direction,
         } => {
             state.cell_detail.move_editor_cursor(*direction);
@@ -227,8 +227,7 @@ fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
 }
 
 fn cell_detail_display_value(value: &str, data_type: Option<&str>) -> String {
-    let should_pretty_print_json = data_type == Some("json") || looks_like_json_container(value);
-    if !should_pretty_print_json {
+    if data_type != Some("json") {
         return value.to_string();
     }
 
@@ -238,18 +237,13 @@ fn cell_detail_display_value(value: &str, data_type: Option<&str>) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
-fn looks_like_json_container(value: &str) -> bool {
-    let trimmed = value.trim_start();
-    trimmed.starts_with('{') || trimmed.starts_with('[')
-}
-
 fn update_search_matches(state: &mut AppState) {
     let query = state.cell_detail.search().input().content().to_string();
-    let matches = find_text_matches(state.cell_detail.content(), &query);
+    let matches = find_text_matches(state.cell_detail.current_content(), &query);
     state.cell_detail.search_mut().set_matches(matches);
 }
 
-fn ensure_cell_detail_editable(state: &AppState) -> Result<(), EditGuardrailError> {
+fn ensure_cell_detail_editable(state: &AppState) -> Result<String, EditGuardrailError> {
     if state.session.is_read_only() {
         return Err(EditGuardrailError::GuardrailBlocked(
             "Read-only mode: editing is disabled".to_string(),
@@ -257,7 +251,6 @@ fn ensure_cell_detail_editable(state: &AppState) -> Result<(), EditGuardrailErro
     }
 
     super::edit::editable_cell_context_at(state, state.cell_detail.row(), state.cell_detail.col())
-        .map(|_| ())
 }
 
 fn apply_pending_edit_as_draft(state: &mut AppState) -> Result<(), EditGuardrailError> {
@@ -267,7 +260,7 @@ fn apply_pending_edit_as_draft(state: &mut AppState) -> Result<(), EditGuardrail
 
     let row = state.cell_detail.row();
     let col = state.cell_detail.col();
-    let original_cell = super::edit::editable_cell_context_at(state, row, col)?;
+    let original_cell = ensure_cell_detail_editable(state)?;
     let draft = state.cell_detail.editor().content().to_string();
 
     state
@@ -354,7 +347,7 @@ mod tests {
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
-        assert_eq!(state.cell_detail.content(), "short");
+        assert_eq!(state.cell_detail.current_content(), "short");
     }
 
     #[test]
@@ -364,20 +357,23 @@ mod tests {
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
-        assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1,\n  \"b\": 2\n}");
+        assert_eq!(
+            state.cell_detail.current_content(),
+            "{\n  \"a\": 1,\n  \"b\": 2\n}"
+        );
         assert_eq!(state.cell_detail.original_content(), r#"{"b":2,"a":1}"#);
     }
 
     #[test]
-    fn text_json_container_opens_read_only_pretty_detail() {
+    fn text_json_container_keeps_original_format() {
         let mut state = state_with_cell("text", r#"{"items":["admin","writer"]}"#);
 
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(
-            state.cell_detail.content(),
-            "{\n  \"items\": [\n    \"admin\",\n    \"writer\"\n  ]\n}"
+            state.cell_detail.current_content(),
+            r#"{"items":["admin","writer"]}"#
         );
         assert_eq!(
             state.cell_detail.original_content(),

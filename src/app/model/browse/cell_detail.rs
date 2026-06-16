@@ -4,7 +4,6 @@ use crate::model::shared::text_input::TextInputLike;
 use crate::update::action::CursorMove;
 
 const DEFAULT_VISIBLE_ROWS: usize = 8;
-const DEFAULT_VIEWPORT_WIDTH: usize = 80;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CellDetailMode {
@@ -21,7 +20,6 @@ pub struct CellDetailState {
     editor: MultiLineInputState,
     search: DetailSearchState,
     visible_rows: usize,
-    viewport_width: usize,
     active: bool,
 }
 
@@ -33,7 +31,6 @@ impl Default for CellDetailState {
             editor: MultiLineInputState::default(),
             search: DetailSearchState::default(),
             visible_rows: DEFAULT_VISIBLE_ROWS,
-            viewport_width: DEFAULT_VIEWPORT_WIDTH,
             active: false,
         }
     }
@@ -85,7 +82,7 @@ impl CellDetailState {
         self.detail.column_name()
     }
 
-    pub fn content(&self) -> &str {
+    pub fn current_content(&self) -> &str {
         self.editor.content()
     }
 
@@ -113,9 +110,8 @@ impl CellDetailState {
         &mut self.search
     }
 
-    pub fn set_viewport_metrics(&mut self, visible_rows: usize, viewport_width: usize) {
+    pub fn set_viewport_metrics(&mut self, visible_rows: usize, _viewport_width: usize) {
         self.visible_rows = visible_rows.max(1);
-        self.viewport_width = viewport_width.max(1);
         self.editor.update_scroll(self.visible_rows);
     }
 

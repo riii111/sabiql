@@ -42,13 +42,13 @@ fn handle_viewing_input(combo: KeyCombo, pending_prefix: Option<Prefix>) -> Acti
         match combo.key {
             Key::Home => {
                 return Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::LineStart,
                 };
             }
             Key::End => {
                 return Action::TextMoveCursor {
-                    target: InputTarget::CellDetailEdit,
+                    target: InputTarget::CellDetailContent,
                     direction: CursorMove::LineEnd,
                 };
             }
@@ -74,45 +74,45 @@ fn handle_edit_input(combo: KeyCombo) -> Action {
 
     match combo.key {
         Key::Char(c) => Action::TextInput {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             ch: c,
         },
         Key::Backspace => Action::TextBackspace {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
         },
         Key::Delete => Action::TextDelete {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
         },
         Key::Left => Action::TextMoveCursor {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             direction: CursorMove::Left,
         },
         Key::Right => Action::TextMoveCursor {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             direction: CursorMove::Right,
         },
         Key::Up => Action::TextMoveCursor {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             direction: CursorMove::Up,
         },
         Key::Down => Action::TextMoveCursor {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             direction: CursorMove::Down,
         },
         Key::Home => Action::TextMoveCursor {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             direction: CursorMove::Home,
         },
         Key::End => Action::TextMoveCursor {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             direction: CursorMove::End,
         },
         Key::Enter => Action::TextInput {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             ch: '\n',
         },
         Key::Tab => Action::TextInput {
-            target: InputTarget::CellDetailEdit,
+            target: InputTarget::CellDetailContent,
             ch: '\t',
         },
         _ => Action::None,
@@ -167,7 +167,7 @@ fn navigation_action(navigation: VimNavigation) -> Option<Action> {
     };
 
     Some(Action::TextMoveCursor {
-        target: InputTarget::CellDetailEdit,
+        target: InputTarget::CellDetailContent,
         direction,
     })
 }
@@ -260,7 +260,7 @@ mod tests {
         assert!(matches!(
             result,
             Action::TextMoveCursor {
-                target: InputTarget::CellDetailEdit,
+                target: InputTarget::CellDetailContent,
                 direction: CursorMove::Down,
             }
         ));
@@ -294,7 +294,7 @@ mod tests {
         assert!(matches!(
             result,
             Action::TextInput {
-                target: InputTarget::CellDetailEdit,
+                target: InputTarget::CellDetailContent,
                 ch: '\n'
             }
         ));
