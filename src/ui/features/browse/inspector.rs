@@ -17,7 +17,7 @@ use crate::app::model::shared::viewport::{
     widths_fingerprint,
 };
 use crate::app::services::AppServices;
-use crate::domain::{ForeignKey, Index, Table};
+use crate::domain::{ForeignKey, Index, IndexType, Table};
 use crate::primitives::atoms::panel_block;
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
@@ -446,11 +446,26 @@ impl Inspector {
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
-        let headers = ["Name", "Columns", "Type", "Unique"];
+        let show_type = table
+            .indexes
+            .iter()
+            .any(|index| index.index_type != IndexType::Unknown);
+        let headers_with_type = ["Name", "Columns", "Type", "Unique"];
+        let headers_without_type = ["Name", "Columns", "Unique"];
+        let headers = if show_type {
+            &headers_with_type[..]
+        } else {
+            &headers_without_type[..]
+        };
         // Width sampling sees only the first 50 rows, so row_fn rebuilds text
         // per visible row instead of indexing into the sample
-        let data_rows: Vec<Vec<String>> = table.indexes.iter().take(50).map(index_row).collect();
-        let col_widths = calculate_column_widths(&headers, &data_rows);
+        let data_rows: Vec<Vec<String>> = table
+            .indexes
+            .iter()
+            .take(50)
+            .map(|index| index_row(index, show_type))
+            .collect();
+        let col_widths = calculate_column_widths(headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
@@ -458,7 +473,7 @@ impl Inspector {
             frame,
             area,
             &StripedTableConfig {
-                headers: &headers,
+                headers,
                 widths: &widths,
                 total_items: table.indexes.len(),
                 empty_message: "No indexes",
@@ -466,7 +481,7 @@ impl Inspector {
             scroll_offset,
             theme,
             |idx| {
-                index_row(&table.indexes[idx])
+                index_row(&table.indexes[idx], show_type)
                     .into_iter()
                     .map(Cell::from)
                     .collect()
@@ -706,17 +721,17 @@ impl Inspector {
     }
 }
 
-fn index_row(index: &Index) -> Vec<String> {
-    vec![
-        index.name.clone(),
-        index.columns.join(", "),
-        format!("{:?}", index.index_type).to_lowercase(),
-        if index.is_unique() {
-            "✓".to_string()
-        } else {
-            String::new()
-        },
-    ]
+fn index_row(index: &Index, show_type: bool) -> Vec<String> {
+    let mut row = vec![index.name.clone(), index.columns.join(", ")];
+    if show_type {
+        row.push(index.index_type.to_string());
+    }
+    row.push(if index.is_unique() {
+        "✓".to_string()
+    } else {
+        String::new()
+    });
+    row
 }
 
 fn foreign_key_row(fk: &ForeignKey) -> Vec<String> {

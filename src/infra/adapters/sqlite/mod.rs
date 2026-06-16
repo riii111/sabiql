@@ -229,7 +229,7 @@ impl SqliteAdapter {
                 name: raw.name,
                 columns,
                 attributes: IndexAttributes::from_parts(raw.unique != 0, raw.origin == "pk"),
-                index_type: IndexType::Other("sqlite".to_string()),
+                index_type: IndexType::Unknown,
                 definition: None,
             });
         }
@@ -2128,7 +2128,8 @@ mod tests {
                     .indexes
                     .iter()
                     .any(|index| index.name == "idx_users_org_id"
-                        && index.columns == vec!["org_id".to_string()])
+                        && index.columns == vec!["org_id".to_string()]
+                        && index.index_type == IndexType::Unknown)
             );
             let fk = detail
                 .foreign_keys
