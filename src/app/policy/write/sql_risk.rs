@@ -398,24 +398,37 @@ fn high_acknowledge_keyword(keyword: &str) -> SqlRiskDecision {
 }
 
 fn sqlite_replace_target(sql: &str) -> Option<String> {
-    let tokens = top_level_tokens(sql);
-    let lowers: Vec<String> = tokens.iter().map(|token| token.to_lowercase()).collect();
+    let trimmed = sql.trim();
+    let tokens = top_level_token_pairs(trimmed);
+    let lowers: Vec<String> = tokens
+        .iter()
+        .map(|(_, token)| token.to_lowercase())
+        .collect();
     let replace_into = lowers.first().is_some_and(|token| token == "replace")
         && lowers.get(1).is_some_and(|token| token == "into");
     if replace_into {
-        return tokens.get(2).cloned();
+        let into = tokens.get(1)?;
+        return sqlite_identifier_after(trimmed, into.0 + into.1.len());
     }
     let insert_or_replace = lowers.first().is_some_and(|token| token == "insert")
         && lowers.get(1).is_some_and(|token| token == "or")
         && lowers.get(2).is_some_and(|token| token == "replace")
         && lowers.get(3).is_some_and(|token| token == "into");
-    insert_or_replace.then(|| tokens.get(4).cloned()).flatten()
+    if insert_or_replace {
+        let into = tokens.get(3)?;
+        return sqlite_identifier_after(trimmed, into.0 + into.1.len());
+    }
+    None
 }
 
-fn top_level_tokens(sql: &str) -> Vec<String> {
+fn top_level_token_pairs(sql: &str) -> Vec<(usize, String)> {
     let trimmed = sql.trim();
     let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
     collect_top_level_tokens(trimmed, &chars)
+}
+
+fn top_level_tokens(sql: &str) -> Vec<String> {
+    top_level_token_pairs(sql)
         .into_iter()
         .map(|(_, token)| token)
         .collect()
@@ -441,6 +454,74 @@ pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
         "insert" if sqlite_replace_target(sql).is_some() => Some("REPLACE"),
         _ => None,
     }
+}
+
+fn skip_whitespace(sql: &str, mut cursor: usize) -> usize {
+    while cursor < sql.len() {
+        let Some(ch) = sql[cursor..].chars().next() else {
+            break;
+        };
+        if !ch.is_whitespace() {
+            break;
+        }
+        cursor += ch.len_utf8();
+    }
+    cursor
+}
+
+fn sqlite_identifier_part(sql: &str, cursor: usize) -> Option<(String, usize)> {
+    let ch = sql[cursor..].chars().next()?;
+    let close_quote = match ch {
+        '"' => Some('"'),
+        '`' => Some('`'),
+        '[' => Some(']'),
+        _ => None,
+    };
+    if let Some(close) = close_quote {
+        let mut value = String::new();
+        let mut next = cursor + ch.len_utf8();
+        while next < sql.len() {
+            let c = sql[next..].chars().next()?;
+            next += c.len_utf8();
+            if c == close {
+                if sql[next..].starts_with(close) {
+                    value.push(close);
+                    next += close.len_utf8();
+                    continue;
+                }
+                return Some((value, next));
+            }
+            value.push(c);
+        }
+        return None;
+    }
+
+    let mut end = cursor;
+    while end < sql.len() {
+        let c = sql[end..].chars().next()?;
+        if c.is_whitespace() || matches!(c, '.' | '(' | ',' | ';') {
+            break;
+        }
+        end += c.len_utf8();
+    }
+    (end > cursor).then(|| (sql[cursor..end].to_string(), end))
+}
+
+fn sqlite_identifier_after(sql: &str, start: usize) -> Option<String> {
+    let mut cursor = skip_whitespace(sql, start);
+    let mut parts = Vec::new();
+
+    loop {
+        let (part, next) = sqlite_identifier_part(sql, cursor)?;
+        parts.push(part);
+        cursor = skip_whitespace(sql, next);
+        if !sql[cursor..].starts_with('.') {
+            break;
+        }
+        cursor = skip_whitespace(sql, cursor + 1);
+    }
+
+    Some(parts.join("."))
 }
 
 fn top_level_char_index(sql: &str, target: char) -> Option<usize> {
@@ -504,17 +585,41 @@ fn parenthesized_pragma_value(sql: &str) -> Option<String> {
         .map(str::to_lowercase)
 }
 
+fn sqlite_read_only_parameterized_pragma(name: &str) -> bool {
+    matches!(
+        name,
+        "table_info"
+            | "table_xinfo"
+            | "index_info"
+            | "index_xinfo"
+            | "index_list"
+            | "foreign_key_list"
+            | "database_list"
+            | "table_list"
+            | "pragma_list"
+            | "function_list"
+            | "module_list"
+            | "collation_list"
+            | "integrity_check"
+            | "quick_check"
+            | "column_info"
+    )
+}
+
 fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
     let tokens = top_level_token_lowers(sql);
     let name = tokens.get(1)?;
     let pragma_name = name.rsplit('.').next().unwrap_or(name);
     let has_assignment = top_level_contains_char(sql, '=') || tokens.len() > 2;
     let has_parenthesized_value = top_level_contains_char(sql, '(');
-    let has_side_effect_without_assignment = matches!(
-        pragma_name,
-        "optimize" | "incremental_vacuum" | "wal_checkpoint"
-    ) || (pragma_name == "foreign_keys"
-        && has_parenthesized_value);
+    let is_read_only_parameterized =
+        has_parenthesized_value && sqlite_read_only_parameterized_pragma(pragma_name);
+    let has_side_effect_without_assignment = (has_parenthesized_value
+        && !is_read_only_parameterized)
+        || matches!(
+            pragma_name,
+            "optimize" | "incremental_vacuum" | "wal_checkpoint"
+        );
 
     if !has_assignment && !has_side_effect_without_assignment {
         return Some(low_immediate());
@@ -806,11 +911,23 @@ mod tests {
             assert!(matches!(result.confirmation, ConfirmationType::Immediate));
         }
 
+        #[test]
+        fn sqlite_allowlisted_parameterized_pragma_returns_low_immediate() {
+            let sql = "PRAGMA index_info(users_name_idx)";
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Low);
+            assert!(result.read_only_allowed);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
         #[rstest]
         #[case::writable_schema("PRAGMA writable_schema = ON")]
+        #[case::writable_schema_call("PRAGMA writable_schema(ON)")]
         #[case::foreign_keys_off("PRAGMA foreign_keys = OFF")]
         #[case::foreign_keys_call_off("PRAGMA foreign_keys(OFF)")]
         #[case::journal_mode("PRAGMA journal_mode = WAL")]
+        #[case::journal_mode_call("PRAGMA journal_mode(WAL)")]
         #[case::locking_mode("PRAGMA locking_mode = EXCLUSIVE")]
         #[case::optimize("PRAGMA optimize")]
         #[case::incremental_vacuum("PRAGMA incremental_vacuum")]
@@ -839,6 +956,16 @@ mod tests {
             assert!(matches!(result.confirmation, ConfirmationType::Immediate));
         }
 
+        #[test]
+        fn sqlite_non_allowlisted_parameterized_pragma_is_medium_write() {
+            let sql = "PRAGMA user_version(3)";
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Medium);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
         #[rstest]
         #[case::attach("ATTACH DATABASE 'other.db' AS other", "ATTACH")]
         #[case::detach("DETACH DATABASE other", "DETACH")]
@@ -860,16 +987,26 @@ mod tests {
         }
 
         #[rstest]
-        #[case::insert_or_replace("INSERT OR REPLACE INTO users(id) VALUES (1)")]
-        #[case::replace("REPLACE INTO users(id) VALUES (1)")]
-        fn sqlite_replace_requires_table_name_input(#[case] sql: &str) {
+        #[case::insert_or_replace("INSERT OR REPLACE INTO users(id) VALUES (1)", "users")]
+        #[case::replace("REPLACE INTO users(id) VALUES (1)", "users")]
+        #[case::bracket_quoted("REPLACE INTO [my table](id) VALUES (1)", "my table")]
+        #[case::backtick_quoted("REPLACE INTO `my table`(id) VALUES (1)", "my table")]
+        #[case::double_quoted(r#"REPLACE INTO "my table"(id) VALUES (1)"#, "my table")]
+        #[case::schema_qualified(
+            "INSERT OR REPLACE INTO main.[my table](id) VALUES (1)",
+            "main.my table"
+        )]
+        fn sqlite_replace_requires_table_name_input(
+            #[case] sql: &str,
+            #[case] expected_target: &str,
+        ) {
             let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
 
             assert_eq!(result.risk_level, RiskLevel::High);
             assert!(!result.read_only_allowed);
             assert!(matches!(
                 result.confirmation,
-                ConfirmationType::TableNameInput { ref target } if target == "users"
+                ConfirmationType::TableNameInput { ref target } if target == expected_target
             ));
         }
 

@@ -698,7 +698,7 @@ fn is_transaction_control(statement: &str) -> bool {
 fn is_write_statement(statement: &str) -> bool {
     matches!(
         first_keyword(statement).to_ascii_uppercase().as_str(),
-        "INSERT" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
+        "INSERT" | "REPLACE" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
     )
 }
 
@@ -1601,6 +1601,18 @@ mod tests {
         assert_eq!(
             wrapped,
             "BEGIN;\nINSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
+        );
+    }
+
+    #[test]
+    fn append_changes_wraps_multi_statement_replace_without_explicit_transaction() {
+        let query = "REPLACE INTO users(id) VALUES (1); SELECT * FROM missing";
+
+        let wrapped = append_changes_query(query);
+
+        assert_eq!(
+            wrapped,
+            "BEGIN;\nREPLACE INTO users(id) VALUES (1); SELECT * FROM missing\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
         );
     }
 

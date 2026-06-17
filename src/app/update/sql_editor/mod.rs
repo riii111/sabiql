@@ -710,7 +710,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("PRAGMA table_info(users)".to_string());
-            activate_sqlite_connection(&mut state, "sqlite:/tmp/test.db");
+            activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
             state.session.enable_read_only();
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
@@ -729,7 +729,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("PRAGMA foreign_keys = OFF".to_string());
-            activate_sqlite_connection(&mut state, "sqlite:/tmp/test.db");
+            activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
             state.session.enable_read_only();
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
