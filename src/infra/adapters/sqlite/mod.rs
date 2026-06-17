@@ -621,6 +621,18 @@ fn sqlite_changes_probe(marker: &str, index: usize) -> String {
     format!("SELECT {index} AS \"{stmt_col}\", changes() AS \"{changes_col}\"")
 }
 
+fn sqlite_result_probe_columns(marker: &str) -> (String, String) {
+    (
+        format!("{marker}_result_stmt"),
+        format!("{marker}_result_marker"),
+    )
+}
+
+fn sqlite_result_probe(marker: &str, index: usize) -> String {
+    let (stmt_col, marker_col) = sqlite_result_probe_columns(marker);
+    format!("SELECT {index} AS \"{stmt_col}\", '{marker}' AS \"{marker_col}\"")
+}
+
 fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
     let statements = split_sqlite_statements(query);
     if statements.is_empty() {
@@ -636,6 +648,9 @@ fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
         parts.push((*statement).to_string());
         if is_dml_statement(statement) {
             parts.push(sqlite_changes_probe(marker, index));
+        }
+        if statement_emits_result_set(statement) {
+            parts.push(sqlite_result_probe(marker, index));
         }
     }
     if wrap {
@@ -686,22 +701,19 @@ fn is_dml_statement(statement: &str) -> bool {
     dml_keyword(statement).is_some()
 }
 
-fn statement_returns_rows(statement: &str) -> bool {
+fn statement_emits_result_set(statement: &str) -> bool {
     let keyword = first_keyword(statement);
-    if keyword.eq_ignore_ascii_case("SELECT") {
+    if keyword.eq_ignore_ascii_case("SELECT")
+        || keyword.eq_ignore_ascii_case("PRAGMA")
+        || keyword.eq_ignore_ascii_case("EXPLAIN")
+        || keyword.eq_ignore_ascii_case("VALUES")
+    {
         return true;
     }
     if is_dml_statement(statement) {
         return contains_keyword(statement, "RETURNING");
     }
     keyword.eq_ignore_ascii_case("WITH")
-}
-
-fn count_result_statements(sql: &str) -> usize {
-    split_sqlite_statements(sql)
-        .into_iter()
-        .filter(|stmt| statement_returns_rows(stmt))
-        .count()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -837,48 +849,9 @@ fn parse_quoted_records(stdout: &str) -> Result<Vec<QuotedRecord>, DbOperationEr
         .collect()
 }
 
-fn extract_last_quoted_block<'a>(stdout: &'a str, sql: &str) -> Result<&'a str, DbOperationError> {
-    let records = parse_quoted_records(stdout)?;
-    if records.len() <= 2 {
-        return Ok(stdout);
-    }
-
-    let expected_sets = count_result_statements(sql);
-    let first_header = &records[0].values;
-    let mut current_fc = first_header.len();
-    let mut known_headers = vec![first_header.clone()];
-    let mut last_header_idx = 0;
-    let mut data_rows_since_header = 0usize;
-
-    for (i, record) in records.iter().enumerate().skip(1) {
-        let fc = record.values.len();
-        if fc != current_fc {
-            last_header_idx = i;
-            current_fc = fc;
-            data_rows_since_header = 0;
-            if !known_headers.contains(&record.values) {
-                known_headers.push(record.values.clone());
-            }
-        } else if known_headers.contains(&record.values) {
-            last_header_idx = i;
-            data_rows_since_header = 0;
-        } else if expected_sets > 1
-            && data_rows_since_header >= 1
-            && known_headers.len() < expected_sets
-        {
-            last_header_idx = i;
-            known_headers.push(record.values.clone());
-            data_rows_since_header = 0;
-        } else {
-            data_rows_since_header += 1;
-        }
-    }
-
-    if last_header_idx == 0 {
-        return Ok(stdout);
-    }
-
-    Ok(&stdout[records[last_header_idx].offset..])
+fn statement_counts_as_select_tag(statement: &str) -> bool {
+    let keyword = first_keyword(statement);
+    keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("WITH")
 }
 
 fn quoted_to_query_result(
@@ -898,12 +871,7 @@ fn quoted_to_query_result(
         ));
     }
 
-    let quoted_block = if count_result_statements(query) <= 1 {
-        stdout
-    } else {
-        extract_last_quoted_block(stdout, query)?
-    };
-    let mut records = parse_quoted_records(quoted_block)?;
+    let mut records = parse_quoted_records(stdout)?;
     let Some(header) = records.first() else {
         return Ok(QueryResult::success(
             query.to_string(),
@@ -919,7 +887,6 @@ fn quoted_to_query_result(
         .map(QueryValue::display_value)
         .collect();
     let values = records.drain(1..).map(|record| record.values).collect();
-
     Ok(QueryResult::success_with_values(
         query.to_string(),
         columns,
@@ -927,6 +894,56 @@ fn quoted_to_query_result(
         execution_time_ms,
         source,
     ))
+}
+
+fn last_sqlite_result_set(stdout: &str, marker: &str) -> Result<Option<String>, DbOperationError> {
+    let (stmt_col, marker_col) = sqlite_result_probe_columns(marker);
+    let raw_records = split_quoted_records(stdout)?;
+    let records = parse_quoted_records(stdout)?;
+
+    let mut last_result = None;
+    let mut result_start = 0;
+    let mut index = 0;
+    while index < records.len() {
+        let record = &records[index];
+        if record.values.len() == 2
+            && record.values[0].as_str() == Some(stmt_col.as_str())
+            && record.values[1].as_str() == Some(marker_col.as_str())
+        {
+            let value = records.get(index + 1).ok_or_else(|| {
+                DbOperationError::CommandTagParseFailed(
+                    "missing SQLite result marker row".to_string(),
+                )
+            })?;
+            let marker_value = value
+                .values
+                .get(1)
+                .and_then(QueryValue::as_str)
+                .ok_or_else(|| {
+                    DbOperationError::CommandTagParseFailed(
+                        "invalid SQLite result marker".to_string(),
+                    )
+                })?;
+            if marker_value != marker {
+                return Err(DbOperationError::CommandTagParseFailed(
+                    "mismatched SQLite result marker".to_string(),
+                ));
+            }
+            last_result = Some(
+                raw_records[result_start..index]
+                    .iter()
+                    .map(|segment| segment.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+            index += 2;
+            result_start = index;
+        } else {
+            index += 1;
+        }
+    }
+
+    Ok(last_result)
 }
 
 fn strip_sqlite_probes(
@@ -1337,25 +1354,36 @@ impl QueryExecutor for SqliteAdapter {
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
         let (stdout, changes) = strip_sqlite_probes(&stdout, &marker)?;
+        let stdout = last_sqlite_result_set(&stdout, &marker)?.unwrap_or(stdout);
         let tag = aggregate_sqlite_command_tag(&sqlite_statement_tags(&statements, &changes));
 
         if stdout.trim().is_empty() {
             if let Some(tag) = tag {
                 return Ok(command_tag_result(query, tag, elapsed, QuerySource::Adhoc));
             }
-            return Ok(QueryResult::success(
+            let mut result = QueryResult::success(
                 query.to_string(),
                 Vec::new(),
                 Vec::new(),
                 elapsed,
                 QuerySource::Adhoc,
-            ));
+            );
+            if statements
+                .iter()
+                .any(|stmt| statement_counts_as_select_tag(stmt))
+            {
+                result = result.with_command_tag(CommandTag::Select(0));
+            }
+            return Ok(result);
         }
 
         let mut result = quoted_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
         if let Some(tag) = tag {
             result = result.with_command_tag(tag);
-        } else if statements.iter().any(|stmt| statement_returns_rows(stmt)) {
+        } else if statements
+            .iter()
+            .any(|stmt| statement_counts_as_select_tag(stmt))
+        {
             let row_count = result.row_count() as u64;
             result = result.with_command_tag(CommandTag::Select(row_count));
         }
@@ -1521,13 +1549,17 @@ mod tests {
         }
 
         #[test]
-        fn quoted_to_query_result_uses_last_result_set_for_multi_select() {
-            let sqlite_output_with_ignored_first_result_set =
-                "'ignored'\n1\n'body','marker'\n'line 1\nline 2','ok'\n";
+        fn last_sqlite_result_set_uses_marker_boundaries() {
+            let marker = "probe";
+            let sqlite_output_with_ignored_first_result_set = "'ignored'\n1\n'probe_result_stmt','probe_result_marker'\n0,'probe'\n'body','marker'\n'line 1\nline 2','ok'\n'probe_result_stmt','probe_result_marker'\n1,'probe'\n";
 
+            let quoted =
+                last_sqlite_result_set(sqlite_output_with_ignored_first_result_set, marker)
+                    .unwrap()
+                    .unwrap();
             let result = quoted_to_query_result(
                 "SELECT 1 AS ignored; SELECT body, marker FROM notes",
-                sqlite_output_with_ignored_first_result_set,
+                &quoted,
                 QuerySource::Adhoc,
                 1,
             )
@@ -1690,6 +1722,71 @@ mod tests {
                 vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
             );
             assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+        }
+
+        #[tokio::test]
+        async fn multi_select_does_not_treat_data_row_as_next_header() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT 1 AS a, 2 AS b UNION ALL SELECT 3, 4; SELECT 5 AS c, 6 AS d",
+                    true,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(result.columns, vec!["c", "d"]);
+            assert_eq!(result.rows(), vec![vec!["5".to_string(), "6".to_string()]]);
+            assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+        }
+
+        #[tokio::test]
+        async fn multi_select_empty_trailing_result_returns_empty_result() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "SELECT 1 AS a; SELECT 2 AS b WHERE false", true)
+                .await
+                .unwrap();
+
+            assert!(result.columns.is_empty());
+            assert!(result.rows().is_empty());
+            assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
+        }
+
+        #[tokio::test]
+        async fn pragma_result_does_not_get_select_command_tag() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "PRAGMA table_info(users)", true)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                result.columns,
+                vec!["cid", "name", "type", "notnull", "dflt_value", "pk"]
+            );
+            assert_eq!(result.command_tag, None);
+        }
+
+        #[tokio::test]
+        async fn values_result_does_not_get_select_command_tag() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "VALUES (1)", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+            assert_eq!(result.command_tag, None);
         }
 
         #[tokio::test]
