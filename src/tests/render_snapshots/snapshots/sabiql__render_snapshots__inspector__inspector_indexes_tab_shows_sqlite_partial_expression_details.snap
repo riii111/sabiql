@@ -6,7 +6,7 @@ test_project | test_db | - | connected | app.db
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [DDL]
 │> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  public.posts                         ││Name                    Columns        Unique   Partial   Detail                                                          │
-│  public.comments                      ││idx_users_email_lower   <expression>            ✓         expression                                                      │
+│  public.comments                      ││idx_users_email_lower   <expression>            ✓         expression; auxiliary-columns                                   │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

@@ -162,6 +162,7 @@ mod tests {
         #[case(true, false, false, Some("read-only"))]
         #[case(true, true, false, Some("hidden"))]
         #[case(true, false, true, Some("generated"))]
+        #[case(true, true, true, Some("generated"))]
         #[case(false, false, false, None)]
         fn metadata_flags_report_read_only_reason(
             #[case] read_only: bool,

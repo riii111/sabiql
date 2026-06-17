@@ -246,17 +246,7 @@ impl SqliteAdapter {
             columns.sort_by_key(|col| col.seqno);
             let has_expression = columns.iter().any(|col| col.key != 0 && col.cid == -2);
             let has_auxiliary_columns = columns.iter().any(|col| col.key == 0);
-            let columns: Vec<String> = columns
-                .into_iter()
-                .filter(|col| col.key != 0)
-                .filter_map(|col| {
-                    if col.cid == -2 {
-                        Some("<expression>".to_string())
-                    } else {
-                        col.name
-                    }
-                })
-                .collect();
+            let columns = Self::index_key_column_names(&columns);
             let definition = self.index_definition(path, &raw.name).await;
 
             let mut attributes = IndexAttributes::from_parts(raw.unique != 0, raw.origin == "pk");
@@ -317,17 +307,21 @@ impl SqliteAdapter {
             .execute_json(path, &sql::index_xinfo_query(index))
             .await?;
         columns.sort_by_key(|col| col.seqno);
-        Ok(columns
-            .into_iter()
+        Ok(Self::index_key_column_names(&columns))
+    }
+
+    fn index_key_column_names(columns: &[RawIndexColumn]) -> Vec<String> {
+        columns
+            .iter()
             .filter(|col| col.key != 0)
-            .filter_map(|col| {
+            .map(|col| {
                 if col.cid == -2 {
-                    Some("<expression>".to_string())
+                    "<expression>".to_string()
                 } else {
-                    col.name
+                    col.name.clone().unwrap_or_else(|| "<unknown>".to_string())
                 }
             })
-            .collect())
+            .collect()
     }
 
     async fn index_definition(&self, path: &str, index: &str) -> Option<String> {
@@ -1616,6 +1610,45 @@ mod tests {
         assert_eq!(
             wrapped,
             "BEGIN; INSERT INTO users(id) VALUES (1); END\n;\nSELECT changes() AS affected_rows;"
+        );
+    }
+
+    #[test]
+    fn index_key_column_names_preserves_expression_and_unknown_key_columns() {
+        let columns = vec![
+            RawIndexColumn {
+                seqno: 0,
+                cid: 1,
+                name: Some("email".to_string()),
+                key: 1,
+            },
+            RawIndexColumn {
+                seqno: 1,
+                cid: -2,
+                name: None,
+                key: 1,
+            },
+            RawIndexColumn {
+                seqno: 2,
+                cid: 99,
+                name: None,
+                key: 1,
+            },
+            RawIndexColumn {
+                seqno: 3,
+                cid: 2,
+                name: Some("rowid".to_string()),
+                key: 0,
+            },
+        ];
+
+        assert_eq!(
+            SqliteAdapter::index_key_column_names(&columns),
+            vec![
+                "email".to_string(),
+                "<expression>".to_string(),
+                "<unknown>".to_string()
+            ]
         );
     }
 
