@@ -1,10 +1,11 @@
 use std::time::Instant;
 
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
-use crate::policy::sql::statement_classifier::{self, StatementKind};
+use crate::policy::sql::statement_classifier::{self, first_keyword};
 use crate::policy::write::sql_risk::{
-    ConfirmationType, MultiStatementDecision, evaluate_multi_statement,
+    ConfirmationType, MultiStatementDecision, evaluate_multi_statement_for_database,
 };
 use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
 use crate::update::action::Action;
@@ -12,16 +13,40 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::start_adhoc_if_connected;
 
-fn multi_statement_label(sql: &str) -> &'static str {
+fn sqlite_statement_label(sql: &str) -> Option<&'static str> {
+    let keyword = first_keyword(sql)?;
+    match keyword.as_str() {
+        "PRAGMA" | "ATTACH" | "DETACH" | "VACUUM" | "REINDEX" | "ANALYZE" | "REPLACE" => {
+            Some(match keyword.as_str() {
+                "PRAGMA" => "PRAGMA",
+                "ATTACH" => "ATTACH",
+                "DETACH" => "DETACH",
+                "VACUUM" => "VACUUM",
+                "REINDEX" => "REINDEX",
+                "ANALYZE" => "ANALYZE",
+                "REPLACE" => "REPLACE",
+                _ => "SQL",
+            })
+        }
+        "INSERT" if sql.to_ascii_lowercase().starts_with("insert or replace") => Some("REPLACE"),
+        _ => None,
+    }
+}
+
+fn multi_statement_label(database_type: DatabaseType, sql: &str) -> &'static str {
     use crate::policy::write::sql_risk::split_statements;
     let mut worst_level = RiskLevel::Low;
     let mut worst_label = "SQL";
     for stmt in split_statements(sql) {
+        let sqlite_label = (database_type == DatabaseType::SQLite)
+            .then(|| sqlite_statement_label(&stmt))
+            .flatten();
         let kind = statement_classifier::classify(&stmt);
         let d = evaluate_sql_risk(&kind);
-        if d.risk_level > worst_level || (d.risk_level == worst_level && d.label != "SQL") {
+        let label = sqlite_label.unwrap_or(d.label);
+        if d.risk_level > worst_level || (d.risk_level == worst_level && label != "SQL") {
             worst_level = d.risk_level;
-            worst_label = d.label;
+            worst_label = label;
         }
     }
     worst_label
@@ -35,26 +60,20 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
             }
             state.sql_modal.dismiss_completion();
 
-            match evaluate_multi_statement(&query) {
+            let database_type = state.session.active_database_type_or_default();
+
+            match evaluate_multi_statement_for_database(database_type, &query) {
                 MultiStatementDecision::Block { reason } => {
                     state.sql_modal.finish_adhoc_error(reason);
                     DispatchResult::handled()
                 }
-                MultiStatementDecision::Allow {
-                    risk,
-                    ref statements,
-                } => {
-                    let label = multi_statement_label(&query);
+                MultiStatementDecision::Allow { risk, .. } => {
+                    let label = multi_statement_label(database_type, &query);
                     let decision = AdhocRiskDecision {
                         risk_level: risk.risk_level,
                         label,
                     };
-                    // In read-only mode, block if any statement is a write operation
-                    let has_write = statements.iter().any(|s| {
-                        let kind = statement_classifier::classify(s);
-                        !matches!(kind, StatementKind::Select | StatementKind::Transaction)
-                    });
-                    if state.session.is_read_only() && has_write {
+                    if state.session.is_read_only() && !risk.read_only_allowed {
                         state.sql_modal.finish_adhoc_error(
                             "Read-only mode: write operations are disabled".to_string(),
                         );

@@ -410,7 +410,10 @@ fn has_non_whitespace_after(lower: &str, byte_pos: usize) -> bool {
         .is_some_and(|tail| !tail.trim().is_empty())
 }
 
-fn collect_top_level_tokens(original: &str, chars: &[(usize, char)]) -> Vec<(usize, String)> {
+pub(crate) fn collect_top_level_tokens(
+    original: &str,
+    chars: &[(usize, char)],
+) -> Vec<(usize, String)> {
     let mut tokens = Vec::new();
     let mut i = 0;
     let mut depth: i32 = 0;
