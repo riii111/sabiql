@@ -317,10 +317,9 @@ impl PostgresAdapter {
         source: QuerySource,
     ) -> QueryResult {
         let row_count = tag.affected_rows().unwrap_or(0) as usize;
-        let mut result =
-            QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source);
-        result.row_count = row_count;
-        result.with_command_tag(tag)
+        QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source)
+            .with_row_count(row_count)
+            .with_command_tag(tag)
     }
 
     fn csv_result(

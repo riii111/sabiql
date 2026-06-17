@@ -24,7 +24,7 @@ pub use er::ErTableInfo;
 pub use foreign_key::{FkAction, ForeignKey};
 pub use index::{Index, IndexAttributes, IndexType};
 pub use metadata::{DatabaseMetadata, MetadataState};
-pub use query_result::{QueryResult, QuerySource};
+pub use query_result::{QueryResult, QuerySource, QueryValue};
 pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
 pub use schema::Schema;
 pub use table::{Table, TableSignature, TableSummary};

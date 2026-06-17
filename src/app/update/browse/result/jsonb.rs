@@ -45,7 +45,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 _ => return DispatchResult::handled(),
             };
 
-            let cell_value = match result.rows.get(row_idx).and_then(|r| r.get(col_idx)) {
+            let cell_value = match result.rows().get(row_idx).and_then(|r| r.get(col_idx)) {
                 Some(v) if !v.is_empty() => v,
                 _ => return DispatchResult::handled(),
             };
@@ -316,7 +316,7 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
         let original_cell = state
             .query
             .visible_result()
-            .and_then(|r| r.rows.get(row).and_then(|r| r.get(col)).cloned())
+            .and_then(|r| r.rows().get(row).and_then(|r| r.get(col)).cloned())
             .unwrap_or_default();
         state
             .result_interaction

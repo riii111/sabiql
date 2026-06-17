@@ -166,6 +166,6 @@ mod tests {
         assert!(retrieved.query_result.is_some());
         let retrieved_result = retrieved.query_result.as_ref().unwrap();
         assert_eq!(retrieved_result.query, "SELECT * FROM users");
-        assert_eq!(retrieved_result.row_count, 1);
+        assert_eq!(retrieved_result.row_count(), 1);
     }
 }

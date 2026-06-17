@@ -104,8 +104,8 @@ mod query_execution {
             .unwrap();
 
         assert_eq!(result.columns, vec!["value"]);
-        assert_eq!(result.rows.len(), 1);
-        assert_eq!(result.rows[0], vec!["1"]);
+        assert_eq!(result.rows().len(), 1);
+        assert_eq!(result.rows()[0], vec!["1"]);
     }
 }
 
@@ -125,7 +125,7 @@ mod multi_statement_boundaries {
             .unwrap();
 
         assert_eq!(result.columns, vec!["b", "c"]);
-        assert_eq!(result.rows, vec![vec!["2", "3"]]);
+        assert_eq!(result.rows(), vec![vec!["2", "3"]]);
     }
 
     #[tokio::test]
@@ -139,7 +139,7 @@ mod multi_statement_boundaries {
         let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
 
         assert_eq!(result.columns, vec!["id", "name"]);
-        assert_eq!(result.rows, vec![vec!["id", "name"]]);
+        assert_eq!(result.rows(), vec![vec!["id", "name"]]);
     }
 
     #[tokio::test]
@@ -152,7 +152,7 @@ mod multi_statement_boundaries {
         let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
 
         assert_eq!(result.columns, vec!["b"]);
-        assert_eq!(result.rows, vec![vec!["2"]]);
+        assert_eq!(result.rows(), vec![vec!["2"]]);
     }
 
     #[tokio::test]
@@ -165,7 +165,7 @@ mod multi_statement_boundaries {
         let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
 
         assert_eq!(result.columns, vec!["b"]);
-        assert!(result.rows.is_empty());
+        assert!(result.rows().is_empty());
     }
 
     #[tokio::test]
@@ -182,7 +182,7 @@ mod multi_statement_boundaries {
         let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
 
         assert_eq!(result.columns, vec!["v"]);
-        assert_eq!(result.rows, vec![vec!["7"]]);
+        assert_eq!(result.rows(), vec![vec!["7"]]);
     }
 
     #[tokio::test]
@@ -195,7 +195,7 @@ mod multi_statement_boundaries {
                    INSERT INTO tag_probe VALUES (1), (2)";
         let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
 
-        assert!(result.rows.is_empty());
+        assert!(result.rows().is_empty());
         assert_eq!(
             result.command_tag,
             Some(CommandTag::Create("TABLE".to_string()))
@@ -224,7 +224,7 @@ mod multi_statement_boundaries {
             )
             .await
             .unwrap();
-        assert_eq!(check.rows, vec![vec!["t"]]);
+        assert_eq!(check.rows(), vec![vec!["t"]]);
     }
 }
 

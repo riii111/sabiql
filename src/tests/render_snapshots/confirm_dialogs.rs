@@ -1,5 +1,6 @@
 use super::*;
 use harness::connected_state;
+use sabiql_app::domain::QueryValue;
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::confirm_dialog::ConfirmIntent;
 
@@ -14,7 +15,7 @@ fn make_update_preview_with_key(diff: Vec<ColumnDiff>, sql: String, id: &str) ->
         target_summary: TargetSummary {
             schema: "public".to_string(),
             table: "users".to_string(),
-            key_values: vec![("id".to_string(), id.to_string())],
+            key_values: vec![("id".to_string(), QueryValue::text(id))],
         },
         diff,
         guardrail: GuardrailDecision {
@@ -132,7 +133,7 @@ fn confirm_dialog_delete_preview_low_risk() {
         target_summary: TargetSummary {
             schema: "public".to_string(),
             table: "users".to_string(),
-            key_values: vec![("id".to_string(), "3".to_string())],
+            key_values: vec![("id".to_string(), QueryValue::text("3"))],
         },
         diff: vec![],
         guardrail: GuardrailDecision {

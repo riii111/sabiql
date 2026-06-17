@@ -1,12 +1,13 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::write::write_guardrails::{
-    ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
+    ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::{
     build_pk_pairs, escape_preview_value, normalize_for_diff,
@@ -16,7 +17,7 @@ use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
-    EditGuardrailError, build_bulk_delete_preview, editable_preview_base,
+    EditGuardrailError, build_bulk_delete_preview, editable_preview_base, reject_sqlite_null_pk,
 };
 
 fn build_update_preview(
@@ -40,8 +41,8 @@ fn build_update_preview(
         .col
         .ok_or(EditGuardrailError::NoColumnSelectedForEdit)?;
 
-    let row = result
-        .rows
+    let row_values = result
+        .values()
         .get(row_idx)
         .ok_or(EditGuardrailError::RowIndexOutOfBounds)?;
     let column_name = result
@@ -53,9 +54,21 @@ fn build_update_preview(
     if pk_cols.iter().any(|pk| pk == &column_name) {
         return Err(EditGuardrailError::PrimaryKeyColumnsReadOnly);
     }
+    let new_value = match row_values
+        .get(col_idx)
+        .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
+    {
+        QueryValue::Text(_) => QueryValue::text(state.result_interaction.cell_edit().draft_value()),
+        QueryValue::Null | QueryValue::Blob(_) | QueryValue::SqlLiteral(_) => {
+            return Err(EditGuardrailError::NonTextInlineEdit);
+        }
+    };
 
-    let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
-    let target = crate::policy::write::write_guardrails::TargetSummary {
+    let pk_pairs = build_pk_pairs(&result.columns, row_values, pk_cols);
+    if let Some(pairs) = pk_pairs.as_deref() {
+        reject_sqlite_null_pk(state.session.active_database_type_or_default(), pairs)?;
+    }
+    let target = TargetSummary {
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
         key_values: pk_pairs.clone().unwrap_or_default(),
@@ -75,7 +88,7 @@ fn build_update_preview(
         &target.schema,
         &target.table,
         &column_name,
-        state.result_interaction.cell_edit().draft_value(),
+        &new_value,
         &target.key_values,
     );
     let preview = WritePreview {
@@ -371,7 +384,8 @@ pub fn reduce_write(
 mod tests {
     use super::*;
 
-    use crate::domain::DatabaseType;
+    use crate::domain::connection::ConnectionId;
+    use crate::domain::{DatabaseType, QueryResult, QuerySource};
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
     };
@@ -382,6 +396,8 @@ mod tests {
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
     use crate::update::test_support::activate_postgres_connection;
+    use rstest::rstest;
+    use std::sync::Arc;
 
     fn write_succeeded_action(state: &mut AppState, affected_rows: usize) -> Action {
         let run_id = begin_query_run(state);
@@ -495,6 +511,47 @@ mod tests {
             );
         }
 
+        #[rstest]
+        #[case(QueryValue::Null, "NULL")]
+        #[case(QueryValue::Blob(vec![0, 255]), "BLOB (2 bytes) 00 FF")]
+        #[case(QueryValue::SqlLiteral("42".to_string()), "42")]
+        fn submit_rejects_non_text_active_cell_edit(
+            #[case] cell_value: QueryValue,
+            #[case] draft: &str,
+        ) {
+            let mut state = editable_state();
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec![QueryValue::text("1"), cell_value]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, draft.to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(
+                effects
+                    .into_effects()
+                    .expect("reducer should handle action")
+                    .is_empty()
+            );
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Only text cells can be edited inline")
+            );
+        }
+
         #[test]
         fn submit_write_opens_confirm_dialog() {
             let mut state = editable_state();
@@ -524,7 +581,7 @@ mod tests {
         fn sqlite_active_database_type_uses_sqlite_update_preview() {
             let mut state = editable_state();
             state.session.activate_connection_with_dsn(
-                &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
+                &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
                 DatabaseType::SQLite,
                 "sqlite:///tmp/app.db",
@@ -555,6 +612,55 @@ mod tests {
                 }
                 other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
             }
+        }
+
+        #[test]
+        fn sqlite_update_rejects_null_primary_key_value() {
+            let mut state = editable_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            let mut detail = users_table_detail();
+            detail.schema = "main".to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.reset_for_table("main", "users");
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec![QueryValue::Null, QueryValue::text("Alice")]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "Alice".to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content("Bob".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(
+                effects
+                    .into_effects()
+                    .expect("reducer should handle action")
+                    .is_empty()
+            );
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("SQLite writes require non-NULL primary key values")
+            );
         }
 
         fn editable_state_with_jsonb() -> AppState {
@@ -760,7 +866,7 @@ mod tests {
                 target_summary: TargetSummary {
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    key_values: vec![("id".to_string(), "2".to_string())],
+                    key_values: vec![("id".to_string(), QueryValue::text("2"))],
                 },
                 diff: vec![],
                 guardrail: GuardrailDecision {

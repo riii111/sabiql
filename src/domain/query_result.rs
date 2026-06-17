@@ -1,5 +1,54 @@
 use super::CommandTag;
 
+const BLOB_PREVIEW_BYTES: usize = 8;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueryValue {
+    Null,
+    Text(String),
+    Blob(Vec<u8>),
+    /// Unquoted SQL literal emitted by a trusted database adapter parser.
+    SqlLiteral(String),
+}
+
+impl QueryValue {
+    #[must_use]
+    pub fn text(value: impl Into<String>) -> Self {
+        Self::Text(value.into())
+    }
+
+    #[must_use]
+    pub fn display_value(&self) -> String {
+        match self {
+            Self::Null => "NULL".to_string(),
+            Self::Text(value) | Self::SqlLiteral(value) => value.clone(),
+            Self::Blob(bytes) => {
+                let preview = bytes
+                    .iter()
+                    .take(BLOB_PREVIEW_BYTES)
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if preview.is_empty() {
+                    "BLOB (0 bytes)".to_string()
+                } else if bytes.len() > BLOB_PREVIEW_BYTES {
+                    format!("BLOB ({} bytes) {preview} ...", bytes.len())
+                } else {
+                    format!("BLOB ({} bytes) {preview}", bytes.len())
+                }
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::Text(value) | Self::SqlLiteral(value) => Some(value),
+            Self::Null | Self::Blob(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuerySource {
     Preview,
@@ -10,12 +59,13 @@ pub enum QuerySource {
 pub struct QueryResult {
     pub query: String,
     pub columns: Vec<String>,
-    pub rows: Vec<Vec<String>>,
-    pub row_count: usize,
     pub execution_time_ms: u64,
     pub source: QuerySource,
     pub error: Option<String>,
     pub command_tag: Option<CommandTag>,
+    rows: Vec<Vec<String>>,
+    values: Vec<Vec<QueryValue>>,
+    row_count: usize,
 }
 
 impl QueryResult {
@@ -28,10 +78,41 @@ impl QueryResult {
         source: QuerySource,
     ) -> Self {
         let row_count = rows.len();
+        let values = rows
+            .iter()
+            .map(|row| row.iter().cloned().map(QueryValue::Text).collect())
+            .collect();
         Self {
             query,
             columns,
             rows,
+            values,
+            row_count,
+            execution_time_ms,
+            source,
+            error: None,
+            command_tag: None,
+        }
+    }
+
+    #[must_use]
+    pub fn success_with_values(
+        query: String,
+        columns: Vec<String>,
+        values: Vec<Vec<QueryValue>>,
+        execution_time_ms: u64,
+        source: QuerySource,
+    ) -> Self {
+        let rows = values
+            .iter()
+            .map(|row| row.iter().map(QueryValue::display_value).collect())
+            .collect();
+        let row_count = values.len();
+        Self {
+            query,
+            columns,
+            rows,
+            values,
             row_count,
             execution_time_ms,
             source,
@@ -51,6 +132,7 @@ impl QueryResult {
             query,
             columns: Vec::new(),
             rows: Vec::new(),
+            values: Vec::new(),
             row_count: 0,
             execution_time_ms,
             source,
@@ -65,16 +147,44 @@ impl QueryResult {
         self
     }
 
+    #[must_use]
+    pub fn with_row_count(mut self, row_count: usize) -> Self {
+        self.row_count = row_count;
+        self
+    }
+
+    #[must_use]
     pub fn is_error(&self) -> bool {
         self.error.is_some()
     }
 
+    #[must_use]
+    pub fn rows(&self) -> &[Vec<String>] {
+        &self.rows
+    }
+
+    #[must_use]
+    pub fn values(&self) -> &[Vec<QueryValue>] {
+        &self.values
+    }
+
+    #[must_use]
+    pub fn row_count(&self) -> usize {
+        self.row_count
+    }
+
+    #[must_use]
     pub fn row_count_display(&self) -> String {
         if self.row_count == 1 {
             "1 row".to_string()
         } else {
             format!("{} rows", self.row_count)
         }
+    }
+
+    #[must_use]
+    pub fn value_at(&self, row: usize, col: usize) -> Option<&QueryValue> {
+        self.values.get(row)?.get(col)
     }
 }
 
@@ -98,8 +208,8 @@ mod tests {
 
             assert_eq!(result.query, "SELECT 1");
             assert_eq!(result.columns, vec!["id"]);
-            assert_eq!(result.rows, vec![vec!["1"]]);
-            assert_eq!(result.row_count, 1);
+            assert_eq!(result.rows(), vec![vec!["1"]]);
+            assert_eq!(result.row_count(), 1);
             assert_eq!(result.execution_time_ms, 42);
             assert_eq!(result.source, QuerySource::Adhoc);
             assert!(result.error.is_none());
@@ -117,7 +227,7 @@ mod tests {
                 QuerySource::Preview,
             );
 
-            assert_eq!(result.row_count, 3);
+            assert_eq!(result.row_count(), 3);
         }
     }
 
@@ -136,8 +246,8 @@ mod tests {
             assert!(result.is_error());
             assert_eq!(result.error.as_deref(), Some("syntax error"));
             assert!(result.columns.is_empty());
-            assert!(result.rows.is_empty());
-            assert_eq!(result.row_count, 0);
+            assert!(result.rows().is_empty());
+            assert_eq!(result.row_count(), 0);
         }
     }
 
@@ -162,9 +272,9 @@ mod tests {
         #[case(1, "1 row")]
         #[case(5, "5 rows")]
         fn formats_row_count_display(#[case] count: usize, #[case] expected: &str) {
-            let mut result =
-                QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc);
-            result.row_count = count;
+            let result =
+                QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc)
+                    .with_row_count(count);
 
             assert_eq!(result.row_count_display(), expected);
         }

@@ -5,7 +5,9 @@ use crate::app::ports::outbound::{
     DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
-use crate::domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
+use crate::domain::{
+    DatabaseMetadata, QueryResult, QueryValue, Table, TableSignature, WriteExecutionResult,
+};
 use async_trait::async_trait;
 
 use super::postgres::PostgresAdapter;
@@ -219,8 +221,8 @@ impl SqlDialect for DbAdapterRegistry {
         schema: &str,
         table: &str,
         column: &str,
-        new_value: &str,
-        pk_pairs: &[(String, String)],
+        new_value: &QueryValue,
+        pk_pairs: &[(String, QueryValue)],
     ) -> String {
         match database_type {
             DatabaseType::PostgreSQL => self.postgres.build_update_sql(
@@ -247,7 +249,7 @@ impl SqlDialect for DbAdapterRegistry {
         database_type: DatabaseType,
         schema: &str,
         table: &str,
-        pk_pairs_per_row: &[Vec<(String, String)>],
+        pk_pairs_per_row: &[Vec<(String, QueryValue)>],
     ) -> String {
         match database_type {
             DatabaseType::PostgreSQL => {
@@ -267,7 +269,7 @@ mod tests {
     use super::*;
     use crate::adapters::test_support::make_sqlite_db;
     use crate::domain::connection::SslMode;
-    use crate::domain::{Column, ColumnAttributes};
+    use crate::domain::{Column, ColumnAttributes, QueryValue};
 
     fn make_table() -> Table {
         Table {
@@ -324,15 +326,15 @@ mod tests {
     #[test]
     fn postgres_sql_generation_keeps_schema_qualified_sql() {
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
-        let rows = vec![vec![("id".to_string(), "1".to_string())]];
+        let rows = vec![vec![("id".to_string(), QueryValue::text("1"))]];
 
         let update_sql = registry.build_update_sql(
             DatabaseType::PostgreSQL,
             "public",
             "users",
             "name",
-            "Bob",
-            &[("id".into(), "1".into())],
+            &QueryValue::text("Bob"),
+            &[("id".into(), QueryValue::text("1"))],
         );
         let delete_sql =
             registry.build_bulk_delete_sql(DatabaseType::PostgreSQL, "public", "users", &rows);
@@ -344,7 +346,7 @@ mod tests {
         );
         assert_eq!(
             delete_sql,
-            "DELETE FROM \"public\".\"users\"\nWHERE \"id\" IN ('1');"
+            "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '1';"
         );
         assert!(ddl.contains("CREATE TABLE \"main\".\"users\""));
     }
@@ -352,15 +354,15 @@ mod tests {
     #[test]
     fn sqlite_sql_generation_omits_schema_qualification() {
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
-        let rows = vec![vec![("id".to_string(), "1".to_string())]];
+        let rows = vec![vec![("id".to_string(), QueryValue::text("1"))]];
 
         let update_sql = registry.build_update_sql(
             DatabaseType::SQLite,
             "main",
             "users",
             "name",
-            "Bob",
-            &[("id".into(), "1".into())],
+            &QueryValue::text("Bob"),
+            &[("id".into(), QueryValue::text("1"))],
         );
         let delete_sql =
             registry.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
@@ -370,7 +372,7 @@ mod tests {
             update_sql,
             "UPDATE \"users\"\nSET \"name\" = 'Bob'\nWHERE \"id\" = '1';"
         );
-        assert_eq!(delete_sql, "DELETE FROM \"users\"\nWHERE \"id\" IN ('1');");
+        assert_eq!(delete_sql, "DELETE FROM \"users\"\nWHERE \"id\" = '1';");
         assert!(ddl.contains("CREATE TABLE \"users\""));
         assert!(!ddl.contains("\"main\".\"users\""));
     }
@@ -457,7 +459,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.columns, vec!["value"]);
-        assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+        assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
     }
 
     #[tokio::test]

@@ -4,7 +4,9 @@ use crate::app::ports::outbound::{
     DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
-use crate::domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
+use crate::domain::{
+    DatabaseMetadata, QueryResult, QueryValue, Table, TableSignature, WriteExecutionResult,
+};
 
 pub struct MySqlAdapter;
 
@@ -147,8 +149,8 @@ impl SqlDialect for MySqlAdapter {
         _schema: &str,
         _table: &str,
         _column: &str,
-        _new_value: &str,
-        _pk_pairs: &[(String, String)],
+        _new_value: &QueryValue,
+        _pk_pairs: &[(String, QueryValue)],
     ) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }
@@ -158,7 +160,7 @@ impl SqlDialect for MySqlAdapter {
         _database_type: DatabaseType,
         _schema: &str,
         _table: &str,
-        _pk_pairs_per_row: &[Vec<(String, String)>],
+        _pk_pairs_per_row: &[Vec<(String, QueryValue)>],
     ) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }

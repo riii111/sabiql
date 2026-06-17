@@ -27,7 +27,7 @@ pub fn reduce_yank(
                 let content = state
                     .query
                     .visible_result()
-                    .and_then(|r| r.rows.get(row_idx))
+                    .and_then(|r| r.rows().get(row_idx))
                     .and_then(|row| row.get(col_idx))
                     .cloned();
                 if let Some(value) = content {
@@ -73,7 +73,7 @@ pub fn reduce_yank(
                 let content = state
                     .query
                     .visible_result()
-                    .and_then(|r| r.rows.get(row_idx))
+                    .and_then(|r| r.rows().get(row_idx))
                     .map(|row| {
                         row.iter()
                             .map(|v| {

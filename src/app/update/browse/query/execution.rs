@@ -91,7 +91,7 @@ pub fn reduce_execution(
                     reset_view_for_new_result(state, now);
                     state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
                         command_tag: result.command_tag.clone(),
-                        row_count: result.row_count,
+                        row_count: result.row_count(),
                         execution_time_ms: result.execution_time_ms,
                     });
                     state.query.push_history(Arc::clone(result));
@@ -108,7 +108,7 @@ pub fn reduce_execution(
                         state
                             .query
                             .pagination
-                            .set_page_result(*page, result.rows.len() < PREVIEW_PAGE_SIZE);
+                            .set_page_result(*page, result.rows().len() < PREVIEW_PAGE_SIZE);
                     }
                     state.query.set_current_result(Arc::clone(result));
 
@@ -118,8 +118,8 @@ pub fn reduce_execution(
                             state.result_interaction.reset_interaction();
                         }
                         PostDeleteRowSelection::Select(row) => {
-                            if !result.rows.is_empty() && !result.columns.is_empty() {
-                                let clamped = row.min(result.rows.len() - 1);
+                            if !result.rows().is_empty() && !result.columns.is_empty() {
+                                let clamped = row.min(result.rows().len() - 1);
                                 let max_col = result.columns.len() - 1;
                                 let col = preserved_result_col
                                     .unwrap_or(preserved_horizontal_offset)
@@ -902,7 +902,7 @@ mod tests {
 
             let stored = state.query.current_result().unwrap();
             assert_eq!(stored.source, QuerySource::Preview);
-            assert_eq!(stored.row_count, 5);
+            assert_eq!(stored.row_count(), 5);
         }
 
         #[test]

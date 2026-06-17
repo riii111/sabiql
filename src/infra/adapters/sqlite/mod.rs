@@ -9,8 +9,8 @@ use serde::Deserialize;
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider, QueryExecutor};
 use crate::domain::{
     Column, ColumnAttributes, CommandTag, DatabaseMetadata, FkAction, ForeignKey, Index,
-    IndexAttributes, IndexType, QueryResult, QuerySource, Schema, Table, TableSignature,
-    TableSummary, WriteExecutionResult,
+    IndexAttributes, IndexType, QueryResult, QuerySource, QueryValue, Schema, Table,
+    TableSignature, TableSummary, WriteExecutionResult,
 };
 
 mod cli;
@@ -157,18 +157,18 @@ impl SqliteAdapter {
             .unwrap_or_default()
     }
 
-    async fn execute_csv_query(
+    async fn execute_quoted_query(
         &self,
         path: &str,
         query: &str,
         source: QuerySource,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
-        self.execute_csv_query_with_display_query(path, query, query, source, read_only)
+        self.execute_quoted_query_with_display_query(path, query, query, source, read_only)
             .await
     }
 
-    async fn execute_csv_query_with_display_query(
+    async fn execute_quoted_query_with_display_query(
         &self,
         path: &str,
         execution_query: &str,
@@ -183,10 +183,10 @@ impl SqliteAdapter {
         let start = Instant::now();
         let stdout = self
             .cli
-            .execute_csv(path, execution_query, read_only)
+            .execute_quote(path, execution_query, read_only)
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
-        let mut result = csv_to_query_result(execution_query, &stdout, source, elapsed)?;
+        let mut result = quoted_to_query_result(execution_query, &stdout, source, elapsed)?;
         result.query = display_query.to_string();
         Ok(result)
     }
@@ -716,12 +716,145 @@ fn statement_emits_result_set(statement: &str) -> bool {
     keyword.eq_ignore_ascii_case("WITH")
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct QuotedRecord {
+    offset: usize,
+    values: Vec<QueryValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SplitSegment {
+    offset: usize,
+    text: String,
+}
+
+fn split_outside_sqlite_quotes(
+    input: &str,
+    delimiter: u8,
+) -> Result<Vec<SplitSegment>, DbOperationError> {
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    let mut in_quote = false;
+    let bytes = input.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' if in_quote && i + 1 < bytes.len() && bytes[i + 1] == b'\'' => {
+                i += 2;
+            }
+            b'\'' => {
+                in_quote = !in_quote;
+                i += 1;
+            }
+            byte if byte == delimiter && !in_quote => {
+                segments.push(SplitSegment {
+                    offset: start,
+                    text: input[start..i].to_string(),
+                });
+                start = i + 1;
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    if in_quote {
+        return Err(DbOperationError::MetadataParseFailed(
+            "unterminated SQLite quoted output".to_string(),
+        ));
+    }
+    segments.push(SplitSegment {
+        offset: start,
+        text: input[start..].to_string(),
+    });
+    Ok(segments)
+}
+
+fn split_quoted_records(stdout: &str) -> Result<Vec<SplitSegment>, DbOperationError> {
+    let mut records = split_outside_sqlite_quotes(stdout, b'\n')?
+        .into_iter()
+        .map(|segment| SplitSegment {
+            offset: segment.offset,
+            text: segment.text.trim_end_matches('\r').to_string(),
+        })
+        .collect::<Vec<_>>();
+    records.retain(|segment| !segment.text.is_empty());
+    Ok(records)
+}
+
+fn split_quoted_fields(record: &str) -> Result<Vec<String>, DbOperationError> {
+    split_outside_sqlite_quotes(record, b',')
+        .map(|segments| segments.into_iter().map(|segment| segment.text).collect())
+}
+
+fn unquote_sql_text(value: &str) -> String {
+    value[1..value.len() - 1].replace("''", "'")
+}
+
+fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
+    if !hex.len().is_multiple_of(2) {
+        return Err(DbOperationError::MetadataParseFailed(
+            "invalid SQLite BLOB hex literal".to_string(),
+        ));
+    }
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    let mut chars = hex.as_bytes().chunks_exact(2);
+    for pair in &mut chars {
+        let raw = std::str::from_utf8(pair)
+            .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
+        let byte = u8::from_str_radix(raw, 16)
+            .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
+        bytes.push(byte);
+    }
+    Ok(bytes)
+}
+
+fn parse_quoted_value(value: &str) -> Result<QueryValue, DbOperationError> {
+    if value == "NULL" {
+        return Ok(QueryValue::Null);
+    }
+    if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
+        return Ok(QueryValue::Text(unquote_sql_text(value)));
+    }
+    if value.len() >= 3
+        && value.as_bytes()[1] == b'\''
+        && value.ends_with('\'')
+        && value.as_bytes()[0].eq_ignore_ascii_case(&b'X')
+    {
+        return Ok(QueryValue::Blob(decode_hex_bytes(
+            &value[2..value.len() - 1],
+        )?));
+    }
+    if value == "Inf" {
+        return Ok(QueryValue::SqlLiteral("1e999".to_string()));
+    }
+    if value == "-Inf" {
+        return Ok(QueryValue::SqlLiteral("-1e999".to_string()));
+    }
+    Ok(QueryValue::SqlLiteral(value.to_string()))
+}
+
+fn parse_quoted_records(stdout: &str) -> Result<Vec<QuotedRecord>, DbOperationError> {
+    split_quoted_records(stdout)?
+        .into_iter()
+        .map(|segment| {
+            split_quoted_fields(&segment.text)?
+                .into_iter()
+                .map(|field| parse_quoted_value(&field))
+                .collect::<Result<Vec<_>, _>>()
+                .map(|values| QuotedRecord {
+                    offset: segment.offset,
+                    values,
+                })
+        })
+        .collect()
+}
+
 fn statement_counts_as_select_tag(statement: &str) -> bool {
     let keyword = first_keyword(statement);
     keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("WITH")
 }
 
-fn csv_to_query_result(
+fn quoted_to_query_result(
     query: &str,
     stdout: &str,
     source: QuerySource,
@@ -738,58 +871,44 @@ fn csv_to_query_result(
         ));
     }
 
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_reader(stdout.as_bytes());
-    let columns = reader.headers()?.iter().map(ToString::to_string).collect();
-    let mut rows = Vec::new();
-    for result in reader.records() {
-        rows.push(result?.iter().map(ToString::to_string).collect());
-    }
-
-    Ok(QueryResult::success(
+    let mut records = parse_quoted_records(stdout)?;
+    let Some(header) = records.first() else {
+        return Ok(QueryResult::success(
+            query.to_string(),
+            Vec::new(),
+            Vec::new(),
+            execution_time_ms,
+            source,
+        ));
+    };
+    let columns = header
+        .values
+        .iter()
+        .map(QueryValue::display_value)
+        .collect();
+    let values = records.drain(1..).map(|record| record.values).collect();
+    Ok(QueryResult::success_with_values(
         query.to_string(),
         columns,
-        rows,
+        values,
         execution_time_ms,
         source,
     ))
 }
 
-fn csv_from_byte_records(records: &[csv::ByteRecord]) -> Result<String, DbOperationError> {
-    let mut writer = csv::WriterBuilder::new()
-        .has_headers(false)
-        .flexible(true)
-        .from_writer(Vec::new());
-    for record in records {
-        writer.write_byte_record(record)?;
-    }
-    let bytes = writer.into_inner().map_err(|error| {
-        DbOperationError::QueryFailed(format!("Failed to write filtered SQLite CSV: {error}"))
-    })?;
-    String::from_utf8(bytes).map_err(|error| DbOperationError::QueryFailed(error.to_string()))
-}
-
 fn last_sqlite_result_set(stdout: &str, marker: &str) -> Result<Option<String>, DbOperationError> {
     let (stmt_col, marker_col) = sqlite_result_probe_columns(marker);
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(false)
-        .flexible(true)
-        .from_reader(stdout.as_bytes());
-    let mut record = csv::ByteRecord::new();
-    let mut records = Vec::new();
-    while reader.read_byte_record(&mut record)? {
-        records.push(record.clone());
-    }
+    let raw_records = split_quoted_records(stdout)?;
+    let records = parse_quoted_records(stdout)?;
 
     let mut last_result = None;
     let mut result_start = 0;
     let mut index = 0;
     while index < records.len() {
         let record = &records[index];
-        if record.len() == 2
-            && record.get(0) == Some(stmt_col.as_bytes())
-            && record.get(1) == Some(marker_col.as_bytes())
+        if record.values.len() == 2
+            && record.values[0].as_str() == Some(stmt_col.as_str())
+            && record.values[1].as_str() == Some(marker_col.as_str())
         {
             let value = records.get(index + 1).ok_or_else(|| {
                 DbOperationError::CommandTagParseFailed(
@@ -797,8 +916,9 @@ fn last_sqlite_result_set(stdout: &str, marker: &str) -> Result<Option<String>, 
                 )
             })?;
             let marker_value = value
+                .values
                 .get(1)
-                .and_then(|raw| std::str::from_utf8(raw).ok())
+                .and_then(QueryValue::as_str)
                 .ok_or_else(|| {
                     DbOperationError::CommandTagParseFailed(
                         "invalid SQLite result marker".to_string(),
@@ -809,7 +929,13 @@ fn last_sqlite_result_set(stdout: &str, marker: &str) -> Result<Option<String>, 
                     "mismatched SQLite result marker".to_string(),
                 ));
             }
-            last_result = Some(csv_from_byte_records(&records[result_start..index])?);
+            last_result = Some(
+                raw_records[result_start..index]
+                    .iter()
+                    .map(|segment| segment.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
             index += 2;
             result_start = index;
         } else {
@@ -829,15 +955,8 @@ fn strip_sqlite_probes(
     }
 
     let (stmt_col, changes_col) = sqlite_probe_columns(marker);
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(false)
-        .flexible(true)
-        .from_reader(stdout.as_bytes());
-    let mut record = csv::ByteRecord::new();
-    let mut records = Vec::new();
-    while reader.read_byte_record(&mut record)? {
-        records.push(record.clone());
-    }
+    let raw_records = split_quoted_records(stdout)?;
+    let records = parse_quoted_records(stdout)?;
 
     let mut changes = HashMap::new();
     let mut kept = Vec::new();
@@ -845,9 +964,9 @@ fn strip_sqlite_probes(
     let mut index = 0;
     while index < records.len() {
         let record = &records[index];
-        if record.len() == 2
-            && record.get(0) == Some(stmt_col.as_bytes())
-            && record.get(1) == Some(changes_col.as_bytes())
+        if record.values.len() == 2
+            && record.values[0].as_str() == Some(stmt_col.as_str())
+            && record.values[1].as_str() == Some(changes_col.as_str())
         {
             removed_probe = true;
             let value = records.get(index + 1).ok_or_else(|| {
@@ -856,8 +975,9 @@ fn strip_sqlite_probes(
                 )
             })?;
             let stmt_index = value
-                .get(0)
-                .and_then(|raw| std::str::from_utf8(raw).ok())
+                .values
+                .first()
+                .and_then(QueryValue::as_str)
                 .and_then(|raw| raw.parse::<usize>().ok())
                 .ok_or_else(|| {
                     DbOperationError::CommandTagParseFailed(
@@ -865,8 +985,9 @@ fn strip_sqlite_probes(
                     )
                 })?;
             let affected_rows = value
+                .values
                 .get(1)
-                .and_then(|raw| std::str::from_utf8(raw).ok())
+                .and_then(QueryValue::as_str)
                 .and_then(|raw| raw.parse::<usize>().ok())
                 .ok_or_else(|| {
                     DbOperationError::CommandTagParseFailed(
@@ -876,7 +997,7 @@ fn strip_sqlite_probes(
             changes.insert(stmt_index, affected_rows);
             index += 2;
         } else {
-            kept.push(record.clone());
+            kept.push(raw_records[index].text.clone());
             index += 1;
         }
     }
@@ -885,7 +1006,7 @@ fn strip_sqlite_probes(
         return Ok((stdout.to_string(), changes));
     }
 
-    csv_from_byte_records(&kept).map(|filtered| (filtered, changes))
+    Ok((kept.join("\n"), changes))
 }
 
 fn first_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
@@ -1121,10 +1242,9 @@ fn command_tag_result(
     elapsed: u64,
     source: QuerySource,
 ) -> QueryResult {
-    let mut result =
-        QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source);
-    result.row_count = tag.affected_rows().unwrap_or(0) as usize;
-    result.with_command_tag(tag)
+    QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source)
+        .with_row_count(tag.affected_rows().unwrap_or(0) as usize)
+        .with_command_tag(tag)
 }
 
 fn parse_fk_action(action: &str) -> Result<FkAction, DbOperationError> {
@@ -1208,7 +1328,7 @@ impl QueryExecutor for SqliteAdapter {
         let path = Self::path_from_dsn(dsn)?;
         let order_columns = self.preview_order_columns(path, table).await;
         let query = sql::build_preview_query(table, &order_columns, limit, offset);
-        self.execute_csv_query(path, &query, QuerySource::Preview, read_only)
+        self.execute_quoted_query(path, &query, QuerySource::Preview, read_only)
             .await
     }
 
@@ -1230,7 +1350,7 @@ impl QueryExecutor for SqliteAdapter {
         let start = Instant::now();
         let stdout = self
             .cli
-            .execute_csv(path, &execution_query, read_only)
+            .execute_quote(path, &execution_query, read_only)
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
         let (stdout, changes) = strip_sqlite_probes(&stdout, &marker)?;
@@ -1257,14 +1377,14 @@ impl QueryExecutor for SqliteAdapter {
             return Ok(result);
         }
 
-        let mut result = csv_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
+        let mut result = quoted_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
         if let Some(tag) = tag {
             result = result.with_command_tag(tag);
         } else if statements
             .iter()
             .any(|stmt| statement_counts_as_select_tag(stmt))
         {
-            let row_count = result.row_count as u64;
+            let row_count = result.row_count() as u64;
             result = result.with_command_tag(CommandTag::Select(row_count));
         }
         Ok(result)
@@ -1390,7 +1510,7 @@ mod tests {
 
             assert_eq!(result.source, QuerySource::Preview);
             assert_eq!(result.columns, vec!["id", "name"]);
-            assert_eq!(result.rows, vec![vec!["2".to_string(), "b".to_string()]]);
+            assert_eq!(result.rows(), vec![vec!["2".to_string(), "b".to_string()]]);
         }
 
         #[tokio::test]
@@ -1410,31 +1530,12 @@ mod tests {
         use super::*;
 
         #[test]
-        fn csv_to_query_result_preserves_quoted_newline_for_single_statement() {
-            let csv = "body,marker\n\"line 1\nline 2\",ok\n";
+        fn quoted_to_query_result_preserves_newline_for_single_statement() {
+            let quoted = "'body','marker'\n'line 1\nline 2','ok'\n";
 
-            let result =
-                csv_to_query_result("SELECT body, marker FROM notes", csv, QuerySource::Adhoc, 1)
-                    .unwrap();
-
-            assert_eq!(result.columns, vec!["body", "marker"]);
-            assert_eq!(
-                result.rows,
-                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
-            );
-        }
-
-        #[test]
-        fn last_sqlite_result_set_uses_marker_boundaries() {
-            let marker = "probe";
-            let sqlite_csv_with_ignored_first_result_set = "ignored\n1\nprobe_result_stmt,probe_result_marker\n0,probe\nbody,marker\n\"line 1\nline 2\",ok\nprobe_result_stmt,probe_result_marker\n1,probe\n";
-
-            let csv = last_sqlite_result_set(sqlite_csv_with_ignored_first_result_set, marker)
-                .unwrap()
-                .unwrap();
-            let result = csv_to_query_result(
-                "SELECT 1 AS ignored; SELECT body, marker FROM notes",
-                &csv,
+            let result = quoted_to_query_result(
+                "SELECT body, marker FROM notes",
+                quoted,
                 QuerySource::Adhoc,
                 1,
             )
@@ -1442,9 +1543,99 @@ mod tests {
 
             assert_eq!(result.columns, vec!["body", "marker"]);
             assert_eq!(
-                result.rows,
+                result.rows(),
                 vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
             );
+        }
+
+        #[test]
+        fn last_sqlite_result_set_uses_marker_boundaries() {
+            let marker = "probe";
+            let sqlite_output_with_ignored_first_result_set = "'ignored'\n1\n'probe_result_stmt','probe_result_marker'\n0,'probe'\n'body','marker'\n'line 1\nline 2','ok'\n'probe_result_stmt','probe_result_marker'\n1,'probe'\n";
+
+            let quoted =
+                last_sqlite_result_set(sqlite_output_with_ignored_first_result_set, marker)
+                    .unwrap()
+                    .unwrap();
+            let result = quoted_to_query_result(
+                "SELECT 1 AS ignored; SELECT body, marker FROM notes",
+                &quoted,
+                QuerySource::Adhoc,
+                1,
+            )
+            .unwrap();
+
+            assert_eq!(result.columns, vec!["body", "marker"]);
+            assert_eq!(
+                result.rows(),
+                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+            );
+        }
+
+        #[test]
+        fn quoted_to_query_result_preserves_sqlite_value_kinds() {
+            let quoted = "'a','b','c','d'\nNULL,'','NULL',X'00FF41'\n";
+
+            let result =
+                quoted_to_query_result("SELECT a, b, c, d FROM t", quoted, QuerySource::Adhoc, 1)
+                    .unwrap();
+
+            assert_eq!(
+                result.rows(),
+                vec![vec![
+                    "NULL".to_string(),
+                    String::new(),
+                    "NULL".to_string(),
+                    "BLOB (3 bytes) 00 FF 41".to_string()
+                ]]
+            );
+            assert!(matches!(result.value_at(0, 0), Some(QueryValue::Null)));
+            assert_eq!(
+                result.value_at(0, 1),
+                Some(&QueryValue::Text(String::new()))
+            );
+            assert_eq!(
+                result.value_at(0, 2),
+                Some(&QueryValue::Text("NULL".to_string()))
+            );
+            assert_eq!(
+                result.value_at(0, 3),
+                Some(&QueryValue::Blob(vec![0, 255, 65]))
+            );
+        }
+
+        #[test]
+        fn quoted_to_query_result_normalizes_infinite_numeric_literals() {
+            let quoted = "'pos','neg'\nInf,-Inf\n";
+
+            let result =
+                quoted_to_query_result("SELECT 1e999, -1e999", quoted, QuerySource::Adhoc, 1)
+                    .unwrap();
+
+            assert_eq!(
+                result.value_at(0, 0),
+                Some(&QueryValue::SqlLiteral("1e999".to_string()))
+            );
+            assert_eq!(
+                result.value_at(0, 1),
+                Some(&QueryValue::SqlLiteral("-1e999".to_string()))
+            );
+        }
+
+        #[test]
+        fn quoted_to_query_result_rejects_unterminated_quote() {
+            let result = quoted_to_query_result(
+                "SELECT body FROM notes",
+                "'body'\n'unclosed\nnext",
+                QuerySource::Adhoc,
+                1,
+            );
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::MetadataParseFailed(message))
+                    if message == "unterminated SQLite quoted output"
+            ));
         }
 
         #[test]
@@ -1455,12 +1646,12 @@ mod tests {
         #[test]
         fn strip_sqlite_probes_removes_probe_result_sets() {
             let marker = "probe";
-            let stdout = "id,name\n1,Alice\nprobe_stmt,probe_changes\n0,2\nvalue\n42\n";
+            let stdout = "'id','name'\n1,'Alice'\n'probe_stmt','probe_changes'\n0,2\n'value'\n42\n";
 
             let (filtered, changes) = strip_sqlite_probes(stdout, marker).unwrap();
 
             assert_eq!(changes.get(&0), Some(&2));
-            assert_eq!(filtered, "id,name\n1,Alice\nvalue\n42\n");
+            assert_eq!(filtered, "'id','name'\n1,'Alice'\n'value'\n42");
         }
 
         #[test]
@@ -1484,7 +1675,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.columns, vec!["value"]);
-            assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+            assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
             assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
         }
 
@@ -1505,7 +1696,7 @@ mod tests {
 
             assert_eq!(result.columns, vec!["body", "marker"]);
             assert_eq!(
-                result.rows,
+                result.rows(),
                 vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
             );
             assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
@@ -1527,7 +1718,7 @@ mod tests {
 
             assert_eq!(result.columns, vec!["body", "marker"]);
             assert_eq!(
-                result.rows,
+                result.rows(),
                 vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
             );
             assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
@@ -1548,7 +1739,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.columns, vec!["c", "d"]);
-            assert_eq!(result.rows, vec![vec!["5".to_string(), "6".to_string()]]);
+            assert_eq!(result.rows(), vec![vec!["5".to_string(), "6".to_string()]]);
             assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
         }
 
@@ -1563,7 +1754,7 @@ mod tests {
                 .unwrap();
 
             assert!(result.columns.is_empty());
-            assert!(result.rows.is_empty());
+            assert!(result.rows().is_empty());
             assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
         }
 
@@ -1594,7 +1785,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+            assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
             assert_eq!(result.command_tag, None);
         }
 
@@ -1613,7 +1804,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.row_count, 1);
+            assert_eq!(result.row_count(), 1);
             assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
         }
 
@@ -1636,7 +1827,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.row_count, 1);
+            assert_eq!(result.row_count(), 1);
             assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
         }
 
@@ -1660,7 +1851,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.columns, vec!["name"]);
-            assert_eq!(result.rows, vec![vec!["x".to_string()]]);
+            assert_eq!(result.rows(), vec![vec!["x".to_string()]]);
             assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
         }
 
@@ -1685,7 +1876,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.row_count, 1);
+            assert_eq!(result.row_count(), 1);
             assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
         }
 
@@ -1708,7 +1899,7 @@ mod tests {
                 result.command_tag,
                 Some(CommandTag::Create("TABLE".to_string()))
             );
-            assert_eq!(result.row_count, 0);
+            assert_eq!(result.row_count(), 0);
         }
 
         #[tokio::test]
@@ -1730,7 +1921,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.command_tag, Some(CommandTag::Rollback));
-            assert!(rows.rows.is_empty());
+            assert!(rows.rows().is_empty());
         }
 
         #[tokio::test]
@@ -1756,7 +1947,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.command_tag, Some(CommandTag::Rollback));
-            assert!(rows.rows.is_empty());
+            assert!(rows.rows().is_empty());
         }
 
         #[tokio::test]
@@ -1783,7 +1974,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-            assert_eq!(rows.rows, vec![vec!["1".to_string()]]);
+            assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
         }
 
         #[tokio::test]
@@ -1812,7 +2003,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-            assert_eq!(rows.rows, vec![vec!["1".to_string()]]);
+            assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
         }
 
         #[tokio::test]
@@ -1841,7 +2032,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-            assert_eq!(rows.rows, vec![vec!["1".to_string()]]);
+            assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
         }
 
         #[tokio::test]
@@ -1859,7 +2050,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.row_count, 2);
+            assert_eq!(result.row_count(), 2);
             assert_eq!(result.command_tag, Some(CommandTag::Insert(2)));
         }
 
@@ -1881,7 +2072,7 @@ mod tests {
                 .execute_adhoc(&dsn, "SELECT id FROM users", true)
                 .await
                 .unwrap();
-            assert!(rows.rows.is_empty());
+            assert!(rows.rows().is_empty());
         }
 
         #[tokio::test]
@@ -1898,7 +2089,7 @@ mod tests {
                 .execute_adhoc(&dsn, "SELECT id FROM users", true)
                 .await
                 .unwrap();
-            assert!(rows.rows.is_empty());
+            assert!(rows.rows().is_empty());
         }
 
         #[tokio::test]
@@ -1919,7 +2110,7 @@ mod tests {
                 .execute_adhoc(&dsn, "SELECT id FROM users", true)
                 .await
                 .unwrap();
-            assert!(rows.rows.is_empty());
+            assert!(rows.rows().is_empty());
         }
 
         #[tokio::test]
@@ -1941,7 +2132,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.row_count, 1);
+            assert_eq!(result.row_count(), 1);
             assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
         }
 
@@ -1961,7 +2152,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.columns, vec!["id", "name"]);
-            assert_eq!(result.rows, vec![vec!["1".to_string(), "a".to_string()]]);
+            assert_eq!(result.rows(), vec![vec!["1".to_string(), "a".to_string()]]);
             assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
         }
 
@@ -1984,7 +2175,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.rows.len(), 2);
+            assert_eq!(result.rows().len(), 2);
             assert_eq!(result.command_tag, Some(CommandTag::Update(2)));
         }
 
@@ -2007,7 +2198,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.rows, vec![vec!["1".to_string(), "a".to_string()]]);
+            assert_eq!(result.rows(), vec![vec!["1".to_string(), "a".to_string()]]);
             assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
         }
 
@@ -2022,7 +2213,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.row_count, 1);
+            assert_eq!(result.row_count(), 1);
             assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
         }
 
@@ -2037,7 +2228,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.row_count, 1);
+            assert_eq!(result.row_count(), 1);
             assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
         }
 
@@ -2052,7 +2243,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(result.row_count, 1);
+            assert_eq!(result.row_count(), 1);
             assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
         }
 
@@ -2407,7 +2598,7 @@ mod tests {
                 .await;
 
             let result = result.unwrap();
-            assert_eq!(result.rows, vec![vec!["1".to_string()]]);
+            assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
         }
 
         #[tokio::test]

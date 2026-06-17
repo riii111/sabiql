@@ -180,7 +180,7 @@ impl ConfirmDialog {
                             Style::default().fg(theme.semantic.text.secondary),
                         ),
                         Span::styled(
-                            format!("\"{}\"", escape_preview_value(value)),
+                            format!("\"{}\"", escape_preview_value(&value.display_value())),
                             Style::default().fg(theme.semantic.text.primary),
                         ),
                     ]));
