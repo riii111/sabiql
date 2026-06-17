@@ -288,21 +288,21 @@ impl Inspector {
             return ViewportPlan::default();
         }
 
-        let headers = vec![
-            "Name",
-            "Type",
-            "Null",
-            "PK",
-            "Read-only",
-            "Default",
-            "Comment",
-        ];
+        let show_read_only = table
+            .columns
+            .iter()
+            .any(|col| col.read_only_reason().is_some());
+        let mut headers = vec!["Name", "Type", "Null", "PK"];
+        if show_read_only {
+            headers.push("Read-only");
+        }
+        headers.extend(["Default", "Comment"]);
 
         let data_rows: Vec<Vec<String>> = table
             .columns
             .iter()
             .map(|col| {
-                vec![
+                let mut row = vec![
                     col.name.clone(),
                     col.data_type.clone(),
                     if col.is_nullable() {
@@ -315,10 +315,13 @@ impl Inspector {
                     } else {
                         String::new()
                     },
-                    col.read_only_reason().unwrap_or_default().to_string(),
-                    col.default.clone().unwrap_or_default(),
-                    col.comment.clone().unwrap_or_default(),
-                ]
+                ];
+                if show_read_only {
+                    row.push(col.read_only_reason().unwrap_or_default().to_string());
+                }
+                row.push(col.default.clone().unwrap_or_default());
+                row.push(col.comment.clone().unwrap_or_default());
+                row
             })
             .collect();
 
@@ -398,12 +401,13 @@ impl Inspector {
                         let text = row.get(col_idx).map_or("", String::as_str);
                         let display = truncate_to_width(text, col_width as usize);
 
-                        // Special styling for PK, read-only reason, and Comment columns
+                        let read_only_col_idx = show_read_only.then_some(4);
+                        let comment_col_idx = if show_read_only { 6 } else { 5 };
                         let cell_style = if col_idx == 3 && !text.is_empty() {
                             Style::default().fg(theme.semantic.text.accent)
-                        } else if col_idx == 4 && !text.is_empty() {
+                        } else if read_only_col_idx == Some(col_idx) && !text.is_empty() {
                             Style::default().fg(theme.semantic.status.warning)
-                        } else if col_idx == 6 {
+                        } else if col_idx == comment_col_idx {
                             Style::default().fg(theme.semantic.text.muted)
                         } else {
                             Style::default()
@@ -461,9 +465,10 @@ impl Inspector {
             .indexes
             .iter()
             .any(|index| index.index_type != IndexType::Unknown);
-        let has_details = table.indexes.iter().any(|index| {
-            index.is_partial() || index.has_expression() || index.definition.is_some()
-        });
+        let has_details = table
+            .indexes
+            .iter()
+            .any(|index| index.is_partial() || index.has_expression());
         let headers_with_type_and_details =
             ["Name", "Columns", "Type", "Unique", "Partial", "Detail"];
         let headers_with_type = ["Name", "Columns", "Type", "Unique"];
@@ -767,9 +772,6 @@ fn index_detail(index: &Index) -> String {
     let mut details = Vec::new();
     if index.has_expression() {
         details.push("expression".to_string());
-    }
-    if let Some(definition) = &index.definition {
-        details.push(definition.clone());
     }
     details.join("; ")
 }
