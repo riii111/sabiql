@@ -8,6 +8,8 @@ use tokio::time::timeout;
 
 use crate::app::ports::outbound::DbOperationError;
 
+pub(super) const BUSY_TIMEOUT_MS: u64 = 5_000;
+
 #[derive(Debug, Clone)]
 pub(super) struct SqliteCli {
     timeout_secs: u64,
@@ -29,7 +31,7 @@ impl SqliteCli {
         path: &str,
         sql: &str,
     ) -> Result<T, DbOperationError> {
-        let output = self.run(path, &["-readonly", "-json"], sql).await?;
+        let output = self.run(path, &["-json"], sql, true).await?;
         if !output.status.success() {
             return Err(DbOperationError::QueryFailed(output.stderr));
         }
@@ -46,11 +48,14 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<String, DbOperationError> {
-        let mut args = vec!["-batch", "-bail", "-csv", "-header"];
-        if read_only {
-            args.push("-readonly");
-        }
-        let output = self.run(path, &args, sql).await?;
+        let output = self
+            .run(
+                path,
+                &["-batch", "-bail", "-csv", "-header"],
+                sql,
+                read_only,
+            )
+            .await?;
         if !output.status.success() {
             return Err(DbOperationError::QueryFailed(output.stderr));
         }
@@ -63,11 +68,14 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<String, DbOperationError> {
-        let mut args = vec!["-batch", "-bail", "-quote", "-header"];
-        if read_only {
-            args.push("-readonly");
-        }
-        let output = self.run(path, &args, sql).await?;
+        let output = self
+            .run(
+                path,
+                &["-batch", "-bail", "-quote", "-header"],
+                sql,
+                read_only,
+            )
+            .await?;
         if !output.status.success() {
             return Err(DbOperationError::QueryFailed(output.stderr));
         }
@@ -82,10 +90,8 @@ impl SqliteCli {
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
         let mut cmd = Command::new("sqlite3");
+        Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
-        if read_only {
-            cmd.arg("-readonly");
-        }
         cmd.arg("--").arg(path).arg(sql);
 
         let mut child = cmd
@@ -151,13 +157,28 @@ impl SqliteCli {
         path: &str,
         args: &[&str],
         sql: &str,
+        read_only: bool,
     ) -> Result<SqliteOutput, DbOperationError> {
         let mut cmd = Command::new("sqlite3");
+        Self::apply_session_options(&mut cmd, read_only);
         for arg in args {
             cmd.arg(arg);
         }
         cmd.arg("--").arg(path).arg(sql);
         Self::collect_output(&mut cmd, self.timeout_secs).await
+    }
+
+    fn apply_session_options(cmd: &mut Command, read_only: bool) {
+        if read_only {
+            cmd.arg("-readonly");
+        }
+        cmd.arg("-cmd")
+            .arg(format!(".timeout {BUSY_TIMEOUT_MS}"))
+            .arg("-cmd")
+            .arg("PRAGMA foreign_keys=ON");
+        if read_only {
+            cmd.arg("-cmd").arg("PRAGMA query_only=ON");
+        }
     }
 
     async fn collect_output(
