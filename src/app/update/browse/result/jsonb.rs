@@ -12,7 +12,7 @@ use crate::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::find_text_matches;
+use crate::update::helpers::{editable_preview_base, ensure_column_writable, find_text_matches};
 use std::time::Instant;
 
 pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
@@ -103,6 +103,10 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
                 return DispatchResult::handled();
             }
+            if let Err(reason) = ensure_jsonb_column_writable(state) {
+                state.messages.set_error_at(reason.to_string(), now);
+                return DispatchResult::handled();
+            }
             state.jsonb_detail.enter_edit();
             state.modal.replace_mode(InputMode::JsonbEdit);
             DispatchResult::handled()
@@ -113,6 +117,10 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+                return DispatchResult::handled();
+            }
+            if let Err(reason) = ensure_jsonb_column_writable(state) {
+                state.messages.set_error_at(reason.to_string(), now);
                 return DispatchResult::handled();
             }
             state
@@ -274,6 +282,13 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
 
         _ => DispatchResult::pass(),
     }
+}
+
+fn ensure_jsonb_column_writable(
+    state: &AppState,
+) -> Result<(), crate::update::helpers::EditGuardrailError> {
+    let (_, pk_cols) = editable_preview_base(state)?;
+    ensure_column_writable(state, state.jsonb_detail.column_name(), pk_cols)
 }
 
 fn update_search_matches(state: &mut AppState) {
@@ -593,6 +608,78 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::JsonbEdit);
             assert_eq!(state.jsonb_detail.editor().cursor_to_position(), (0, 3));
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
+        }
+
+        #[test]
+        fn enter_edit_blocks_read_only_column() {
+            let mut state = state_with_jsonb_cell();
+            state.session.set_table_detail_raw(Some(Table {
+                columns: vec![
+                    Column {
+                        name: "id".to_string(),
+                        data_type: "integer".to_string(),
+                        default: None,
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "settings".to_string(),
+                        data_type: "jsonb".to_string(),
+                        default: None,
+                        attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                ..jsonb_table()
+            }));
+            open_detail(&mut state);
+
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Read-only column cannot be edited: settings (generated)")
+            );
+        }
+
+        #[test]
+        fn append_insert_blocks_read_only_column() {
+            let mut state = state_with_jsonb_cell();
+            state.session.set_table_detail_raw(Some(Table {
+                columns: vec![
+                    Column {
+                        name: "id".to_string(),
+                        data_type: "integer".to_string(),
+                        default: None,
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "settings".to_string(),
+                        data_type: "jsonb".to_string(),
+                        default: None,
+                        attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                ..jsonb_table()
+            }));
+            open_detail(&mut state);
+
+            reduce_jsonb(&mut state, &Action::JsonbAppendInsert, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Read-only column cannot be edited: settings (generated)")
+            );
         }
 
         #[test]

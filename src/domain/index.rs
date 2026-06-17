@@ -17,7 +17,7 @@ impl IndexAttributes {
     pub const PRIMARY: Self = Self(0b0_0010);
     pub const PARTIAL: Self = Self(0b0_0100);
     pub const EXPRESSION: Self = Self(0b0_1000);
-    pub const AUXILIARY_COLUMNS: Self = Self(0b1_0000);
+    pub const HAS_AUXILIARY_COLUMNS: Self = Self(0b1_0000);
 
     pub const fn empty() -> Self {
         Self(0)
@@ -66,7 +66,8 @@ impl Index {
     }
 
     pub const fn has_auxiliary_columns(&self) -> bool {
-        self.attributes.contains(IndexAttributes::AUXILIARY_COLUMNS)
+        self.attributes
+            .contains(IndexAttributes::HAS_AUXILIARY_COLUMNS)
     }
 }
 
@@ -165,7 +166,7 @@ mod tests {
         fn metadata_flags_report_expected_state() {
             let attributes = IndexAttributes::PARTIAL
                 | IndexAttributes::EXPRESSION
-                | IndexAttributes::AUXILIARY_COLUMNS;
+                | IndexAttributes::HAS_AUXILIARY_COLUMNS;
             let index = make_index(attributes);
 
             assert!(index.is_partial());

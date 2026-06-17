@@ -267,7 +267,7 @@ impl SqliteAdapter {
                 attributes = attributes | IndexAttributes::EXPRESSION;
             }
             if has_auxiliary_columns {
-                attributes = attributes | IndexAttributes::AUXILIARY_COLUMNS;
+                attributes = attributes | IndexAttributes::HAS_AUXILIARY_COLUMNS;
             }
 
             indexes.push(Index {
@@ -281,6 +281,53 @@ impl SqliteAdapter {
 
         indexes.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(indexes)
+    }
+
+    async fn unique_single_columns(
+        &self,
+        path: &str,
+        table: &str,
+    ) -> Result<std::collections::HashSet<String>, DbOperationError> {
+        let raw_indexes: Vec<RawIndex> = self
+            .cli
+            .execute_json(path, &sql::index_list_query(table))
+            .await?;
+        let mut columns = std::collections::HashSet::new();
+
+        for raw in raw_indexes
+            .into_iter()
+            .filter(|index| index.unique != 0 && index.partial == 0)
+        {
+            let key_columns = self.index_key_columns(path, &raw.name).await?;
+            if key_columns.len() == 1 && key_columns[0] != "<expression>" {
+                columns.insert(key_columns[0].clone());
+            }
+        }
+
+        Ok(columns)
+    }
+
+    async fn index_key_columns(
+        &self,
+        path: &str,
+        index: &str,
+    ) -> Result<Vec<String>, DbOperationError> {
+        let mut columns: Vec<RawIndexColumn> = self
+            .cli
+            .execute_json(path, &sql::index_xinfo_query(index))
+            .await?;
+        columns.sort_by_key(|col| col.seqno);
+        Ok(columns
+            .into_iter()
+            .filter(|col| col.key != 0)
+            .filter_map(|col| {
+                if col.cid == -2 {
+                    Some("<expression>".to_string())
+                } else {
+                    col.name
+                }
+            })
+            .collect())
     }
 
     async fn index_definition(&self, path: &str, index: &str) -> Option<String> {
@@ -370,16 +417,21 @@ impl SqliteAdapter {
         table: &str,
         include_indexes: bool,
     ) -> Result<Table, DbOperationError> {
-        let all_indexes = self.indexes(path, table).await?;
-        let unique_single_columns = all_indexes
-            .iter()
-            .filter(|index| index.is_unique() && index.columns.len() == 1)
-            .map(|index| index.columns[0].clone())
-            .collect::<std::collections::HashSet<_>>();
-        let indexes = if include_indexes {
-            all_indexes
+        let (indexes, unique_single_columns) = if include_indexes {
+            let indexes = self.indexes(path, table).await?;
+            let unique_single_columns = indexes
+                .iter()
+                .filter(|index| {
+                    index.is_unique()
+                        && !index.is_partial()
+                        && !index.has_expression()
+                        && index.columns.len() == 1
+                })
+                .map(|index| index.columns[0].clone())
+                .collect::<std::collections::HashSet<_>>();
+            (indexes, unique_single_columns)
         } else {
-            Vec::new()
+            (Vec::new(), self.unique_single_columns(path, table).await?)
         };
 
         let mut raw_columns = self.columns(path, table).await?;
@@ -2570,6 +2622,50 @@ mod tests {
                     .iter()
                     .any(|column| column.name == "email" && column.is_unique())
             );
+        }
+
+        #[tokio::test]
+        async fn partial_unique_index_does_not_mark_column_unique() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(email TEXT);
+            CREATE UNIQUE INDEX idx_users_email_active
+                ON users(email)
+                WHERE email IS NOT NULL;
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+            let email = detail
+                .columns
+                .iter()
+                .find(|column| column.name == "email")
+                .unwrap();
+            assert!(!email.is_unique());
+            let index = detail
+                .indexes
+                .iter()
+                .find(|index| index.name == "idx_users_email_active")
+                .unwrap();
+            assert!(index.is_unique());
+            assert!(index.is_partial());
+            assert_eq!(index.columns, vec!["email".to_string()]);
+
+            let light = adapter
+                .fetch_table_columns_and_fks(&dsn, "main", "users")
+                .await
+                .unwrap();
+            let light_email = light
+                .columns
+                .iter()
+                .find(|column| column.name == "email")
+                .unwrap();
+            assert!(!light_email.is_unique());
+            assert!(light.indexes.is_empty());
         }
 
         #[tokio::test]

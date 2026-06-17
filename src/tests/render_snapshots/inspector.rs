@@ -139,7 +139,7 @@ fn inspector_indexes_tab_shows_sqlite_partial_expression_details() {
         columns: vec!["<expression>".to_string()],
         attributes: IndexAttributes::PARTIAL
             | IndexAttributes::EXPRESSION
-            | IndexAttributes::AUXILIARY_COLUMNS,
+            | IndexAttributes::HAS_AUXILIARY_COLUMNS,
         index_type: IndexType::Unknown,
         definition: Some(
             "CREATE INDEX idx_users_email_lower ON users(lower(email)) WHERE email IS NOT NULL"
