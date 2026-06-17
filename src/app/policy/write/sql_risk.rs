@@ -428,7 +428,22 @@ fn top_level_token_lowers(sql: &str) -> Vec<String> {
         .collect()
 }
 
-fn top_level_contains_char(sql: &str, target: char) -> bool {
+pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
+    let tokens = top_level_token_lowers(sql);
+    match tokens.first().map(String::as_str)? {
+        "pragma" => Some("PRAGMA"),
+        "attach" => Some("ATTACH"),
+        "detach" => Some("DETACH"),
+        "vacuum" => Some("VACUUM"),
+        "reindex" => Some("REINDEX"),
+        "analyze" => Some("ANALYZE"),
+        "replace" => Some("REPLACE"),
+        "insert" if sqlite_replace_target(sql).is_some() => Some("REPLACE"),
+        _ => None,
+    }
+}
+
+fn top_level_char_index(sql: &str, target: char) -> Option<usize> {
     let chars: Vec<(usize, char)> = sql.char_indices().collect();
     let mut i = 0;
     let mut depth: i32 = 0;
@@ -462,17 +477,31 @@ fn top_level_contains_char(sql: &str, target: char) -> bool {
             continue;
         }
 
+        if depth == 0 && ch == target {
+            return Some(byte_pos);
+        }
         if ch == '(' {
             depth += 1;
         } else if ch == ')' {
             depth -= 1;
-        } else if depth == 0 && ch == target {
-            return true;
         }
         i += 1;
     }
 
-    false
+    None
+}
+
+fn top_level_contains_char(sql: &str, target: char) -> bool {
+    top_level_char_index(sql, target).is_some()
+}
+
+fn parenthesized_pragma_value(sql: &str) -> Option<String> {
+    let open = top_level_char_index(sql, '(')?;
+    let close = sql[open + 1..].find(')')? + open + 1;
+    sql[open + 1..close]
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+        .find(|part| !part.is_empty())
+        .map(str::to_lowercase)
 }
 
 fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
@@ -480,15 +509,30 @@ fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
     let name = tokens.get(1)?;
     let pragma_name = name.rsplit('.').next().unwrap_or(name);
     let has_assignment = top_level_contains_char(sql, '=') || tokens.len() > 2;
+    let has_parenthesized_value = top_level_contains_char(sql, '(');
+    let has_side_effect_without_assignment = matches!(
+        pragma_name,
+        "optimize" | "incremental_vacuum" | "wal_checkpoint"
+    ) || (pragma_name == "foreign_keys"
+        && has_parenthesized_value);
 
-    if !has_assignment {
+    if !has_assignment && !has_side_effect_without_assignment {
         return Some(low_immediate());
     }
 
-    let value = tokens.get(2).map(String::as_str);
+    let parenthesized_value = parenthesized_pragma_value(sql);
+    let value = tokens
+        .get(2)
+        .map(String::as_str)
+        .or(parenthesized_value.as_deref());
     let dangerous = matches!(
         pragma_name,
-        "writable_schema" | "journal_mode" | "locking_mode"
+        "writable_schema"
+            | "journal_mode"
+            | "locking_mode"
+            | "optimize"
+            | "incremental_vacuum"
+            | "wal_checkpoint"
     ) || (pragma_name == "foreign_keys"
         && matches!(value, Some("off" | "0" | "false")));
 
@@ -765,8 +809,12 @@ mod tests {
         #[rstest]
         #[case::writable_schema("PRAGMA writable_schema = ON")]
         #[case::foreign_keys_off("PRAGMA foreign_keys = OFF")]
+        #[case::foreign_keys_call_off("PRAGMA foreign_keys(OFF)")]
         #[case::journal_mode("PRAGMA journal_mode = WAL")]
         #[case::locking_mode("PRAGMA locking_mode = EXCLUSIVE")]
+        #[case::optimize("PRAGMA optimize")]
+        #[case::incremental_vacuum("PRAGMA incremental_vacuum")]
+        #[case::wal_checkpoint("PRAGMA wal_checkpoint")]
         fn sqlite_dangerous_pragma_requires_acknowledgment(#[case] sql: &str) {
             let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
 
@@ -823,6 +871,13 @@ mod tests {
                 result.confirmation,
                 ConfirmationType::TableNameInput { ref target } if target == "users"
             ));
+        }
+
+        #[test]
+        fn sqlite_specific_label_detects_commented_insert_or_replace() {
+            let sql = "-- upsert\nINSERT OR REPLACE INTO users(id) VALUES (1)";
+
+            assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
         }
     }
 

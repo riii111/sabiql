@@ -3,9 +3,10 @@ use std::time::Instant;
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
-use crate::policy::sql::statement_classifier::{self, first_keyword};
+use crate::policy::sql::statement_classifier;
 use crate::policy::write::sql_risk::{
     ConfirmationType, MultiStatementDecision, evaluate_multi_statement_for_database,
+    sqlite_specific_label,
 };
 use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
 use crate::update::action::Action;
@@ -13,33 +14,13 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::start_adhoc_if_connected;
 
-fn sqlite_statement_label(sql: &str) -> Option<&'static str> {
-    let keyword = first_keyword(sql)?;
-    match keyword.as_str() {
-        "PRAGMA" | "ATTACH" | "DETACH" | "VACUUM" | "REINDEX" | "ANALYZE" | "REPLACE" => {
-            Some(match keyword.as_str() {
-                "PRAGMA" => "PRAGMA",
-                "ATTACH" => "ATTACH",
-                "DETACH" => "DETACH",
-                "VACUUM" => "VACUUM",
-                "REINDEX" => "REINDEX",
-                "ANALYZE" => "ANALYZE",
-                "REPLACE" => "REPLACE",
-                _ => "SQL",
-            })
-        }
-        "INSERT" if sql.to_ascii_lowercase().starts_with("insert or replace") => Some("REPLACE"),
-        _ => None,
-    }
-}
-
 fn multi_statement_label(database_type: DatabaseType, sql: &str) -> &'static str {
     use crate::policy::write::sql_risk::split_statements;
     let mut worst_level = RiskLevel::Low;
     let mut worst_label = "SQL";
     for stmt in split_statements(sql) {
         let sqlite_label = (database_type == DatabaseType::SQLite)
-            .then(|| sqlite_statement_label(&stmt))
+            .then(|| sqlite_specific_label(&stmt))
             .flatten();
         let kind = statement_classifier::classify(&stmt);
         let d = evaluate_sql_risk(&kind);

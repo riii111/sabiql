@@ -794,6 +794,9 @@ fn dml_keyword(statement: &str) -> Option<&'static str> {
     if keyword.eq_ignore_ascii_case("INSERT") {
         return Some("INSERT");
     }
+    if keyword.eq_ignore_ascii_case("REPLACE") {
+        return Some("INSERT");
+    }
     if keyword.eq_ignore_ascii_case("UPDATE") {
         return Some("UPDATE");
     }
@@ -807,6 +810,9 @@ fn dml_keyword(statement: &str) -> Option<&'static str> {
     let mut offset = 0;
     while let Some((keyword, end)) = next_keyword_from(statement, offset) {
         if keyword.eq_ignore_ascii_case("INSERT") {
+            return Some("INSERT");
+        }
+        if keyword.eq_ignore_ascii_case("REPLACE") {
             return Some("INSERT");
         }
         if keyword.eq_ignore_ascii_case("UPDATE") {
@@ -2005,6 +2011,25 @@ mod tests {
 
             assert_eq!(result.row_count(), 1);
             assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
+        }
+
+        #[tokio::test]
+        async fn replace_into_returns_insert_refresh_tag() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "REPLACE INTO users(id, name) VALUES (1, 'z')", false)
+                .await
+                .unwrap();
+
+            assert_eq!(result.row_count(), 1);
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
         }
 
         #[tokio::test]
