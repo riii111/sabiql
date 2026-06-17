@@ -42,7 +42,7 @@ mod tests {
         state.modal.set_mode(InputMode::SqlModal);
         state
     }
-    use crate::update::test_support::activate_postgres_connection;
+    use crate::update::test_support::{activate_postgres_connection, activate_sqlite_connection};
 
     mod paste {
         use super::*;
@@ -700,6 +700,48 @@ mod tests {
 
             assert!(!effects.is_empty());
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
+
+        #[test]
+        fn sqlite_read_only_allows_read_only_pragma() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+                .sql_modal
+                .editor
+                .set_content("PRAGMA table_info(users)".to_string());
+            activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+            state.session.enable_read_only();
+
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(!effects.is_empty());
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
+
+        #[test]
+        fn sqlite_read_only_blocks_dangerous_pragma() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+                .sql_modal
+                .editor
+                .set_content("PRAGMA foreign_keys = OFF".to_string());
+            activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+            state.session.enable_read_only();
+
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
+            assert_eq!(
+                state.sql_modal.last_adhoc_error(),
+                Some("Read-only mode: write operations are disabled")
+            );
         }
     }
 

@@ -698,7 +698,7 @@ fn is_transaction_control(statement: &str) -> bool {
 fn is_write_statement(statement: &str) -> bool {
     matches!(
         first_keyword(statement).to_ascii_uppercase().as_str(),
-        "INSERT" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
+        "INSERT" | "REPLACE" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
     )
 }
 
@@ -794,6 +794,9 @@ fn dml_keyword(statement: &str) -> Option<&'static str> {
     if keyword.eq_ignore_ascii_case("INSERT") {
         return Some("INSERT");
     }
+    if keyword.eq_ignore_ascii_case("REPLACE") {
+        return Some("INSERT");
+    }
     if keyword.eq_ignore_ascii_case("UPDATE") {
         return Some("UPDATE");
     }
@@ -807,6 +810,9 @@ fn dml_keyword(statement: &str) -> Option<&'static str> {
     let mut offset = 0;
     while let Some((keyword, end)) = next_keyword_from(statement, offset) {
         if keyword.eq_ignore_ascii_case("INSERT") {
+            return Some("INSERT");
+        }
+        if keyword.eq_ignore_ascii_case("REPLACE") {
             return Some("INSERT");
         }
         if keyword.eq_ignore_ascii_case("UPDATE") {
@@ -1248,6 +1254,14 @@ fn dml_tag(query: &str, affected_rows: usize) -> Option<CommandTag> {
     }
 }
 
+fn sqlite_side_effect_tag(query: &str) -> Option<CommandTag> {
+    let keyword = first_keyword(query).to_ascii_uppercase();
+    match keyword.as_str() {
+        "ANALYZE" | "ATTACH" | "DETACH" | "REINDEX" | "VACUUM" => Some(CommandTag::Other(keyword)),
+        _ => None,
+    }
+}
+
 fn sqlite_statement_tags(statements: &[&str], changes: &HashMap<usize, usize>) -> Vec<CommandTag> {
     statements
         .iter()
@@ -1256,6 +1270,7 @@ fn sqlite_statement_tags(statements: &[&str], changes: &HashMap<usize, usize>) -
             dml_tag(statement, *changes.get(&index).unwrap_or(&0))
                 .or_else(|| ddl_tag(statement))
                 .or_else(|| transaction_control_tag(statement))
+                .or_else(|| sqlite_side_effect_tag(statement))
         })
         .collect()
 }
@@ -1590,6 +1605,18 @@ mod tests {
     }
 
     #[test]
+    fn append_changes_wraps_multi_statement_replace_without_explicit_transaction() {
+        let query = "REPLACE INTO users(id) VALUES (1); SELECT * FROM missing";
+
+        let wrapped = append_changes_query(query);
+
+        assert_eq!(
+            wrapped,
+            "BEGIN;\nREPLACE INTO users(id) VALUES (1); SELECT * FROM missing\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
+        );
+    }
+
+    #[test]
     fn append_changes_keeps_explicit_begin_commit_transaction_control() {
         let query = "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT";
 
@@ -1611,6 +1638,34 @@ mod tests {
             wrapped,
             "BEGIN; INSERT INTO users(id) VALUES (1); END\n;\nSELECT changes() AS affected_rows;"
         );
+    }
+
+    #[test]
+    fn sqlite_side_effect_statements_emit_refresh_tags() {
+        let changes = HashMap::new();
+
+        let tags = sqlite_statement_tags(
+            &[
+                "ANALYZE users",
+                "ATTACH DATABASE 'other.db' AS other",
+                "DETACH DATABASE other",
+                "REINDEX users_name_idx",
+                "VACUUM",
+            ],
+            &changes,
+        );
+
+        assert_eq!(
+            tags,
+            vec![
+                CommandTag::Other("ANALYZE".to_string()),
+                CommandTag::Other("ATTACH".to_string()),
+                CommandTag::Other("DETACH".to_string()),
+                CommandTag::Other("REINDEX".to_string()),
+                CommandTag::Other("VACUUM".to_string()),
+            ]
+        );
+        assert!(tags.iter().all(CommandTag::needs_refresh));
     }
 
     #[test]
@@ -2007,6 +2062,25 @@ mod tests {
 
             assert_eq!(result.row_count(), 1);
             assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
+        }
+
+        #[tokio::test]
+        async fn replace_into_returns_insert_refresh_tag() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "REPLACE INTO users(id, name) VALUES (1, 'z')", false)
+                .await
+                .unwrap();
+
+            assert_eq!(result.row_count(), 1);
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
         }
 
         #[tokio::test]
