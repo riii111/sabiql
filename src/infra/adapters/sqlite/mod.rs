@@ -1938,6 +1938,45 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn enables_foreign_keys_before_user_sql() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "PRAGMA foreign_keys", false)
+                .await
+                .unwrap();
+
+            assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn read_only_session_enables_query_only_before_user_sql() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "PRAGMA query_only", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn applies_busy_timeout_before_user_sql() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(&dsn, "PRAGMA busy_timeout", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.rows(), vec![vec![cli::BUSY_TIMEOUT_MS.to_string()]]);
+        }
+
+        #[tokio::test]
         async fn values_result_does_not_get_select_command_tag() {
             let (_dir, dsn) = make_sqlite_db("");
             let adapter = SqliteAdapter::new();
@@ -2428,6 +2467,63 @@ mod tests {
 
     mod write_execution {
         use super::*;
+
+        #[tokio::test]
+        async fn foreign_key_restrict_rejects_parent_delete_with_child_row() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE orgs(id INTEGER PRIMARY KEY);
+            CREATE TABLE users(
+                id INTEGER PRIMARY KEY,
+                org_id INTEGER REFERENCES orgs(id) ON DELETE RESTRICT
+            );
+            INSERT INTO orgs(id) VALUES (1);
+            INSERT INTO users(id, org_id) VALUES (1, 1);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_write(&dsn, "DELETE FROM orgs WHERE id = 1", false)
+                .await;
+            let children = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert!(
+                matches!(result, Err(DbOperationError::QueryFailed(message)) if message.contains("FOREIGN KEY constraint failed"))
+            );
+            assert_eq!(children.rows(), vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn foreign_key_cascade_applies_to_parent_delete() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE orgs(id INTEGER PRIMARY KEY);
+            CREATE TABLE users(
+                id INTEGER PRIMARY KEY,
+                org_id INTEGER REFERENCES orgs(id) ON DELETE CASCADE
+            );
+            INSERT INTO orgs(id) VALUES (1);
+            INSERT INTO users(id, org_id) VALUES (1, 1);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_write(&dsn, "DELETE FROM orgs WHERE id = 1", false)
+                .await
+                .unwrap();
+            let children = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.affected_rows, 1);
+            assert!(children.rows().is_empty());
+        }
 
         #[tokio::test]
         async fn returns_affected_rows() {
