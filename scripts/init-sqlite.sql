@@ -68,6 +68,24 @@ CREATE VIRTUAL TABLE agent_messages_fts USING fts5(
     content_rowid='id'
 );
 
+CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(rowid, role, content, metadata)
+    VALUES (new.id, new.role, new.content, new.metadata);
+END;
+
+CREATE TRIGGER agent_messages_fts_ad AFTER DELETE ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(agent_messages_fts, rowid, role, content, metadata)
+    VALUES ('delete', old.id, old.role, old.content, old.metadata);
+END;
+
+CREATE TRIGGER agent_messages_fts_au AFTER UPDATE ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(agent_messages_fts, rowid, role, content, metadata)
+    VALUES ('delete', old.id, old.role, old.content, old.metadata);
+
+    INSERT INTO agent_messages_fts(rowid, role, content, metadata)
+    VALUES (new.id, new.role, new.content, new.metadata);
+END;
+
 CREATE TABLE agent_tool_calls (
     id INTEGER PRIMARY KEY,
     message_id INTEGER NOT NULL REFERENCES agent_messages(id) ON DELETE CASCADE,
@@ -113,6 +131,24 @@ CREATE VIRTUAL TABLE agent_memory_fts USING fts5(
     content='agent_memory_items',
     content_rowid='id'
 );
+
+CREATE TRIGGER agent_memory_fts_ai AFTER INSERT ON agent_memory_items BEGIN
+    INSERT INTO agent_memory_fts(rowid, summary, body, tags)
+    VALUES (new.id, new.summary, new.body, new.tags);
+END;
+
+CREATE TRIGGER agent_memory_fts_ad AFTER DELETE ON agent_memory_items BEGIN
+    INSERT INTO agent_memory_fts(agent_memory_fts, rowid, summary, body, tags)
+    VALUES ('delete', old.id, old.summary, old.body, old.tags);
+END;
+
+CREATE TRIGGER agent_memory_fts_au AFTER UPDATE ON agent_memory_items BEGIN
+    INSERT INTO agent_memory_fts(agent_memory_fts, rowid, summary, body, tags)
+    VALUES ('delete', old.id, old.summary, old.body, old.tags);
+
+    INSERT INTO agent_memory_fts(rowid, summary, body, tags)
+    VALUES (new.id, new.summary, new.body, new.tags);
+END;
 
 CREATE TABLE local_workspaces (
     id INTEGER PRIMARY KEY,
@@ -173,6 +209,24 @@ CREATE VIRTUAL TABLE document_chunks_fts USING fts5(
     content='document_chunks',
     content_rowid='id'
 );
+
+CREATE TRIGGER document_chunks_fts_ai AFTER INSERT ON document_chunks BEGIN
+    INSERT INTO document_chunks_fts(rowid, title, body)
+    VALUES (new.id, new.title, new.body);
+END;
+
+CREATE TRIGGER document_chunks_fts_ad AFTER DELETE ON document_chunks BEGIN
+    INSERT INTO document_chunks_fts(document_chunks_fts, rowid, title, body)
+    VALUES ('delete', old.id, old.title, old.body);
+END;
+
+CREATE TRIGGER document_chunks_fts_au AFTER UPDATE ON document_chunks BEGIN
+    INSERT INTO document_chunks_fts(document_chunks_fts, rowid, title, body)
+    VALUES ('delete', old.id, old.title, old.body);
+
+    INSERT INTO document_chunks_fts(rowid, title, body)
+    VALUES (new.id, new.title, new.body);
+END;
 
 CREATE TABLE offline_sync_records (
     id INTEGER PRIMARY KEY,

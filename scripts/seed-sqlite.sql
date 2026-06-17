@@ -102,9 +102,6 @@ A better database client flow would let the user open the long memory body in a 
 FROM threads
 JOIN turns;
 
-INSERT INTO agent_messages_fts(rowid, role, content, metadata)
-SELECT id, role, content, metadata FROM agent_messages;
-
 INSERT INTO agent_tool_calls (message_id, tool_name, arguments_json, result_text, status, elapsed_ms, created_at)
 SELECT
     1000 + (id * 10) + 2,
@@ -172,9 +169,6 @@ A TUI should open this cell in a read-focused modal with wrapping, scrolling, an
     '{"seed":"sqlite-realistic","record":' || n || '}',
     datetime('now', '-' || n || ' minutes')
 FROM seq;
-
-INSERT INTO agent_memory_fts(rowid, summary, body, tags)
-SELECT id, summary, body, tags FROM agent_memory_items;
 
 INSERT INTO local_kv_state (workspace_id, namespace, key, value_json, updated_at)
 SELECT
@@ -248,9 +242,6 @@ The content is intentionally verbose so table-cell truncation is visible. Search
     datetime('now', '-' || (f.id + chunk_index.idx) || ' minutes')
 FROM local_files f
 JOIN chunk_index;
-
-INSERT INTO document_chunks_fts(rowid, title, body)
-SELECT id, title, body FROM document_chunks;
 
 WITH RECURSIVE seq(n) AS (
     VALUES(1)
@@ -351,7 +342,7 @@ SELECT
     CASE n % 4 WHEN 0 THEN 'thumbnail' WHEN 1 THEN 'favicon' WHEN 2 THEN 'minidump' ELSE 'attachment' END,
     'blob-' || printf('%03d', n) || CASE n % 4 WHEN 0 THEN '.png' WHEN 1 THEN '.ico' WHEN 2 THEN '.dmp' ELSE '.bin' END,
     CASE n % 4 WHEN 0 THEN 'image/png' WHEN 1 THEN 'image/x-icon' ELSE 'application/octet-stream' END,
-    128 + (n * 16),
+    128 + (n % 128),
     randomblob(128 + (n % 128)),
     lower(hex(randomblob(16))),
     datetime('now', '-' || n || ' hours')
