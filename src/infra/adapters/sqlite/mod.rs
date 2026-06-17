@@ -1248,6 +1248,14 @@ fn dml_tag(query: &str, affected_rows: usize) -> Option<CommandTag> {
     }
 }
 
+fn sqlite_side_effect_tag(query: &str) -> Option<CommandTag> {
+    let keyword = first_keyword(query).to_ascii_uppercase();
+    match keyword.as_str() {
+        "ANALYZE" | "ATTACH" | "DETACH" | "REINDEX" | "VACUUM" => Some(CommandTag::Other(keyword)),
+        _ => None,
+    }
+}
+
 fn sqlite_statement_tags(statements: &[&str], changes: &HashMap<usize, usize>) -> Vec<CommandTag> {
     statements
         .iter()
@@ -1256,6 +1264,7 @@ fn sqlite_statement_tags(statements: &[&str], changes: &HashMap<usize, usize>) -
             dml_tag(statement, *changes.get(&index).unwrap_or(&0))
                 .or_else(|| ddl_tag(statement))
                 .or_else(|| transaction_control_tag(statement))
+                .or_else(|| sqlite_side_effect_tag(statement))
         })
         .collect()
 }
@@ -1611,6 +1620,34 @@ mod tests {
             wrapped,
             "BEGIN; INSERT INTO users(id) VALUES (1); END\n;\nSELECT changes() AS affected_rows;"
         );
+    }
+
+    #[test]
+    fn sqlite_side_effect_statements_emit_refresh_tags() {
+        let changes = HashMap::new();
+
+        let tags = sqlite_statement_tags(
+            &[
+                "ANALYZE users",
+                "ATTACH DATABASE 'other.db' AS other",
+                "DETACH DATABASE other",
+                "REINDEX users_name_idx",
+                "VACUUM",
+            ],
+            &changes,
+        );
+
+        assert_eq!(
+            tags,
+            vec![
+                CommandTag::Other("ANALYZE".to_string()),
+                CommandTag::Other("ATTACH".to_string()),
+                CommandTag::Other("DETACH".to_string()),
+                CommandTag::Other("REINDEX".to_string()),
+                CommandTag::Other("VACUUM".to_string()),
+            ]
+        );
+        assert!(tags.iter().all(CommandTag::needs_refresh));
     }
 
     #[test]
