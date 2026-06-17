@@ -4,8 +4,8 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
-use crate::policy::sql::statement_classifier::{self, StatementKind};
-use crate::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk};
+use crate::policy::sql::statement_classifier;
+use crate::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk_for_database};
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
@@ -44,11 +44,10 @@ pub(super) fn reduce_analyze(
                 return DispatchResult::handled();
             }
             let kind = statement_classifier::classify(&content);
-            let risk = evaluate_sql_risk(&kind, &content);
+            let database_type = state.session.active_database_type_or_default();
+            let risk = evaluate_sql_risk_for_database(database_type, &kind, &content);
 
-            let is_dml = !matches!(kind, StatementKind::Select | StatementKind::Transaction);
-
-            if state.session.is_read_only() && is_dml {
+            if state.session.is_read_only() && !risk.read_only_allowed {
                 show_explain_error_on_plan(
                     state,
                     "Read-only mode: EXPLAIN ANALYZE is blocked for DML statements.",
@@ -70,7 +69,6 @@ pub(super) fn reduce_analyze(
                         .begin_confirming_analyze_risk(content, reason);
                 }
                 ConfirmationType::Immediate => {
-                    let database_type = state.session.active_database_type_or_default();
                     let Some(explain_query) = services
                         .sql_dialect
                         .build_explain_analyze_sql(database_type, &content)

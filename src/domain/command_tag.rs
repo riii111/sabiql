@@ -21,6 +21,7 @@ impl CommandTag {
 
     pub fn is_schema_modifying(&self) -> bool {
         matches!(self, Self::Create(_) | Self::Drop(_) | Self::Alter(_))
+            || matches!(self, Self::Other(tag) if matches!(tag.as_str(), "ATTACH" | "DETACH"))
     }
 
     pub fn needs_refresh(&self) -> bool {
@@ -33,6 +34,13 @@ impl CommandTag {
                 | Self::Drop(_)
                 | Self::Alter(_)
                 | Self::Truncate
+        ) || matches!(
+            self,
+            Self::Other(tag)
+                if matches!(
+                    tag.as_str(),
+                    "ANALYZE" | "ATTACH" | "DETACH" | "REINDEX" | "VACUUM"
+                )
         )
     }
 
@@ -165,6 +173,12 @@ mod tests {
     }
 
     #[test]
+    fn is_schema_modifying_true_for_sqlite_attachment_changes() {
+        assert!(CommandTag::Other("ATTACH".to_string()).is_schema_modifying());
+        assert!(CommandTag::Other("DETACH".to_string()).is_schema_modifying());
+    }
+
+    #[test]
     fn needs_refresh_true_for_dml_and_ddl() {
         assert!(CommandTag::Insert(1).needs_refresh());
         assert!(CommandTag::Update(1).needs_refresh());
@@ -181,6 +195,13 @@ mod tests {
         assert!(!CommandTag::Begin.needs_refresh());
         assert!(!CommandTag::Commit.needs_refresh());
         assert!(!CommandTag::Rollback.needs_refresh());
-        assert!(!CommandTag::Other("VACUUM".to_string()).needs_refresh());
+        assert!(!CommandTag::Other("SAVEPOINT".to_string()).needs_refresh());
+    }
+
+    #[test]
+    fn needs_refresh_true_for_sqlite_side_effects() {
+        for tag in ["ANALYZE", "ATTACH", "DETACH", "REINDEX", "VACUUM"] {
+            assert!(CommandTag::Other(tag.to_string()).needs_refresh());
+        }
     }
 }
