@@ -484,7 +484,7 @@ fn sqlite_identifier_part(sql: &str, cursor: usize) -> Option<(String, usize)> {
             let c = sql[next..].chars().next()?;
             next += c.len_utf8();
             if c == close {
-                if sql[next..].starts_with(close) {
+                if close != ']' && sql[next..].starts_with(close) {
                     value.push(close);
                     next += close.len_utf8();
                     continue;
@@ -992,6 +992,12 @@ mod tests {
         #[case::bracket_quoted("REPLACE INTO [my table](id) VALUES (1)", "my table")]
         #[case::backtick_quoted("REPLACE INTO `my table`(id) VALUES (1)", "my table")]
         #[case::double_quoted(r#"REPLACE INTO "my table"(id) VALUES (1)"#, "my table")]
+        #[case::double_quoted_escaped(r#"REPLACE INTO "my""table"(id) VALUES (1)"#, r#"my"table"#)]
+        #[case::backtick_quoted_escaped("REPLACE INTO `my``table`(id) VALUES (1)", "my`table")]
+        #[case::bracket_doubled_close_is_not_escape(
+            "REPLACE INTO [my]]table](id) VALUES (1)",
+            "my"
+        )]
         #[case::schema_qualified(
             "INSERT OR REPLACE INTO main.[my table](id) VALUES (1)",
             "main.my table"
