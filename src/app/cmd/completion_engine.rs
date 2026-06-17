@@ -955,6 +955,7 @@ mod tests {
             triggers: vec![],
             row_count_estimate: None,
             comment: None,
+            source_ddl: None,
         }
     }
 
@@ -971,6 +972,7 @@ mod tests {
             triggers: vec![],
             row_count_estimate: None,
             comment: None,
+            source_ddl: None,
         }
     }
 
@@ -1257,6 +1259,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             };
 
             let candidates = e.column_candidates(Some(&table), "user");
@@ -1642,6 +1645,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1733,6 +1737,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1816,6 +1821,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             }
         }
 
@@ -1895,6 +1901,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             };
 
             // "id" is contained in "user_id"
@@ -1936,6 +1943,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             };
 
             let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
@@ -1984,6 +1992,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             };
 
             let recent = vec!["email".to_string()];
@@ -2118,6 +2127,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2211,6 +2221,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2231,6 +2242,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             }
         }
 
@@ -2301,6 +2313,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             }
         }
 
@@ -2511,6 +2524,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             };
 
             let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);

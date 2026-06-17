@@ -75,6 +75,23 @@ fn inspector_columns_narrow_pane_right_edge_truncates_cjk_comment() {
 }
 
 #[test]
+fn inspector_columns_marks_read_only_generated_columns() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.columns[1].attributes =
+        ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED | ColumnAttributes::NULLABLE;
+    let _ = state.session.set_table_detail(table, 0);
+    state.ui.set_inspector_tab(InspectorTab::Columns);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inspector_indexes_tab_with_data() {
     let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
@@ -96,6 +113,39 @@ fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
     for index in &mut table.indexes {
         index.index_type = IndexType::Unknown;
     }
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Indexes);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_indexes_tab_shows_sqlite_partial_expression_details() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.indexes = vec![Index {
+        name: "idx_users_email_lower".to_string(),
+        columns: vec!["<expression>".to_string()],
+        attributes: IndexAttributes::PARTIAL
+            | IndexAttributes::EXPRESSION
+            | IndexAttributes::HAS_AUXILIARY_COLUMNS,
+        index_type: IndexType::Unknown,
+        definition: Some(
+            "CREATE INDEX idx_users_email_lower ON users(lower(email)) WHERE email IS NOT NULL"
+                .to_string(),
+        ),
+    }];
     let _ = state.session.set_table_detail(table, 0);
     state.session.activate_connection_with_dsn(
         &ConnectionId::from_string("sqlite-test"),
@@ -205,6 +255,38 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
     state.ui.set_focused_pane(FocusedPane::Inspector);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_ddl_tab_uses_source_ddl() {
+    struct SourceDdlGenerator;
+    impl DdlGenerator for SourceDdlGenerator {
+        fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
+            table.source_ddl().unwrap_or_default().to_string()
+        }
+    }
+
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+    let mut services = AppServices::stub();
+    services.ddl_generator = Arc::new(SourceDdlGenerator);
+
+    let mut table = fixtures::sample_table_detail();
+    table.source_ddl = Some(
+        "CREATE VIRTUAL TABLE users USING fts5(name, email);\n-- source ddl is not rebuilt"
+            .to_string(),
+    );
+    let _ = state.session.set_table_detail(table, 0);
+    state.ui.set_inspector_tab(InspectorTab::Ddl);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&harness::render_to_string_with_services(
+        &mut terminal,
+        &mut state,
+        &services,
+    ));
 
     insta::assert_snapshot!(output);
 }

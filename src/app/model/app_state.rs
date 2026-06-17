@@ -346,6 +346,7 @@ mod tests {
             triggers: Vec::new(),
             row_count_estimate: None,
             comment: None,
+            source_ddl: None,
         }
     }
 

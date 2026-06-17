@@ -1,16 +1,16 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::domain::ColumnAttributes;
 use crate::domain::QueryValue;
+#[cfg(test)]
+use crate::domain::{Column, ColumnAttributes};
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::write::write_update::build_pk_pairs;
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
-use crate::update::helpers::{EditGuardrailError, editable_preview_base};
+use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
 fn is_jsonb_cell(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
@@ -46,9 +46,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
         .columns
         .get(col_idx)
         .ok_or(EditGuardrailError::ColumnIndexOutOfBounds)?;
-    if pk_cols.iter().any(|pk| pk == column_name) {
-        return Err(EditGuardrailError::PrimaryKeyColumnsReadOnly);
-    }
+    ensure_column_writable(state, column_name, pk_cols)?;
 
     let row = result
         .values()
@@ -181,6 +179,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             }
         }
 
@@ -297,6 +296,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             }));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
@@ -310,6 +310,43 @@ mod tests {
                 Some("Table metadata does not match current preview target")
             );
         }
+
+        #[test]
+        fn read_only_column_blocks_cell_edit_entry() {
+            let mut state = preview_state_with_selection();
+            let mut table = minimal_users_table();
+            table.columns = vec![
+                Column {
+                    name: "id".to_string(),
+                    data_type: "integer".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::PRIMARY_KEY,
+                    comment: None,
+                    ordinal_position: 1,
+                },
+                Column {
+                    name: "name".to_string(),
+                    data_type: "text".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
+                    comment: None,
+                    ordinal_position: 2,
+                },
+            ];
+            state.session.set_table_detail_raw(Some(table));
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Read-only column cannot be edited: name (generated)")
+            );
+        }
+
         #[test]
         fn cancel_without_changes_clears_cell_edit() {
             let mut state = preview_state_with_selection();

@@ -1167,6 +1167,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             }
         }
 
@@ -1478,6 +1479,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             })
         }
 

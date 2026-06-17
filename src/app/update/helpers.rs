@@ -49,6 +49,8 @@ pub enum EditGuardrailError {
     ColumnIndexOutOfBounds,
     #[error("Primary key columns are read-only")]
     PrimaryKeyColumnsReadOnly,
+    #[error("Read-only column cannot be edited: {0}")]
+    ReadOnlyColumn(String),
     #[error("No active row")]
     NoActiveRow,
     #[error("No active cell")]
@@ -120,6 +122,31 @@ pub fn editable_preview_base(
         .ok_or(EditGuardrailError::EditingRequiresPrimaryKey)?;
 
     Ok((result, pk_cols))
+}
+
+pub fn ensure_column_writable(
+    state: &AppState,
+    column_name: &str,
+    pk_cols: &[String],
+) -> Result<(), EditGuardrailError> {
+    if pk_cols.iter().any(|pk| pk == column_name) {
+        return Err(EditGuardrailError::PrimaryKeyColumnsReadOnly);
+    }
+
+    if let Some(column) = state.session.table_detail().and_then(|table| {
+        table
+            .columns
+            .iter()
+            .find(|column| column.name == column_name)
+    }) && column.is_read_only()
+    {
+        let reason = column.read_only_reason().unwrap_or("read-only");
+        return Err(EditGuardrailError::ReadOnlyColumn(format!(
+            "{column_name} ({reason})"
+        )));
+    }
+
+    Ok(())
 }
 
 pub fn build_bulk_delete_preview(
@@ -630,6 +657,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
+                source_ddl: None,
             }));
             state.query.pagination.reset_for_table("main", "users");
             state.result_interaction.stage_row(0);
