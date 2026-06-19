@@ -34,7 +34,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          ╰ Tab/⇧Tab: Field │ Ctrl+S: Connect │ Esc: Cancel ───────────╯                                                  │
+│                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

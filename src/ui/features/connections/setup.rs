@@ -154,7 +154,7 @@ impl ConnectionSetup {
             ]
         } else {
             vec![(
-                connection_setup_save(state.settings.saved_keymap_preset()).key,
+                connection_setup_save(state.settings.saved_keymap_preset()).key_short,
                 submit_desc,
             )]
         }
@@ -368,6 +368,17 @@ mod tests {
         assert_eq!(
             ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
             vec![("Enter", "Connect")]
+        );
+    }
+
+    #[test]
+    fn submit_hints_use_short_default_save_key_off_ssl_field() {
+        let state = AppState::new("test".to_string());
+        let form_state = ConnectionSetupState::default();
+
+        assert_eq!(
+            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
+            vec![("^S", "Connect")]
         );
     }
 }
