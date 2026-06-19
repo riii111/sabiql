@@ -83,10 +83,14 @@ where
     let test_result = test(&db).await;
     let cleanup_result = db.cleanup().await;
 
-    if let Err(err) = test_result {
-        panic!("{err}");
+    match (test_result, cleanup_result) {
+        (Ok(()), Ok(())) => {}
+        (Err(test_err), Ok(())) => panic!("{test_err}"),
+        (Ok(()), Err(cleanup_err)) => panic!("cleanup failed: {cleanup_err}"),
+        (Err(test_err), Err(cleanup_err)) => {
+            panic!("test failed: {test_err}; cleanup failed: {cleanup_err}")
+        }
     }
-    cleanup_result.unwrap();
 }
 
 pub fn postgres_integration_dsn() -> String {
