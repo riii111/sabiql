@@ -1,4 +1,5 @@
 use super::*;
+use sabiql_app::model::shared::settings::KeymapPreset;
 
 #[test]
 fn connection_setup_form() {
@@ -59,6 +60,20 @@ fn connection_setup_cursor_at_tail() {
         .connection_setup
         .host
         .set_content("db.example.com".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_ssl_mode_ide_hint() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state.settings.load_keymap_preset(KeymapPreset::Ide);
+    state.connection_setup.focused_field = ConnectionField::SslMode;
 
     let output = render_to_string(&mut terminal, &mut state);
 
