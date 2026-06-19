@@ -22,19 +22,19 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                                       ││   ╭ New Connection ─────────────────────────────────────────────────────────╮                                            │
-│                                       ││   │                                                                         │                                            │
-│                                       ││   │  Name:       [                            ]                             │                                            │
-│                                       ││   │  Host:       [ localhost                  ]                             │                                            │
-│                                       ││   │  Port:       [ 5432                       ]                             │                                            │
-│                                       │└───│  Database:   [                            ]                             │────────────────────────────────────────────┘
-│                                       │┌ [3│  User:       [                            ]                             │────────────────────────────────────────────┐
-│                                       ││(se│  Password:   [                            ]                             │                                            │
-│                                       ││   │  SSL Mode:   [ prefer                   ▼ ]                             │                                            │
-│                                       ││   │                                                                         │                                            │
-│                                       ││   │  Note: Connection info is stored locally in plain text                  │                                            │
-│                                       ││   │                                                                         │                                            │
-│                                       ││   ╰ Tab: Next │ Shift+Tab: Prev │ Enter: Toggle │ ^S: Connect │ Esc: Cancel ╯                                            │
+│                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  Name:       [                            ]                │                                                  │
+│                                       ││          │  Host:       [ localhost                  ]                │                                                  │
+│                                       ││          │  Port:       [ 5432                       ]                │                                                  │
+│                                       │└──────────│  Database:   [                            ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  User:       [                            ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  Password:   [                            ]                │                                                  │
+│                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -52,4 +52,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Toggle  ^S:Connect  Tab:Next  ⇧Tab:Prev  Esc:Cancel
+Enter:Toggle  ^S:Connect  Tab/⇧Tab:Field  Esc:Cancel

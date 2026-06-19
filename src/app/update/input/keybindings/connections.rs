@@ -13,7 +13,7 @@ pub mod connection_setup {
     pub const TAB_NAV: KeyBinding = KeyBinding {
         key_short: "Tab/⇧Tab",
         key: "Tab/⇧Tab",
-        desc_short: "Next/Prev",
+        desc_short: "Field",
         description: "Next/Previous field",
         action: Action::None,
         combos: &[],

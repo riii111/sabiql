@@ -275,8 +275,7 @@ impl Footer {
                     vec![connection_setup_save(state.settings.saved_keymap_preset()).as_hint()]
                 };
                 hints.extend([
-                    connection_setup::TAB_NEXT.as_hint(),
-                    connection_setup::TAB_PREV.as_hint(),
+                    connection_setup::TAB_NAV.as_hint(),
                     connection_setup::ESC_CANCEL.as_hint(),
                 ]);
                 hints

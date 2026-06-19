@@ -41,17 +41,12 @@ impl ConnectionSetup {
             (" New Connection ", "Connect")
         };
         let submit_hints = Self::submit_hints(state, form_state, submit_desc);
-        let mut footer_hints = vec![("Tab", "Next"), ("Shift+Tab", "Prev")];
+        let mut footer_hints = vec![connection_setup::TAB_NAV.as_hint()];
         footer_hints.extend(submit_hints);
         footer_hints.push(("Esc", "Cancel"));
         let footer = FooterHintBar::new(footer_hints);
 
-        let base_modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
-        let modal_width = if form_state.focused_field == ConnectionField::SslMode {
-            base_modal_width.max(footer.width() + 2)
-        } else {
-            base_modal_width
-        };
+        let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
         let modal_height = 13;
         let (_, modal_inner) = render_modal(
             frame,
