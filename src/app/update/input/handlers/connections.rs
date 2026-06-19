@@ -1,4 +1,5 @@
 use crate::model::app_state::AppState;
+use crate::model::shared::settings::KeymapPreset;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 
@@ -13,8 +14,7 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
     let ctrl_only = ctrl && !alt && !shift;
 
     let primary_save = keybindings::connection_setup_save(state.settings.saved_keymap_preset());
-    let auxiliary_save = state.settings.saved_keymap_preset()
-        == crate::model::shared::settings::KeymapPreset::Ide
+    let auxiliary_save = state.settings.saved_keymap_preset() == KeymapPreset::Ide
         && keybindings::connection_setup::SAVE.combos.contains(&combo);
     if (primary_save.combos.contains(&combo) || auxiliary_save)
         && !(combo.key == Key::Enter
@@ -92,7 +92,6 @@ pub fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
 mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::settings::KeymapPreset;
     use crate::update::action::{
         ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };

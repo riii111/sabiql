@@ -164,12 +164,7 @@ pub(super) fn reduce_connection_setup(
         }
         Action::ConnectionSetupDropdownConfirm => {
             let setup = &mut state.connection_setup;
-            if setup.ssl_dropdown.is_open {
-                if let Some(mode) = SslMode::all_variants().get(setup.ssl_dropdown.selected_index) {
-                    setup.ssl_mode = *mode;
-                }
-                setup.ssl_dropdown.is_open = false;
-            }
+            confirm_ssl_dropdown_selection(setup);
             DispatchResult::handled()
         }
         Action::ConnectionSetupDropdownCancel => {
@@ -178,6 +173,7 @@ pub(super) fn reduce_connection_setup(
         }
         Action::ConnectionSetupSave => {
             let setup = &mut state.connection_setup;
+            confirm_ssl_dropdown_selection(setup);
             validate_all(setup);
             if setup.validation_errors.is_empty() {
                 let port = setup.port.content().parse().unwrap_or(5432);
@@ -233,6 +229,15 @@ pub(super) fn reduce_connection_setup(
         }
 
         _ => DispatchResult::pass(),
+    }
+}
+
+fn confirm_ssl_dropdown_selection(setup: &mut ConnectionSetupState) {
+    if setup.ssl_dropdown.is_open {
+        if let Some(mode) = SslMode::all_variants().get(setup.ssl_dropdown.selected_index) {
+            setup.ssl_mode = *mode;
+        }
+        setup.ssl_dropdown.is_open = false;
     }
 }
 
@@ -400,6 +405,32 @@ mod tests {
                 ConnectionState::Connecting
             );
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+        }
+
+        #[test]
+        fn save_confirms_open_ssl_dropdown_selection() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            state.connection_setup.ssl_mode = SslMode::Prefer;
+            state.connection_setup.ssl_dropdown.is_open = true;
+            state.connection_setup.ssl_dropdown.selected_index = SslMode::all_variants()
+                .iter()
+                .position(|mode| *mode == SslMode::Require)
+                .unwrap();
+
+            let effects =
+                reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now())
+                    .unwrap();
+
+            assert_eq!(state.connection_setup.ssl_mode, SslMode::Require);
+            assert!(!state.connection_setup.ssl_dropdown.is_open);
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SaveAndConnect {
+                    ssl_mode: SslMode::Require,
+                    ..
+                }]
+            ));
         }
 
         #[test]
