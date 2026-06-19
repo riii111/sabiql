@@ -12,6 +12,17 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
     let ctrl_only = ctrl && !alt && !shift;
 
+    let primary_save = keybindings::connection_setup_save(state.settings.saved_keymap_preset());
+    let auxiliary_save = state.settings.saved_keymap_preset()
+        == crate::model::shared::settings::KeymapPreset::Ide
+        && keybindings::connection_setup::SAVE.combos.contains(&combo);
+    if (primary_save.combos.contains(&combo) || auxiliary_save)
+        && !(combo.key == Key::Enter
+            && state.connection_setup.focused_field == ConnectionField::SslMode)
+    {
+        return Action::ConnectionSetupSave;
+    }
+
     if dropdown_open {
         return match combo.key {
             Key::Up => Action::ConnectionSetupDropdownPrev,
@@ -22,15 +33,6 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
             Key::Esc => Action::ConnectionSetupDropdownCancel,
             _ => Action::None,
         };
-    }
-
-    if keybindings::connection_setup_save(state.settings.saved_keymap_preset())
-        .combos
-        .contains(&combo)
-        && !(combo.key == Key::Enter
-            && state.connection_setup.focused_field == ConnectionField::SslMode)
-    {
-        return Action::ConnectionSetupSave;
     }
 
     match combo.key {
@@ -172,12 +174,22 @@ mod tests {
         }
 
         #[test]
-        fn ide_ctrl_s_is_ignored() {
+        fn ide_ctrl_s_saves() {
             let state = setup_state_with_preset(KeymapPreset::Ide);
 
             let result = handle_connection_setup_keys(combo_ctrl(Key::Char('s')), &state);
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(result, Action::ConnectionSetupSave));
+        }
+
+        #[test]
+        fn ide_ctrl_s_saves_on_ssl_field() {
+            let mut state = setup_state_with_preset(KeymapPreset::Ide);
+            state.connection_setup.focused_field = ConnectionField::SslMode;
+
+            let result = handle_connection_setup_keys(combo_ctrl(Key::Char('s')), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupSave));
         }
 
         #[test]

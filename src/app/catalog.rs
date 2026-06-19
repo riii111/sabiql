@@ -1,6 +1,7 @@
 use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
+use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
@@ -243,15 +244,10 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
             mode,
             keymap_preset,
         } => sql_current_rows(mode, keymap_preset),
-        HelpOrigin::ConnectionSetup { keymap_preset } => rows_from_binding_refs(&[
-            &connection_setup::TAB_NAV,
-            &connection_setup::TAB_NEXT,
-            &connection_setup::TAB_PREV,
-            connection_setup_save(keymap_preset),
-            &connection_setup::ESC_CANCEL,
-            &connection_setup::ENTER_DROPDOWN,
-            &connection_setup::DROPDOWN_NAV,
-        ]),
+        HelpOrigin::ConnectionSetup {
+            keymap_preset,
+            focused_field,
+        } => connection_setup_current_rows(keymap_preset, focused_field),
         HelpOrigin::ConnectionError => rows_from_mode_rows(CONNECTION_ERROR_ROWS),
         HelpOrigin::ConfirmDialog => rows_from_bindings(CONFIRM_DIALOG_KEYS),
         HelpOrigin::ConnectionSelector => rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
@@ -415,6 +411,34 @@ fn sql_current_rows(mode: SqlHelpMode, keymap_preset: KeymapPreset) -> Vec<HelpR
         ]),
         SqlHelpMode::Confirm => rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
     }
+}
+
+fn connection_setup_current_rows(
+    keymap_preset: KeymapPreset,
+    focused_field: ConnectionField,
+) -> Vec<HelpRow> {
+    let submit = if focused_field == ConnectionField::SslMode {
+        &connection_setup::ENTER_DROPDOWN
+    } else {
+        connection_setup_save(keymap_preset)
+    };
+    let mut rows = rows_from_binding_refs(&[
+        &connection_setup::TAB_NAV,
+        &connection_setup::TAB_NEXT,
+        &connection_setup::TAB_PREV,
+        submit,
+    ]);
+    if focused_field == ConnectionField::SslMode {
+        rows.push(HelpRow::new(
+            connection_setup::SAVE.key,
+            connection_setup::SAVE.description,
+        ));
+    }
+    rows.extend(rows_from_binding_refs(&[
+        &connection_setup::ESC_CANCEL,
+        &connection_setup::DROPDOWN_NAV,
+    ]));
+    rows
 }
 
 fn jsonb_current_rows(mode: JsonbHelpMode) -> Vec<HelpRow> {
@@ -655,5 +679,30 @@ mod tests {
             jsonb_document.sections()[0].title(),
             "Current: JSONB Search"
         );
+    }
+
+    #[test]
+    fn connection_setup_help_matches_ssl_field_actions() {
+        let document = HelpDocument::new(
+            HelpOrigin::ConnectionSetup {
+                keymap_preset: KeymapPreset::Ide,
+                focused_field: ConnectionField::SslMode,
+            },
+            "",
+        );
+        let current_rows = document.sections()[0].rows();
+
+        assert!(current_rows.iter().any(|row| {
+            row.key() == connection_setup::ENTER_DROPDOWN.key
+                && row.description() == connection_setup::ENTER_DROPDOWN.description
+        }));
+        assert!(current_rows.iter().any(|row| {
+            row.key() == connection_setup::SAVE.key
+                && row.description() == connection_setup::SAVE.description
+        }));
+        assert!(!current_rows.iter().any(|row| {
+            row.key() == connection_setup::SAVE_IDE.key
+                && row.description() == connection_setup::SAVE_IDE.description
+        }));
     }
 }
