@@ -1,4 +1,5 @@
 pub mod fixtures;
+pub mod postgres;
 
 use std::sync::Arc;
 use std::time::Instant;
