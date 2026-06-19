@@ -1,3 +1,5 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use sabiql_app::ports::outbound::{DbOperationError, QueryExecutor};
@@ -13,11 +15,13 @@ pub struct PostgresTestDb {
     schema: String,
 }
 
+type PostgresFixtureTest<'db> = Pin<Box<dyn Future<Output = Result<(), String>> + 'db>>;
+
 impl PostgresTestDb {
     pub async fn setup() -> Result<Self, DbOperationError> {
         let db = Self {
             adapter: PostgresAdapter::new(),
-            dsn: postgres_test_dsn(),
+            dsn: postgres_integration_dsn(),
             schema: unique_schema_name(),
         };
         db.create_fixture_schema().await?;
@@ -71,7 +75,21 @@ impl PostgresTestDb {
     }
 }
 
-pub fn postgres_test_dsn() -> String {
+pub async fn with_postgres_test_db<F>(test: F)
+where
+    F: for<'db> FnOnce(&'db PostgresTestDb) -> PostgresFixtureTest<'db>,
+{
+    let db = PostgresTestDb::setup().await.unwrap();
+    let test_result = test(&db).await;
+    let cleanup_result = db.cleanup().await;
+
+    if let Err(err) = test_result {
+        panic!("{err}");
+    }
+    cleanup_result.unwrap();
+}
+
+pub fn postgres_integration_dsn() -> String {
     std::env::var(TEST_DSN_ENV).unwrap_or_else(|_| DEFAULT_TEST_DSN.to_string())
 }
 
