@@ -2742,6 +2742,30 @@ mod tests {
 
             assert_eq!(table_names, vec!["notes", "notes_fts"]);
         }
+
+        #[tokio::test]
+        async fn hides_rtree_shadow_tables_from_normal_table_list() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE places(id INTEGER PRIMARY KEY, name TEXT);
+            CREATE VIRTUAL TABLE places_geo USING rtree(
+                id,
+                minX, maxX,
+                minY, maxY
+            );
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+            let table_names: Vec<_> = metadata
+                .table_summaries
+                .iter()
+                .map(|summary| summary.name.as_str())
+                .collect();
+
+            assert_eq!(table_names, vec!["places", "places_geo"]);
+        }
     }
 
     mod table_detail {
