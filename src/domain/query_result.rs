@@ -18,10 +18,18 @@ impl QueryValue {
     }
 
     #[must_use]
+    pub fn contains_nul(&self) -> bool {
+        match self {
+            Self::Text(value) | Self::SqlLiteral(value) => value.contains('\0'),
+            Self::Null | Self::Blob(_) => false,
+        }
+    }
+
+    #[must_use]
     pub fn display_value(&self) -> String {
         match self {
             Self::Null => "NULL".to_string(),
-            Self::Text(value) | Self::SqlLiteral(value) => value.clone(),
+            Self::Text(value) | Self::SqlLiteral(value) => escape_display_text(value),
             Self::Blob(bytes) => {
                 let preview = bytes
                     .iter()
@@ -47,6 +55,18 @@ impl QueryValue {
             Self::Null | Self::Blob(_) => None,
         }
     }
+}
+
+fn escape_display_text(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if ch == '\0' {
+            escaped.push_str("\\0");
+        } else {
+            escaped.push(ch);
+        }
+    }
+    escaped
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -277,6 +297,22 @@ mod tests {
                     .with_row_count(count);
 
             assert_eq!(result.row_count_display(), expected);
+        }
+    }
+
+    mod nul_text {
+        use super::*;
+
+        #[test]
+        fn contains_nul_detects_embedded_nul_byte() {
+            assert!(QueryValue::text("a\0bc").contains_nul());
+            assert!(!QueryValue::text("abc").contains_nul());
+            assert!(!QueryValue::Null.contains_nul());
+        }
+
+        #[test]
+        fn display_value_escapes_embedded_nul_byte() {
+            assert_eq!(QueryValue::text("a\0bc").display_value(), "a\\0bc");
         }
     }
 }
