@@ -927,17 +927,12 @@ fn unquote_sql_text(value: &str) -> String {
     value[1..value.len() - 1].replace("''", "'")
 }
 
-fn decode_sqlite_nul_text_transport(value: String) -> String {
-    let sentinel = sql::sqlite_nul_text_sentinel();
-    if let Some(hex) = value.strip_prefix(&sentinel)
-        && let Ok(bytes) = decode_hex_bytes(hex)
-    {
-        return String::from_utf8_lossy(&bytes).into_owned();
-    }
-    value
+fn decode_hex_text(hex: &str) -> Result<String, DbOperationError> {
+    let bytes = decode_hex_bytes(hex)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-fn parse_unistr_literal(value: &str) -> Result<String, DbOperationError> {
+fn parse_unistr_inner_sql_escapes(value: &str) -> Result<String, DbOperationError> {
     let inner = value
         .strip_prefix("unistr(")
         .and_then(|rest| rest.strip_suffix(')'))
@@ -974,29 +969,7 @@ fn parse_unistr_literal(value: &str) -> Result<String, DbOperationError> {
                         "invalid SQLite unistr escape sequence".to_string(),
                     )
                 })?;
-                if next == 'u' {
-                    let hex: String = chars.by_ref().take(4).collect();
-                    if hex.len() != 4 {
-                        return Err(DbOperationError::MetadataParseFailed(
-                            "invalid SQLite unistr unicode escape".to_string(),
-                        ));
-                    }
-                    let code = u32::from_str_radix(&hex, 16).map_err(|error| {
-                        DbOperationError::MetadataParseFailed(error.to_string())
-                    })?;
-                    if code <= 0x1F {
-                        let decoded_char = char::from_u32(code).ok_or_else(|| {
-                            DbOperationError::MetadataParseFailed(
-                                "invalid SQLite unistr unicode code point".to_string(),
-                            )
-                        })?;
-                        decoded.push(decoded_char);
-                    } else {
-                        decoded.push('\\');
-                        decoded.push('u');
-                        decoded.push_str(&hex);
-                    }
-                } else if next == '\\' {
+                if next == '\\' {
                     decoded.push('\\');
                 } else {
                     decoded.push('\\');
@@ -1009,16 +982,15 @@ fn parse_unistr_literal(value: &str) -> Result<String, DbOperationError> {
     Ok(decoded)
 }
 
-fn parse_sqlite_text_value(value: &str, source: QuerySource) -> Result<String, DbOperationError> {
-    let decoded = if value.starts_with("unistr(") {
-        parse_unistr_literal(value)?
-    } else {
-        unquote_sql_text(value)
-    };
-    Ok(match source {
-        QuerySource::Preview => decode_sqlite_nul_text_transport(decoded),
-        QuerySource::Adhoc => decoded,
-    })
+fn decode_preview_transport_unistr(value: &str) -> Result<Option<String>, DbOperationError> {
+    let inner = parse_unistr_inner_sql_escapes(value)?;
+    if let Some(hex) = inner.strip_prefix(sql::PREVIEW_TRANSPORT_UNISTR_PREFIX) {
+        return decode_hex_text(hex).map(Some);
+    }
+    if let Some(hex) = inner.strip_prefix(&sql::sqlite_nul_text_sentinel()) {
+        return decode_hex_text(hex).map(Some);
+    }
+    Ok(None)
 }
 
 fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
@@ -1044,10 +1016,15 @@ fn parse_quoted_value(value: &str, source: QuerySource) -> Result<QueryValue, Db
         return Ok(QueryValue::Null);
     }
     if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
-        return Ok(QueryValue::Text(parse_sqlite_text_value(value, source)?));
+        return Ok(QueryValue::Text(unquote_sql_text(value)));
     }
     if value.starts_with("unistr(") && value.ends_with(')') {
-        return Ok(QueryValue::Text(parse_sqlite_text_value(value, source)?));
+        if source == QuerySource::Preview
+            && let Some(text) = decode_preview_transport_unistr(value)?
+        {
+            return Ok(QueryValue::Text(text));
+        }
+        return Ok(QueryValue::SqlLiteral(value.to_string()));
     }
     if value.len() >= 3
         && value.as_bytes()[1] == b'\''
@@ -1925,6 +1902,32 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn preserves_distinct_c0_text_values_in_preview() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, value TEXT);
+            INSERT INTO users(value) VALUES (char(1) || char(1));
+            INSERT INTO users(value) VALUES (char(1) || char(92) || 'u0001');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                result.value_at(0, 1),
+                Some(&QueryValue::Text("\x01\x01".to_string()))
+            );
+            assert_eq!(
+                result.value_at(1, 1),
+                Some(&QueryValue::Text("\x01\\u0001".to_string()))
+            );
+        }
+
+        #[tokio::test]
         async fn preserves_sentinel_like_text_without_nul_in_preview() {
             let (_dir, dsn) = make_sqlite_db(
                 r"
@@ -2088,74 +2091,53 @@ mod tests {
         }
 
         #[test]
-        fn parse_unistr_literal_unescapes_sql_string_quotes_and_backslashes() {
+        fn parse_unistr_inner_sql_escapes_does_not_decode_unicode_sequences() {
             assert_eq!(
-                parse_unistr_literal("unistr('\\u0001O''Reilly')").unwrap(),
-                "\x01O'Reilly"
+                parse_unistr_inner_sql_escapes("unistr('\\u0001\\u0001')").unwrap(),
+                "\\u0001\\u0001"
             );
             assert_eq!(
-                parse_unistr_literal("unistr('\\u0001back\\slash')").unwrap(),
-                "\x01back\\slash"
-            );
-            assert_eq!(
-                parse_unistr_literal("unistr('\\u0001a\\\\b')").unwrap(),
-                "\x01a\\b"
-            );
-            assert_eq!(
-                parse_unistr_literal("unistr('\\u0001\\u0041')").unwrap(),
-                "\x01\\u0041"
+                parse_unistr_inner_sql_escapes("unistr('\\u0001O''Reilly')").unwrap(),
+                "\\u0001O'Reilly"
             );
         }
 
         #[test]
-        fn quoted_to_query_result_preserves_literal_backslash_u_sequences_in_adhoc() {
-            let quoted = "'value'\nunistr('\\u0001\\u0041')\n";
-
-            let result = quoted_to_query_result(
-                "SELECT char(1) || char(92) || 'u0041'",
-                quoted,
-                QuerySource::Adhoc,
-                1,
-            )
-            .unwrap();
-
+        fn decode_preview_transport_unistr_decodes_hex_payload() {
             assert_eq!(
-                result.value_at(0, 0),
-                Some(&QueryValue::Text("\x01\\u0041".to_string()))
+                decode_preview_transport_unistr("unistr('\\u0001SABIQL_HEX:61006263')")
+                    .unwrap()
+                    .as_deref(),
+                Some("a\0bc")
+            );
+            assert_eq!(
+                decode_preview_transport_unistr("unistr('\\u0001SABIQL_HEX:0101')")
+                    .unwrap()
+                    .as_deref(),
+                Some("\x01\x01")
+            );
+            assert_eq!(
+                decode_preview_transport_unistr("unistr('\\u0001SABIQL_HEX:015C7530303031')")
+                    .unwrap()
+                    .as_deref(),
+                Some("\x01\\u0001")
             );
         }
 
         #[test]
-        fn quoted_to_query_result_decodes_unistr_adhoc_text_with_sql_escapes() {
-            let quoted = "'value'\nunistr('\\u0001O''Reilly')\n";
-
-            let result = quoted_to_query_result(
-                "SELECT char(1) || 'O''Reilly'",
-                quoted,
-                QuerySource::Adhoc,
-                1,
-            )
-            .unwrap();
-
+        fn parse_quoted_value_keeps_unrecoverable_adhoc_unistr_as_sql_literal() {
             assert_eq!(
-                result.value_at(0, 0),
-                Some(&QueryValue::Text("\x01O'Reilly".to_string()))
+                parse_quoted_value("unistr('\\u0001\\u0001')", QuerySource::Adhoc).unwrap(),
+                QueryValue::SqlLiteral("unistr('\\u0001\\u0001')".to_string())
+            );
+            assert_eq!(
+                parse_quoted_value("unistr('\\u0001O''Reilly')", QuerySource::Adhoc).unwrap(),
+                QueryValue::SqlLiteral("unistr('\\u0001O''Reilly')".to_string())
             );
         }
 
         #[test]
-        fn parse_sqlite_text_value_decodes_unistr_transport_for_preview() {
-            let value = parse_sqlite_text_value(
-                "unistr('\\u0001SABIQL_HEX:61006263')",
-                QuerySource::Preview,
-            )
-            .unwrap();
-
-            assert_eq!(value, "a\0bc");
-        }
-
-        #[test]
-        fn parse_quoted_value_decodes_nul_text_transport_for_preview() {
+        fn parse_quoted_value_decodes_preview_transport_unistr() {
             let value =
                 parse_quoted_value("unistr('\\u0001SABIQL_HEX:61006263')", QuerySource::Preview)
                     .unwrap();
@@ -2164,30 +2146,19 @@ mod tests {
         }
 
         #[test]
-        fn parse_quoted_value_preserves_transport_prefix_for_adhoc() {
-            let value =
-                parse_quoted_value("unistr('\\u0001SABIQL_HEX:4142')", QuerySource::Adhoc).unwrap();
+        fn quoted_to_query_result_keeps_unrecoverable_adhoc_unistr_as_sql_literal() {
+            let quoted = "'value'\nunistr('\\u0001\\u0001')\n";
+
+            let result =
+                quoted_to_query_result("SELECT char(1) || char(1)", quoted, QuerySource::Adhoc, 1)
+                    .unwrap();
 
             assert_eq!(
-                value,
-                QueryValue::Text(format!("{}4142", sql::sqlite_nul_text_sentinel()))
+                result.value_at(0, 0),
+                Some(&QueryValue::SqlLiteral(
+                    "unistr('\\u0001\\u0001')".to_string()
+                ))
             );
-        }
-
-        #[test]
-        fn quoted_to_query_result_preserves_sentinel_like_adhoc_text() {
-            let quoted = "'value'\nunistr('\\u0001SABIQL_HEX:4142')\n";
-            let expected = format!("{}4142", sql::sqlite_nul_text_sentinel());
-
-            let result = quoted_to_query_result(
-                "SELECT char(1) || 'SABIQL_HEX:4142'",
-                quoted,
-                QuerySource::Adhoc,
-                1,
-            )
-            .unwrap();
-
-            assert_eq!(result.value_at(0, 0), Some(&QueryValue::Text(expected)));
         }
 
         #[test]

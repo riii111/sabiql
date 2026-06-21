@@ -123,11 +123,12 @@ pub(super) fn row_count_query(table: &str) -> String {
     format!("SELECT COUNT(*) AS count FROM {}", quote_ident(table))
 }
 
+pub(super) const PREVIEW_TRANSPORT_UNISTR_PREFIX: &str = "\\u0001SABIQL_HEX:";
+
 pub(super) fn encode_preview_column_expr(column: &str) -> String {
     let ident = quote_ident(column);
     format!(
-        "CASE WHEN typeof({ident}) = 'text' AND (instr({ident}, char(0)) > 0 \
-         OR {ident} LIKE char(1) || '{SQLITE_NUL_TEXT_TRANSPORT_TAG}%') \
+        "CASE WHEN typeof({ident}) = 'text' \
          THEN char(1) || '{SQLITE_NUL_TEXT_TRANSPORT_TAG}' || hex({ident}) \
          ELSE {ident} END AS {ident}"
     )
@@ -401,11 +402,9 @@ mod tests {
                 20
             ),
             concat!(
-                r#"SELECT CASE WHEN typeof("id") = 'text' AND (instr("id", char(0)) > 0 "#,
-                r#"OR "id" LIKE char(1) || 'SABIQL_HEX:%') "#,
+                r#"SELECT CASE WHEN typeof("id") = 'text' "#,
                 r#"THEN char(1) || 'SABIQL_HEX:' || hex("id") ELSE "id" END AS "id", "#,
-                r#"CASE WHEN typeof("name") = 'text' AND (instr("name", char(0)) > 0 "#,
-                r#"OR "name" LIKE char(1) || 'SABIQL_HEX:%') "#,
+                r#"CASE WHEN typeof("name") = 'text' "#,
                 r#"THEN char(1) || 'SABIQL_HEX:' || hex("name") ELSE "name" END AS "name" "#,
                 r#"FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
             )
