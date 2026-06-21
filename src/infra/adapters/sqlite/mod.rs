@@ -984,12 +984,18 @@ fn parse_unistr_literal(value: &str) -> Result<String, DbOperationError> {
                     let code = u32::from_str_radix(&hex, 16).map_err(|error| {
                         DbOperationError::MetadataParseFailed(error.to_string())
                     })?;
-                    let decoded_char = char::from_u32(code).ok_or_else(|| {
-                        DbOperationError::MetadataParseFailed(
-                            "invalid SQLite unistr unicode code point".to_string(),
-                        )
-                    })?;
-                    decoded.push(decoded_char);
+                    if code <= 0x1F {
+                        let decoded_char = char::from_u32(code).ok_or_else(|| {
+                            DbOperationError::MetadataParseFailed(
+                                "invalid SQLite unistr unicode code point".to_string(),
+                            )
+                        })?;
+                        decoded.push(decoded_char);
+                    } else {
+                        decoded.push('\\');
+                        decoded.push('u');
+                        decoded.push_str(&hex);
+                    }
                 } else if next == '\\' {
                     decoded.push('\\');
                 } else {
@@ -2094,6 +2100,28 @@ mod tests {
             assert_eq!(
                 parse_unistr_literal("unistr('\\u0001a\\\\b')").unwrap(),
                 "\x01a\\b"
+            );
+            assert_eq!(
+                parse_unistr_literal("unistr('\\u0001\\u0041')").unwrap(),
+                "\x01\\u0041"
+            );
+        }
+
+        #[test]
+        fn quoted_to_query_result_preserves_literal_backslash_u_sequences_in_adhoc() {
+            let quoted = "'value'\nunistr('\\u0001\\u0041')\n";
+
+            let result = quoted_to_query_result(
+                "SELECT char(1) || char(92) || 'u0041'",
+                quoted,
+                QuerySource::Adhoc,
+                1,
+            )
+            .unwrap();
+
+            assert_eq!(
+                result.value_at(0, 0),
+                Some(&QueryValue::Text("\x01\\u0041".to_string()))
             );
         }
 
