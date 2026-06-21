@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use crate::app::ports::outbound::{DdlGenerator, SqlDialect};
+use crate::app::ports::outbound::{DbOperationError, DdlGenerator, SqlDialect};
 use crate::domain::{DatabaseType, QueryValue, Table};
 
 use super::SqliteAdapter;
@@ -62,37 +62,58 @@ fn rows_predicate(pk_pairs_per_row: &[Vec<(String, QueryValue)>]) -> String {
     }
 }
 
+pub(super) const TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED";
+
 pub(super) fn user_tables_query() -> &'static str {
     r"
-    WITH fts5_tables AS (
-        SELECT name
-        FROM sqlite_master
-        WHERE type = 'table'
-          AND replace(
-                  replace(
-                      replace(lower(sql), char(13), ' '),
-                      char(10), ' '
-                  ),
-                  char(9), ' '
-              ) LIKE 'create%virtual%table%using%fts5%'
-    )
-    SELECT m.name, m.sql
-    FROM sqlite_master m
-    WHERE m.type = 'table'
-      AND m.name NOT LIKE 'sqlite_%'
-      AND NOT EXISTS (
-          SELECT 1
-          FROM fts5_tables f
-          WHERE m.name IN (
-              f.name || '_data',
-              f.name || '_idx',
-              f.name || '_content',
-              f.name || '_docsize',
-              f.name || '_config'
-          )
-      )
+    SELECT tl.name, m.sql
+    FROM pragma_table_list() AS tl
+    LEFT JOIN sqlite_master AS m
+      ON m.type = 'table'
+     AND m.name = tl.name
+    WHERE tl.schema = 'main'
+      AND tl.type IN ('table', 'virtual')
+      AND tl.name NOT LIKE 'sqlite_%'
+    ORDER BY tl.name
+    "
+}
+
+pub(super) fn legacy_user_tables_query() -> &'static str {
+    r"
+    SELECT name, sql
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND name NOT LIKE 'sqlite_%'
     ORDER BY name
     "
+}
+
+pub(super) fn has_virtual_tables_query() -> &'static str {
+    r"
+    SELECT COUNT(*) AS count
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND sql IS NOT NULL
+      AND replace(
+              replace(
+                  replace(lower(sql), char(13), ' '),
+                  char(10), ' '
+              ),
+              char(9), ' '
+          ) LIKE 'create%virtual%table%'
+    "
+}
+
+pub(super) fn table_list_required_error() -> DbOperationError {
+    DbOperationError::UnsupportedOperation(format!(
+        "{TABLE_LIST_REQUIRED_MARKER}: This database contains virtual tables (such as FTS or RTree). \
+         Upgrade sqlite3 to version 3.37.0 or later to browse it safely. \
+         Databases with only regular tables can still be opened with older sqlite3 versions."
+    ))
+}
+
+pub(super) fn is_table_list_unavailable(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("pragma_table_list")
 }
 
 pub(super) fn row_count_query(table: &str) -> String {
@@ -319,9 +340,39 @@ mod tests {
     }
 
     #[test]
-    fn user_tables_query_uses_compatible_schema_table() {
-        assert!(user_tables_query().contains("FROM sqlite_master"));
+    fn user_tables_query_uses_table_list_and_excludes_shadow_tables() {
+        assert!(user_tables_query().contains("pragma_table_list()"));
+        assert!(user_tables_query().contains("tl.schema = 'main'"));
+        assert!(user_tables_query().contains("tl.type IN ('table', 'virtual')"));
         assert!(user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
+    }
+
+    #[test]
+    fn legacy_user_tables_query_lists_regular_tables_only() {
+        assert!(legacy_user_tables_query().contains("FROM sqlite_master"));
+        assert!(!legacy_user_tables_query().contains("fts5_tables"));
+        assert!(legacy_user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
+    }
+
+    #[test]
+    fn has_virtual_tables_query_detects_virtual_table_ddl() {
+        assert!(has_virtual_tables_query().contains("create%virtual%table%"));
+    }
+
+    #[test]
+    fn table_list_required_error_includes_marker_and_upgrade_guidance() {
+        let error = table_list_required_error();
+        let message = error.user_message();
+        assert!(message.contains(TABLE_LIST_REQUIRED_MARKER));
+        assert!(message.contains("3.37.0"));
+    }
+
+    #[test]
+    fn is_table_list_unavailable_detects_missing_pragma() {
+        assert!(is_table_list_unavailable(
+            "Error: in prepare, no such table: main.pragma_table_list"
+        ));
+        assert!(!is_table_list_unavailable("FOREIGN KEY constraint failed"));
     }
 
     #[test]

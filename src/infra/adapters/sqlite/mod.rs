@@ -104,8 +104,29 @@ impl SqliteAdapter {
             .to_string()
     }
 
+    async fn has_virtual_tables(&self, path: &str) -> Result<bool, DbOperationError> {
+        let rows: Vec<RawRowCount> = self
+            .cli
+            .execute_json(path, sql::has_virtual_tables_query())
+            .await?;
+        Ok(rows.into_iter().next().is_some_and(|row| row.count > 0))
+    }
+
     async fn list_tables(&self, path: &str) -> Result<Vec<RawTable>, DbOperationError> {
-        self.cli.execute_json(path, sql::user_tables_query()).await
+        match self.cli.execute_json(path, sql::user_tables_query()).await {
+            Ok(tables) => Ok(tables),
+            Err(DbOperationError::QueryFailed(message))
+                if sql::is_table_list_unavailable(&message) =>
+            {
+                if self.has_virtual_tables(path).await? {
+                    return Err(sql::table_list_required_error());
+                }
+                self.cli
+                    .execute_json(path, sql::legacy_user_tables_query())
+                    .await
+            }
+            Err(error) => Err(error),
+        }
     }
 
     async fn row_count(&self, path: &str, table: &str) -> Option<i64> {
@@ -2721,14 +2742,15 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn hides_fts5_shadow_tables_with_wrapped_virtual_table_ddl() {
+        async fn hides_rtree_shadow_tables_from_normal_table_list() {
             let (_dir, dsn) = make_sqlite_db(
                 r"
-            CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);
-            CREATE VIRTUAL
-            TABLE notes_fts
-            USING
-            	fts5(body);
+            CREATE TABLE places(id INTEGER PRIMARY KEY, name TEXT);
+            CREATE VIRTUAL TABLE places_geo USING rtree(
+                id,
+                minX, maxX,
+                minY, maxY
+            );
             ",
             );
             let adapter = SqliteAdapter::new();
@@ -2740,7 +2762,25 @@ mod tests {
                 .map(|summary| summary.name.as_str())
                 .collect();
 
-            assert_eq!(table_names, vec!["notes", "notes_fts"]);
+            assert_eq!(table_names, vec!["places", "places_geo"]);
+        }
+
+        #[tokio::test]
+        async fn detects_virtual_tables_in_schema() {
+            let (_dir, dsn) = make_sqlite_db("CREATE VIRTUAL TABLE notes_fts USING fts5(body);");
+            let adapter = SqliteAdapter::new();
+            let path = SqliteAdapter::path_from_dsn(&dsn).unwrap();
+
+            assert!(adapter.has_virtual_tables(path).await.unwrap());
+        }
+
+        #[tokio::test]
+        async fn simple_schema_has_no_virtual_tables() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+            let path = SqliteAdapter::path_from_dsn(&dsn).unwrap();
+
+            assert!(!adapter.has_virtual_tables(path).await.unwrap());
         }
     }
 
