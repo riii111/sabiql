@@ -919,6 +919,75 @@ fn unquote_sql_text(value: &str) -> String {
     value[1..value.len() - 1].replace("''", "'")
 }
 
+pub(super) const SQLITE_NUL_TEXT_SENTINEL: &str = "\x01SABIQL_HEX:";
+
+fn decode_sqlite_nul_text_transport(value: String) -> String {
+    let Some(hex) = value.strip_prefix(SQLITE_NUL_TEXT_SENTINEL) else {
+        return value;
+    };
+    match decode_hex_bytes(hex) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(_) => value,
+    }
+}
+
+fn parse_unistr_literal(value: &str) -> Result<String, DbOperationError> {
+    let inner = value
+        .strip_prefix("unistr(")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .ok_or_else(|| {
+            DbOperationError::MetadataParseFailed("invalid SQLite unistr literal".to_string())
+        })?;
+    let inner = inner
+        .strip_prefix('\'')
+        .and_then(|rest| rest.strip_suffix('\''))
+        .ok_or_else(|| {
+            DbOperationError::MetadataParseFailed("invalid SQLite unistr literal".to_string())
+        })?;
+
+    let mut decoded = String::new();
+    let mut chars = inner.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            let escape = chars.next().ok_or_else(|| {
+                DbOperationError::MetadataParseFailed(
+                    "invalid SQLite unistr escape sequence".to_string(),
+                )
+            })?;
+            if escape == 'u' {
+                let hex: String = chars.by_ref().take(4).collect();
+                if hex.len() != 4 {
+                    return Err(DbOperationError::MetadataParseFailed(
+                        "invalid SQLite unistr unicode escape".to_string(),
+                    ));
+                }
+                let code = u32::from_str_radix(&hex, 16)
+                    .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
+                let decoded_char = char::from_u32(code).ok_or_else(|| {
+                    DbOperationError::MetadataParseFailed(
+                        "invalid SQLite unistr unicode code point".to_string(),
+                    )
+                })?;
+                decoded.push(decoded_char);
+            } else {
+                decoded.push(escape);
+            }
+        } else {
+            decoded.push(ch);
+        }
+    }
+    Ok(decoded)
+}
+
+fn parse_sqlite_text_value(value: &str) -> Result<String, DbOperationError> {
+    let decoded = if value.starts_with("unistr(") {
+        parse_unistr_literal(value)?
+    } else {
+        unquote_sql_text(value)
+    };
+    Ok(decode_sqlite_nul_text_transport(decoded))
+}
+
 fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
     if !hex.len().is_multiple_of(2) {
         return Err(DbOperationError::MetadataParseFailed(
@@ -942,7 +1011,10 @@ fn parse_quoted_value(value: &str) -> Result<QueryValue, DbOperationError> {
         return Ok(QueryValue::Null);
     }
     if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
-        return Ok(QueryValue::Text(unquote_sql_text(value)));
+        return Ok(QueryValue::Text(parse_sqlite_text_value(value)?));
+    }
+    if value.starts_with("unistr(") && value.ends_with(')') {
+        return Ok(QueryValue::Text(parse_sqlite_text_value(value)?));
     }
     if value.len() >= 3
         && value.as_bytes()[1] == b'\''
@@ -1465,7 +1537,17 @@ impl QueryExecutor for SqliteAdapter {
         Self::validate_main_schema(schema)?;
         let path = Self::path_from_dsn(dsn)?;
         let order_columns = self.preview_order_columns(path, table).await;
-        let query = sql::build_preview_query(table, &order_columns, limit, offset);
+        let columns = self
+            .columns(path, table)
+            .await
+            .map(|raw_columns| {
+                raw_columns
+                    .into_iter()
+                    .map(|column| column.name)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let query = sql::build_preview_query(table, &columns, &order_columns, limit, offset);
         self.execute_quoted_query(path, &query, QuerySource::Preview, read_only)
             .await
     }
@@ -1572,7 +1654,7 @@ impl QueryExecutor for SqliteAdapter {
 #[cfg(test)]
 mod tests {
     use crate::adapters::test_support::make_sqlite_db;
-    use crate::app::ports::outbound::{DdlGenerator, MetadataProvider, QueryExecutor};
+    use crate::app::ports::outbound::{DdlGenerator, MetadataProvider, QueryExecutor, SqlDialect};
     use crate::domain::{CommandTag, DatabaseType, QuerySource};
 
     use super::*;
@@ -1741,6 +1823,53 @@ mod tests {
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
         }
+
+        #[tokio::test]
+        async fn preserves_nul_text_primary_key_for_preview_and_delete() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id TEXT PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES ('a' || char(0) || 'bc', 'target'), ('only', 'other');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let preview = adapter
+                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                preview.value_at(0, 0),
+                Some(&QueryValue::Text("a\0bc".to_string()))
+            );
+            assert_eq!(preview.rows()[0][0], "a\\0bc");
+
+            let delete_sql = adapter.build_bulk_delete_sql(
+                DatabaseType::SQLite,
+                "main",
+                "users",
+                &[vec![(
+                    "id".to_string(),
+                    QueryValue::Text("a\0bc".to_string()),
+                )]],
+            );
+            let write = adapter
+                .execute_write(&dsn, &delete_sql, false)
+                .await
+                .unwrap();
+            assert_eq!(write.affected_rows, 1);
+
+            let remaining = adapter
+                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .await
+                .unwrap();
+            assert_eq!(remaining.row_count(), 1);
+            assert_eq!(
+                remaining.value_at(0, 0),
+                Some(&QueryValue::Text("only".to_string()))
+            );
+        }
     }
 
     mod parsing {
@@ -1853,6 +1982,20 @@ mod tests {
                 Err(DbOperationError::MetadataParseFailed(message))
                     if message == "unterminated SQLite quoted output"
             ));
+        }
+
+        #[test]
+        fn parse_sqlite_text_value_decodes_unistr_transport() {
+            let value = parse_sqlite_text_value("unistr('\\u0001SABIQL_HEX:61006263')").unwrap();
+
+            assert_eq!(value, "a\0bc");
+        }
+
+        #[test]
+        fn parse_quoted_value_decodes_nul_text_transport() {
+            let value = parse_quoted_value("unistr('\\u0001SABIQL_HEX:61006263')").unwrap();
+
+            assert_eq!(value, QueryValue::Text("a\0bc".to_string()));
         }
 
         #[test]
