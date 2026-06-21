@@ -954,32 +954,50 @@ fn parse_unistr_literal(value: &str) -> Result<String, DbOperationError> {
     let mut decoded = String::new();
     let mut chars = inner.chars();
     while let Some(ch) = chars.next() {
-        if ch == '\\' {
-            let escape = chars.next().ok_or_else(|| {
-                DbOperationError::MetadataParseFailed(
-                    "invalid SQLite unistr escape sequence".to_string(),
-                )
-            })?;
-            if escape == 'u' {
-                let hex: String = chars.by_ref().take(4).collect();
-                if hex.len() != 4 {
-                    return Err(DbOperationError::MetadataParseFailed(
-                        "invalid SQLite unistr unicode escape".to_string(),
-                    ));
-                }
-                let code = u32::from_str_radix(&hex, 16)
-                    .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
-                let decoded_char = char::from_u32(code).ok_or_else(|| {
+        match ch {
+            '\'' => {
+                let next = chars.next().ok_or_else(|| {
                     DbOperationError::MetadataParseFailed(
-                        "invalid SQLite unistr unicode code point".to_string(),
+                        "invalid SQLite unistr SQL string quote".to_string(),
                     )
                 })?;
-                decoded.push(decoded_char);
-            } else {
-                decoded.push(escape);
+                if next != '\'' {
+                    return Err(DbOperationError::MetadataParseFailed(
+                        "invalid SQLite unistr SQL string quote".to_string(),
+                    ));
+                }
+                decoded.push('\'');
             }
-        } else {
-            decoded.push(ch);
+            '\\' => {
+                let next = chars.next().ok_or_else(|| {
+                    DbOperationError::MetadataParseFailed(
+                        "invalid SQLite unistr escape sequence".to_string(),
+                    )
+                })?;
+                if next == 'u' {
+                    let hex: String = chars.by_ref().take(4).collect();
+                    if hex.len() != 4 {
+                        return Err(DbOperationError::MetadataParseFailed(
+                            "invalid SQLite unistr unicode escape".to_string(),
+                        ));
+                    }
+                    let code = u32::from_str_radix(&hex, 16).map_err(|error| {
+                        DbOperationError::MetadataParseFailed(error.to_string())
+                    })?;
+                    let decoded_char = char::from_u32(code).ok_or_else(|| {
+                        DbOperationError::MetadataParseFailed(
+                            "invalid SQLite unistr unicode code point".to_string(),
+                        )
+                    })?;
+                    decoded.push(decoded_char);
+                } else if next == '\\' {
+                    decoded.push('\\');
+                } else {
+                    decoded.push('\\');
+                    decoded.push(next);
+                }
+            }
+            ch => decoded.push(ch),
         }
     }
     Ok(decoded)
@@ -2061,6 +2079,40 @@ mod tests {
                 Err(DbOperationError::MetadataParseFailed(message))
                     if message == "unterminated SQLite quoted output"
             ));
+        }
+
+        #[test]
+        fn parse_unistr_literal_unescapes_sql_string_quotes_and_backslashes() {
+            assert_eq!(
+                parse_unistr_literal("unistr('\\u0001O''Reilly')").unwrap(),
+                "\x01O'Reilly"
+            );
+            assert_eq!(
+                parse_unistr_literal("unistr('\\u0001back\\slash')").unwrap(),
+                "\x01back\\slash"
+            );
+            assert_eq!(
+                parse_unistr_literal("unistr('\\u0001a\\\\b')").unwrap(),
+                "\x01a\\b"
+            );
+        }
+
+        #[test]
+        fn quoted_to_query_result_decodes_unistr_adhoc_text_with_sql_escapes() {
+            let quoted = "'value'\nunistr('\\u0001O''Reilly')\n";
+
+            let result = quoted_to_query_result(
+                "SELECT char(1) || 'O''Reilly'",
+                quoted,
+                QuerySource::Adhoc,
+                1,
+            )
+            .unwrap();
+
+            assert_eq!(
+                result.value_at(0, 0),
+                Some(&QueryValue::Text("\x01O'Reilly".to_string()))
+            );
         }
 
         #[test]
