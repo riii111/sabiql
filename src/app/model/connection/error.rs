@@ -9,6 +9,7 @@ pub enum ConnectionErrorKind {
     DatabaseNotFound,
     ConnectionLost,
     Timeout,
+    SqliteVersionTooOld,
     #[default]
     Unknown,
 }
@@ -68,6 +69,7 @@ impl ConnectionErrorKind {
             Self::DatabaseNotFound => "Database does not exist",
             Self::ConnectionLost => "Connection lost during operation",
             Self::Timeout => "Connection timed out",
+            Self::SqliteVersionTooOld => "SQLite 3.37 or later required",
             Self::Unknown => "Connection failed",
         }
     }
@@ -80,6 +82,9 @@ impl ConnectionErrorKind {
             Self::DatabaseNotFound => "Check database name",
             Self::ConnectionLost => "Reconnect and retry the operation",
             Self::Timeout => "Check network connectivity",
+            Self::SqliteVersionTooOld => {
+                "Upgrade sqlite3, or open a database without virtual tables"
+            }
             Self::Unknown => "See details for more information",
         }
     }
@@ -119,6 +124,11 @@ impl ConnectionErrorInfo {
             DbOperationError::CommandNotFound(_) => ConnectionErrorKind::CliNotFound,
             DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
             DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
+            DbOperationError::UnsupportedOperation(details)
+                if details.contains("SQLITE_TABLE_LIST_REQUIRED") =>
+            {
+                ConnectionErrorKind::SqliteVersionTooOld
+            }
             DbOperationError::ConnectionFailed(_) => ConnectionErrorKind::classify(&raw_details),
             _ => ConnectionErrorKind::Unknown,
         };
@@ -245,6 +255,7 @@ mod tests {
         #[case(ConnectionErrorKind::DatabaseNotFound)]
         #[case(ConnectionErrorKind::ConnectionLost)]
         #[case(ConnectionErrorKind::Timeout)]
+        #[case(ConnectionErrorKind::SqliteVersionTooOld)]
         #[case(ConnectionErrorKind::Unknown)]
         fn has_non_empty_summary_and_hint(#[case] kind: ConnectionErrorKind) {
             assert!(!kind.summary().is_empty());
@@ -288,6 +299,18 @@ mod tests {
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::ConnectionLost);
+        }
+
+        #[test]
+        fn from_db_operation_error_classifies_sqlite_table_list_requirement() {
+            let info = ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::UnsupportedOperation(
+                    "SQLITE_TABLE_LIST_REQUIRED: upgrade sqlite3".to_string(),
+                ),
+            );
+
+            assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
+            assert_eq!(info.summary(), "SQLite 3.37 or later required");
         }
 
         #[test]
