@@ -982,15 +982,19 @@ fn parse_unistr_inner_sql_escapes(value: &str) -> Result<String, DbOperationErro
     Ok(decoded)
 }
 
-fn decode_preview_transport_unistr(value: &str) -> Result<Option<String>, DbOperationError> {
-    let inner = parse_unistr_inner_sql_escapes(value)?;
-    if let Some(hex) = inner.strip_prefix(sql::PREVIEW_TRANSPORT_UNISTR_PREFIX) {
+fn decode_sqlite_nul_text_transport(text: &str) -> Result<Option<String>, DbOperationError> {
+    if let Some(hex) = text.strip_prefix(&sql::sqlite_nul_text_sentinel()) {
         return decode_hex_text(hex).map(Some);
     }
-    if let Some(hex) = inner.strip_prefix(&sql::sqlite_nul_text_sentinel()) {
+    if let Some(hex) = text.strip_prefix(sql::PREVIEW_TRANSPORT_UNISTR_PREFIX) {
         return decode_hex_text(hex).map(Some);
     }
     Ok(None)
+}
+
+fn decode_preview_transport_unistr(value: &str) -> Result<Option<String>, DbOperationError> {
+    let inner = parse_unistr_inner_sql_escapes(value)?;
+    decode_sqlite_nul_text_transport(&inner)
 }
 
 fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
@@ -1016,7 +1020,13 @@ fn parse_quoted_value(value: &str, source: QuerySource) -> Result<QueryValue, Db
         return Ok(QueryValue::Null);
     }
     if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
-        return Ok(QueryValue::Text(unquote_sql_text(value)));
+        let text = unquote_sql_text(value);
+        if source == QuerySource::Preview
+            && let Some(decoded) = decode_sqlite_nul_text_transport(&text)?
+        {
+            return Ok(QueryValue::Text(decoded));
+        }
+        return Ok(QueryValue::Text(text));
     }
     if value.starts_with("unistr(") && value.ends_with(')') {
         if source == QuerySource::Preview
@@ -2143,6 +2153,25 @@ mod tests {
                     .unwrap();
 
             assert_eq!(value, QueryValue::Text("a\0bc".to_string()));
+        }
+
+        #[test]
+        fn parse_quoted_value_decodes_preview_transport_plain_quoted() {
+            let sentinel = sql::sqlite_nul_text_sentinel();
+            let quoted = format!("'{sentinel}68656C6C6F'");
+            let value = parse_quoted_value(&quoted, QuerySource::Preview).unwrap();
+
+            assert_eq!(value, QueryValue::Text("hello".to_string()));
+        }
+
+        #[test]
+        fn parse_quoted_value_keeps_plain_quoted_transport_as_text_for_adhoc() {
+            let sentinel = sql::sqlite_nul_text_sentinel();
+            let transport = format!("{sentinel}68656C6C6F");
+            let quoted = format!("'{transport}'");
+            let value = parse_quoted_value(&quoted, QuerySource::Adhoc).unwrap();
+
+            assert_eq!(value, QueryValue::Text(transport));
         }
 
         #[test]
