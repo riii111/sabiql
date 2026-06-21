@@ -143,6 +143,14 @@ impl SqliteAdapter {
         }
     }
 
+    fn preview_visible_column_names(raw_columns: Vec<RawColumn>) -> Vec<String> {
+        raw_columns
+            .into_iter()
+            .filter(|column| column.hidden != 1)
+            .map(|column| column.name)
+            .collect()
+    }
+
     fn extract_primary_key(columns: &[RawColumn]) -> Vec<String> {
         let mut primary_key: Vec<(i64, String)> = columns
             .iter()
@@ -919,16 +927,14 @@ fn unquote_sql_text(value: &str) -> String {
     value[1..value.len() - 1].replace("''", "'")
 }
 
-pub(super) const SQLITE_NUL_TEXT_SENTINEL: &str = "\x01SABIQL_HEX:";
-
 fn decode_sqlite_nul_text_transport(value: String) -> String {
-    let Some(hex) = value.strip_prefix(SQLITE_NUL_TEXT_SENTINEL) else {
-        return value;
-    };
-    match decode_hex_bytes(hex) {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        Err(_) => value,
+    let sentinel = sql::sqlite_nul_text_sentinel();
+    if let Some(hex) = value.strip_prefix(&sentinel)
+        && let Ok(bytes) = decode_hex_bytes(hex)
+    {
+        return String::from_utf8_lossy(&bytes).into_owned();
     }
+    value
 }
 
 fn parse_unistr_literal(value: &str) -> Result<String, DbOperationError> {
@@ -979,13 +985,16 @@ fn parse_unistr_literal(value: &str) -> Result<String, DbOperationError> {
     Ok(decoded)
 }
 
-fn parse_sqlite_text_value(value: &str) -> Result<String, DbOperationError> {
+fn parse_sqlite_text_value(value: &str, source: QuerySource) -> Result<String, DbOperationError> {
     let decoded = if value.starts_with("unistr(") {
         parse_unistr_literal(value)?
     } else {
         unquote_sql_text(value)
     };
-    Ok(decode_sqlite_nul_text_transport(decoded))
+    Ok(match source {
+        QuerySource::Preview => decode_sqlite_nul_text_transport(decoded),
+        QuerySource::Adhoc => decoded,
+    })
 }
 
 fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
@@ -1006,15 +1015,15 @@ fn decode_hex_bytes(hex: &str) -> Result<Vec<u8>, DbOperationError> {
     Ok(bytes)
 }
 
-fn parse_quoted_value(value: &str) -> Result<QueryValue, DbOperationError> {
+fn parse_quoted_value(value: &str, source: QuerySource) -> Result<QueryValue, DbOperationError> {
     if value == "NULL" {
         return Ok(QueryValue::Null);
     }
     if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
-        return Ok(QueryValue::Text(parse_sqlite_text_value(value)?));
+        return Ok(QueryValue::Text(parse_sqlite_text_value(value, source)?));
     }
     if value.starts_with("unistr(") && value.ends_with(')') {
-        return Ok(QueryValue::Text(parse_sqlite_text_value(value)?));
+        return Ok(QueryValue::Text(parse_sqlite_text_value(value, source)?));
     }
     if value.len() >= 3
         && value.as_bytes()[1] == b'\''
@@ -1034,13 +1043,16 @@ fn parse_quoted_value(value: &str) -> Result<QueryValue, DbOperationError> {
     Ok(QueryValue::SqlLiteral(value.to_string()))
 }
 
-fn parse_quoted_records(stdout: &str) -> Result<Vec<QuotedRecord>, DbOperationError> {
+fn parse_quoted_records(
+    stdout: &str,
+    source: QuerySource,
+) -> Result<Vec<QuotedRecord>, DbOperationError> {
     split_quoted_records(stdout)?
         .into_iter()
         .map(|segment| {
             split_quoted_fields(&segment.text)?
                 .into_iter()
-                .map(|field| parse_quoted_value(&field))
+                .map(|field| parse_quoted_value(&field, source))
                 .collect::<Result<Vec<_>, _>>()
                 .map(|values| QuotedRecord {
                     offset: segment.offset,
@@ -1072,7 +1084,7 @@ fn quoted_to_query_result(
         ));
     }
 
-    let mut records = parse_quoted_records(stdout)?;
+    let mut records = parse_quoted_records(stdout, source)?;
     let Some(header) = records.first() else {
         return Ok(QueryResult::success(
             query.to_string(),
@@ -1100,7 +1112,7 @@ fn quoted_to_query_result(
 fn last_sqlite_result_set(stdout: &str, marker: &str) -> Result<Option<String>, DbOperationError> {
     let (stmt_col, marker_col) = sqlite_result_probe_columns(marker);
     let raw_records = split_quoted_records(stdout)?;
-    let records = parse_quoted_records(stdout)?;
+    let records = parse_quoted_records(stdout, QuerySource::Adhoc)?;
 
     let mut last_result = None;
     let mut result_start = 0;
@@ -1157,7 +1169,7 @@ fn strip_sqlite_probes(
 
     let (stmt_col, changes_col) = sqlite_probe_columns(marker);
     let raw_records = split_quoted_records(stdout)?;
-    let records = parse_quoted_records(stdout)?;
+    let records = parse_quoted_records(stdout, QuerySource::Adhoc)?;
 
     let mut changes = HashMap::new();
     let mut kept = Vec::new();
@@ -1540,12 +1552,7 @@ impl QueryExecutor for SqliteAdapter {
         let columns = self
             .columns(path, table)
             .await
-            .map(|raw_columns| {
-                raw_columns
-                    .into_iter()
-                    .map(|column| column.name)
-                    .collect::<Vec<_>>()
-            })
+            .map(Self::preview_visible_column_names)
             .unwrap_or_default();
         let query = sql::build_preview_query(table, &columns, &order_columns, limit, offset);
         self.execute_quoted_query(path, &query, QuerySource::Preview, read_only)
@@ -1870,6 +1877,78 @@ mod tests {
                 Some(&QueryValue::Text("only".to_string()))
             );
         }
+
+        #[tokio::test]
+        async fn excludes_hidden_columns_from_preview_select_list() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE VIRTUAL TABLE notes_fts USING fts5(body);
+            INSERT INTO notes_fts(body) VALUES ('hello');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_preview(&dsn, "main", "notes_fts", 10, 0, true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.columns, vec!["body"]);
+            assert_eq!(
+                result.value_at(0, 0),
+                Some(&QueryValue::Text("hello".to_string()))
+            );
+        }
+
+        #[tokio::test]
+        async fn preserves_sentinel_like_text_without_nul_in_preview() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, token TEXT);
+            INSERT INTO users(token) VALUES (char(1) || 'SABIQL_HEX:4142');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                result.value_at(0, 1),
+                Some(&QueryValue::Text(format!(
+                    "{}4142",
+                    sql::sqlite_nul_text_sentinel()
+                )))
+            );
+        }
+
+        #[tokio::test]
+        async fn keeps_generated_columns_in_preview_select_list() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                name_upper TEXT GENERATED ALWAYS AS (upper(name)) STORED
+            );
+            INSERT INTO users(name) VALUES ('alice');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.columns, vec!["id", "name", "name_upper"]);
+            assert_eq!(
+                result.value_at(0, 2),
+                Some(&QueryValue::Text("ALICE".to_string()))
+            );
+        }
     }
 
     mod parsing {
@@ -1985,17 +2064,50 @@ mod tests {
         }
 
         #[test]
-        fn parse_sqlite_text_value_decodes_unistr_transport() {
-            let value = parse_sqlite_text_value("unistr('\\u0001SABIQL_HEX:61006263')").unwrap();
+        fn parse_sqlite_text_value_decodes_unistr_transport_for_preview() {
+            let value = parse_sqlite_text_value(
+                "unistr('\\u0001SABIQL_HEX:61006263')",
+                QuerySource::Preview,
+            )
+            .unwrap();
 
             assert_eq!(value, "a\0bc");
         }
 
         #[test]
-        fn parse_quoted_value_decodes_nul_text_transport() {
-            let value = parse_quoted_value("unistr('\\u0001SABIQL_HEX:61006263')").unwrap();
+        fn parse_quoted_value_decodes_nul_text_transport_for_preview() {
+            let value =
+                parse_quoted_value("unistr('\\u0001SABIQL_HEX:61006263')", QuerySource::Preview)
+                    .unwrap();
 
             assert_eq!(value, QueryValue::Text("a\0bc".to_string()));
+        }
+
+        #[test]
+        fn parse_quoted_value_preserves_transport_prefix_for_adhoc() {
+            let value =
+                parse_quoted_value("unistr('\\u0001SABIQL_HEX:4142')", QuerySource::Adhoc).unwrap();
+
+            assert_eq!(
+                value,
+                QueryValue::Text(format!("{}4142", sql::sqlite_nul_text_sentinel()))
+            );
+        }
+
+        #[test]
+        fn quoted_to_query_result_preserves_sentinel_like_adhoc_text() {
+            let quoted = "'value'\nunistr('\\u0001SABIQL_HEX:4142')\n";
+            let expected = format!("{}4142", sql::sqlite_nul_text_sentinel());
+
+            let result = quoted_to_query_result(
+                "SELECT char(1) || 'SABIQL_HEX:4142'",
+                quoted,
+                QuerySource::Adhoc,
+                1,
+            )
+            .unwrap();
+
+            assert_eq!(result.value_at(0, 0), Some(&QueryValue::Text(expected)));
         }
 
         #[test]

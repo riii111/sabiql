@@ -5,6 +5,21 @@ use crate::domain::{DatabaseType, QueryValue, Table};
 
 use super::SqliteAdapter;
 
+pub(super) const SQLITE_NUL_TEXT_TRANSPORT_TAG: &str = "SABIQL_HEX:";
+
+pub(super) fn sqlite_nul_text_sentinel() -> String {
+    format!("\x01{SQLITE_NUL_TEXT_TRANSPORT_TAG}")
+}
+
+pub(super) fn encode_bytes_as_sql_hex(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02X}");
+            hex
+        })
+}
+
 fn quote_ident(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
@@ -13,16 +28,16 @@ fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn blob_sql_literal(bytes: &[u8]) -> String {
+    format!("X'{}'", encode_bytes_as_sql_hex(bytes))
+}
+
 fn text_sql_literal(value: &str) -> String {
     if value.contains('\0') {
-        let hex = value
-            .as_bytes()
-            .iter()
-            .fold(String::new(), |mut hex, byte| {
-                let _ = write!(hex, "{byte:02X}");
-                hex
-            });
-        format!("CAST(X'{hex}' AS TEXT)")
+        format!(
+            "CAST(X'{}' AS TEXT)",
+            encode_bytes_as_sql_hex(value.as_bytes())
+        )
     } else {
         quote_literal(value)
     }
@@ -33,13 +48,7 @@ fn sql_literal(value: &QueryValue) -> String {
         QueryValue::Null => "NULL".to_string(),
         QueryValue::Text(value) => text_sql_literal(value),
         QueryValue::SqlLiteral(value) => value.clone(),
-        QueryValue::Blob(bytes) => {
-            let mut hex = String::with_capacity(bytes.len() * 2);
-            for byte in bytes {
-                let _ = write!(hex, "{byte:02X}");
-            }
-            format!("X'{hex}'")
-        }
+        QueryValue::Blob(bytes) => blob_sql_literal(bytes),
     }
 }
 
@@ -117,8 +126,9 @@ pub(super) fn row_count_query(table: &str) -> String {
 pub(super) fn encode_preview_column_expr(column: &str) -> String {
     let ident = quote_ident(column);
     format!(
-        "CASE WHEN typeof({ident}) = 'text' AND instr({ident}, char(0)) > 0 \
-         THEN char(1) || 'SABIQL_HEX:' || hex({ident}) \
+        "CASE WHEN typeof({ident}) = 'text' AND (instr({ident}, char(0)) > 0 \
+         OR {ident} LIKE char(1) || '{SQLITE_NUL_TEXT_TRANSPORT_TAG}%') \
+         THEN char(1) || '{SQLITE_NUL_TEXT_TRANSPORT_TAG}' || hex({ident}) \
          ELSE {ident} END AS {ident}"
     )
 }
@@ -391,9 +401,11 @@ mod tests {
                 20
             ),
             concat!(
-                r#"SELECT CASE WHEN typeof("id") = 'text' AND instr("id", char(0)) > 0 "#,
+                r#"SELECT CASE WHEN typeof("id") = 'text' AND (instr("id", char(0)) > 0 "#,
+                r#"OR "id" LIKE char(1) || 'SABIQL_HEX:%') "#,
                 r#"THEN char(1) || 'SABIQL_HEX:' || hex("id") ELSE "id" END AS "id", "#,
-                r#"CASE WHEN typeof("name") = 'text' AND instr("name", char(0)) > 0 "#,
+                r#"CASE WHEN typeof("name") = 'text' AND (instr("name", char(0)) > 0 "#,
+                r#"OR "name" LIKE char(1) || 'SABIQL_HEX:%') "#,
                 r#"THEN char(1) || 'SABIQL_HEX:' || hex("name") ELSE "name" END AS "name" "#,
                 r#"FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
             )

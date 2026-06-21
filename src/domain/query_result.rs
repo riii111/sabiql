@@ -18,14 +18,6 @@ impl QueryValue {
     }
 
     #[must_use]
-    pub fn contains_nul(&self) -> bool {
-        match self {
-            Self::Text(value) | Self::SqlLiteral(value) => value.contains('\0'),
-            Self::Null | Self::Blob(_) => false,
-        }
-    }
-
-    #[must_use]
     pub fn display_value(&self) -> String {
         match self {
             Self::Null => "NULL".to_string(),
@@ -302,13 +294,6 @@ mod tests {
 
     mod nul_text {
         use super::*;
-
-        #[test]
-        fn contains_nul_detects_embedded_nul_byte() {
-            assert!(QueryValue::text("a\0bc").contains_nul());
-            assert!(!QueryValue::text("abc").contains_nul());
-            assert!(!QueryValue::Null.contains_nul());
-        }
 
         #[test]
         fn display_value_escapes_embedded_nul_byte() {
