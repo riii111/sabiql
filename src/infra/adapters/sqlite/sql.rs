@@ -64,34 +64,15 @@ fn rows_predicate(pk_pairs_per_row: &[Vec<(String, QueryValue)>]) -> String {
 
 pub(super) fn user_tables_query() -> &'static str {
     r"
-    WITH fts5_tables AS (
-        SELECT name
-        FROM sqlite_master
-        WHERE type = 'table'
-          AND replace(
-                  replace(
-                      replace(lower(sql), char(13), ' '),
-                      char(10), ' '
-                  ),
-                  char(9), ' '
-              ) LIKE 'create%virtual%table%using%fts5%'
-    )
-    SELECT m.name, m.sql
-    FROM sqlite_master m
-    WHERE m.type = 'table'
-      AND m.name NOT LIKE 'sqlite_%'
-      AND NOT EXISTS (
-          SELECT 1
-          FROM fts5_tables f
-          WHERE m.name IN (
-              f.name || '_data',
-              f.name || '_idx',
-              f.name || '_content',
-              f.name || '_docsize',
-              f.name || '_config'
-          )
-      )
-    ORDER BY name
+    SELECT tl.name, m.sql
+    FROM pragma_table_list() AS tl
+    LEFT JOIN sqlite_master AS m
+      ON m.type = 'table'
+     AND m.name = tl.name
+    WHERE tl.schema = 'main'
+      AND tl.type IN ('table', 'virtual')
+      AND tl.name NOT LIKE 'sqlite_%'
+    ORDER BY tl.name
     "
 }
 
@@ -319,8 +300,10 @@ mod tests {
     }
 
     #[test]
-    fn user_tables_query_uses_compatible_schema_table() {
-        assert!(user_tables_query().contains("FROM sqlite_master"));
+    fn user_tables_query_uses_table_list_and_excludes_shadow_tables() {
+        assert!(user_tables_query().contains("pragma_table_list()"));
+        assert!(user_tables_query().contains("tl.schema = 'main'"));
+        assert!(user_tables_query().contains("tl.type IN ('table', 'virtual')"));
         assert!(user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
     }
 
