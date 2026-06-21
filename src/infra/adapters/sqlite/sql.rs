@@ -76,6 +76,43 @@ pub(super) fn user_tables_query() -> &'static str {
     "
 }
 
+pub(super) fn legacy_user_tables_query() -> &'static str {
+    r"
+    WITH fts5_tables AS (
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND replace(
+                  replace(
+                      replace(lower(sql), char(13), ' '),
+                      char(10), ' '
+                  ),
+                  char(9), ' '
+              ) LIKE 'create%virtual%table%using%fts5%'
+    )
+    SELECT m.name, m.sql
+    FROM sqlite_master m
+    WHERE m.type = 'table'
+      AND m.name NOT LIKE 'sqlite_%'
+      AND NOT EXISTS (
+          SELECT 1
+          FROM fts5_tables f
+          WHERE m.name IN (
+              f.name || '_data',
+              f.name || '_idx',
+              f.name || '_content',
+              f.name || '_docsize',
+              f.name || '_config'
+          )
+      )
+    ORDER BY name
+    "
+}
+
+pub(super) fn is_table_list_unavailable(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("pragma_table_list")
+}
+
 pub(super) fn row_count_query(table: &str) -> String {
     format!("SELECT COUNT(*) AS count FROM {}", quote_ident(table))
 }
@@ -305,6 +342,21 @@ mod tests {
         assert!(user_tables_query().contains("tl.schema = 'main'"));
         assert!(user_tables_query().contains("tl.type IN ('table', 'virtual')"));
         assert!(user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
+    }
+
+    #[test]
+    fn legacy_user_tables_query_excludes_fts5_shadow_tables() {
+        assert!(legacy_user_tables_query().contains("FROM sqlite_master"));
+        assert!(legacy_user_tables_query().contains("fts5_tables"));
+        assert!(legacy_user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
+    }
+
+    #[test]
+    fn is_table_list_unavailable_detects_missing_pragma() {
+        assert!(is_table_list_unavailable(
+            "Error: in prepare, no such table: main.pragma_table_list"
+        ));
+        assert!(!is_table_list_unavailable("FOREIGN KEY constraint failed"));
     }
 
     #[test]
