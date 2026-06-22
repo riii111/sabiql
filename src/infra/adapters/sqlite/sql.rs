@@ -5,6 +5,21 @@ use crate::domain::{DatabaseType, QueryValue, Table};
 
 use super::SqliteAdapter;
 
+pub(super) const SQLITE_NUL_TEXT_TRANSPORT_TAG: &str = "SABIQL_HEX:";
+
+pub(super) fn sqlite_nul_text_sentinel() -> String {
+    format!("\x01{SQLITE_NUL_TEXT_TRANSPORT_TAG}")
+}
+
+pub(super) fn encode_bytes_as_sql_hex(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02X}");
+            hex
+        })
+}
+
 fn quote_ident(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
@@ -13,18 +28,27 @@ fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn blob_sql_literal(bytes: &[u8]) -> String {
+    format!("X'{}'", encode_bytes_as_sql_hex(bytes))
+}
+
+fn text_sql_literal(value: &str) -> String {
+    if value.contains('\0') {
+        format!(
+            "CAST(X'{}' AS TEXT)",
+            encode_bytes_as_sql_hex(value.as_bytes())
+        )
+    } else {
+        quote_literal(value)
+    }
+}
+
 fn sql_literal(value: &QueryValue) -> String {
     match value {
         QueryValue::Null => "NULL".to_string(),
-        QueryValue::Text(value) => quote_literal(value),
+        QueryValue::Text(value) => text_sql_literal(value),
         QueryValue::SqlLiteral(value) => value.clone(),
-        QueryValue::Blob(bytes) => {
-            let mut hex = String::with_capacity(bytes.len() * 2);
-            for byte in bytes {
-                let _ = write!(hex, "{byte:02X}");
-            }
-            format!("X'{hex}'")
-        }
+        QueryValue::Blob(bytes) => blob_sql_literal(bytes),
     }
 }
 
@@ -120,12 +144,33 @@ pub(super) fn row_count_query(table: &str) -> String {
     format!("SELECT COUNT(*) AS count FROM {}", quote_ident(table))
 }
 
+pub(super) const PREVIEW_TRANSPORT_UNISTR_PREFIX: &str = "\\u0001SABIQL_HEX:";
+
+pub(super) fn encode_preview_column_expr(column: &str) -> String {
+    let ident = quote_ident(column);
+    format!(
+        "CASE WHEN typeof({ident}) = 'text' \
+         THEN char(1) || '{SQLITE_NUL_TEXT_TRANSPORT_TAG}' || hex({ident}) \
+         ELSE {ident} END AS {ident}"
+    )
+}
+
 pub(super) fn build_preview_query(
     table: &str,
+    columns: &[String],
     order_columns: &[String],
     limit: usize,
     offset: usize,
 ) -> String {
+    let select_list = if columns.is_empty() {
+        "*".to_string()
+    } else {
+        columns
+            .iter()
+            .map(|column| encode_preview_column_expr(column))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
     let order_clause = if order_columns.is_empty() {
         String::new()
     } else {
@@ -138,7 +183,7 @@ pub(super) fn build_preview_query(
     };
 
     format!(
-        "SELECT * FROM {}{} LIMIT {} OFFSET {}",
+        "SELECT {select_list} FROM {}{} LIMIT {} OFFSET {}",
         quote_ident(table),
         order_clause,
         limit,
@@ -400,8 +445,36 @@ mod tests {
     #[test]
     fn build_preview_query_orders_by_primary_key_columns_when_available() {
         assert_eq!(
-            build_preview_query("users", &["id".to_string()], 10, 20),
+            build_preview_query(
+                "users",
+                &["id".to_string(), "name".to_string()],
+                &["id".to_string()],
+                10,
+                20
+            ),
+            concat!(
+                r#"SELECT CASE WHEN typeof("id") = 'text' "#,
+                r#"THEN char(1) || 'SABIQL_HEX:' || hex("id") ELSE "id" END AS "id", "#,
+                r#"CASE WHEN typeof("name") = 'text' "#,
+                r#"THEN char(1) || 'SABIQL_HEX:' || hex("name") ELSE "name" END AS "name" "#,
+                r#"FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
+            )
+        );
+    }
+
+    #[test]
+    fn build_preview_query_falls_back_to_star_without_columns() {
+        assert_eq!(
+            build_preview_query("users", &[], &["id".to_string()], 10, 20),
             r#"SELECT * FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
+        );
+    }
+
+    #[test]
+    fn text_sql_literal_uses_cast_for_embedded_nul_byte() {
+        assert_eq!(
+            sql_literal(&QueryValue::text("a\0bc")),
+            "CAST(X'61006263' AS TEXT)"
         );
     }
 
@@ -597,6 +670,22 @@ mod tests {
             let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
 
             assert_eq!(sql, "DELETE FROM \"users\"\nWHERE \"id\" = X'00FF41';");
+        }
+
+        #[test]
+        fn nul_text_pk_value_uses_cast_literal() {
+            let adapter = SqliteAdapter::new();
+            let rows = vec![vec![(
+                "id".to_string(),
+                QueryValue::Text("a\0bc".to_string()),
+            )]];
+
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"users\"\nWHERE \"id\" = CAST(X'61006263' AS TEXT);"
+            );
         }
     }
 
