@@ -133,6 +133,7 @@ fn next_keyword_from(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     mod rerunnable {
         use super::*;
@@ -191,6 +192,14 @@ mod tests {
             assert!(!is_sqlite_rerunnable_export_query(
                 "PRAGMA foreign_keys = OFF"
             ));
+        }
+
+        #[rstest]
+        #[case::no_space_assignment("PRAGMA foreign_keys=OFF")]
+        #[case::journal_mode("PRAGMA journal_mode=WAL")]
+        #[case::parenthesized_checkpoint("PRAGMA wal_checkpoint(TRUNCATE)")]
+        fn dangerous_pragma_variants_are_not_rerunnable(#[case] sql: &str) {
+            assert!(!is_sqlite_rerunnable_export_query(sql));
         }
     }
 

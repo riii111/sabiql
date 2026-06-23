@@ -4,7 +4,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::domain::{DatabaseType, QuerySource};
 use crate::model::app_state::AppState;
-use crate::model::shared::confirm_dialog::ConfirmIntent;
+use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::sql::sqlite_export::{SqliteExportPlan, sqlite_export_plan};
 use crate::services::AppServices;
@@ -39,7 +39,7 @@ fn dispatch_cached_csv_export(
     run_id: u64,
     file_name: String,
     columns: Vec<String>,
-    rows: Vec<Vec<String>>,
+    values: Vec<Vec<crate::domain::QueryValue>>,
     row_count: Option<usize>,
 ) -> DispatchResult {
     let needs_confirm = row_count.is_some_and(|count| count > LARGE_EXPORT_THRESHOLD);
@@ -57,7 +57,7 @@ fn dispatch_cached_csv_export(
                 export_query: String::new(),
                 file_name,
                 row_count,
-                use_cached_result: true,
+                cached_export: Some(CsvExportCacheSnapshot { columns, values }),
             },
         );
         state.modal.push_mode(InputMode::ConfirmDialog);
@@ -68,7 +68,7 @@ fn dispatch_cached_csv_export(
             run_id,
             file_name,
             columns,
-            rows,
+            values,
             row_count,
         }])
     }
@@ -113,37 +113,38 @@ pub fn reduce_pagination(
 
             let export_query = result.query.clone();
             let file_name = csv_export_file_name(state, result.source);
-            let columns = result.columns.clone();
-            let rows = result.rows().to_vec();
             let row_count = result.row_count();
-            let run_id = state.query.begin_running(now);
 
             if state.session.active_database_type() == Some(DatabaseType::SQLite) {
-                match sqlite_export_plan(&export_query, &columns, row_count) {
+                match sqlite_export_plan(&export_query, &result.columns, row_count) {
+                    SqliteExportPlan::NotExportable { reason } => {
+                        state.messages.set_error_at(reason, now);
+                        return DispatchResult::handled();
+                    }
                     SqliteExportPlan::RerunnableQuery { query } => {
+                        let run_id = state.query.begin_running(now);
                         return dispatch_rerunnable_csv_export(
                             state, dsn, run_id, query, file_name,
                         );
                     }
                     SqliteExportPlan::CachedResult { row_count } => {
+                        let columns = result.columns.clone();
+                        let values = result.values().to_vec();
+                        let run_id = state.query.begin_running(now);
                         return dispatch_cached_csv_export(
                             state,
                             dsn,
                             run_id,
                             file_name,
                             columns,
-                            rows,
+                            values,
                             Some(row_count),
                         );
-                    }
-                    SqliteExportPlan::NotExportable { reason } => {
-                        state.query.mark_idle();
-                        state.messages.set_error_at(reason, now);
-                        return DispatchResult::handled();
                     }
                 }
             }
 
+            let run_id = state.query.begin_running(now);
             dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
         }
 
@@ -177,7 +178,7 @@ pub fn reduce_pagination(
                         export_query: export_query.clone(),
                         file_name: file_name.clone(),
                         row_count: *row_count,
-                        use_cached_result: false,
+                        cached_export: None,
                     },
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);

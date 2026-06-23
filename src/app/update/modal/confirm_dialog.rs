@@ -74,21 +74,18 @@ pub(super) fn reduce_confirm_dialog(
                     export_query,
                     file_name,
                     row_count,
-                    use_cached_result,
+                    cached_export,
                 }) => {
                     if state.session.dsn() == Some(dsn.as_str())
                         && state.query.is_current_run(run_id)
                     {
-                        if use_cached_result {
-                            let Some(result) = state.query.visible_result() else {
-                                return DispatchResult::handled();
-                            };
+                        if let Some(snapshot) = cached_export {
                             DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
                                 dsn,
                                 run_id,
                                 file_name,
-                                columns: result.columns.clone(),
-                                rows: result.rows().to_vec(),
+                                columns: snapshot.columns,
+                                values: snapshot.values,
                                 row_count,
                             }])
                         } else {

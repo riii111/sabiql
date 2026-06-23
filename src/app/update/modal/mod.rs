@@ -538,7 +538,7 @@ mod tests {
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),
-                        use_cached_result: false,
+                        cached_export: None,
                     },
                 );
 
@@ -570,7 +570,7 @@ mod tests {
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),
-                        use_cached_result: false,
+                        cached_export: None,
                     },
                 );
 
@@ -599,7 +599,7 @@ mod tests {
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),
-                        use_cached_result: false,
+                        cached_export: None,
                     },
                 );
 
