@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 use crate::cmd::effect::Effect;
 use crate::domain::ConnectionId;
 use crate::domain::QuerySource;
+use crate::domain::QueryValue;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{DbOperationError, QueryExecutor, QueryHistoryStore};
@@ -92,7 +93,7 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
 fn write_cached_result_csv(
     path: &Path,
     columns: &[String],
-    rows: &[Vec<String>],
+    values: &[Vec<QueryValue>],
 ) -> Result<usize, DbOperationError> {
     let file = std::fs::File::create(path)
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
@@ -100,15 +101,16 @@ fn write_cached_result_csv(
     writer
         .write_record(columns)
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    for row in rows {
+    for row in values {
+        let record: Vec<String> = row.iter().map(QueryValue::csv_field).collect();
         writer
-            .write_record(row)
+            .write_record(&record)
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     }
     writer
         .flush()
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    Ok(rows.len())
+    Ok(values.len())
 }
 
 #[allow(
@@ -417,14 +419,14 @@ pub async fn run(
             run_id,
             file_name,
             columns,
-            rows,
+            values,
             row_count,
         } => {
             let tx = action_tx.clone();
             let path = resolve_export_path(&file_name);
 
             tokio::spawn(async move {
-                match write_cached_result_csv(&path, &columns, &rows) {
+                match write_cached_result_csv(&path, &columns, &values) {
                     Ok(_) => {
                         tx.send(Action::CsvExportSucceeded {
                             dsn,
