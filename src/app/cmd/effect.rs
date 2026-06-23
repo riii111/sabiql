@@ -97,6 +97,14 @@ pub enum Effect {
         row_count: Option<usize>,
         read_only: bool,
     },
+    ExportCsvFromCache {
+        dsn: String,
+        run_id: u64,
+        file_name: String,
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+        row_count: Option<usize>,
+    },
 
     CacheTableInCompletionEngine {
         qualified_name: String,

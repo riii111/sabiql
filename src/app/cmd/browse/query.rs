@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -10,7 +10,7 @@ use crate::domain::ConnectionId;
 use crate::domain::QuerySource;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{QueryExecutor, QueryHistoryStore};
+use crate::ports::outbound::{DbOperationError, QueryExecutor, QueryHistoryStore};
 use crate::update::action::Action;
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -87,6 +87,28 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."));
     dir.join(file_stem)
+}
+
+fn write_cached_result_csv(
+    path: &Path,
+    columns: &[String],
+    rows: &[Vec<String>],
+) -> Result<usize, DbOperationError> {
+    let file = std::fs::File::create(path)
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let mut writer = csv::WriterBuilder::new().from_writer(file);
+    writer
+        .write_record(columns)
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    for row in rows {
+        writer
+            .write_record(row)
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    }
+    writer
+        .flush()
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    Ok(rows.len())
 }
 
 #[allow(
@@ -384,6 +406,39 @@ pub async fn run(
                         })
                         .await
                         .ok();
+                    }
+                }
+            });
+            Ok(())
+        }
+
+        Effect::ExportCsvFromCache {
+            dsn,
+            run_id,
+            file_name,
+            columns,
+            rows,
+            row_count,
+        } => {
+            let tx = action_tx.clone();
+            let path = resolve_export_path(&file_name);
+
+            tokio::spawn(async move {
+                match write_cached_result_csv(&path, &columns, &rows) {
+                    Ok(_) => {
+                        tx.send(Action::CsvExportSucceeded {
+                            dsn,
+                            run_id,
+                            path: path.display().to_string(),
+                            row_count,
+                        })
+                        .await
+                        .ok();
+                    }
+                    Err(error) => {
+                        tx.send(Action::CsvExportFailed { dsn, run_id, error })
+                            .await
+                            .ok();
                     }
                 }
             });

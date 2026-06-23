@@ -74,18 +74,33 @@ pub(super) fn reduce_confirm_dialog(
                     export_query,
                     file_name,
                     row_count,
+                    use_cached_result,
                 }) => {
                     if state.session.dsn() == Some(dsn.as_str())
                         && state.query.is_current_run(run_id)
                     {
-                        DispatchResult::handled_with(vec![Effect::ExportCsv {
-                            dsn,
-                            run_id,
-                            query: export_query,
-                            file_name,
-                            row_count,
-                            read_only: state.session.is_read_only(),
-                        }])
+                        if use_cached_result {
+                            let Some(result) = state.query.visible_result() else {
+                                return DispatchResult::handled();
+                            };
+                            DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
+                                dsn,
+                                run_id,
+                                file_name,
+                                columns: result.columns.clone(),
+                                rows: result.rows().to_vec(),
+                                row_count,
+                            }])
+                        } else {
+                            DispatchResult::handled_with(vec![Effect::ExportCsv {
+                                dsn,
+                                run_id,
+                                query: export_query,
+                                file_name,
+                                row_count,
+                                read_only: state.session.is_read_only(),
+                            }])
+                        }
                     } else {
                         DispatchResult::handled()
                     }

@@ -202,7 +202,8 @@ impl EffectRunner {
             | Effect::ExecuteExplain { .. }
             | Effect::ExecuteWrite { .. }
             | Effect::CountRowsForExport { .. }
-            | Effect::ExportCsv { .. }) => {
+            | Effect::ExportCsv { .. }
+            | Effect::ExportCsvFromCache { .. }) => {
                 cmd_browse::query::run(
                     e,
                     &self.action_tx,

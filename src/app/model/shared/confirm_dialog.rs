@@ -14,6 +14,7 @@ pub enum ConfirmIntent {
         export_query: String,
         file_name: String,
         row_count: Option<usize>,
+        use_cached_result: bool,
     },
     DisableReadOnly,
 }

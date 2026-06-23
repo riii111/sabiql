@@ -2,13 +2,96 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::QuerySource;
+use crate::domain::{DatabaseType, QuerySource};
 use crate::model::app_state::AppState;
+use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
+use crate::policy::sql::sqlite_export::{SqliteExportPlan, sqlite_export_plan};
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
+
+const LARGE_EXPORT_THRESHOLD: usize = 100_000;
+
+fn csv_export_file_name(state: &AppState, source: QuerySource) -> String {
+    match source {
+        QuerySource::Preview => {
+            let table = state.query.pagination.table();
+            table
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect()
+        }
+        QuerySource::Adhoc => "adhoc".to_string(),
+    }
+}
+
+fn dispatch_cached_csv_export(
+    state: &mut AppState,
+    dsn: String,
+    run_id: u64,
+    file_name: String,
+    columns: Vec<String>,
+    rows: Vec<Vec<String>>,
+    row_count: Option<usize>,
+) -> DispatchResult {
+    let needs_confirm = row_count.is_some_and(|count| count > LARGE_EXPORT_THRESHOLD);
+    if needs_confirm {
+        let msg = match row_count {
+            Some(n) => format!("Export {n} rows to CSV? This may take a while."),
+            None => "Export to CSV?".to_string(),
+        };
+        state.confirm_dialog.open(
+            "Confirm CSV Export",
+            msg,
+            ConfirmIntent::CsvExport {
+                dsn,
+                run_id,
+                export_query: String::new(),
+                file_name,
+                row_count,
+                use_cached_result: true,
+            },
+        );
+        state.modal.push_mode(InputMode::ConfirmDialog);
+        DispatchResult::handled()
+    } else {
+        DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
+            dsn,
+            run_id,
+            file_name,
+            columns,
+            rows,
+            row_count,
+        }])
+    }
+}
+
+fn dispatch_rerunnable_csv_export(
+    state: &AppState,
+    dsn: String,
+    run_id: u64,
+    export_query: String,
+    file_name: String,
+) -> DispatchResult {
+    let stripped = export_query.trim_end().trim_end_matches(';').to_string();
+    let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
+    DispatchResult::handled_with(vec![Effect::CountRowsForExport {
+        dsn,
+        run_id,
+        count_query,
+        export_query,
+        file_name,
+        read_only: state.session.is_read_only(),
+    }])
+}
 
 pub fn reduce_pagination(
     state: &mut AppState,
@@ -29,35 +112,39 @@ pub fn reduce_pagination(
             };
 
             let export_query = result.query.clone();
-            let file_name = match result.source {
-                QuerySource::Preview => {
-                    let table = state.query.pagination.table();
-                    table
-                        .chars()
-                        .map(|c| {
-                            if c.is_ascii_alphanumeric() || c == '_' {
-                                c
-                            } else {
-                                '_'
-                            }
-                        })
-                        .collect()
-                }
-                QuerySource::Adhoc => "adhoc".to_string(),
-            };
-
-            let stripped = export_query.trim_end().trim_end_matches(';').to_string();
-            let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
+            let file_name = csv_export_file_name(state, result.source);
+            let columns = result.columns.clone();
+            let rows = result.rows().to_vec();
+            let row_count = result.row_count();
             let run_id = state.query.begin_running(now);
 
-            DispatchResult::handled_with(vec![Effect::CountRowsForExport {
-                dsn,
-                run_id,
-                count_query,
-                export_query,
-                file_name,
-                read_only: state.session.is_read_only(),
-            }])
+            if state.session.active_database_type() == Some(DatabaseType::SQLite) {
+                match sqlite_export_plan(&export_query, &columns, row_count) {
+                    SqliteExportPlan::RerunnableQuery { query } => {
+                        return dispatch_rerunnable_csv_export(
+                            state, dsn, run_id, query, file_name,
+                        );
+                    }
+                    SqliteExportPlan::CachedResult { row_count } => {
+                        return dispatch_cached_csv_export(
+                            state,
+                            dsn,
+                            run_id,
+                            file_name,
+                            columns,
+                            rows,
+                            Some(row_count),
+                        );
+                    }
+                    SqliteExportPlan::NotExportable { reason } => {
+                        state.query.mark_idle();
+                        state.messages.set_error_at(reason, now);
+                        return DispatchResult::handled();
+                    }
+                }
+            }
+
+            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
         }
 
         Action::CsvExportRowsCounted {
@@ -70,8 +157,6 @@ pub fn reduce_pagination(
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
-
-            const LARGE_EXPORT_THRESHOLD: usize = 100_000;
 
             let needs_confirm = match row_count {
                 Some(n) => *n > LARGE_EXPORT_THRESHOLD,
@@ -86,12 +171,13 @@ pub fn reduce_pagination(
                 state.confirm_dialog.open(
                     "Confirm CSV Export",
                     msg,
-                    crate::model::shared::confirm_dialog::ConfirmIntent::CsvExport {
+                    ConfirmIntent::CsvExport {
                         dsn: dsn.clone(),
                         run_id: *run_id,
                         export_query: export_query.clone(),
                         file_name: file_name.clone(),
                         row_count: *row_count,
+                        use_cached_result: false,
                     },
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
@@ -702,6 +788,99 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
+        }
+
+        mod sqlite {
+            use super::*;
+            use crate::update::test_support::activate_sqlite_connection;
+
+            fn sqlite_state() -> AppState {
+                let mut state = AppState::new("test_project".to_string());
+                activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+                state
+            }
+
+            #[test]
+            fn write_only_query_shows_not_exportable_error() {
+                let mut state = sqlite_state();
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success(
+                        "INSERT INTO users(id) VALUES (1)".to_string(),
+                        vec![],
+                        vec![],
+                        1,
+                        QuerySource::Adhoc,
+                    )));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                assert!(effects.is_empty());
+                assert!(
+                    state
+                        .messages
+                        .last_error
+                        .as_deref()
+                        .unwrap()
+                        .contains("Cannot export")
+                );
+            }
+
+            #[test]
+            fn mixed_query_exports_cached_rows_without_count_effect() {
+                let mut state = sqlite_state();
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success(
+                        "INSERT INTO users(id) VALUES (1); SELECT id FROM users".to_string(),
+                        vec!["id".to_string()],
+                        vec![vec!["1".to_string()]],
+                        1,
+                        QuerySource::Adhoc,
+                    )));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(&effects[0], Effect::ExportCsvFromCache { .. }));
+            }
+
+            #[test]
+            fn select_still_uses_count_effect() {
+                let mut state = sqlite_state();
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success(
+                        "SELECT id FROM users".to_string(),
+                        vec!["id".to_string()],
+                        vec![vec!["1".to_string()]],
+                        1,
+                        QuerySource::Adhoc,
+                    )));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(&effects[0], Effect::CountRowsForExport { .. }));
+            }
         }
     }
 }
