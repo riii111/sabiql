@@ -731,6 +731,78 @@ fn is_write_statement(statement: &str) -> bool {
     )
 }
 
+fn is_rerunnable_sqlite_export_query(query: &str) -> bool {
+    split_sqlite_statements(query)
+        .iter()
+        .all(|statement| is_rerunnable_sqlite_export_statement(statement))
+}
+
+fn is_rerunnable_sqlite_export_statement(statement: &str) -> bool {
+    if is_write_statement(statement)
+        || is_dml_statement(statement)
+        || is_transaction_control(statement)
+    {
+        return false;
+    }
+    match first_keyword(statement).to_ascii_uppercase().as_str() {
+        "SELECT" | "EXPLAIN" | "VALUES" | "WITH" => true,
+        "PRAGMA" => is_read_only_sqlite_export_pragma(statement),
+        _ => false,
+    }
+}
+
+fn is_read_only_sqlite_export_pragma(statement: &str) -> bool {
+    let lower = statement.to_lowercase();
+    let name = lower
+        .split_whitespace()
+        .nth(1)
+        .and_then(|token| token.split('.').next_back())
+        .unwrap_or("");
+    let has_assignment = lower.contains('=');
+    let has_parenthesized_value = lower.contains('(');
+    let side_effect_without_assignment = has_parenthesized_value
+        && !matches!(
+            name,
+            "table_info"
+                | "index_info"
+                | "index_list"
+                | "database_list"
+                | "compile_options"
+                | "function_list"
+                | "module_list"
+                | "collation_list"
+                | "integrity_check"
+                | "quick_check"
+                | "column_info"
+        )
+        || matches!(name, "optimize" | "incremental_vacuum" | "wal_checkpoint");
+    if !has_assignment && !side_effect_without_assignment {
+        return true;
+    }
+    !(matches!(
+        name,
+        "writable_schema"
+            | "journal_mode"
+            | "locking_mode"
+            | "optimize"
+            | "incremental_vacuum"
+            | "wal_checkpoint"
+    ) || (name == "foreign_keys"
+        && lower.split('=').nth(1).is_some_and(|value| {
+            matches!(
+                value.trim(),
+                "off" | "0" | "false" | "OFF" | "FALSE" | "Off" | "False"
+            )
+        })))
+}
+
+fn sqlite_export_not_rerunnable_error() -> DbOperationError {
+    DbOperationError::UnsupportedOperation(
+        "Cannot re-execute this query for CSV export because it contains write or DDL statements"
+            .to_string(),
+    )
+}
+
 fn should_wrap_transaction(query: &str) -> bool {
     let statements = split_sqlite_statements(query);
     statements.len() > 1
@@ -1692,6 +1764,9 @@ impl QueryExecutor for SqliteAdapter {
         path: &std::path::Path,
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
+        if !is_rerunnable_sqlite_export_query(query) {
+            return Err(sqlite_export_not_rerunnable_error());
+        }
         self.cli
             .export_csv(Self::path_from_dsn(dsn)?, query, path, read_only)
             .await
@@ -3047,6 +3122,24 @@ mod tests {
 
             assert_eq!(row_count, 2);
             assert_eq!(csv, "id,name\n1,a\n2,b\n");
+        }
+
+        #[tokio::test]
+        async fn export_to_csv_rejects_write_sql() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let path = std::env::temp_dir().join("sabiql_write_export.csv");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .export_to_csv(&dsn, "INSERT INTO users(id) VALUES (1)", &path, false)
+                .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::UnsupportedOperation(message))
+                if message.contains("write or DDL")
+            ));
+            assert!(!path.exists());
         }
 
         #[tokio::test]
