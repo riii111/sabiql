@@ -1,11 +1,12 @@
 use std::time::Instant;
 
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::sql_editor::modal::SqlModalTab;
-use crate::policy::write::sql_risk::split_statements;
+use crate::policy::write::sql_risk::split_statements_for_database;
 
-pub(super) fn is_multi_statement(content: &str) -> bool {
-    split_statements(content).len() > 1
+pub(super) fn is_multi_statement(database_type: DatabaseType, content: &str) -> bool {
+    split_statements_for_database(database_type, content).len() > 1
 }
 
 pub(super) fn mark_explain_unavailable(state: &mut AppState) {

@@ -320,6 +320,37 @@ pub(crate) fn skip_double_quoted_identifier(
     Some(cursor)
 }
 
+pub(crate) fn skip_sqlite_quoted_identifier(
+    chars: &[(usize, char)],
+    i: usize,
+    ch: char,
+) -> Option<usize> {
+    let close = match ch {
+        '`' => '`',
+        '[' => ']',
+        _ => return None,
+    };
+    let mut cursor = i + 1;
+    while cursor < chars.len() {
+        if chars[cursor].1 == close {
+            if close == '`' && next_char_is(chars, cursor, close) {
+                cursor += 2;
+            } else {
+                cursor += 1;
+                break;
+            }
+        } else {
+            cursor += 1;
+        }
+    }
+    Some(cursor)
+}
+
+fn skip_quoted_identifier(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
+    skip_double_quoted_identifier(chars, i, ch)
+        .or_else(|| skip_sqlite_quoted_identifier(chars, i, ch))
+}
+
 pub(crate) fn skip_dollar_quoted_string(
     lower: &str,
     chars: &[(usize, char)],
@@ -413,7 +444,7 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
             i += 1;
             continue;
         }
-        if let Some(next_i) = skip_double_quoted_identifier(chars, i, ch) {
+        if let Some(next_i) = skip_quoted_identifier(chars, i, ch) {
             i = next_i;
             continue;
         }
@@ -565,7 +596,7 @@ fn scan_for_where(lower: &str, chars: &[(usize, char)], start: usize) -> bool {
             i += 1;
             continue;
         }
-        if let Some(next_i) = skip_double_quoted_identifier(chars, i, ch) {
+        if let Some(next_i) = skip_quoted_identifier(chars, i, ch) {
             i = next_i;
             continue;
         }
@@ -624,9 +655,9 @@ pub(crate) fn collect_top_level_tokens(
             continue;
         }
 
-        if ch == '"' {
+        if matches!(ch, '"' | '`' | '[') {
             let start_i = i;
-            if let Some(next_i) = skip_double_quoted_identifier(chars, i, ch) {
+            if let Some(next_i) = skip_quoted_identifier(chars, i, ch) {
                 if depth == 0 {
                     let start_byte = chars[start_i].0;
                     let end_byte = if next_i < chars.len() {
@@ -678,8 +709,8 @@ pub(crate) fn collect_top_level_tokens(
             i += 1;
             if i < chars.len() {
                 let (next_byte, next_ch) = chars[i];
-                if next_ch == '"' {
-                    if let Some(next_i) = skip_double_quoted_identifier(chars, i, next_ch) {
+                if matches!(next_ch, '"' | '`' | '[') {
+                    if let Some(next_i) = skip_quoted_identifier(chars, i, next_ch) {
                         let end_byte = if next_i < chars.len() {
                             chars[next_i].0
                         } else {
@@ -727,13 +758,18 @@ fn unquote_simple(name: &str) -> String {
 }
 
 fn find_unquoted_dot(name: &str) -> Option<usize> {
-    let mut in_quote = false;
-    for (i, ch) in name.char_indices() {
-        if ch == '"' {
-            in_quote = !in_quote;
-        } else if ch == '.' && !in_quote {
-            return Some(i);
+    let chars: Vec<(usize, char)> = name.char_indices().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+        if let Some(next_i) = skip_quoted_identifier(&chars, i, ch) {
+            i = next_i;
+            continue;
         }
+        if ch == '.' {
+            return Some(byte_pos);
+        }
+        i += 1;
     }
     None
 }
@@ -741,6 +777,10 @@ fn find_unquoted_dot(name: &str) -> Option<usize> {
 fn unquote_single_ident(s: &str) -> String {
     if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
         s[1..s.len() - 1].replace("\"\"", "\"")
+    } else if s.starts_with('`') && s.ends_with('`') && s.len() >= 2 {
+        s[1..s.len() - 1].replace("``", "`")
+    } else if s.starts_with('[') && s.ends_with(']') && s.len() >= 2 {
+        s[1..s.len() - 1].to_string()
     } else {
         s.to_string()
     }
@@ -1241,6 +1281,31 @@ mod tests {
             "UPDATE \"public\".\"MyTable\" SET x = 1",
             StatementKind::Update { has_where: false },
             Some("public.MyTable")
+        )]
+        #[case::delete_backtick_quoted(
+            "DELETE FROM `my table`",
+            StatementKind::Delete { has_where: false },
+            Some("my table")
+        )]
+        #[case::update_bracket_quoted(
+            "UPDATE [select] SET x = 1",
+            StatementKind::Update { has_where: false },
+            Some("select")
+        )]
+        #[case::drop_table_backtick_qualified(
+            "DROP TABLE main.`my.table`",
+            StatementKind::Drop,
+            Some("main.my.table")
+        )]
+        #[case::drop_table_bracket_quoted_dot(
+            "DROP TABLE [main.users]",
+            StatementKind::Drop,
+            Some("main.users")
+        )]
+        #[case::drop_table_bracket_multiple(
+            "DROP TABLE [main.users], other",
+            StatementKind::Drop,
+            None
         )]
         #[case::drop_index("DROP INDEX my_index", StatementKind::Drop, Some("my_index"))]
         #[case::drop_index_if_exists(

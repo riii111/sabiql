@@ -34,12 +34,12 @@ pub(super) fn reduce_request(
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return DispatchResult::handled();
             }
-            if is_multi_statement(&content) {
+            let database_type = state.session.active_database_type_or_default();
+            if is_multi_statement(database_type, &content) {
                 show_explain_error_on_plan(state, "EXPLAIN does not support multiple statements");
                 return DispatchResult::handled();
             }
 
-            let database_type = state.session.active_database_type_or_default();
             let Some(query) = services
                 .sql_dialect
                 .build_explain_sql(database_type, &content)

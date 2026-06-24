@@ -6,7 +6,7 @@ use crate::model::shared::text_input::TextInputLike;
 use crate::policy::sql::statement_classifier;
 use crate::policy::write::sql_risk::{
     ConfirmationType, MultiStatementDecision, evaluate_multi_statement_for_database,
-    sqlite_specific_label,
+    split_statements_for_database, sqlite_specific_label,
 };
 use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
 use crate::update::action::Action;
@@ -15,10 +15,9 @@ use crate::update::dispatch_result::DispatchResult;
 use super::helpers::start_adhoc_if_connected;
 
 fn multi_statement_label(database_type: DatabaseType, sql: &str) -> &'static str {
-    use crate::policy::write::sql_risk::split_statements;
     let mut worst_level = RiskLevel::Low;
     let mut worst_label = "SQL";
-    for stmt in split_statements(sql) {
+    for stmt in split_statements_for_database(database_type, sql) {
         let sqlite_label = (database_type == DatabaseType::SQLite)
             .then(|| sqlite_specific_label(&stmt))
             .flatten();

@@ -36,7 +36,8 @@ pub(super) fn reduce_analyze(
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return DispatchResult::handled();
             }
-            if is_multi_statement(&content) {
+            let database_type = state.session.active_database_type_or_default();
+            if is_multi_statement(database_type, &content) {
                 show_explain_error_on_plan(
                     state,
                     "EXPLAIN ANALYZE does not support multiple statements",
@@ -44,7 +45,6 @@ pub(super) fn reduce_analyze(
                 return DispatchResult::handled();
             }
             let kind = statement_classifier::classify(&content);
-            let database_type = state.session.active_database_type_or_default();
             let risk = evaluate_sql_risk_for_database(database_type, &kind, &content);
 
             if state.session.is_read_only() && !risk.read_only_allowed {
