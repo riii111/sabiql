@@ -68,36 +68,46 @@ pub(super) fn reduce_confirm_dialog(
                     state.session.disable_read_only();
                     DispatchResult::handled()
                 }
-                Some(ConfirmIntent::CsvExport {
+                Some(ConfirmIntent::CsvExportRerunnable {
                     dsn,
                     run_id,
                     export_query,
                     file_name,
                     row_count,
-                    cached_export,
                 }) => {
                     if state.session.dsn() == Some(dsn.as_str())
                         && state.query.is_current_run(run_id)
                     {
-                        if let Some(snapshot) = cached_export {
-                            DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
-                                dsn,
-                                run_id,
-                                file_name,
-                                columns: snapshot.columns,
-                                values: snapshot.values,
-                                row_count,
-                            }])
-                        } else {
-                            DispatchResult::handled_with(vec![Effect::ExportCsv {
-                                dsn,
-                                run_id,
-                                query: export_query,
-                                file_name,
-                                row_count,
-                                read_only: state.session.is_read_only(),
-                            }])
-                        }
+                        DispatchResult::handled_with(vec![Effect::ExportCsv {
+                            dsn,
+                            run_id,
+                            query: export_query,
+                            file_name,
+                            row_count,
+                            read_only: state.session.is_read_only(),
+                        }])
+                    } else {
+                        DispatchResult::handled()
+                    }
+                }
+                Some(ConfirmIntent::CsvExportCached {
+                    dsn,
+                    run_id,
+                    file_name,
+                    row_count,
+                    snapshot,
+                }) => {
+                    if state.session.dsn() == Some(dsn.as_str())
+                        && state.query.is_current_run(run_id)
+                    {
+                        DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
+                            dsn,
+                            run_id,
+                            file_name,
+                            columns: snapshot.columns,
+                            values: snapshot.values,
+                            row_count,
+                        }])
                     } else {
                         DispatchResult::handled()
                     }

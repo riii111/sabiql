@@ -532,13 +532,12 @@ mod tests {
                 state.confirm_dialog.open(
                     "",
                     "",
-                    ConfirmIntent::CsvExport {
+                    ConfirmIntent::CsvExportRerunnable {
                         dsn: "postgres://localhost/test".to_string(),
                         run_id: 1,
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),
-                        cached_export: None,
                     },
                 );
 
@@ -564,13 +563,12 @@ mod tests {
                 state.confirm_dialog.open(
                     "",
                     "",
-                    ConfirmIntent::CsvExport {
+                    ConfirmIntent::CsvExportRerunnable {
                         dsn: "postgres://localhost/stale".to_string(),
                         run_id: 1,
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),
-                        cached_export: None,
                     },
                 );
 
@@ -593,13 +591,12 @@ mod tests {
                 state.confirm_dialog.open(
                     "",
                     "",
-                    ConfirmIntent::CsvExport {
+                    ConfirmIntent::CsvExportRerunnable {
                         dsn: "postgres://localhost/test".to_string(),
                         run_id: 2,
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),
-                        cached_export: None,
                     },
                 );
 

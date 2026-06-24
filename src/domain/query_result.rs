@@ -47,22 +47,6 @@ impl QueryValue {
             Self::Null | Self::Blob(_) => None,
         }
     }
-
-    #[must_use]
-    pub fn csv_field(&self) -> String {
-        match self {
-            Self::Null => String::new(),
-            Self::Text(value) | Self::SqlLiteral(value) => value.clone(),
-            Self::Blob(bytes) => {
-                let mut hex = String::with_capacity(bytes.len() * 2);
-                for byte in bytes {
-                    use std::fmt::Write as _;
-                    let _ = write!(hex, "{byte:02X}");
-                }
-                hex
-            }
-        }
-    }
 }
 
 fn escape_display_text(value: &str) -> String {
@@ -314,33 +298,6 @@ mod tests {
         #[test]
         fn display_value_escapes_embedded_nul_byte() {
             assert_eq!(QueryValue::text("a\0bc").display_value(), "a\\0bc");
-        }
-
-        #[test]
-        fn csv_field_preserves_embedded_nul_byte() {
-            assert_eq!(QueryValue::text("a\0bc").csv_field(), "a\0bc");
-        }
-    }
-
-    mod csv_field {
-        use super::*;
-
-        #[test]
-        fn null_is_empty_field() {
-            assert_eq!(QueryValue::Null.csv_field(), "");
-        }
-
-        #[test]
-        fn blob_is_uppercase_hex() {
-            assert_eq!(QueryValue::Blob(vec![0xAB, 0xCD]).csv_field(), "ABCD");
-        }
-
-        #[test]
-        fn text_is_not_display_form() {
-            assert_ne!(
-                QueryValue::Null.csv_field(),
-                QueryValue::Null.display_value()
-            );
         }
     }
 }

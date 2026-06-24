@@ -90,6 +90,21 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
     dir.join(file_stem)
 }
 
+fn cached_csv_cell(value: &QueryValue) -> String {
+    match value {
+        QueryValue::Null => String::new(),
+        QueryValue::Text(text) | QueryValue::SqlLiteral(text) => text.clone(),
+        QueryValue::Blob(bytes) => {
+            let mut hex = String::with_capacity(bytes.len() * 2);
+            for byte in bytes {
+                use std::fmt::Write as _;
+                let _ = write!(hex, "{byte:02X}");
+            }
+            hex
+        }
+    }
+}
+
 fn write_cached_result_csv(
     path: &Path,
     columns: &[String],
@@ -102,7 +117,7 @@ fn write_cached_result_csv(
         .write_record(columns)
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     for row in values {
-        let record: Vec<String> = row.iter().map(QueryValue::csv_field).collect();
+        let record: Vec<String> = row.iter().map(cached_csv_cell).collect();
         writer
             .write_record(&record)
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
@@ -499,6 +514,34 @@ mod tests {
                 Path::new(file_name)
                     .extension()
                     .is_some_and(|ext: &std::ffi::OsStr| ext.eq_ignore_ascii_case("csv"))
+            );
+        }
+    }
+
+    mod cached_csv_cell_tests {
+        use super::super::cached_csv_cell;
+        use crate::domain::QueryValue;
+
+        #[test]
+        fn null_is_empty_field() {
+            assert_eq!(cached_csv_cell(&QueryValue::Null), "");
+        }
+
+        #[test]
+        fn blob_is_uppercase_hex() {
+            assert_eq!(cached_csv_cell(&QueryValue::Blob(vec![0xAB, 0xCD])), "ABCD");
+        }
+
+        #[test]
+        fn text_preserves_embedded_nul_byte() {
+            assert_eq!(cached_csv_cell(&QueryValue::text("a\0bc")), "a\0bc");
+        }
+
+        #[test]
+        fn text_is_not_display_form() {
+            assert_ne!(
+                cached_csv_cell(&QueryValue::Null),
+                QueryValue::Null.display_value()
             );
         }
     }

@@ -14,13 +14,19 @@ pub enum ConfirmIntent {
         sql: String,
         blocked: bool,
     },
-    CsvExport {
+    CsvExportRerunnable {
         dsn: String,
         run_id: u64,
         export_query: String,
         file_name: String,
         row_count: Option<usize>,
-        cached_export: Option<CsvExportCacheSnapshot>,
+    },
+    CsvExportCached {
+        dsn: String,
+        run_id: u64,
+        file_name: String,
+        row_count: Option<usize>,
+        snapshot: CsvExportCacheSnapshot,
     },
     DisableReadOnly,
 }

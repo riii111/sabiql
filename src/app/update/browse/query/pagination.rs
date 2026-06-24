@@ -51,13 +51,12 @@ fn dispatch_cached_csv_export(
         state.confirm_dialog.open(
             "Confirm CSV Export",
             msg,
-            ConfirmIntent::CsvExport {
+            ConfirmIntent::CsvExportCached {
                 dsn,
                 run_id,
-                export_query: String::new(),
                 file_name,
                 row_count,
-                cached_export: Some(CsvExportCacheSnapshot { columns, values }),
+                snapshot: CsvExportCacheSnapshot { columns, values },
             },
         );
         state.modal.push_mode(InputMode::ConfirmDialog);
@@ -172,13 +171,12 @@ pub fn reduce_pagination(
                 state.confirm_dialog.open(
                     "Confirm CSV Export",
                     msg,
-                    ConfirmIntent::CsvExport {
+                    ConfirmIntent::CsvExportRerunnable {
                         dsn: dsn.clone(),
                         run_id: *run_id,
                         export_query: export_query.clone(),
                         file_name: file_name.clone(),
                         row_count: *row_count,
-                        cached_export: None,
                     },
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
