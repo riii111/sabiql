@@ -3,7 +3,7 @@ use crate::domain::DatabaseType;
 use crate::policy::sql::statement_classifier::{
     StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
     extract_target_name, first_keyword, skip_block_comment, skip_dollar_quoted_string,
-    skip_double_quoted_identifier, skip_line_comment,
+    skip_double_quoted_identifier, skip_line_comment, statement_after_leading_with,
 };
 
 // Why the statement cannot be confirmed via typed target name.
@@ -398,7 +398,7 @@ fn high_acknowledge_keyword(keyword: &str) -> SqlRiskDecision {
 }
 
 fn sqlite_replace_target(sql: &str) -> Option<String> {
-    let trimmed = sql.trim();
+    let trimmed = statement_after_leading_with(sql);
     let tokens = top_level_token_pairs(trimmed);
     let lowers: Vec<String> = tokens
         .iter()
@@ -442,7 +442,8 @@ fn top_level_token_lowers(sql: &str) -> Vec<String> {
 }
 
 pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
-    let tokens = top_level_token_lowers(sql);
+    let effective = statement_after_leading_with(sql);
+    let tokens = top_level_token_lowers(effective);
     match tokens.first().map(String::as_str)? {
         "pragma" => Some("PRAGMA"),
         "attach" => Some("ATTACH"),
@@ -451,7 +452,7 @@ pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
         "reindex" => Some("REINDEX"),
         "analyze" => Some("ANALYZE"),
         "replace" => Some("REPLACE"),
-        "insert" if sqlite_replace_target(sql).is_some() => Some("REPLACE"),
+        "insert" if sqlite_replace_target(effective).is_some() => Some("REPLACE"),
         _ => None,
     }
 }
@@ -660,13 +661,14 @@ fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
 }
 
 fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
-    let tokens = top_level_token_lowers(sql);
+    let effective = statement_after_leading_with(sql);
+    let tokens = top_level_token_lowers(effective);
     match tokens.first().map(String::as_str)? {
-        "pragma" => sqlite_pragma_risk(sql),
+        "pragma" => sqlite_pragma_risk(effective),
         "attach" | "detach" | "vacuum" | "reindex" | "analyze" => {
             Some(high_acknowledge_keyword(&tokens[0]))
         }
-        "replace" => sqlite_replace_target(sql).map_or_else(
+        "replace" => sqlite_replace_target(effective).map_or_else(
             || Some(high_acknowledge_label("REPLACE")),
             |target| {
                 Some(SqlRiskDecision {
@@ -676,7 +678,7 @@ fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
                 })
             },
         ),
-        "insert" => sqlite_replace_target(sql).map(|target| SqlRiskDecision {
+        "insert" => sqlite_replace_target(effective).map(|target| SqlRiskDecision {
             risk_level: RiskLevel::High,
             confirmation: ConfirmationType::TableNameInput { target },
             read_only_allowed: false,
@@ -988,7 +990,23 @@ mod tests {
 
         #[rstest]
         #[case::insert_or_replace("INSERT OR REPLACE INTO users(id) VALUES (1)", "users")]
+        #[case::with_insert_or_replace(
+            "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+            "users"
+        )]
+        #[case::with_recursive_insert_or_replace(
+            "WITH RECURSIVE payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+            "users"
+        )]
+        #[case::with_materialized_insert_or_replace(
+            "WITH payload(id) AS MATERIALIZED (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+            "users"
+        )]
         #[case::replace("REPLACE INTO users(id) VALUES (1)", "users")]
+        #[case::with_replace(
+            "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload",
+            "users"
+        )]
         #[case::bracket_quoted("REPLACE INTO [my table](id) VALUES (1)", "my table")]
         #[case::backtick_quoted("REPLACE INTO `my table`(id) VALUES (1)", "my table")]
         #[case::double_quoted(r#"REPLACE INTO "my table"(id) VALUES (1)"#, "my table")]
@@ -1019,6 +1037,13 @@ mod tests {
         #[test]
         fn sqlite_specific_label_detects_commented_insert_or_replace() {
             let sql = "-- upsert\nINSERT OR REPLACE INTO users(id) VALUES (1)";
+
+            assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
+        }
+
+        #[test]
+        fn sqlite_specific_label_detects_with_insert_or_replace() {
+            let sql = "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload";
 
             assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
         }

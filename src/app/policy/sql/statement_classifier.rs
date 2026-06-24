@@ -20,7 +20,9 @@ pub enum StatementKind {
 }
 
 pub fn classify(sql: &str) -> StatementKind {
-    let lower = sql.trim().to_lowercase();
+    let trimmed = sql.trim();
+    let statement = statement_after_leading_with(trimmed);
+    let lower = statement.to_lowercase();
     if lower.is_empty() {
         return StatementKind::Other;
     }
@@ -46,8 +48,48 @@ pub fn first_keyword(sql: &str) -> Option<String> {
         .map(|(_, token)| token.to_uppercase())
 }
 
+pub(crate) fn statement_after_leading_with(sql: &str) -> &str {
+    let trimmed = sql.trim();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    let tokens = collect_top_level_tokens(trimmed, &chars);
+    let lowers: Vec<String> = tokens
+        .iter()
+        .map(|(_, token)| token.to_lowercase())
+        .collect();
+    if lowers.first().map(String::as_str) != Some("with") {
+        return trimmed;
+    }
+
+    let mut cursor = 1;
+    if lowers.get(cursor).map(String::as_str) == Some("recursive") {
+        cursor += 1;
+    }
+
+    loop {
+        cursor += 1;
+        if lowers.get(cursor).map(String::as_str) != Some("as") {
+            return trimmed;
+        }
+        cursor += 1;
+        if lowers.get(cursor).map(String::as_str) == Some("not") {
+            cursor += 1;
+            if lowers.get(cursor).map(String::as_str) == Some("materialized") {
+                cursor += 1;
+            }
+        } else if lowers.get(cursor).map(String::as_str) == Some("materialized") {
+            cursor += 1;
+        }
+
+        match lowers.get(cursor).map(String::as_str) {
+            Some(",") => cursor += 1,
+            Some(_) => return &trimmed[tokens[cursor].0..],
+            None => return trimmed,
+        }
+    }
+}
+
 pub fn extract_target_name(sql: &str, kind: &StatementKind) -> Option<String> {
-    let original_trimmed = sql.trim();
+    let original_trimmed = statement_after_leading_with(sql);
     // Avoids byte-length mismatch when Unicode identifiers change size under case folding.
     let chars: Vec<(usize, char)> = original_trimmed.char_indices().collect();
 
@@ -196,7 +238,6 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
     let mut i = 0;
     let mut depth: i32 = 0;
     let mut in_string = false;
-    let mut in_cte = false;
     let mut is_explain = false;
     let mut has_analyze = false;
     let mut kind: Option<StatementKind> = None;
@@ -283,15 +324,7 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
                 return StatementKind::Other;
             }
 
-            if kind.is_none() && is_keyword(rest, "with") {
-                in_cte = true;
-                i += 1;
-                continue;
-            }
-
-            // CTE: keep overriding with each top-level keyword (last one wins).
-            // Non-CTE: first keyword determines the kind.
-            if in_cte || kind.is_none() {
+            if kind.is_none() {
                 if let Some(k) = match_keyword(rest) {
                     kind = Some(k);
                     if matches!(
@@ -305,7 +338,7 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
                             other => other,
                         });
                     }
-                } else if !in_cte {
+                } else {
                     kind = Some(StatementKind::Unsupported);
                 }
             }
@@ -758,6 +791,10 @@ mod tests {
         }
 
         #[rstest]
+        #[case::cte_insert(
+            "WITH cte AS (SELECT 1) INSERT INTO users(id) SELECT * FROM cte",
+            StatementKind::Insert
+        )]
         #[case::cte_update(
             "WITH cte AS (SELECT 1) UPDATE users SET name = 'x'",
             StatementKind::Update { has_where: false }
