@@ -361,6 +361,83 @@ mod tests {
             state.modal.push_mode(InputMode::ConfirmDialog);
         }
 
+        const CSV_TEST_DSN: &str = "postgres://localhost/test";
+        const CSV_TEST_FILE: &str = "test.csv";
+
+        fn csv_state_with_current_run() -> (AppState, u64) {
+            let mut state = create_test_state();
+            enter_confirm_dialog(&mut state, InputMode::Normal);
+            activate_postgres_connection(&mut state, CSV_TEST_DSN);
+            let run_id = state.query.begin_running(Instant::now());
+            (state, run_id)
+        }
+
+        fn csv_state_with_stale_run() -> (AppState, u64, u64) {
+            let (mut state, stale_run_id) = csv_state_with_current_run();
+            let current_run_id = state.query.begin_running(Instant::now());
+            (state, stale_run_id, current_run_id)
+        }
+
+        fn rerunnable_csv_intent(run_id: u64) -> ConfirmIntent {
+            ConfirmIntent::CsvExportRerunnable {
+                dsn: CSV_TEST_DSN.to_string(),
+                run_id,
+                export_query: "SELECT 1".to_string(),
+                file_name: CSV_TEST_FILE.to_string(),
+                row_count: Some(200_000),
+            }
+        }
+
+        fn cached_csv_intent(run_id: u64) -> ConfirmIntent {
+            ConfirmIntent::CsvExportCached {
+                dsn: CSV_TEST_DSN.to_string(),
+                run_id,
+                file_name: CSV_TEST_FILE.to_string(),
+                row_count: Some(2),
+                snapshot: CsvExportCacheSnapshot {
+                    columns: vec!["id".to_string()],
+                    values: vec![vec![QueryValue::text("1")]],
+                },
+            }
+        }
+
+        fn open_confirm_intent(state: &mut AppState, intent: ConfirmIntent) {
+            state.confirm_dialog.open("", "", intent);
+        }
+
+        fn confirm_effects(state: &mut AppState) -> Vec<Effect> {
+            dispatch_modal(state, &Action::ConfirmDialogConfirm, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action")
+        }
+
+        fn cancel_effects(state: &mut AppState) -> Vec<Effect> {
+            dispatch_modal(state, &Action::ConfirmDialogCancel, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action")
+        }
+
+        fn assert_cached_export_effect(effect: &Effect, run_id: u64) {
+            let Effect::ExportCsvFromCache {
+                dsn,
+                run_id: effect_run_id,
+                file_name,
+                columns,
+                values,
+                row_count,
+            } = effect
+            else {
+                panic!("expected cached CSV export effect");
+            };
+
+            assert_eq!(dsn, CSV_TEST_DSN);
+            assert_eq!(*effect_run_id, run_id);
+            assert_eq!(file_name, CSV_TEST_FILE);
+            assert_eq!(columns, &vec!["id".to_string()]);
+            assert_eq!(values, &vec![vec![QueryValue::text("1")]]);
+            assert_eq!(*row_count, Some(2));
+        }
+
         mod confirm {
             use super::*;
 
@@ -525,78 +602,22 @@ mod tests {
 
             #[test]
             fn csv_export_returns_export_effect() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                activate_postgres_connection(&mut state, "postgres://localhost/test");
-                let _ = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportRerunnable {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id: 1,
-                        export_query: "SELECT 1".to_string(),
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(200_000),
-                    },
-                );
+                let (mut state, run_id) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, rerunnable_csv_intent(run_id));
 
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
+                let effects = confirm_effects(&mut state);
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
             }
 
             #[test]
             fn cached_csv_export_returns_export_from_cache_effect() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                activate_postgres_connection(&mut state, "postgres://localhost/test");
-                let run_id = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportCached {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id,
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(2),
-                        snapshot: CsvExportCacheSnapshot {
-                            columns: vec!["id".to_string()],
-                            values: vec![vec![QueryValue::text("1")]],
-                        },
-                    },
-                );
+                let (mut state, run_id) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, cached_csv_intent(run_id));
 
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
+                let effects = confirm_effects(&mut state);
                 assert_eq!(effects.len(), 1);
-                assert!(matches!(
-                    &effects[0],
-                    Effect::ExportCsvFromCache {
-                        dsn,
-                        run_id: effect_run_id,
-                        file_name,
-                        columns,
-                        values,
-                        row_count,
-                    } if dsn == "postgres://localhost/test"
-                        && *effect_run_id == run_id
-                        && file_name == "test.csv"
-                        && columns == &vec!["id".to_string()]
-                        && values == &vec![vec![QueryValue::text("1")]]
-                        && *row_count == Some(2)
-                ));
+                assert_cached_export_effect(&effects[0], run_id);
             }
 
             #[test]
@@ -631,60 +652,19 @@ mod tests {
 
             #[test]
             fn csv_export_ignores_mismatched_run_id() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                activate_postgres_connection(&mut state, "postgres://localhost/test");
-                let _ = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportRerunnable {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id: 2,
-                        export_query: "SELECT 1".to_string(),
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(200_000),
-                    },
-                );
+                let (mut state, _) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, rerunnable_csv_intent(2));
 
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
+                let effects = confirm_effects(&mut state);
                 assert!(effects.is_empty());
             }
 
             #[test]
             fn cached_csv_export_ignores_mismatched_run_id() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                activate_postgres_connection(&mut state, "postgres://localhost/test");
-                let _ = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportCached {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id: 2,
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(2),
-                        snapshot: CsvExportCacheSnapshot {
-                            columns: vec!["id".to_string()],
-                            values: vec![vec![QueryValue::text("1")]],
-                        },
-                    },
-                );
+                let (mut state, _) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, cached_csv_intent(2));
 
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
+                let effects = confirm_effects(&mut state);
                 assert!(effects.is_empty());
             }
 
@@ -880,85 +860,30 @@ mod tests {
 
             #[test]
             fn current_csv_export_cancel_marks_query_idle() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                activate_postgres_connection(&mut state, "postgres://localhost/test");
-                let run_id = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportRerunnable {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id,
-                        export_query: "SELECT 1".to_string(),
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(200_000),
-                    },
-                );
+                let (mut state, run_id) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, rerunnable_csv_intent(run_id));
 
-                let effects =
-                    super::dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
-
+                let effects = cancel_effects(&mut state);
                 assert!(effects.is_empty());
                 assert!(!state.query.is_running());
             }
 
             #[test]
             fn current_cached_csv_export_cancel_marks_query_idle() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                activate_postgres_connection(&mut state, "postgres://localhost/test");
-                let run_id = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportCached {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id,
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(200_000),
-                        snapshot: CsvExportCacheSnapshot {
-                            columns: vec![],
-                            values: vec![],
-                        },
-                    },
-                );
+                let (mut state, run_id) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, cached_csv_intent(run_id));
 
-                let effects =
-                    super::dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
-
+                let effects = cancel_effects(&mut state);
                 assert!(effects.is_empty());
                 assert!(!state.query.is_running());
             }
 
             #[test]
             fn stale_csv_export_cancel_keeps_current_run() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                activate_postgres_connection(&mut state, "postgres://localhost/test");
-                let stale_run_id = state.query.begin_running(Instant::now());
-                let current_run_id = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportRerunnable {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id: stale_run_id,
-                        export_query: "SELECT 1".to_string(),
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(200_000),
-                    },
-                );
+                let (mut state, stale_run_id, current_run_id) = csv_state_with_stale_run();
+                open_confirm_intent(&mut state, rerunnable_csv_intent(stale_run_id));
 
-                let effects =
-                    super::dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
-
+                let effects = cancel_effects(&mut state);
                 assert!(effects.is_empty());
                 assert!(state.query.is_running());
                 assert!(state.query.is_current_run(current_run_id));
@@ -966,31 +891,10 @@ mod tests {
 
             #[test]
             fn stale_cached_csv_export_cancel_keeps_current_run() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                activate_postgres_connection(&mut state, "postgres://localhost/test");
-                let stale_run_id = state.query.begin_running(Instant::now());
-                let current_run_id = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExportCached {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id: stale_run_id,
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(200_000),
-                        snapshot: CsvExportCacheSnapshot {
-                            columns: vec![],
-                            values: vec![],
-                        },
-                    },
-                );
+                let (mut state, stale_run_id, current_run_id) = csv_state_with_stale_run();
+                open_confirm_intent(&mut state, cached_csv_intent(stale_run_id));
 
-                let effects =
-                    super::dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
-
+                let effects = cancel_effects(&mut state);
                 assert!(effects.is_empty());
                 assert!(state.query.is_running());
                 assert!(state.query.is_current_run(current_run_id));
