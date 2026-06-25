@@ -1,7 +1,7 @@
 use crate::domain::DatabaseType;
 use crate::policy::sql::statement_classifier::{classify, first_keyword};
 use crate::policy::write::sql_risk::{
-    evaluate_multi_statement_for_database, evaluate_sql_risk_for_database,
+    MultiStatementDecision, evaluate_multi_statement_for_database, evaluate_sql_risk_for_database,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,8 +27,8 @@ pub fn sqlite_export_plan(query: &str, columns: &[String], row_count: usize) -> 
 
 pub fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
     match evaluate_multi_statement_for_database(DatabaseType::SQLite, query) {
-        crate::policy::write::sql_risk::MultiStatementDecision::Block { .. } => false,
-        crate::policy::write::sql_risk::MultiStatementDecision::Allow { statements, .. } => {
+        MultiStatementDecision::Block { .. } => false,
+        MultiStatementDecision::Allow { statements, .. } => {
             statements.len() == 1
                 && statements
                     .iter()

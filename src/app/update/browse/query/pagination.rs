@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::{DatabaseType, QuerySource};
+use crate::domain::{DatabaseType, QuerySource, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
 use crate::model::shared::input_mode::InputMode;
@@ -39,7 +39,7 @@ fn dispatch_cached_csv_export(
     run_id: u64,
     file_name: String,
     columns: Vec<String>,
-    values: Vec<Vec<crate::domain::QueryValue>>,
+    values: Vec<Vec<QueryValue>>,
     row_count: Option<usize>,
 ) -> DispatchResult {
     let needs_confirm = row_count.is_some_and(|count| count > LARGE_EXPORT_THRESHOLD);
