@@ -602,6 +602,27 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_submit_multi_drop_pairs_label_with_first_target() {
+            let mut state = sql_modal_state();
+            activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+            state
+                .sql_modal
+                .editor
+                .set_content("DROP INDEX my_index; DROP VIEW my_view".to_string());
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingHigh {
+                    decision,
+                    target_name,
+                    ..
+                } if decision.label == "DROP INDEX" && target_name == "my_index"
+            ));
+        }
+
+        #[test]
         fn high_risk_confirm_matches_full_name_not_truncated() {
             let full_name = "my_schema.very_long_table_name";
             let mut state = confirming_high_state(&format!("DROP TABLE {full_name}"), full_name);
