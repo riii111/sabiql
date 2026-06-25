@@ -3116,6 +3116,25 @@ mod tests {
             assert_eq!(count, 3);
         }
 
+        #[test]
+        fn export_guard_rejects_non_rerunnable_sql() {
+            for sql in [
+                "SELECT 1; SELECT 2",
+                "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload",
+                "PRAGMA foreign_keys=OFF",
+                "PRAGMA wal_checkpoint(TRUNCATE)",
+            ] {
+                assert!(!is_sqlite_rerunnable_export_query(sql), "{sql}");
+            }
+        }
+
+        #[test]
+        fn export_guard_allows_read_only_sql() {
+            for sql in ["SELECT 1", "PRAGMA table_info(users)"] {
+                assert!(is_sqlite_rerunnable_export_query(sql), "{sql}");
+            }
+        }
+
         #[tokio::test]
         async fn export_to_csv_writes_rows_and_returns_row_count() {
             let (dir, dsn) = make_sqlite_db(

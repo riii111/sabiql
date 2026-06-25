@@ -27,7 +27,7 @@ mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseType};
-    use crate::model::shared::confirm_dialog::ConfirmIntent;
+    use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::KeymapPreset;
     use crate::ports::outbound::AppSettings;
@@ -828,6 +828,36 @@ mod tests {
             }
 
             #[test]
+            fn current_cached_csv_export_cancel_marks_query_idle() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                activate_postgres_connection(&mut state, "postgres://localhost/test");
+                let run_id = state.query.begin_running(Instant::now());
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::CsvExportCached {
+                        dsn: "postgres://localhost/test".to_string(),
+                        run_id,
+                        file_name: "test.csv".to_string(),
+                        row_count: Some(200_000),
+                        snapshot: CsvExportCacheSnapshot {
+                            columns: vec![],
+                            values: vec![],
+                        },
+                    },
+                );
+
+                let effects =
+                    super::dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
+                        .into_effects()
+                        .expect("reducer should handle action");
+
+                assert!(effects.is_empty());
+                assert!(!state.query.is_running());
+            }
+
+            #[test]
             fn stale_csv_export_cancel_keeps_current_run() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
@@ -843,6 +873,38 @@ mod tests {
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),
+                    },
+                );
+
+                let effects =
+                    super::dispatch_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now())
+                        .into_effects()
+                        .expect("reducer should handle action");
+
+                assert!(effects.is_empty());
+                assert!(state.query.is_running());
+                assert!(state.query.is_current_run(current_run_id));
+            }
+
+            #[test]
+            fn stale_cached_csv_export_cancel_keeps_current_run() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                activate_postgres_connection(&mut state, "postgres://localhost/test");
+                let stale_run_id = state.query.begin_running(Instant::now());
+                let current_run_id = state.query.begin_running(Instant::now());
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::CsvExportCached {
+                        dsn: "postgres://localhost/test".to_string(),
+                        run_id: stale_run_id,
+                        file_name: "test.csv".to_string(),
+                        row_count: Some(200_000),
+                        snapshot: CsvExportCacheSnapshot {
+                            columns: vec![],
+                            values: vec![],
+                        },
                     },
                 );
 

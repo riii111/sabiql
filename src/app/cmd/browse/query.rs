@@ -557,6 +557,7 @@ mod tests {
     mod cached_csv_export_effect {
         use std::cell::RefCell;
         use std::sync::Arc;
+        use std::time::Duration;
 
         use tokio::sync::mpsc;
 
@@ -625,7 +626,10 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = rx.recv().await.unwrap();
+            let action = tokio::time::timeout(Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
             let Action::CsvExportSucceeded {
                 path, row_count, ..
             } = action
@@ -672,7 +676,10 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = rx.recv().await.unwrap();
+            let action = tokio::time::timeout(Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
             assert!(matches!(action, Action::CsvExportFailed { run_id: 8, .. }));
         }
     }
