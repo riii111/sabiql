@@ -816,6 +816,20 @@ fn needs_write_batch_wrap(statements: &[&str]) -> bool {
     statements.len() > 1 && statements.iter().any(|stmt| is_write_statement(stmt))
 }
 
+fn rollback_has_to_clause(statement: &str) -> bool {
+    if !first_keyword(statement).eq_ignore_ascii_case("ROLLBACK") {
+        return false;
+    }
+    let mut offset = 0;
+    while let Some((keyword, end)) = next_keyword_from(statement, offset) {
+        if keyword.eq_ignore_ascii_case("TO") {
+            return true;
+        }
+        offset = end;
+    }
+    false
+}
+
 fn rollback_to_target(statement: &str) -> Option<&str> {
     let (_, first_end) = next_keyword_from(statement, 0)?;
     if !first_keyword(statement).eq_ignore_ascii_case("ROLLBACK") {
@@ -846,7 +860,7 @@ fn rollback_to_target(statement: &str) -> Option<&str> {
 }
 
 fn is_rollback_to(statement: &str) -> bool {
-    rollback_to_target(statement).is_some()
+    rollback_to_target(statement).is_some() || rollback_has_to_clause(statement)
 }
 
 fn sqlite_wrap_mode(query: &str) -> SqliteWrapMode {
@@ -1563,10 +1577,6 @@ fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
         }
     }
 
-    for (_, frame) in frames.drain(..) {
-        effective.extend(frame);
-    }
-
     effective
 }
 
@@ -1932,6 +1942,52 @@ mod tests {
         fn top_level_savepoint_full_rollback_discards_all_dml() {
             let tags = vec![sp("sp"), CommandTag::Insert(1), CommandTag::Rollback];
 
+            assert!(discard_rolled_back(&tags).is_empty());
+        }
+
+        #[test]
+        fn unclosed_begin_discards_frame_from_effective() {
+            let tags = vec![CommandTag::Begin, CommandTag::Update(1)];
+
+            assert!(discard_rolled_back(&tags).is_empty());
+        }
+
+        #[test]
+        fn unclosed_top_level_savepoint_discards_frame_from_effective() {
+            let tags = vec![sp("sp"), CommandTag::Insert(1)];
+
+            assert!(discard_rolled_back(&tags).is_empty());
+        }
+
+        #[test]
+        fn unclosed_top_level_savepoint_aggregates_to_rollback() {
+            let tags = vec![sp("sp"), CommandTag::Insert(1)];
+
+            assert_eq!(
+                aggregate_sqlite_command_tag(&tags),
+                Some(CommandTag::Rollback)
+            );
+        }
+
+        #[test]
+        fn rollback_to_quoted_savepoint_is_not_full_rollback() {
+            let tags = sqlite_statement_tags(
+                &[
+                    "SAVEPOINT sp",
+                    "INSERT INTO users(id) VALUES (1)",
+                    "ROLLBACK TO \"sp\"",
+                ],
+                &HashMap::from([(1, 1)]),
+            );
+
+            assert_eq!(
+                tags,
+                vec![
+                    CommandTag::Other("SAVEPOINT sp".to_string()),
+                    CommandTag::Insert(1),
+                    CommandTag::Other("ROLLBACK TO ".to_string()),
+                ]
+            );
             assert!(discard_rolled_back(&tags).is_empty());
         }
 
@@ -2995,7 +3051,7 @@ mod tests {
             let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
-            let _result = adapter
+            let result = adapter
                 .execute_adhoc(
                     &dsn,
                     "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)",
@@ -3008,6 +3064,7 @@ mod tests {
                 .await
                 .unwrap();
 
+            assert_eq!(result.command_tag, Some(CommandTag::Rollback));
             assert!(rows.rows().is_empty());
         }
 
