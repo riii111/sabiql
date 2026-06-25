@@ -851,6 +851,22 @@ mod tests {
             ));
         }
 
+        #[test]
+        fn data_modifying_cte_blocks_read_only() {
+            let sql = "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x";
+            let result = evaluate_sql_risk(&classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::TargetNameUnavailable,
+                    ref label,
+                } if label == "UPDATE (no WHERE)"
+            ));
+        }
+
         #[rstest]
         #[case::update_where(StatementKind::Update { has_where: true }, "UPDATE users SET x=1 WHERE id=1")]
         #[case::delete_where(StatementKind::Delete { has_where: true }, "DELETE FROM users WHERE id=1")]

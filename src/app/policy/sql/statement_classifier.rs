@@ -21,6 +21,9 @@ pub enum StatementKind {
 
 pub fn classify(sql: &str) -> StatementKind {
     let trimmed = sql.trim();
+    if let Some(kind) = leading_cte_write_kind(trimmed) {
+        return kind;
+    }
     let statement = statement_after_leading_ctes(trimmed);
     let lower = statement.to_lowercase();
     if lower.is_empty() {
@@ -86,6 +89,155 @@ pub(crate) fn statement_after_leading_ctes(sql: &str) -> &str {
             None => return trimmed,
         }
     }
+}
+
+fn leading_cte_write_kind(sql: &str) -> Option<StatementKind> {
+    let trimmed = sql.trim();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    let tokens = collect_top_level_tokens(trimmed, &chars);
+    let lowers: Vec<String> = tokens
+        .iter()
+        .map(|(_, token)| token.to_lowercase())
+        .collect();
+    if lowers.first().map(String::as_str) != Some("with") {
+        return None;
+    }
+
+    let mut cursor = 1;
+    if lowers.get(cursor).map(String::as_str) == Some("recursive") {
+        cursor += 1;
+    }
+
+    loop {
+        cursor += 1;
+        if lowers.get(cursor).map(String::as_str) != Some("as") {
+            return None;
+        }
+
+        let mut body_search_start = token_end(&tokens[cursor]);
+        cursor += 1;
+        if lowers.get(cursor).map(String::as_str) == Some("not") {
+            body_search_start = token_end(&tokens[cursor]);
+            cursor += 1;
+            if lowers.get(cursor).map(String::as_str) == Some("materialized") {
+                body_search_start = token_end(&tokens[cursor]);
+                cursor += 1;
+            }
+        } else if lowers.get(cursor).map(String::as_str) == Some("materialized") {
+            body_search_start = token_end(&tokens[cursor]);
+            cursor += 1;
+        }
+
+        let body_end = tokens.get(cursor).map_or(trimmed.len(), |(pos, _)| *pos);
+        if let Some(body) = cte_body_sql(trimmed, &chars, body_search_start, body_end)
+            && let Some(kind) = cte_body_write_kind(body)
+        {
+            return Some(kind);
+        }
+
+        match lowers.get(cursor).map(String::as_str) {
+            Some(",") => cursor += 1,
+            Some(_) | None => return None,
+        }
+    }
+}
+
+fn token_end((pos, token): &(usize, String)) -> usize {
+    pos + token.len()
+}
+
+fn cte_body_write_kind(sql: &str) -> Option<StatementKind> {
+    let kind = classify(sql);
+    match kind {
+        StatementKind::Insert | StatementKind::Update { .. } | StatementKind::Delete { .. } => {
+            Some(kind)
+        }
+        StatementKind::Unsupported
+            if first_keyword(sql)
+                .as_deref()
+                .is_some_and(|keyword| keyword.eq_ignore_ascii_case("MERGE")) =>
+        {
+            Some(StatementKind::Unsupported)
+        }
+        _ => None,
+    }
+}
+
+fn cte_body_sql<'a>(
+    sql: &'a str,
+    chars: &[(usize, char)],
+    start_byte: usize,
+    end_byte: usize,
+) -> Option<&'a str> {
+    let mut cursor = chars
+        .iter()
+        .position(|(byte_pos, _)| *byte_pos >= start_byte)?;
+    while cursor < chars.len() && chars[cursor].0 < end_byte {
+        let (byte_pos, ch) = chars[cursor];
+        if ch.is_whitespace() {
+            cursor += 1;
+            continue;
+        }
+        if let Some(next) = skip_line_comment(chars, cursor, ch) {
+            cursor = next;
+            continue;
+        }
+        if let Some(next) = skip_block_comment(chars, cursor, ch) {
+            cursor = next;
+            continue;
+        }
+        if ch != '(' {
+            return None;
+        }
+        let close = matching_close_paren(sql, chars, cursor, end_byte)?;
+        return Some(&sql[byte_pos + ch.len_utf8()..chars[close].0]);
+    }
+    None
+}
+
+fn matching_close_paren(
+    sql: &str,
+    chars: &[(usize, char)],
+    open: usize,
+    end_byte: usize,
+) -> Option<usize> {
+    let mut cursor = open;
+    let mut depth: i32 = 0;
+    let mut in_string = false;
+    while cursor < chars.len() && chars[cursor].0 < end_byte {
+        let (byte_pos, ch) = chars[cursor];
+        if let Some(next) = skip_line_comment(chars, cursor, ch) {
+            cursor = next;
+            continue;
+        }
+        if let Some(next) = skip_block_comment(chars, cursor, ch) {
+            cursor = next;
+            continue;
+        }
+        if let Some(next) = advance_single_quote(chars, cursor, ch, &mut in_string) {
+            cursor = next;
+            continue;
+        }
+        if in_string {
+            cursor += 1;
+            continue;
+        }
+        if let Some(next) = skip_double_quoted_identifier(chars, cursor, ch) {
+            cursor = next;
+            continue;
+        }
+        if let Some(next) = skip_dollar_quoted_string(sql, chars, cursor, byte_pos, ch) {
+            cursor = next;
+            continue;
+        }
+
+        update_parentheses_depth(ch, &mut depth);
+        if depth == 0 {
+            return Some(cursor);
+        }
+        cursor += 1;
+    }
+    None
 }
 
 pub fn extract_target_name(sql: &str, kind: &StatementKind) -> Option<String> {
@@ -811,6 +963,30 @@ mod tests {
             "WITH cte AS (SELECT 1) DELETE FROM users WHERE id = 1",
             StatementKind::Delete { has_where: true }
         )]
+        #[case::cte_body_update(
+            "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x",
+            StatementKind::Update { has_where: false }
+        )]
+        #[case::cte_body_update_where(
+            "WITH x AS (UPDATE users SET name='a' WHERE id = 1 RETURNING *) SELECT * FROM x",
+            StatementKind::Update { has_where: true }
+        )]
+        #[case::cte_body_delete(
+            "WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x",
+            StatementKind::Delete { has_where: false }
+        )]
+        #[case::cte_body_insert(
+            "WITH x AS (INSERT INTO users(id) VALUES (1) RETURNING *) SELECT * FROM x",
+            StatementKind::Insert
+        )]
+        #[case::second_cte_body_update(
+            "WITH a AS (SELECT 1), x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x",
+            StatementKind::Update { has_where: false }
+        )]
+        #[case::cte_body_merge(
+            "WITH x AS (MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN UPDATE SET name = incoming.name RETURNING *) SELECT * FROM x",
+            StatementKind::Unsupported
+        )]
         fn cte_dml(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
@@ -915,7 +1091,7 @@ mod tests {
         #[case::double_quoted_escaped("SELECT \"up\"\"date\" FROM t", StatementKind::Select)]
         #[case::cte_with_update_in_subquery(
             "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x",
-            StatementKind::Select
+            StatementKind::Update { has_where: false }
         )]
         #[case::select_with_parenthesized_expr(
             "WITH cte AS (SELECT 1) SELECT (1+2)",
