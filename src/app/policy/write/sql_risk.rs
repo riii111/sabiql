@@ -499,6 +499,32 @@ pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
     }
 }
 
+pub fn adhoc_label_for_statement(database_type: DatabaseType, sql: &str) -> &'static str {
+    let sqlite_label = (database_type == DatabaseType::SQLite)
+        .then(|| sqlite_specific_label(sql))
+        .flatten();
+    let kind = classify(sql);
+    let decision = write_guardrails::evaluate_sql_risk(&kind);
+    sqlite_label.unwrap_or(decision.label)
+}
+
+pub fn adhoc_label_for_table_name_confirmation(
+    database_type: DatabaseType,
+    sql: &str,
+) -> Option<&'static str> {
+    for stmt in split_statements_for_database(database_type, sql) {
+        let kind = classify(&stmt);
+        let decision = evaluate_sql_risk_for_database(database_type, &kind, &stmt);
+        if matches!(
+            decision.confirmation,
+            ConfirmationType::TableNameInput { .. }
+        ) {
+            return Some(adhoc_label_for_statement(database_type, &stmt));
+        }
+    }
+    None
+}
+
 fn skip_whitespace(sql: &str, mut cursor: usize) -> usize {
     while cursor < sql.len() {
         let Some(ch) = sql[cursor..].chars().next() else {
@@ -1592,6 +1618,15 @@ mod tests {
                 }
                 _ => panic!("expected Allow"),
             }
+        }
+
+        #[test]
+        fn sqlite_table_name_confirmation_label_matches_first_target_statement() {
+            let sql = "DROP INDEX my_index; DROP VIEW my_view";
+            assert_eq!(
+                adhoc_label_for_table_name_confirmation(DatabaseType::SQLite, sql),
+                Some("DROP INDEX")
+            );
         }
 
         #[test]
