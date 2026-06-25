@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
@@ -645,19 +645,6 @@ fn second_keyword(sql: &str) -> Option<&str> {
     next_keyword_from(sql, end).map(|(keyword, _)| keyword)
 }
 
-fn third_keyword(sql: &str) -> Option<&str> {
-    let (_, first_end) = next_keyword_from(sql, 0)?;
-    let (_, second_end) = next_keyword_from(sql, first_end)?;
-    next_keyword_from(sql, second_end).map(|(keyword, _)| keyword)
-}
-
-fn fourth_keyword(sql: &str) -> Option<&str> {
-    let (_, first_end) = next_keyword_from(sql, 0)?;
-    let (_, second_end) = next_keyword_from(sql, first_end)?;
-    let (_, third_end) = next_keyword_from(sql, second_end)?;
-    next_keyword_from(sql, third_end).map(|(keyword, _)| keyword)
-}
-
 fn contains_keyword(sql: &str, expected: &str) -> bool {
     let mut offset = 0;
     while let Some((keyword, end)) = next_keyword_from(sql, offset) {
@@ -823,56 +810,49 @@ fn sqlite_export_not_rerunnable_error() -> DbOperationError {
 enum SqliteWrapMode {
     None,
     BeginCommit,
-    InternalSavepoint(String),
 }
 
 fn needs_write_batch_wrap(statements: &[&str]) -> bool {
     statements.len() > 1 && statements.iter().any(|stmt| is_write_statement(stmt))
 }
 
-fn is_full_rollback(statement: &str) -> bool {
-    first_keyword(statement).eq_ignore_ascii_case("ROLLBACK")
-        && !second_keyword(statement).is_some_and(|kw| kw.eq_ignore_ascii_case("TO"))
+fn rollback_to_target(statement: &str) -> Option<&str> {
+    let (_, first_end) = next_keyword_from(statement, 0)?;
+    if !first_keyword(statement).eq_ignore_ascii_case("ROLLBACK") {
+        return None;
+    }
+    let (second, second_end) = next_keyword_from(statement, first_end)?;
+    if second.eq_ignore_ascii_case("TRANSACTION") {
+        let (third, third_end) = next_keyword_from(statement, second_end)?;
+        if !third.eq_ignore_ascii_case("TO") {
+            return None;
+        }
+        let (fourth, fourth_end) = next_keyword_from(statement, third_end)?;
+        if fourth.eq_ignore_ascii_case("SAVEPOINT") {
+            next_keyword_from(statement, fourth_end).map(|(name, _)| name)
+        } else {
+            Some(fourth)
+        }
+    } else if second.eq_ignore_ascii_case("TO") {
+        let (third, third_end) = next_keyword_from(statement, second_end)?;
+        if third.eq_ignore_ascii_case("SAVEPOINT") {
+            next_keyword_from(statement, third_end).map(|(name, _)| name)
+        } else {
+            Some(third)
+        }
+    } else {
+        None
+    }
 }
 
-fn user_savepoint_names(statements: &[&str]) -> HashSet<String> {
-    let mut names = HashSet::new();
-    for statement in statements {
-        if first_keyword(statement).eq_ignore_ascii_case("SAVEPOINT")
-            && let Some(name) = second_keyword(statement)
-        {
-            names.insert(name.to_ascii_uppercase());
-        }
-        if first_keyword(statement).eq_ignore_ascii_case("RELEASE")
-            && let Some(name) = second_keyword(statement)
-        {
-            names.remove(&name.to_ascii_uppercase());
-        }
-    }
-    names
+fn is_rollback_to(statement: &str) -> bool {
+    rollback_to_target(statement).is_some()
 }
 
 fn sqlite_wrap_mode(query: &str) -> SqliteWrapMode {
     let statements = split_sqlite_statements(query);
     if !needs_write_batch_wrap(&statements) {
         return SqliteWrapMode::None;
-    }
-
-    if statements.iter().any(|stmt| {
-        matches!(
-            first_keyword(stmt).to_ascii_uppercase().as_str(),
-            "BEGIN" | "COMMIT" | "END" | "RELEASE"
-        ) || is_full_rollback(stmt)
-    }) {
-        return SqliteWrapMode::None;
-    }
-
-    if statements
-        .first()
-        .is_some_and(|stmt| first_keyword(stmt).eq_ignore_ascii_case("SAVEPOINT"))
-    {
-        let reserved = user_savepoint_names(&statements);
-        return SqliteWrapMode::InternalSavepoint(sqlite_wrap_marker(&reserved));
     }
 
     if statements.iter().any(|stmt| is_transaction_control(stmt)) {
@@ -887,34 +867,10 @@ fn sqlite_transaction_block(query: &str) -> String {
     format!("BEGIN;\n{trimmed}\n;\nCOMMIT")
 }
 
-fn sqlite_savepoint_block(query: &str, name: &str) -> String {
-    let trimmed = query.trim_end().trim_end_matches(';').trim_end();
-    format!("SAVEPOINT {name};\n{trimmed}\n;\nRELEASE {name}")
-}
-
 fn sqlite_execution_query(query: &str) -> Cow<'_, str> {
     match sqlite_wrap_mode(query) {
         SqliteWrapMode::BeginCommit => Cow::Owned(sqlite_transaction_block(query)),
-        SqliteWrapMode::InternalSavepoint(name) => Cow::Owned(sqlite_savepoint_block(query, &name)),
         SqliteWrapMode::None => Cow::Borrowed(query),
-    }
-}
-
-fn sqlite_wrap_marker(reserved_names: &HashSet<String>) -> String {
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    loop {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos());
-        let marker = format!(
-            "__sabiql_sqlite_wrap_{}_{}_{}",
-            std::process::id(),
-            nanos,
-            SEQ.fetch_add(1, Ordering::Relaxed)
-        );
-        if !reserved_names.contains(&marker.to_ascii_uppercase()) {
-            return marker;
-        }
     }
 }
 
@@ -960,12 +916,8 @@ fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
 
     let wrap_mode = sqlite_wrap_mode(query);
     let mut parts = Vec::with_capacity(statements.len() * 2 + 2);
-    match &wrap_mode {
-        SqliteWrapMode::BeginCommit => parts.push("BEGIN".to_string()),
-        SqliteWrapMode::InternalSavepoint(name) => {
-            parts.push(format!("SAVEPOINT {name}"));
-        }
-        SqliteWrapMode::None => {}
+    if matches!(wrap_mode, SqliteWrapMode::BeginCommit) {
+        parts.push("BEGIN".to_string());
     }
     for (index, statement) in statements.iter().enumerate() {
         parts.push((*statement).to_string());
@@ -976,10 +928,8 @@ fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
             parts.push(sqlite_result_probe(marker, index));
         }
     }
-    match wrap_mode {
-        SqliteWrapMode::BeginCommit => parts.push("COMMIT".to_string()),
-        SqliteWrapMode::InternalSavepoint(name) => parts.push(format!("RELEASE {name}")),
-        SqliteWrapMode::None => {}
+    if matches!(wrap_mode, SqliteWrapMode::BeginCommit) {
+        parts.push("COMMIT".to_string());
     }
     parts.join("\n;\n")
 }
@@ -1516,18 +1466,10 @@ fn transaction_control_tag(query: &str) -> Option<CommandTag> {
     match first_keyword(query).to_ascii_uppercase().as_str() {
         "BEGIN" => Some(CommandTag::Begin),
         "COMMIT" | "END" => Some(CommandTag::Commit),
-        "ROLLBACK" if second_keyword(query).is_some_and(|kw| kw.eq_ignore_ascii_case("TO")) => {
-            let name =
-                if third_keyword(query).is_some_and(|kw| kw.eq_ignore_ascii_case("SAVEPOINT")) {
-                    fourth_keyword(query)
-                } else {
-                    third_keyword(query)
-                };
-            Some(CommandTag::Other(format!(
-                "ROLLBACK TO {}",
-                name.unwrap_or("")
-            )))
-        }
+        "ROLLBACK" if is_rollback_to(query) => Some(CommandTag::Other(format!(
+            "ROLLBACK TO {}",
+            rollback_to_target(query).unwrap_or("")
+        ))),
         "ROLLBACK" => Some(CommandTag::Rollback),
         "SAVEPOINT" => Some(CommandTag::Other(format!(
             "SAVEPOINT {}",
@@ -2005,6 +1947,23 @@ mod tests {
 
             assert_eq!(discard_rolled_back(&tags), vec![CommandTag::Insert(1)]);
         }
+
+        #[test]
+        fn rollback_transaction_to_savepoint_discards_inner_dml() {
+            let tags = sqlite_statement_tags(
+                &[
+                    "SAVEPOINT sp",
+                    "INSERT INTO users(id) VALUES (1)",
+                    "INSERT INTO users(id) VALUES (2)",
+                    "ROLLBACK TRANSACTION TO SAVEPOINT sp",
+                    "INSERT INTO users(id) VALUES (3)",
+                    "RELEASE sp",
+                ],
+                &HashMap::from([(1, 1), (2, 1), (4, 1)]),
+            );
+
+            assert_eq!(discard_rolled_back(&tags), vec![CommandTag::Insert(1)]);
+        }
     }
 
     mod wrap_mode {
@@ -2029,29 +1988,13 @@ mod tests {
         }
 
         #[test]
-        fn top_level_savepoint_multi_write_uses_internal_savepoint() {
-            let mode = sqlite_wrap_mode(
-                "SAVEPOINT user_sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)",
+        fn top_level_savepoint_multi_write_is_not_wrapped() {
+            assert_eq!(
+                sqlite_wrap_mode(
+                    "SAVEPOINT user_sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
+                ),
+                SqliteWrapMode::None
             );
-
-            assert!(
-                matches!(mode, SqliteWrapMode::InternalSavepoint(name) if name.starts_with("__sabiql_sqlite_wrap_"))
-            );
-        }
-
-        #[test]
-        fn internal_savepoint_name_avoids_user_savepoint_collision() {
-            let user_name = "__sabiql_sqlite_wrap_collision";
-            let mode = sqlite_wrap_mode(&format!(
-                "SAVEPOINT {user_name}; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
-            ));
-
-            match mode {
-                SqliteWrapMode::InternalSavepoint(name) => {
-                    assert_ne!(name.to_ascii_uppercase(), user_name.to_ascii_uppercase());
-                }
-                other => panic!("expected internal savepoint wrap, got {other:?}"),
-            }
         }
 
         #[test]
@@ -3044,6 +2987,27 @@ mod tests {
                 .execute_adhoc(&dsn, "SELECT id FROM users", true)
                 .await
                 .unwrap();
+            assert!(rows.rows().is_empty());
+        }
+
+        #[tokio::test]
+        async fn top_level_savepoint_without_release_does_not_persist_on_success() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let _result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
             assert!(rows.rows().is_empty());
         }
 
