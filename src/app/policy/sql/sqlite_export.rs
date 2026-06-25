@@ -29,9 +29,10 @@ pub fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
     match evaluate_multi_statement_for_database(DatabaseType::SQLite, query) {
         crate::policy::write::sql_risk::MultiStatementDecision::Block { .. } => false,
         crate::policy::write::sql_risk::MultiStatementDecision::Allow { statements, .. } => {
-            statements
-                .iter()
-                .all(|statement| is_sqlite_rerunnable_export_statement(statement))
+            statements.len() == 1
+                && statements
+                    .iter()
+                    .all(|statement| is_sqlite_rerunnable_export_statement(statement))
         }
     }
 }
@@ -144,8 +145,8 @@ mod tests {
         }
 
         #[test]
-        fn multi_select_is_rerunnable() {
-            assert!(is_sqlite_rerunnable_export_query("SELECT 1; SELECT 2"));
+        fn multi_select_is_not_rerunnable() {
+            assert!(!is_sqlite_rerunnable_export_query("SELECT 1; SELECT 2"));
         }
 
         #[test]

@@ -731,7 +731,83 @@ fn is_write_statement(statement: &str) -> bool {
     )
 }
 
-use crate::app::policy::sql::sqlite_export::is_sqlite_rerunnable_export_query;
+fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
+    let statements = split_sqlite_statements(query);
+    statements.len() == 1
+        && statements
+            .iter()
+            .all(|statement| is_sqlite_rerunnable_export_statement(statement))
+}
+
+fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
+    if is_write_statement(statement)
+        || is_dml_statement(statement)
+        || is_transaction_control(statement)
+    {
+        return false;
+    }
+    match first_keyword(statement).to_ascii_uppercase().as_str() {
+        "SELECT" | "EXPLAIN" | "VALUES" => true,
+        "WITH" => !is_dml_statement(statement),
+        "PRAGMA" => is_read_only_sqlite_export_pragma(statement),
+        _ => false,
+    }
+}
+
+fn sqlite_pragma_name(statement: &str) -> Option<String> {
+    let (_, pragma_end) = next_keyword_from(statement, 0)?;
+    let tail = statement.get(pragma_end..)?.trim_start();
+    let name: String = tail
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '.')
+        .collect();
+    if name.is_empty() {
+        None
+    } else {
+        Some(
+            name.rsplit('.')
+                .next()
+                .unwrap_or(name.as_str())
+                .to_ascii_lowercase(),
+        )
+    }
+}
+
+fn is_read_only_parameterized_pragma(name: &str) -> bool {
+    matches!(
+        name,
+        "table_info"
+            | "table_xinfo"
+            | "index_info"
+            | "index_xinfo"
+            | "index_list"
+            | "foreign_key_list"
+            | "database_list"
+            | "table_list"
+            | "pragma_list"
+            | "function_list"
+            | "module_list"
+            | "collation_list"
+            | "integrity_check"
+            | "quick_check"
+            | "column_info"
+    )
+}
+
+fn is_read_only_sqlite_export_pragma(statement: &str) -> bool {
+    let Some(name) = sqlite_pragma_name(statement) else {
+        return false;
+    };
+    let has_assignment = statement.contains('=');
+    let has_parenthesized_value = statement.contains('(');
+    let side_effect_without_assignment = (has_parenthesized_value
+        && !is_read_only_parameterized_pragma(&name))
+        || matches!(
+            name.as_str(),
+            "optimize" | "incremental_vacuum" | "wal_checkpoint"
+        );
+    !has_assignment && !side_effect_without_assignment
+}
 
 fn sqlite_export_not_rerunnable_error() -> DbOperationError {
     DbOperationError::UnsupportedOperation(
@@ -3063,8 +3139,8 @@ mod tests {
 
         #[tokio::test]
         async fn export_to_csv_rejects_write_sql() {
-            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-            let path = std::env::temp_dir().join("sabiql_write_export.csv");
+            let (dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let path = dir.path().join("write_export.csv");
             let adapter = SqliteAdapter::new();
 
             let result = adapter

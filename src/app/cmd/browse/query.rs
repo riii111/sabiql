@@ -441,7 +441,15 @@ pub async fn run(
             let path = resolve_export_path(&file_name);
 
             tokio::spawn(async move {
-                match write_cached_result_csv(&path, &columns, &values) {
+                let export_path = path.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    write_cached_result_csv(&export_path, &columns, &values)
+                })
+                .await
+                .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
+                .and_then(|inner| inner);
+
+                match result {
                     Ok(_) => {
                         tx.send(Action::CsvExportSucceeded {
                             dsn,
@@ -543,6 +551,129 @@ mod tests {
                 cached_csv_cell(&QueryValue::Null),
                 QueryValue::Null.display_value()
             );
+        }
+    }
+
+    mod cached_csv_export_effect {
+        use std::cell::RefCell;
+        use std::sync::Arc;
+
+        use tokio::sync::mpsc;
+
+        use crate::cmd::cache::TtlCache;
+        use crate::cmd::completion_engine::CompletionEngine;
+        use crate::cmd::effect::Effect;
+        use crate::cmd::test_support::*;
+        use crate::domain::QueryValue;
+        use crate::model::app_state::AppState;
+        use crate::ports::outbound::connection_store::MockConnectionStore;
+        use crate::ports::outbound::metadata::MockMetadataProvider;
+        use crate::ports::outbound::query_executor::MockQueryExecutor;
+        use crate::ports::outbound::{RenderOutput, RenderResult, Renderer};
+        use crate::services::AppServices;
+        use crate::update::action::Action;
+
+        struct NoopRenderer;
+        impl Renderer for NoopRenderer {
+            fn draw(
+                &mut self,
+                _state: &AppState,
+                _services: &AppServices,
+                _now: std::time::Instant,
+            ) -> RenderResult<RenderOutput> {
+                Ok(RenderOutput::default())
+            }
+        }
+
+        fn test_file_name(label: &str) -> String {
+            format!("cached_{label}_{}", std::process::id())
+        }
+
+        #[tokio::test]
+        async fn writes_file_and_dispatches_success() {
+            let cache = TtlCache::new(300);
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                cache,
+                tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::ExportCsvFromCache {
+                        dsn: "sqlite:///tmp/test.db".to_string(),
+                        run_id: 7,
+                        file_name: test_file_name("success"),
+                        columns: vec!["id".to_string(), "payload".to_string()],
+                        values: vec![vec![
+                            QueryValue::SqlLiteral("1".to_string()),
+                            QueryValue::Blob(vec![0xAB, 0xCD]),
+                        ]],
+                        row_count: Some(1),
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let action = rx.recv().await.unwrap();
+            let Action::CsvExportSucceeded {
+                path, row_count, ..
+            } = action
+            else {
+                panic!("expected CSV export success action");
+            };
+            let csv = std::fs::read_to_string(&path).unwrap();
+            let _ = std::fs::remove_file(&path);
+
+            assert_eq!(row_count, Some(1));
+            assert_eq!(csv, "id,payload\n1,ABCD\n");
+        }
+
+        #[tokio::test]
+        async fn dispatches_failure_when_file_cannot_be_created() {
+            let cache = TtlCache::new(300);
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                cache,
+                tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::ExportCsvFromCache {
+                        dsn: "sqlite:///tmp/test.db".to_string(),
+                        run_id: 8,
+                        file_name: format!("{}/child", test_file_name("missing_parent")),
+                        columns: vec!["id".to_string()],
+                        values: vec![vec![QueryValue::SqlLiteral("1".to_string())]],
+                        row_count: Some(1),
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let action = rx.recv().await.unwrap();
+            assert!(matches!(action, Action::CsvExportFailed { run_id: 8, .. }));
         }
     }
 
