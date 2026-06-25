@@ -1,5 +1,5 @@
-use crate::domain::Table;
 use crate::domain::connection::{ConnectionConfig, ConnectionId};
+use crate::domain::{QueryValue, Table};
 use crate::ports::outbound::AppSettings;
 use crate::update::action::Action;
 
@@ -96,6 +96,14 @@ pub enum Effect {
         file_name: String,
         row_count: Option<usize>,
         read_only: bool,
+    },
+    ExportCsvFromCache {
+        dsn: String,
+        run_id: u64,
+        file_name: String,
+        columns: Vec<String>,
+        values: Vec<Vec<QueryValue>>,
+        row_count: Option<usize>,
     },
 
     CacheTableInCompletionEngine {

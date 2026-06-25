@@ -1,4 +1,10 @@
-use crate::domain::ConnectionId;
+use crate::domain::{ConnectionId, QueryValue};
+
+#[derive(Debug, Clone)]
+pub struct CsvExportCacheSnapshot {
+    pub columns: Vec<String>,
+    pub values: Vec<Vec<QueryValue>>,
+}
 
 #[derive(Debug, Clone)]
 pub enum ConfirmIntent {
@@ -8,12 +14,19 @@ pub enum ConfirmIntent {
         sql: String,
         blocked: bool,
     },
-    CsvExport {
+    CsvExportRerunnable {
         dsn: String,
         run_id: u64,
         export_query: String,
         file_name: String,
         row_count: Option<usize>,
+    },
+    CsvExportCached {
+        dsn: String,
+        run_id: u64,
+        file_name: String,
+        row_count: Option<usize>,
+        snapshot: CsvExportCacheSnapshot,
     },
     DisableReadOnly,
 }

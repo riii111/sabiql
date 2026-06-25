@@ -731,6 +731,91 @@ fn is_write_statement(statement: &str) -> bool {
     )
 }
 
+fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
+    let statements = split_sqlite_statements(query);
+    statements.len() == 1
+        && statements
+            .iter()
+            .all(|statement| is_sqlite_rerunnable_export_statement(statement))
+}
+
+fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
+    if is_write_statement(statement)
+        || is_dml_statement(statement)
+        || is_transaction_control(statement)
+    {
+        return false;
+    }
+    match first_keyword(statement).to_ascii_uppercase().as_str() {
+        "SELECT" | "EXPLAIN" | "VALUES" => true,
+        "WITH" => !is_dml_statement(statement),
+        "PRAGMA" => is_read_only_sqlite_export_pragma(statement),
+        _ => false,
+    }
+}
+
+fn sqlite_pragma_name(statement: &str) -> Option<String> {
+    let (_, pragma_end) = next_keyword_from(statement, 0)?;
+    let tail = statement.get(pragma_end..)?.trim_start();
+    let name: String = tail
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '.')
+        .collect();
+    if name.is_empty() {
+        None
+    } else {
+        Some(
+            name.rsplit('.')
+                .next()
+                .unwrap_or(name.as_str())
+                .to_ascii_lowercase(),
+        )
+    }
+}
+
+fn is_read_only_parameterized_pragma(name: &str) -> bool {
+    matches!(
+        name,
+        "table_info"
+            | "table_xinfo"
+            | "index_info"
+            | "index_xinfo"
+            | "index_list"
+            | "foreign_key_list"
+            | "database_list"
+            | "table_list"
+            | "pragma_list"
+            | "function_list"
+            | "module_list"
+            | "collation_list"
+            | "integrity_check"
+            | "quick_check"
+            | "column_info"
+    )
+}
+
+fn is_read_only_sqlite_export_pragma(statement: &str) -> bool {
+    let Some(name) = sqlite_pragma_name(statement) else {
+        return false;
+    };
+    let has_assignment = statement.contains('=');
+    let has_parenthesized_value = statement.contains('(');
+    let side_effect_without_assignment = (has_parenthesized_value
+        && !is_read_only_parameterized_pragma(&name))
+        || matches!(
+            name.as_str(),
+            "optimize" | "incremental_vacuum" | "wal_checkpoint"
+        );
+    !has_assignment && !side_effect_without_assignment
+}
+
+fn sqlite_export_not_rerunnable_error() -> DbOperationError {
+    DbOperationError::UnsupportedOperation(
+        "Cannot re-execute this query for CSV export because it contains write or DDL statements"
+            .to_string(),
+    )
+}
+
 fn should_wrap_transaction(query: &str) -> bool {
     let statements = split_sqlite_statements(query);
     statements.len() > 1
@@ -1692,6 +1777,9 @@ impl QueryExecutor for SqliteAdapter {
         path: &std::path::Path,
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
+        if !is_sqlite_rerunnable_export_query(query) {
+            return Err(sqlite_export_not_rerunnable_error());
+        }
         self.cli
             .export_csv(Self::path_from_dsn(dsn)?, query, path, read_only)
             .await
@@ -3028,6 +3116,25 @@ mod tests {
             assert_eq!(count, 3);
         }
 
+        #[test]
+        fn export_guard_rejects_non_rerunnable_sql() {
+            for sql in [
+                "SELECT 1; SELECT 2",
+                "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload",
+                "PRAGMA foreign_keys=OFF",
+                "PRAGMA wal_checkpoint(TRUNCATE)",
+            ] {
+                assert!(!is_sqlite_rerunnable_export_query(sql), "{sql}");
+            }
+        }
+
+        #[test]
+        fn export_guard_allows_read_only_sql() {
+            for sql in ["SELECT 1", "PRAGMA table_info(users)"] {
+                assert!(is_sqlite_rerunnable_export_query(sql), "{sql}");
+            }
+        }
+
         #[tokio::test]
         async fn export_to_csv_writes_rows_and_returns_row_count() {
             let (dir, dsn) = make_sqlite_db(
@@ -3047,6 +3154,24 @@ mod tests {
 
             assert_eq!(row_count, 2);
             assert_eq!(csv, "id,name\n1,a\n2,b\n");
+        }
+
+        #[tokio::test]
+        async fn export_to_csv_rejects_write_sql() {
+            let (dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let path = dir.path().join("write_export.csv");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .export_to_csv(&dsn, "INSERT INTO users(id) VALUES (1)", &path, false)
+                .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::UnsupportedOperation(message))
+                if message.contains("write or DDL")
+            ));
+            assert!(!path.exists());
         }
 
         #[tokio::test]

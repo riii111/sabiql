@@ -68,7 +68,7 @@ pub(super) fn reduce_confirm_dialog(
                     state.session.disable_read_only();
                     DispatchResult::handled()
                 }
-                Some(ConfirmIntent::CsvExport {
+                Some(ConfirmIntent::CsvExportRerunnable {
                     dsn,
                     run_id,
                     export_query,
@@ -90,13 +90,47 @@ pub(super) fn reduce_confirm_dialog(
                         DispatchResult::handled()
                     }
                 }
+                Some(ConfirmIntent::CsvExportCached {
+                    dsn,
+                    run_id,
+                    file_name,
+                    row_count,
+                    snapshot,
+                }) => {
+                    if state.session.dsn() == Some(dsn.as_str())
+                        && state.query.is_current_run(run_id)
+                    {
+                        DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
+                            dsn,
+                            run_id,
+                            file_name,
+                            columns: snapshot.columns,
+                            values: snapshot.values,
+                            row_count,
+                        }])
+                    } else {
+                        DispatchResult::handled()
+                    }
+                }
                 None => DispatchResult::handled(),
             }
         }
         Action::ConfirmDialogCancel => {
             let intent = state.confirm_dialog.take_intent();
+            let canceling_current_csv_export = match &intent {
+                Some(
+                    ConfirmIntent::CsvExportRerunnable { dsn, run_id, .. }
+                    | ConfirmIntent::CsvExportCached { dsn, run_id, .. },
+                ) => {
+                    state.session.dsn() == Some(dsn.as_str()) && state.query.is_current_run(*run_id)
+                }
+                _ => false,
+            };
             state.result_interaction.clear_write_preview();
             state.query.clear_delete_refresh_target();
+            if canceling_current_csv_export {
+                state.query.mark_idle();
+            }
 
             if matches!(intent, Some(ConfirmIntent::QuitNoConnection)) {
                 state.connection_setup.reset();
