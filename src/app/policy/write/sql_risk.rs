@@ -3,7 +3,8 @@ use crate::domain::DatabaseType;
 use crate::policy::sql::statement_classifier::{
     StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
     extract_target_name, first_keyword, skip_block_comment, skip_dollar_quoted_string,
-    skip_double_quoted_identifier, skip_line_comment, statement_after_leading_ctes,
+    skip_double_quoted_identifier, skip_line_comment, skip_sqlite_quoted_identifier,
+    statement_after_leading_ctes,
 };
 
 // Why the statement cannot be confirmed via typed target name.
@@ -48,7 +49,7 @@ pub enum MultiStatementDecision {
     },
 }
 
-fn contains_cli_meta_command(sql: &str) -> bool {
+fn contains_cli_meta_command(database_type: DatabaseType, sql: &str) -> bool {
     let chars: Vec<(usize, char)> = sql.char_indices().collect();
     let mut i = 0;
     let mut in_string = false;
@@ -96,6 +97,13 @@ fn contains_cli_meta_command(sql: &str) -> bool {
             i = next_i;
             continue;
         }
+        if database_type == DatabaseType::SQLite
+            && let Some(next_i) = skip_sqlite_quoted_identifier(&chars, i, ch)
+        {
+            line_leading = false;
+            i = next_i;
+            continue;
+        }
         if let Some(next_i) = skip_dollar_quoted_string(sql, &chars, i, byte_pos, ch) {
             line_leading = false;
             i = next_i;
@@ -114,6 +122,10 @@ fn contains_cli_meta_command(sql: &str) -> bool {
 }
 
 pub fn split_statements(sql: &str) -> Vec<String> {
+    split_statements_for_database(DatabaseType::PostgreSQL, sql)
+}
+
+pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> Vec<String> {
     // Use sql's own char_indices so byte offsets remain valid for slicing sql.
     // to_lowercase() can change byte lengths (e.g. İ → i̇), which would corrupt offsets.
     let chars: Vec<(usize, char)> = sql.char_indices().collect();
@@ -143,6 +155,12 @@ pub fn split_statements(sql: &str) -> Vec<String> {
             continue;
         }
         if let Some(next_i) = skip_double_quoted_identifier(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if database_type == DatabaseType::SQLite
+            && let Some(next_i) = skip_sqlite_quoted_identifier(&chars, i, ch)
+        {
             i = next_i;
             continue;
         }
@@ -310,13 +328,13 @@ pub fn evaluate_multi_statement_for_database(
     database_type: DatabaseType,
     sql: &str,
 ) -> MultiStatementDecision {
-    if contains_cli_meta_command(sql) {
+    if contains_cli_meta_command(database_type, sql) {
         return MultiStatementDecision::Block {
             reason: "CLI meta-commands are not supported in SQL input".to_string(),
         };
     }
 
-    let statements = split_statements(sql);
+    let statements = split_statements_for_database(database_type, sql);
 
     if statements.is_empty() {
         return MultiStatementDecision::Block {
@@ -555,6 +573,10 @@ fn top_level_char_index(sql: &str, target: char) -> Option<usize> {
             i = next_i;
             continue;
         }
+        if let Some(next_i) = skip_sqlite_quoted_identifier(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
         if let Some(next_i) = skip_dollar_quoted_string(sql, &chars, i, byte_pos, ch) {
             i = next_i;
             continue;
@@ -713,6 +735,49 @@ mod tests {
         #[case::tagged_dollar_quote("SELECT $tag$a;b$tag$", vec!["SELECT $tag$a;b$tag$"])]
         fn semicolon_in_strings(#[case] sql: &str, #[case] expected: Vec<&str>) {
             assert_eq!(split_statements(sql), expected);
+        }
+
+        #[rstest]
+        #[case::bracket_quote(
+            "DROP TABLE [a;b]; SELECT 1",
+            vec!["DROP TABLE [a", "b]", "SELECT 1"]
+        )]
+        #[case::backtick_quote(
+            "DROP TABLE `a;b`; SELECT 1",
+            vec!["DROP TABLE `a", "b`", "SELECT 1"]
+        )]
+        #[case::bracket_contains_drop(
+            "SELECT [1; DROP TABLE users]",
+            vec!["SELECT [1", "DROP TABLE users]"]
+        )]
+        #[case::backtick_contains_drop(
+            "SELECT `1; DROP TABLE users`",
+            vec!["SELECT `1", "DROP TABLE users`"]
+        )]
+        fn postgres_brackets_and_backticks_do_not_hide_semicolons(
+            #[case] sql: &str,
+            #[case] expected: Vec<&str>,
+        ) {
+            assert_eq!(split_statements(sql), expected);
+        }
+
+        #[rstest]
+        #[case::backtick_quote(
+            "DROP TABLE `a;b`; SELECT 1",
+            vec!["DROP TABLE `a;b`", "SELECT 1"]
+        )]
+        #[case::bracket_quote(
+            "DROP TABLE [a;b]; SELECT 1",
+            vec!["DROP TABLE [a;b]", "SELECT 1"]
+        )]
+        fn sqlite_identifier_quotes_hide_semicolons(
+            #[case] sql: &str,
+            #[case] expected: Vec<&str>,
+        ) {
+            assert_eq!(
+                split_statements_for_database(DatabaseType::SQLite, sql),
+                expected
+            );
         }
 
         #[rstest]
@@ -1199,6 +1264,8 @@ mod tests {
         #[case::sqlite_open_after_select("SELECT 1;\n.open writable.db")]
         #[case::psql_shell("\\! echo injected")]
         #[case::indented_meta_command("  .output /tmp/out.csv")]
+        #[case::psql_backslash_inside_bracket_identifier("SELECT [\n\\! echo injected\n]")]
+        #[case::psql_backslash_inside_backtick_identifier("SELECT `\n\\! echo injected\n`")]
         fn cli_meta_commands_are_blocked(#[case] sql: &str) {
             let result = evaluate_multi_statement(sql);
 
@@ -1220,6 +1287,60 @@ mod tests {
             let result = evaluate_multi_statement(sql);
 
             assert!(matches!(result, MultiStatementDecision::Allow { .. }));
+        }
+
+        #[rstest]
+        #[case::dot_inside_bracket_identifier("SELECT [\n.shell ignored] FROM t")]
+        #[case::backslash_inside_backtick_identifier("SELECT `\n\\! ignored` FROM t")]
+        fn sqlite_cli_meta_command_like_identifier_text_is_allowed(#[case] sql: &str) {
+            let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
+
+            assert!(matches!(result, MultiStatementDecision::Allow { .. }));
+        }
+
+        #[rstest]
+        #[case::bracket_contains_drop("SELECT [1; DROP TABLE users]", "users")]
+        #[case::backtick_contains_drop("SELECT `1; DROP TABLE users`", "users")]
+        fn postgres_brackets_and_backticks_do_not_hide_dangerous_statements(
+            #[case] sql: &str,
+            #[case] expected_target: &str,
+        ) {
+            let result = evaluate_multi_statement(sql);
+
+            match result {
+                MultiStatementDecision::Allow { statements, risk } => {
+                    assert_eq!(statements.len(), 2);
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == expected_target
+                    ));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[rstest]
+        #[case::update_backtick_where_identifier("UPDATE `where` SET x = 1", "where")]
+        #[case::delete_bracket_quoted_dot("DELETE FROM [main.users]", "main.users")]
+        #[case::drop_table_backtick_qualified("DROP TABLE main.`my.table`", "main.my.table")]
+        #[case::drop_table_bracket_reserved_word("DROP TABLE [select]", "select")]
+        fn sqlite_quoted_targets_require_table_name_input(
+            #[case] sql: &str,
+            #[case] expected_target: &str,
+        ) {
+            let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
+
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == expected_target
+                    ));
+                }
+                _ => panic!("expected Allow"),
+            }
         }
 
         #[test]
