@@ -118,8 +118,10 @@ pub(super) fn reduce_confirm_dialog(
         Action::ConfirmDialogCancel => {
             let intent = state.confirm_dialog.take_intent();
             let canceling_current_csv_export = match &intent {
-                Some(ConfirmIntent::CsvExportRerunnable { dsn, run_id, .. })
-                | Some(ConfirmIntent::CsvExportCached { dsn, run_id, .. }) => {
+                Some(
+                    ConfirmIntent::CsvExportRerunnable { dsn, run_id, .. }
+                    | ConfirmIntent::CsvExportCached { dsn, run_id, .. },
+                ) => {
                     state.session.dsn() == Some(dsn.as_str()) && state.query.is_current_run(*run_id)
                 }
                 _ => false,
