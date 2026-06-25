@@ -725,9 +725,12 @@ fn is_transaction_control(statement: &str) -> bool {
 }
 
 fn is_write_statement(statement: &str) -> bool {
+    if is_dml_statement(statement) {
+        return true;
+    }
     matches!(
         first_keyword(statement).to_ascii_uppercase().as_str(),
-        "INSERT" | "REPLACE" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
+        "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
     )
 }
 
@@ -1834,6 +1837,18 @@ mod tests {
     }
 
     #[test]
+    fn append_changes_wraps_multi_statement_with_write_without_explicit_transaction() {
+        let query = "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload; SELECT * FROM missing";
+
+        let wrapped = append_changes_query(query);
+
+        assert_eq!(
+            wrapped,
+            "BEGIN;\nWITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload; SELECT * FROM missing\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
+        );
+    }
+
+    #[test]
     fn append_changes_keeps_explicit_begin_commit_transaction_control() {
         let query = "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT";
 
@@ -2819,6 +2834,29 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
+                    false,
+                )
+                .await;
+
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+            assert!(rows.rows().is_empty());
+        }
+
+        #[tokio::test]
+        async fn with_dml_rolls_back_when_later_statement_fails() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "WITH payload(id) AS (VALUES (1))
+                     INSERT INTO users(id) SELECT id FROM payload;
+                     INSERT INTO missing(id) VALUES (2)",
                     false,
                 )
                 .await;
