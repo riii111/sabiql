@@ -470,7 +470,7 @@ fn sqlite_drop_label(sql: &str) -> Option<&'static str> {
 }
 
 fn sqlite_drop_risk(sql: &str) -> Option<SqlRiskDecision> {
-    sqlite_drop_label(sql)?;
+    let label = sqlite_drop_label(sql)?;
     let kind = StatementKind::Drop;
     Some(match extract_target_name(sql, &kind) {
         Some(target) => SqlRiskDecision {
@@ -478,7 +478,7 @@ fn sqlite_drop_risk(sql: &str) -> Option<SqlRiskDecision> {
             confirmation: ConfirmationType::TableNameInput { target },
             read_only_allowed: false,
         },
-        None => high_acknowledge_label(sqlite_drop_label(sql).unwrap_or("DROP")),
+        None => high_acknowledge_label(label),
     })
 }
 
@@ -1208,7 +1208,7 @@ mod tests {
         #[rstest]
         #[case::drop_policy("DROP POLICY p ON t")]
         #[case::drop_schema("DROP SCHEMA s")]
-        fn sqlite_non_dangerous_drop_returns_low_immediate(#[case] sql: &str) {
+        fn sqlite_unhandled_drop_subtypes_fall_back_to_generic_low_immediate(#[case] sql: &str) {
             let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
 
             assert_eq!(result.risk_level, RiskLevel::Low);
@@ -1569,6 +1569,26 @@ mod tests {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
                     assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn sqlite_multiple_high_drops_use_first_target() {
+            let result = evaluate_multi_statement_for_database(
+                DatabaseType::SQLite,
+                "DROP INDEX my_index; DROP VIEW my_view",
+            );
+            match result {
+                MultiStatementDecision::Allow { statements, risk } => {
+                    assert_eq!(statements, vec!["DROP INDEX my_index", "DROP VIEW my_view"]);
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(!risk.read_only_allowed);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                    ));
                 }
                 _ => panic!("expected Allow"),
             }
