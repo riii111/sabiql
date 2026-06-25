@@ -21,7 +21,7 @@ pub enum StatementKind {
 
 pub fn classify(sql: &str) -> StatementKind {
     let trimmed = sql.trim();
-    let statement = statement_after_leading_with(trimmed);
+    let statement = statement_after_leading_ctes(trimmed);
     let lower = statement.to_lowercase();
     if lower.is_empty() {
         return StatementKind::Other;
@@ -48,7 +48,7 @@ pub fn first_keyword(sql: &str) -> Option<String> {
         .map(|(_, token)| token.to_uppercase())
 }
 
-pub(crate) fn statement_after_leading_with(sql: &str) -> &str {
+pub(crate) fn statement_after_leading_ctes(sql: &str) -> &str {
     let trimmed = sql.trim();
     let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
     let tokens = collect_top_level_tokens(trimmed, &chars);
@@ -89,7 +89,7 @@ pub(crate) fn statement_after_leading_with(sql: &str) -> &str {
 }
 
 pub fn extract_target_name(sql: &str, kind: &StatementKind) -> Option<String> {
-    let original_trimmed = statement_after_leading_with(sql);
+    let original_trimmed = statement_after_leading_ctes(sql);
     // Avoids byte-length mismatch when Unicode identifiers change size under case folding.
     let chars: Vec<(usize, char)> = original_trimmed.char_indices().collect();
 
@@ -793,6 +793,10 @@ mod tests {
         #[rstest]
         #[case::cte_insert(
             "WITH cte AS (SELECT 1) INSERT INTO users(id) SELECT * FROM cte",
+            StatementKind::Insert
+        )]
+        #[case::multiple_cte_insert(
+            "WITH a AS (SELECT 1), b AS (SELECT 2) INSERT INTO users(id) SELECT * FROM a",
             StatementKind::Insert
         )]
         #[case::cte_update(
