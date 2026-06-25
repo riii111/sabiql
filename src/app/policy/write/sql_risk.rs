@@ -460,6 +460,28 @@ fn top_level_token_lowers(sql: &str) -> Vec<String> {
         .collect()
 }
 
+fn sqlite_drop_label(sql: &str) -> Option<&'static str> {
+    match drop_subtype(sql).as_deref()? {
+        "index" => Some("DROP INDEX"),
+        "view" => Some("DROP VIEW"),
+        "trigger" => Some("DROP TRIGGER"),
+        _ => None,
+    }
+}
+
+fn sqlite_drop_risk(sql: &str) -> Option<SqlRiskDecision> {
+    sqlite_drop_label(sql)?;
+    let kind = StatementKind::Drop;
+    Some(match extract_target_name(sql, &kind) {
+        Some(target) => SqlRiskDecision {
+            risk_level: RiskLevel::High,
+            confirmation: ConfirmationType::TableNameInput { target },
+            read_only_allowed: false,
+        },
+        None => high_acknowledge_label(sqlite_drop_label(sql).unwrap_or("DROP")),
+    })
+}
+
 pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
     let effective = statement_after_leading_ctes(sql);
     let tokens = top_level_token_lowers(effective);
@@ -472,6 +494,7 @@ pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
         "analyze" => Some("ANALYZE"),
         "replace" => Some("REPLACE"),
         "insert" if sqlite_replace_target_in_statement(effective).is_some() => Some("REPLACE"),
+        "drop" => sqlite_drop_label(effective),
         _ => None,
     }
 }
@@ -706,6 +729,7 @@ fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
             confirmation: ConfirmationType::TableNameInput { target },
             read_only_allowed: false,
         }),
+        "drop" => sqlite_drop_risk(effective),
         _ => None,
     }
 }
@@ -1142,6 +1166,70 @@ mod tests {
 
             assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
         }
+
+        #[rstest]
+        #[case::drop_index("DROP INDEX my_index", "DROP INDEX")]
+        #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "DROP INDEX")]
+        #[case::drop_view("DROP VIEW my_view", "DROP VIEW")]
+        #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "DROP VIEW")]
+        #[case::drop_trigger("DROP TRIGGER my_trigger", "DROP TRIGGER")]
+        #[case::drop_trigger_if_exists("DROP TRIGGER IF EXISTS my_trigger", "DROP TRIGGER")]
+        fn sqlite_specific_label_detects_dangerous_drops(
+            #[case] sql: &str,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(sqlite_specific_label(sql), Some(expected));
+        }
+
+        #[rstest]
+        #[case::drop_index("DROP INDEX my_index", "my_index")]
+        #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "my_index")]
+        #[case::drop_view("DROP VIEW my_view", "my_view")]
+        #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "my_view")]
+        #[case::drop_trigger("DROP TRIGGER my_trigger", "my_trigger")]
+        #[case::drop_trigger_if_exists("DROP TRIGGER IF EXISTS main.my_trigger", "main.my_trigger")]
+        #[case::drop_index_quoted("DROP INDEX `my index`", "my index")]
+        #[case::drop_view_quoted(r#"DROP VIEW "my view""#, "my view")]
+        #[case::drop_trigger_quoted("DROP TRIGGER [my trigger]", "my trigger")]
+        fn sqlite_dangerous_drop_requires_table_name_input(
+            #[case] sql: &str,
+            #[case] expected_target: &str,
+        ) {
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::TableNameInput { ref target } if target == expected_target
+            ));
+        }
+
+        #[rstest]
+        #[case::drop_policy("DROP POLICY p ON t")]
+        #[case::drop_schema("DROP SCHEMA s")]
+        fn sqlite_non_dangerous_drop_returns_low_immediate(#[case] sql: &str) {
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Low);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
+        #[test]
+        fn sqlite_drop_multiple_index_requires_acknowledgment() {
+            let sql = "DROP INDEX a, b";
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::TargetNameUnavailable,
+                    ref label,
+                } if label == "DROP INDEX"
+            ));
+        }
     }
 
     mod evaluate_multi_statement_tests {
@@ -1475,12 +1563,31 @@ mod tests {
         }
 
         #[test]
-        fn drop_index_returns_low_immediate() {
+        fn drop_index_returns_low_immediate_for_postgres() {
             let result = evaluate_multi_statement("DROP INDEX my_index");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
                     assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn sqlite_drop_index_requires_table_name_input() {
+            let result = evaluate_multi_statement_for_database(
+                DatabaseType::SQLite,
+                "DROP INDEX IF EXISTS my_index",
+            );
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(!risk.read_only_allowed);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                    ));
                 }
                 _ => panic!("expected Allow"),
             }
