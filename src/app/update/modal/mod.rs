@@ -26,7 +26,7 @@ mod tests {
 
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{ConnectionId, DatabaseType, QueryValue};
     use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::KeymapPreset;
@@ -553,6 +553,53 @@ mod tests {
             }
 
             #[test]
+            fn cached_csv_export_returns_export_from_cache_effect() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                activate_postgres_connection(&mut state, "postgres://localhost/test");
+                let run_id = state.query.begin_running(Instant::now());
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::CsvExportCached {
+                        dsn: "postgres://localhost/test".to_string(),
+                        run_id,
+                        file_name: "test.csv".to_string(),
+                        row_count: Some(2),
+                        snapshot: CsvExportCacheSnapshot {
+                            columns: vec!["id".to_string()],
+                            values: vec![vec![QueryValue::text("1")]],
+                        },
+                    },
+                );
+
+                let effects = super::dispatch_modal(
+                    &mut state,
+                    &Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(
+                    &effects[0],
+                    Effect::ExportCsvFromCache {
+                        dsn,
+                        run_id: effect_run_id,
+                        file_name,
+                        columns,
+                        values,
+                        row_count,
+                    } if dsn == "postgres://localhost/test"
+                        && *effect_run_id == run_id
+                        && file_name == "test.csv"
+                        && columns == &vec!["id".to_string()]
+                        && values == &vec![vec![QueryValue::text("1")]]
+                        && *row_count == Some(2)
+                ));
+            }
+
+            #[test]
             fn csv_export_ignores_mismatched_dsn() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
@@ -597,6 +644,37 @@ mod tests {
                         export_query: "SELECT 1".to_string(),
                         file_name: "test.csv".to_string(),
                         row_count: Some(200_000),
+                    },
+                );
+
+                let effects = super::dispatch_modal(
+                    &mut state,
+                    &Action::ConfirmDialogConfirm,
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert!(effects.is_empty());
+            }
+
+            #[test]
+            fn cached_csv_export_ignores_mismatched_run_id() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                activate_postgres_connection(&mut state, "postgres://localhost/test");
+                let _ = state.query.begin_running(Instant::now());
+                state.confirm_dialog.open(
+                    "",
+                    "",
+                    ConfirmIntent::CsvExportCached {
+                        dsn: "postgres://localhost/test".to_string(),
+                        run_id: 2,
+                        file_name: "test.csv".to_string(),
+                        row_count: Some(2),
+                        snapshot: CsvExportCacheSnapshot {
+                            columns: vec!["id".to_string()],
+                            values: vec![vec![QueryValue::text("1")]],
+                        },
                     },
                 );
 
