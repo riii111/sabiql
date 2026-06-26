@@ -5,8 +5,12 @@ use crate::model::app_state::AppState;
 use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
 };
+use crate::model::connection::state::ConnectionState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ConnectionTarget, InputTarget, ModalKind};
+use crate::update::connection::helpers::{
+    connection_save_fetch_effects, reset_for_new_connection, save_current_cache,
+};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
 
@@ -149,29 +153,34 @@ pub fn reduce_connection_setup(
             DispatchResult::handled()
         }
         Action::ConnectionSetupSave => {
-            let setup = &mut state.connection_setup;
-            validate_all(setup);
-            if setup.has_validation_errors() {
-                DispatchResult::handled()
-            } else {
-                let config = match setup.to_connection_config() {
-                    Ok(config) => config,
-                    Err(error) => {
-                        setup.record_sqlite_config_error(error);
-                        return DispatchResult::handled();
-                    }
-                };
-                state.session.mark_connecting();
-                DispatchResult::handled_with(vec![Effect::SaveAndConnect {
-                    id: setup.editing_id().cloned(),
-                    name: setup
-                        .input(ConnectionField::Name)
-                        .expect("name is a text input")
-                        .content()
-                        .to_string(),
-                    config,
-                }])
+            validate_all(&mut state.connection_setup);
+            if state.connection_setup.has_validation_errors() {
+                return DispatchResult::handled();
             }
+            let config = match state.connection_setup.to_connection_config() {
+                Ok(config) => config,
+                Err(error) => {
+                    state.connection_setup.record_sqlite_config_error(error);
+                    return DispatchResult::handled();
+                }
+            };
+            if state.session.connection_state() == ConnectionState::Connected
+                && let Some(current_id) = state.session.active_connection_id().cloned()
+            {
+                let cache = save_current_cache(state);
+                state.connection_caches.save(&current_id, cache);
+            }
+            state.session.mark_connecting();
+            DispatchResult::handled_with(vec![Effect::SaveAndConnect {
+                id: state.connection_setup.editing_id().cloned(),
+                name: state
+                    .connection_setup
+                    .input(ConnectionField::Name)
+                    .expect("name is a text input")
+                    .content()
+                    .to_string(),
+                config,
+            }])
         }
         Action::ConnectionSetupCancel => {
             if state.connection_setup.is_first_run() {
@@ -197,14 +206,11 @@ pub fn reduce_connection_setup(
         }) => {
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
-            state
-                .session
-                .activate_connection_with_dsn(id, name, *database_type, dsn);
+            state.connection_caches.remove(id);
+
+            reset_for_new_connection(state, id, dsn, name, *database_type);
             let run_id = state.session.begin_connecting(dsn);
-            DispatchResult::handled_with(vec![Effect::FetchMetadata {
-                dsn: dsn.clone(),
-                run_id,
-            }])
+            DispatchResult::handled_with(connection_save_fetch_effects(dsn, run_id, *database_type))
         }
         Action::ConnectionSaveFailed(e) => {
             if !state.session.connection_state().is_connected() {
@@ -223,7 +229,9 @@ mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionProfile, SslMode};
     use crate::domain::{ConnectionId, DatabaseType};
-    use crate::update::test_support::activate_postgres_connection;
+    use crate::update::test_support::{
+        activate_postgres_connection, assert_connection_save_fetch_effects,
+    };
 
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
         reduce_connection_setup(state, action, now).into_effects()
@@ -412,8 +420,13 @@ mod tests {
     }
 
     mod connection_save {
+        use std::sync::Arc;
+
         use super::*;
-        use crate::domain::MetadataState;
+        use crate::domain::{
+            DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
+        };
+        use crate::model::connection::cache::ConnectionCache;
         use crate::model::connection::state::ConnectionState;
         use crate::update::action::ConnectionTarget;
 
@@ -512,6 +525,113 @@ mod tests {
         }
 
         #[test]
+        fn save_completed_clears_previous_browse_state() {
+            let mut state = AppState::new("test".to_string());
+            activate_postgres_connection(&mut state, "postgres://localhost/old");
+            state.session.mark_connected(Arc::new(DatabaseMetadata {
+                database_name: "old_db".to_string(),
+                schemas: vec![],
+                table_summaries: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    None,
+                    false,
+                )],
+            }));
+            state.ui.set_explorer_selected_raw(3);
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query.pagination);
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["col".to_string()],
+                    vec![vec!["val".to_string()]],
+                    10,
+                    QuerySource::Preview,
+                )));
+
+            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: "sqlite:///tmp/new.db".to_string(),
+                name: "new.db".to_string(),
+                database_type: DatabaseType::SQLite,
+            });
+            let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(state.session.metadata().is_none());
+            assert!(state.session.tables().is_empty());
+            assert!(state.query.current_result().is_none());
+            assert!(state.session.selected_table_key().is_none());
+            assert!(state.session.connection_state().is_connecting());
+            assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+            assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
+        }
+
+        #[test]
+        fn save_preserves_connected_cache_before_submit() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::new();
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "current",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/current",
+            );
+            state.session.mark_connected(Arc::new(DatabaseMetadata {
+                database_name: "current".to_string(),
+                schemas: vec![],
+                table_summaries: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    None,
+                    false,
+                )],
+            }));
+            state.ui.set_explorer_selected_raw(4);
+            fill_valid_form(&mut state);
+
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+
+            let saved = state.connection_caches.get(&current_id).unwrap();
+            assert_eq!(saved.explorer_selected, 4);
+            assert!(saved.metadata.is_some());
+        }
+
+        #[test]
+        fn save_completed_removes_stale_connection_cache_for_saved_profile() {
+            let mut state = AppState::new("test".to_string());
+            let saved_id = ConnectionId::new();
+            state.connection_caches.save(
+                &saved_id,
+                ConnectionCache {
+                    metadata: Some(Arc::new(DatabaseMetadata {
+                        database_name: "stale".to_string(),
+                        schemas: vec![],
+                        table_summaries: vec![TableSummary::new(
+                            "main".to_string(),
+                            "old_table".to_string(),
+                            None,
+                            false,
+                        )],
+                    })),
+                    ..Default::default()
+                },
+            );
+
+            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
+                id: saved_id.clone(),
+                dsn: "sqlite:///tmp/new.db".to_string(),
+                name: "new.db".to_string(),
+                database_type: DatabaseType::SQLite,
+            });
+            reduce(&mut state, &action, Instant::now());
+
+            assert!(state.connection_caches.get(&saved_id).is_none());
+        }
+
+        #[test]
         fn sqlite_save_completed_fetches_metadata() {
             let mut state = AppState::new("test".to_string());
 
@@ -523,11 +643,8 @@ mod tests {
             });
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
-            );
+            assert_eq!(effects.len(), 1);
+            assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
             assert_eq!(state.session.dsn(), Some("sqlite:///tmp/app.db"));
             assert_eq!(
                 state.session.active_database_type(),
