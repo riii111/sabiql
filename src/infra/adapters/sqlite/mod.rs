@@ -516,6 +516,7 @@ impl SqliteAdapter {
         path: &str,
         table: &str,
         include_indexes: bool,
+        include_row_count: bool,
     ) -> Result<Table, DbOperationError> {
         let (indexes, unique_single_columns) = if include_indexes {
             let indexes = self.indexes(path, table).await?;
@@ -586,7 +587,11 @@ impl SqliteAdapter {
             indexes,
             rls: None,
             triggers: Vec::new(),
-            row_count_estimate: self.row_count(path, table).await,
+            row_count_estimate: if include_row_count {
+                self.row_count(path, table).await
+            } else {
+                None
+            },
             comment: None,
             source_ddl: self.table_definition(path, table).await,
         })
@@ -597,7 +602,9 @@ impl SqliteAdapter {
         path: &str,
         table: &RawTable,
     ) -> Result<TableSignature, DbOperationError> {
-        let detail = self.table_detail_with_mode(path, &table.name, true).await?;
+        let detail = self
+            .table_detail_with_mode(path, &table.name, true, false)
+            .await?;
         let mut parts = vec![format!("sql={}", table.sql.clone().unwrap_or_default())];
         parts.extend(detail.columns.iter().map(|column| {
             format!(
@@ -1843,7 +1850,7 @@ impl MetadataProvider for SqliteAdapter {
         table: &str,
     ) -> Result<Table, DbOperationError> {
         Self::validate_main_schema(schema)?;
-        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, true)
+        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, true, true)
             .await
     }
 
@@ -1854,7 +1861,7 @@ impl MetadataProvider for SqliteAdapter {
         table: &str,
     ) -> Result<Table, DbOperationError> {
         Self::validate_main_schema(schema)?;
-        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, false)
+        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, false, false)
             .await
     }
 
@@ -3890,7 +3897,7 @@ END";
         }
 
         #[tokio::test]
-        async fn metadata_skips_row_count_even_when_table_has_rows() {
+        async fn skips_row_count_even_when_table_has_rows() {
             let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
@@ -4027,6 +4034,29 @@ END";
             assert_eq!(fk.on_delete, FkAction::Cascade);
             assert!(detail.rls.is_none());
             assert!(detail.triggers.is_empty());
+        }
+
+        #[tokio::test]
+        async fn columns_and_fks_skips_row_count() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            INSERT INTO users(id) VALUES (1), (2), (3);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let light = adapter
+                .fetch_table_columns_and_fks(&dsn, "main", "users")
+                .await
+                .unwrap();
+            let full = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert!(light.row_count_estimate.is_none());
+            assert_eq!(full.row_count_estimate, Some(3));
         }
 
         #[tokio::test]
