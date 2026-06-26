@@ -9,7 +9,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
-use crate::policy::preview_cell_text::{preview_cell_text_handling, uses_jsonb_detail_modal};
+use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
@@ -45,7 +45,8 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
             let Some(column) = table_detail.columns.get(col_idx) else {
                 return DispatchResult::handled();
             };
-            let handling = preview_cell_text_handling(database_type, column.data_type.as_str());
+            let handling =
+                preview_cell_text_diff_handling(database_type, column.data_type.as_str());
             if !uses_jsonb_detail_modal(handling) {
                 return DispatchResult::handled();
             }

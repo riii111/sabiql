@@ -7,7 +7,7 @@ use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSe
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::preview_cell_text::{
-    normalize_for_write_diff, preview_cell_text_handling, uses_structured_json_diff,
+    normalize_for_write_diff, preview_cell_text_diff_handling, uses_structured_json_diff,
 };
 use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
@@ -102,7 +102,7 @@ fn build_update_preview(
                 .table_detail()
                 .and_then(|td| td.columns.get(col_idx))
                 .map_or("", |c| c.data_type.as_str());
-            let handling = preview_cell_text_handling(database_type, column_data_type);
+            let handling = preview_cell_text_diff_handling(database_type, column_data_type);
             let before = normalize_for_write_diff(
                 state.result_interaction.cell_edit().original_value(),
                 handling,
@@ -744,6 +744,50 @@ mod tests {
                 preview.diff[0].json_diff.is_some(),
                 "jsonb column should have structured diff"
             );
+        }
+
+        #[test]
+        fn sqlite_jsonb_declared_type_preserves_string_diff_in_write_preview() {
+            let mut state = editable_state_with_jsonb();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            let mut detail = jsonb_table_detail();
+            detail.schema = "main".to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.reset_for_table("main", "users");
+
+            let before = r#"{"role":"admin"}"#;
+            let after = r#"{ "role": "admin" }"#;
+            state
+                .result_interaction
+                .begin_cell_edit(0, 2, before.to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content(after.to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let preview = match &effects[0] {
+                Effect::DispatchActions(actions) => match actions.first().expect("action") {
+                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            assert!(preview.diff[0].json_diff.is_none());
+            assert_eq!(preview.diff[0].before, before);
+            assert_eq!(preview.diff[0].after, after);
         }
 
         #[test]

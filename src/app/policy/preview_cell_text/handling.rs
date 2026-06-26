@@ -1,28 +1,26 @@
 use crate::domain::DatabaseType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PreviewCellTextHandling {
+pub enum PreviewCellTextDiffHandling {
+    RawText,
+    PostgreSqlJsonb,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviewCellTextDisplayHandling {
     RawText,
     PostgreSqlJsonLikeText,
     PostgreSqlJson,
     PostgreSqlJsonb,
 }
 
-pub fn preview_cell_text_handling(
+pub fn preview_cell_text_diff_handling(
     database_type: DatabaseType,
     column_data_type: &str,
-) -> PreviewCellTextHandling {
-    if database_type == DatabaseType::SQLite {
-        return PreviewCellTextHandling::RawText;
-    }
-
-    match database_type {
-        DatabaseType::PostgreSQL => match column_data_type {
-            "jsonb" => PreviewCellTextHandling::PostgreSqlJsonb,
-            "json" => PreviewCellTextHandling::PostgreSqlJson,
-            _ => PreviewCellTextHandling::RawText,
-        },
-        DatabaseType::SQLite => PreviewCellTextHandling::RawText,
+) -> PreviewCellTextDiffHandling {
+    match (database_type, column_data_type) {
+        (DatabaseType::PostgreSQL, "jsonb") => PreviewCellTextDiffHandling::PostgreSqlJsonb,
+        _ => PreviewCellTextDiffHandling::RawText,
     }
 }
 
@@ -30,22 +28,22 @@ pub fn preview_cell_text_display_handling(
     database_type: DatabaseType,
     column_data_type: &str,
     value: &str,
-) -> PreviewCellTextHandling {
-    match preview_cell_text_handling(database_type, column_data_type) {
-        handling @ (PreviewCellTextHandling::PostgreSqlJson
-        | PreviewCellTextHandling::PostgreSqlJsonb
-        | PreviewCellTextHandling::PostgreSqlJsonLikeText) => handling,
-        PreviewCellTextHandling::RawText
-            if database_type != DatabaseType::SQLite && looks_like_json_container(value) =>
-        {
-            PreviewCellTextHandling::PostgreSqlJsonLikeText
-        }
-        PreviewCellTextHandling::RawText => PreviewCellTextHandling::RawText,
+) -> PreviewCellTextDisplayHandling {
+    match database_type {
+        DatabaseType::SQLite => PreviewCellTextDisplayHandling::RawText,
+        DatabaseType::PostgreSQL => match column_data_type {
+            "jsonb" => PreviewCellTextDisplayHandling::PostgreSqlJsonb,
+            "json" => PreviewCellTextDisplayHandling::PostgreSqlJson,
+            _ if looks_like_json_container(value) => {
+                PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+            }
+            _ => PreviewCellTextDisplayHandling::RawText,
+        },
     }
 }
 
-pub fn uses_jsonb_detail_modal(handling: PreviewCellTextHandling) -> bool {
-    handling == PreviewCellTextHandling::PostgreSqlJsonb
+pub fn uses_jsonb_detail_modal(diff_handling: PreviewCellTextDiffHandling) -> bool {
+    diff_handling == PreviewCellTextDiffHandling::PostgreSqlJsonb
 }
 
 fn looks_like_json_container(value: &str) -> bool {
@@ -60,18 +58,18 @@ mod tests {
     #[test]
     fn sqlite_columns_always_use_raw_text() {
         assert_eq!(
-            preview_cell_text_handling(DatabaseType::SQLite, "TEXT"),
-            PreviewCellTextHandling::RawText
+            preview_cell_text_diff_handling(DatabaseType::SQLite, "TEXT"),
+            PreviewCellTextDiffHandling::RawText
         );
         assert_eq!(
-            preview_cell_text_handling(DatabaseType::SQLite, "json"),
-            PreviewCellTextHandling::RawText
+            preview_cell_text_diff_handling(DatabaseType::SQLite, "json"),
+            PreviewCellTextDiffHandling::RawText
         );
         assert_eq!(
-            preview_cell_text_handling(DatabaseType::SQLite, "jsonb"),
-            PreviewCellTextHandling::RawText
+            preview_cell_text_diff_handling(DatabaseType::SQLite, "jsonb"),
+            PreviewCellTextDiffHandling::RawText
         );
-        assert!(!uses_jsonb_detail_modal(preview_cell_text_handling(
+        assert!(!uses_jsonb_detail_modal(preview_cell_text_diff_handling(
             DatabaseType::SQLite,
             "jsonb"
         )));
@@ -80,28 +78,28 @@ mod tests {
     #[test]
     fn postgresql_jsonb_uses_semantic_handling() {
         assert_eq!(
-            preview_cell_text_handling(DatabaseType::PostgreSQL, "jsonb"),
-            PreviewCellTextHandling::PostgreSqlJsonb
+            preview_cell_text_diff_handling(DatabaseType::PostgreSQL, "jsonb"),
+            PreviewCellTextDiffHandling::PostgreSqlJsonb
         );
-        assert!(uses_jsonb_detail_modal(preview_cell_text_handling(
+        assert!(uses_jsonb_detail_modal(preview_cell_text_diff_handling(
             DatabaseType::PostgreSQL,
             "jsonb"
         )));
     }
 
     #[test]
-    fn postgresql_json_uses_json_display_handling() {
+    fn postgresql_json_uses_raw_text_for_diff() {
         assert_eq!(
-            preview_cell_text_handling(DatabaseType::PostgreSQL, "json"),
-            PreviewCellTextHandling::PostgreSqlJson
+            preview_cell_text_diff_handling(DatabaseType::PostgreSQL, "json"),
+            PreviewCellTextDiffHandling::RawText
         );
     }
 
     #[test]
     fn postgresql_text_uses_raw_text_for_diff() {
         assert_eq!(
-            preview_cell_text_handling(DatabaseType::PostgreSQL, "text"),
-            PreviewCellTextHandling::RawText
+            preview_cell_text_diff_handling(DatabaseType::PostgreSQL, "text"),
+            PreviewCellTextDiffHandling::RawText
         );
     }
 
@@ -113,7 +111,7 @@ mod tests {
                 "text",
                 r#"{"items":["admin"]}"#
             ),
-            PreviewCellTextHandling::PostgreSqlJsonLikeText
+            PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
         );
     }
 }

@@ -10,7 +10,7 @@ use crate::policy::write::write_update::build_pk_pairs;
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
-use crate::policy::preview_cell_text::{preview_cell_text_handling, uses_jsonb_detail_modal};
+use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
 fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
@@ -26,7 +26,7 @@ fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
     let Some(column) = td.columns.get(col_idx) else {
         return false;
     };
-    let handling = preview_cell_text_handling(
+    let handling = preview_cell_text_diff_handling(
         state.session.active_database_type_or_default(),
         column.data_type.as_str(),
     );

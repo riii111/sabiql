@@ -6,7 +6,7 @@ use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::preview_cell_text::{
-    format_for_cell_detail, preview_cell_text_display_handling, preview_cell_text_handling,
+    format_for_cell_detail, preview_cell_text_diff_handling, preview_cell_text_display_handling,
     uses_jsonb_detail_modal,
 };
 use crate::ports::outbound::ClipboardError;
@@ -153,7 +153,7 @@ fn selected_cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
     let Some(column_data_type) = selected_column_data_type(state, col_idx) else {
         return false;
     };
-    let handling = preview_cell_text_handling(
+    let handling = preview_cell_text_diff_handling(
         state.session.active_database_type_or_default(),
         column_data_type,
     );

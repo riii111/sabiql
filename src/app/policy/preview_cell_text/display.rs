@@ -1,9 +1,10 @@
-use super::handling::PreviewCellTextHandling;
+use super::handling::PreviewCellTextDisplayHandling;
 
-pub fn format_for_cell_detail(value: &str, handling: PreviewCellTextHandling) -> String {
+pub fn format_for_cell_detail(value: &str, handling: PreviewCellTextDisplayHandling) -> String {
     let should_pretty_print = matches!(
         handling,
-        PreviewCellTextHandling::PostgreSqlJson | PreviewCellTextHandling::PostgreSqlJsonLikeText
+        PreviewCellTextDisplayHandling::PostgreSqlJson
+            | PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
     );
     if !should_pretty_print {
         return value.to_string();
@@ -18,14 +19,19 @@ pub fn format_for_cell_detail(value: &str, handling: PreviewCellTextHandling) ->
 #[cfg(test)]
 mod tests {
     use super::super::handling::{
-        PreviewCellTextHandling, preview_cell_text_display_handling, preview_cell_text_handling,
+        PreviewCellTextDisplayHandling, preview_cell_text_display_handling,
     };
     use super::*;
     use crate::domain::DatabaseType;
 
     #[test]
     fn postgresql_json_column_pretty_prints() {
-        let handling = preview_cell_text_handling(DatabaseType::PostgreSQL, "json");
+        let handling = preview_cell_text_display_handling(
+            DatabaseType::PostgreSQL,
+            "json",
+            r#"{"b":2,"a":1}"#,
+        );
+        assert_eq!(handling, PreviewCellTextDisplayHandling::PostgreSqlJson);
         let formatted = format_for_cell_detail(r#"{"b":2,"a":1}"#, handling);
         assert_eq!(formatted, "{\n  \"a\": 1,\n  \"b\": 2\n}");
     }
@@ -64,7 +70,10 @@ mod tests {
             "text",
             r#"{"items":["admin","writer"]}"#,
         );
-        assert_eq!(handling, PreviewCellTextHandling::PostgreSqlJsonLikeText);
+        assert_eq!(
+            handling,
+            PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+        );
         assert_eq!(
             format_for_cell_detail(r#"{"items":["admin","writer"]}"#, handling),
             "{\n  \"items\": [\n    \"admin\",\n    \"writer\"\n  ]\n}"
