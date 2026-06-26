@@ -645,19 +645,6 @@ fn second_keyword(sql: &str) -> Option<&str> {
     next_keyword_from(sql, end).map(|(keyword, _)| keyword)
 }
 
-fn third_keyword(sql: &str) -> Option<&str> {
-    let (_, first_end) = next_keyword_from(sql, 0)?;
-    let (_, second_end) = next_keyword_from(sql, first_end)?;
-    next_keyword_from(sql, second_end).map(|(keyword, _)| keyword)
-}
-
-fn fourth_keyword(sql: &str) -> Option<&str> {
-    let (_, first_end) = next_keyword_from(sql, 0)?;
-    let (_, second_end) = next_keyword_from(sql, first_end)?;
-    let (_, third_end) = next_keyword_from(sql, second_end)?;
-    next_keyword_from(sql, third_end).map(|(keyword, _)| keyword)
-}
-
 fn contains_keyword(sql: &str, expected: &str) -> bool {
     let mut offset = 0;
     while let Some((keyword, end)) = next_keyword_from(sql, offset) {
@@ -819,11 +806,74 @@ fn sqlite_export_not_rerunnable_error() -> DbOperationError {
     )
 }
 
-fn should_wrap_transaction(query: &str) -> bool {
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SqliteWrapMode {
+    None,
+    BeginCommit,
+}
+
+fn needs_write_batch_wrap(statements: &[&str]) -> bool {
+    statements.len() > 1 && statements.iter().any(|stmt| is_write_statement(stmt))
+}
+
+fn rollback_has_to_clause(statement: &str) -> bool {
+    if !first_keyword(statement).eq_ignore_ascii_case("ROLLBACK") {
+        return false;
+    }
+    let mut offset = 0;
+    while let Some((keyword, end)) = next_keyword_from(statement, offset) {
+        if keyword.eq_ignore_ascii_case("TO") {
+            return true;
+        }
+        offset = end;
+    }
+    false
+}
+
+fn rollback_to_target(statement: &str) -> Option<&str> {
+    let (_, first_end) = next_keyword_from(statement, 0)?;
+    if !first_keyword(statement).eq_ignore_ascii_case("ROLLBACK") {
+        return None;
+    }
+    let (second, second_end) = next_keyword_from(statement, first_end)?;
+    if second.eq_ignore_ascii_case("TRANSACTION") {
+        let (third, third_end) = next_keyword_from(statement, second_end)?;
+        if !third.eq_ignore_ascii_case("TO") {
+            return None;
+        }
+        let (fourth, fourth_end) = next_keyword_from(statement, third_end)?;
+        if fourth.eq_ignore_ascii_case("SAVEPOINT") {
+            next_keyword_from(statement, fourth_end).map(|(name, _)| name)
+        } else {
+            Some(fourth)
+        }
+    } else if second.eq_ignore_ascii_case("TO") {
+        let (third, third_end) = next_keyword_from(statement, second_end)?;
+        if third.eq_ignore_ascii_case("SAVEPOINT") {
+            next_keyword_from(statement, third_end).map(|(name, _)| name)
+        } else {
+            Some(third)
+        }
+    } else {
+        None
+    }
+}
+
+fn is_rollback_to(statement: &str) -> bool {
+    rollback_to_target(statement).is_some() || rollback_has_to_clause(statement)
+}
+
+fn sqlite_wrap_mode(query: &str) -> SqliteWrapMode {
     let statements = split_sqlite_statements(query);
-    statements.len() > 1
-        && statements.iter().any(|stmt| is_write_statement(stmt))
-        && !statements.iter().any(|stmt| is_transaction_control(stmt))
+    if !needs_write_batch_wrap(&statements) {
+        return SqliteWrapMode::None;
+    }
+
+    if statements.iter().any(|stmt| is_transaction_control(stmt)) {
+        return SqliteWrapMode::None;
+    }
+
+    SqliteWrapMode::BeginCommit
 }
 
 fn sqlite_transaction_block(query: &str) -> String {
@@ -832,10 +882,9 @@ fn sqlite_transaction_block(query: &str) -> String {
 }
 
 fn sqlite_execution_query(query: &str) -> Cow<'_, str> {
-    if should_wrap_transaction(query) {
-        Cow::Owned(sqlite_transaction_block(query))
-    } else {
-        Cow::Borrowed(query)
+    match sqlite_wrap_mode(query) {
+        SqliteWrapMode::BeginCommit => Cow::Owned(sqlite_transaction_block(query)),
+        SqliteWrapMode::None => Cow::Borrowed(query),
     }
 }
 
@@ -879,9 +928,9 @@ fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
         return query.to_string();
     }
 
-    let wrap = should_wrap_transaction(query);
-    let mut parts = Vec::with_capacity(statements.len() * 2 + usize::from(wrap) * 2);
-    if wrap {
+    let wrap_mode = sqlite_wrap_mode(query);
+    let mut parts = Vec::with_capacity(statements.len() * 2 + 2);
+    if matches!(wrap_mode, SqliteWrapMode::BeginCommit) {
         parts.push("BEGIN".to_string());
     }
     for (index, statement) in statements.iter().enumerate() {
@@ -893,7 +942,7 @@ fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
             parts.push(sqlite_result_probe(marker, index));
         }
     }
-    if wrap {
+    if matches!(wrap_mode, SqliteWrapMode::BeginCommit) {
         parts.push("COMMIT".to_string());
     }
     parts.join("\n;\n")
@@ -1431,18 +1480,10 @@ fn transaction_control_tag(query: &str) -> Option<CommandTag> {
     match first_keyword(query).to_ascii_uppercase().as_str() {
         "BEGIN" => Some(CommandTag::Begin),
         "COMMIT" | "END" => Some(CommandTag::Commit),
-        "ROLLBACK" if second_keyword(query).is_some_and(|kw| kw.eq_ignore_ascii_case("TO")) => {
-            let name =
-                if third_keyword(query).is_some_and(|kw| kw.eq_ignore_ascii_case("SAVEPOINT")) {
-                    fourth_keyword(query)
-                } else {
-                    third_keyword(query)
-                };
-            Some(CommandTag::Other(format!(
-                "ROLLBACK TO {}",
-                name.unwrap_or("")
-            )))
-        }
+        "ROLLBACK" if is_rollback_to(query) => Some(CommandTag::Other(format!(
+            "ROLLBACK TO {}",
+            rollback_to_target(query).unwrap_or("")
+        ))),
         "ROLLBACK" => Some(CommandTag::Rollback),
         "SAVEPOINT" => Some(CommandTag::Other(format!(
             "SAVEPOINT {}",
@@ -1498,15 +1539,15 @@ fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
                 frames.push((tag_name(raw, "SAVEPOINT"), Vec::new()));
             }
             CommandTag::Other(raw) if raw == "RELEASE" || raw.starts_with("RELEASE ") => {
-                if let Some(index) = savepoint_frame_index(&frames, tag_name(raw, "RELEASE"))
-                    && index > 0
-                {
+                if let Some(index) = savepoint_frame_index(&frames, tag_name(raw, "RELEASE")) {
                     let mut merged = Vec::new();
                     for (_, frame) in frames.drain(index..) {
                         merged.extend(frame);
                     }
                     if let Some((_, parent)) = frames.last_mut() {
                         parent.extend(merged);
+                    } else {
+                        effective.extend(merged);
                     }
                 }
             }
@@ -1536,10 +1577,6 @@ fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
         }
     }
 
-    for (_, frame) in frames.drain(..) {
-        effective.extend(frame);
-    }
-
     effective
 }
 
@@ -1559,9 +1596,10 @@ fn savepoint_frame_index(
         .enumerate()
         .rev()
         .find_map(|(index, (frame_name, _))| {
-            if index == 0 {
-                None
-            } else if name
+            if frame_name.is_none() && index == 0 {
+                return None;
+            }
+            if name
                 .as_ref()
                 .is_none_or(|name| frame_name.as_ref() == Some(name))
             {
@@ -1870,6 +1908,160 @@ mod tests {
             wrapped,
             "BEGIN; INSERT INTO users(id) VALUES (1); END\n;\nSELECT changes() AS affected_rows;"
         );
+    }
+
+    mod discard_rolled_back_policy {
+        use super::*;
+
+        fn sp(name: &str) -> CommandTag {
+            CommandTag::Other(format!("SAVEPOINT {name}"))
+        }
+
+        fn rollback_to(name: &str) -> CommandTag {
+            CommandTag::Other(format!("ROLLBACK TO {name}"))
+        }
+
+        fn release(name: &str) -> CommandTag {
+            CommandTag::Other(format!("RELEASE {name}"))
+        }
+
+        #[test]
+        fn top_level_savepoint_rollback_to_discards_inner_dml() {
+            let tags = vec![
+                sp("sp"),
+                CommandTag::Insert(1),
+                rollback_to("sp"),
+                CommandTag::Insert(2),
+                release("sp"),
+            ];
+
+            assert_eq!(discard_rolled_back(&tags), vec![CommandTag::Insert(2)]);
+        }
+
+        #[test]
+        fn top_level_savepoint_full_rollback_discards_all_dml() {
+            let tags = vec![sp("sp"), CommandTag::Insert(1), CommandTag::Rollback];
+
+            assert!(discard_rolled_back(&tags).is_empty());
+        }
+
+        #[test]
+        fn unclosed_begin_discards_frame_from_effective() {
+            let tags = vec![CommandTag::Begin, CommandTag::Update(1)];
+
+            assert!(discard_rolled_back(&tags).is_empty());
+        }
+
+        #[test]
+        fn unclosed_top_level_savepoint_discards_frame_from_effective() {
+            let tags = vec![sp("sp"), CommandTag::Insert(1)];
+
+            assert!(discard_rolled_back(&tags).is_empty());
+        }
+
+        #[test]
+        fn unclosed_top_level_savepoint_aggregates_to_rollback() {
+            let tags = vec![sp("sp"), CommandTag::Insert(1)];
+
+            assert_eq!(
+                aggregate_sqlite_command_tag(&tags),
+                Some(CommandTag::Rollback)
+            );
+        }
+
+        #[test]
+        fn rollback_to_quoted_savepoint_is_not_full_rollback() {
+            let tags = sqlite_statement_tags(
+                &[
+                    "SAVEPOINT sp",
+                    "INSERT INTO users(id) VALUES (1)",
+                    "ROLLBACK TO \"sp\"",
+                ],
+                &HashMap::from([(1, 1)]),
+            );
+
+            assert_eq!(
+                tags,
+                vec![
+                    CommandTag::Other("SAVEPOINT sp".to_string()),
+                    CommandTag::Insert(1),
+                    CommandTag::Other("ROLLBACK TO ".to_string()),
+                ]
+            );
+            assert!(discard_rolled_back(&tags).is_empty());
+        }
+
+        #[test]
+        fn begin_savepoint_release_still_merges_nested_frame() {
+            let tags = vec![
+                CommandTag::Begin,
+                sp("inner"),
+                CommandTag::Insert(1),
+                release("inner"),
+                CommandTag::Commit,
+            ];
+
+            assert_eq!(discard_rolled_back(&tags), vec![CommandTag::Insert(1)]);
+        }
+
+        #[test]
+        fn rollback_transaction_to_savepoint_discards_inner_dml() {
+            let tags = sqlite_statement_tags(
+                &[
+                    "SAVEPOINT sp",
+                    "INSERT INTO users(id) VALUES (1)",
+                    "INSERT INTO users(id) VALUES (2)",
+                    "ROLLBACK TRANSACTION TO SAVEPOINT sp",
+                    "INSERT INTO users(id) VALUES (3)",
+                    "RELEASE sp",
+                ],
+                &HashMap::from([(1, 1), (2, 1), (4, 1)]),
+            );
+
+            assert_eq!(discard_rolled_back(&tags), vec![CommandTag::Insert(1)]);
+        }
+    }
+
+    mod wrap_mode {
+        use super::*;
+
+        #[test]
+        fn autocommit_multi_write_uses_begin_commit() {
+            assert_eq!(
+                sqlite_wrap_mode(
+                    "INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
+                ),
+                SqliteWrapMode::BeginCommit
+            );
+        }
+
+        #[test]
+        fn explicit_begin_is_not_wrapped() {
+            assert_eq!(
+                sqlite_wrap_mode("BEGIN; INSERT INTO users(id) VALUES (1); COMMIT"),
+                SqliteWrapMode::None
+            );
+        }
+
+        #[test]
+        fn top_level_savepoint_multi_write_is_not_wrapped() {
+            assert_eq!(
+                sqlite_wrap_mode(
+                    "SAVEPOINT user_sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
+                ),
+                SqliteWrapMode::None
+            );
+        }
+
+        #[test]
+        fn mid_batch_savepoint_is_not_wrapped() {
+            assert_eq!(
+                sqlite_wrap_mode(
+                    "INSERT INTO users(id) VALUES (1); SAVEPOINT sp; INSERT INTO users(id) VALUES (2)"
+                ),
+                SqliteWrapMode::None
+            );
+        }
     }
 
     #[test]
@@ -2804,6 +2996,76 @@ mod tests {
 
             assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
             assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn top_level_savepoint_rollback_to_discards_inner_dml_only() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SAVEPOINT sp;
+                     INSERT INTO users(id) VALUES (1);
+                     INSERT INTO users(id) VALUES (2);
+                     ROLLBACK TO sp;
+                     INSERT INTO users(id) VALUES (3);
+                     RELEASE sp",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+            assert_eq!(rows.rows(), vec![vec!["3".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn top_level_savepoint_multi_write_rolls_back_when_later_statement_fails() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
+                    false,
+                )
+                .await;
+
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+            assert!(rows.rows().is_empty());
+        }
+
+        #[tokio::test]
+        async fn top_level_savepoint_without_release_does_not_persist_on_success() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert_eq!(result.command_tag, Some(CommandTag::Rollback));
+            assert!(rows.rows().is_empty());
         }
 
         #[tokio::test]
