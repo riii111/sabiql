@@ -79,15 +79,6 @@ impl CellEditState {
         self.original_value.clear();
         self.input.clear();
     }
-
-    #[cfg(test)]
-    pub(crate) fn with_selection_for_test(row: Option<usize>, col: Option<usize>) -> Self {
-        Self {
-            row,
-            col,
-            ..Default::default()
-        }
-    }
 }
 
 #[cfg(test)]
@@ -110,17 +101,12 @@ mod tests {
     }
 
     #[test]
-    fn only_row_selected_returns_inactive() {
-        let state = CellEditState::with_selection_for_test(Some(1), None);
+    fn is_active_requires_both_row_and_col() {
+        assert!(!CellEditState::default().is_active());
 
-        assert!(!state.is_active());
-    }
-
-    #[test]
-    fn only_col_selected_returns_inactive() {
-        let state = CellEditState::with_selection_for_test(None, Some(1));
-
-        assert!(!state.is_active());
+        let mut state = CellEditState::default();
+        state.begin(1, 2, "Alice".to_string());
+        assert!(state.is_active());
     }
 
     #[test]
