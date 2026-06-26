@@ -20,11 +20,30 @@ pub struct DbCapabilities {
     supported_inspector_info_fields: Vec<InspectorInfoField>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CapabilityFlags {
+    supports_explain: bool,
+    supports_er_diagram: bool,
+    supports_jsonb_detail: bool,
+}
+
+impl CapabilityFlags {
+    const NONE: Self = Self {
+        supports_explain: false,
+        supports_er_diagram: false,
+        supports_jsonb_detail: false,
+    };
+
+    const POSTGRESQL: Self = Self {
+        supports_explain: true,
+        supports_er_diagram: true,
+        supports_jsonb_detail: true,
+    };
+}
+
 impl DbCapabilities {
     pub(crate) fn new(
-        supports_explain: bool,
-        supports_er_diagram: bool,
-        supports_jsonb_detail: bool,
+        flags: CapabilityFlags,
         supported_inspector_tabs: Vec<InspectorTab>,
         supported_inspector_info_fields: Vec<InspectorInfoField>,
     ) -> Self {
@@ -45,9 +64,9 @@ impl DbCapabilities {
             "DbCapabilities supported inspector info fields must be unique"
         );
         Self {
-            supports_explain,
-            supports_er_diagram,
-            supports_jsonb_detail,
+            supports_explain: flags.supports_explain,
+            supports_er_diagram: flags.supports_er_diagram,
+            supports_jsonb_detail: flags.supports_jsonb_detail,
             supported_inspector_tabs,
             supported_inspector_info_fields,
         }
@@ -55,9 +74,7 @@ impl DbCapabilities {
 
     pub fn disconnected() -> Self {
         Self::new(
-            false,
-            false,
-            false,
+            CapabilityFlags::NONE,
             vec![InspectorTab::Info],
             vec![InspectorInfoField::Schema, InspectorInfoField::TableName],
         )
@@ -65,9 +82,7 @@ impl DbCapabilities {
 
     pub fn postgres_like() -> Self {
         Self::new(
-            true,
-            true,
-            true,
+            CapabilityFlags::POSTGRESQL,
             vec![
                 InspectorTab::Info,
                 InspectorTab::Columns,
@@ -89,9 +104,7 @@ impl DbCapabilities {
 
     pub fn sqlite_like() -> Self {
         Self::new(
-            false,
-            false,
-            false,
+            CapabilityFlags::NONE,
             vec![
                 InspectorTab::Info,
                 InspectorTab::Columns,
@@ -299,9 +312,7 @@ mod tests {
         #[test]
         fn unsupported_inspector_tab_returns_first_supported_tab() {
             let caps = DbCapabilities::new(
-                false,
-                false,
-                false,
+                CapabilityFlags::NONE,
                 vec![InspectorTab::Info, InspectorTab::Columns],
                 vec![InspectorInfoField::Owner],
             );
@@ -315,9 +326,7 @@ mod tests {
         #[test]
         fn supported_sql_modal_tab_passes_through() {
             let caps = DbCapabilities::new(
-                true,
-                true,
-                true,
+                CapabilityFlags::POSTGRESQL,
                 vec![InspectorTab::Info],
                 vec![InspectorInfoField::Owner],
             );
@@ -331,9 +340,7 @@ mod tests {
         #[test]
         fn unsupported_sql_modal_tab_returns_sql() {
             let no_explain_caps = DbCapabilities::new(
-                false,
-                false,
-                false,
+                CapabilityFlags::NONE,
                 vec![InspectorTab::Info],
                 vec![InspectorInfoField::Owner],
             );
@@ -351,8 +358,11 @@ mod tests {
         #[test]
         #[should_panic(expected = "DbCapabilities requires at least one supported inspector tab")]
         fn rejects_empty_supported_inspector_tabs() {
-            let _ =
-                DbCapabilities::new(false, false, false, vec![], vec![InspectorInfoField::Owner]);
+            let _ = DbCapabilities::new(
+                CapabilityFlags::NONE,
+                vec![],
+                vec![InspectorInfoField::Owner],
+            );
         }
 
         #[test]
@@ -360,16 +370,14 @@ mod tests {
             expected = "DbCapabilities requires at least one supported inspector info field"
         )]
         fn rejects_empty_supported_inspector_info_fields() {
-            let _ = DbCapabilities::new(false, false, false, vec![InspectorTab::Info], vec![]);
+            let _ = DbCapabilities::new(CapabilityFlags::NONE, vec![InspectorTab::Info], vec![]);
         }
 
         #[test]
         #[should_panic(expected = "DbCapabilities supported inspector tabs must be unique")]
         fn rejects_duplicate_supported_inspector_tabs() {
             let _ = DbCapabilities::new(
-                false,
-                false,
-                false,
+                CapabilityFlags::NONE,
                 vec![InspectorTab::Info, InspectorTab::Info],
                 vec![InspectorInfoField::Schema],
             );
@@ -379,9 +387,7 @@ mod tests {
         #[should_panic(expected = "DbCapabilities supported inspector info fields must be unique")]
         fn rejects_duplicate_supported_inspector_info_fields() {
             let _ = DbCapabilities::new(
-                false,
-                false,
-                false,
+                CapabilityFlags::NONE,
                 vec![InspectorTab::Info],
                 vec![InspectorInfoField::Schema, InspectorInfoField::Schema],
             );

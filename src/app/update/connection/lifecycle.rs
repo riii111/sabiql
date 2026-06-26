@@ -53,6 +53,8 @@ pub fn reduce_connection_lifecycle(
                 name,
                 database_type,
             } = target;
+            state.ui.reset_er_picker_request();
+
             if let Some(current_id) = state.session.active_connection_id().cloned() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
@@ -255,6 +257,33 @@ mod tests {
             Some(DatabaseType::SQLite)
         );
         assert_eq!(state.session.connection_state(), ConnectionState::Connected);
+    }
+
+    #[test]
+    fn switch_without_cache_clears_pending_er_picker() {
+        let mut state = AppState::new("test".to_string());
+        let new_id = ConnectionId::new();
+        state.ui.set_pending_er_picker(true);
+
+        let action = create_switch_action(&new_id, "fresh_db");
+        reduce(&mut state, &action);
+
+        assert!(!state.ui.pending_er_picker());
+    }
+
+    #[test]
+    fn cached_switch_clears_pending_er_picker() {
+        let mut state = AppState::new("test".to_string());
+        let target_id = ConnectionId::new();
+        state.ui.set_pending_er_picker(true);
+        state
+            .connection_caches
+            .save(&target_id, ConnectionCache::default());
+
+        let action = create_switch_action(&target_id, "cached_db");
+        reduce(&mut state, &action);
+
+        assert!(!state.ui.pending_er_picker());
     }
 
     #[test]

@@ -324,10 +324,7 @@ fn reference_sections(
         &query_history_picker::TYPE_FILTER,
     ]);
     if db_capabilities.supports_er_diagram() {
-        search_filter_rows.insert(
-            1,
-            rows_from_mode_row_refs(&[&er_picker::TYPE_FILTER])[0].clone(),
-        );
+        search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
     }
     if db_capabilities.supports_jsonb_detail() {
         search_filter_rows.extend(rows_from_bindings(JSONB_SEARCH_KEYS));
@@ -519,15 +516,15 @@ fn paired_binding_row(first: &KeyBinding, second: &KeyBinding) -> Option<HelpRow
 }
 
 fn rows_from_mode_rows(rows: &[ModeRow]) -> Vec<HelpRow> {
-    rows.iter()
-        .map(|row| HelpRow::new(row.key, row.description))
-        .collect()
+    rows.iter().map(row_from_mode_row).collect()
 }
 
 fn rows_from_mode_row_refs(rows: &[&ModeRow]) -> Vec<HelpRow> {
-    rows.iter()
-        .map(|row| HelpRow::new(row.key, row.description))
-        .collect()
+    rows.iter().map(|&row| row_from_mode_row(row)).collect()
+}
+
+fn row_from_mode_row(row: &ModeRow) -> HelpRow {
+    HelpRow::new(row.key, row.description)
 }
 
 fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
