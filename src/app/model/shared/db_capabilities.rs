@@ -110,6 +110,7 @@ impl DbCapabilities {
                 InspectorTab::Columns,
                 InspectorTab::Indexes,
                 InspectorTab::ForeignKeys,
+                InspectorTab::Triggers,
                 InspectorTab::Ddl,
             ],
             vec![
@@ -264,6 +265,7 @@ mod tests {
                     InspectorTab::Columns,
                     InspectorTab::Indexes,
                     InspectorTab::ForeignKeys,
+                    InspectorTab::Triggers,
                     InspectorTab::Ddl
                 ]
             );
