@@ -975,6 +975,8 @@ mod tests {
 
         #[test]
         fn metadata_failed_clears_stale_browse_state_on_initial_connect() {
+            use crate::domain::{QueryResult, QuerySource};
+
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.session.mark_connected(Arc::new(DatabaseMetadata {
@@ -987,6 +989,19 @@ mod tests {
                     false,
                 )],
             }));
+            state.ui.set_explorer_selected_raw(2);
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query.pagination);
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["col".to_string()],
+                    vec![vec!["val".to_string()]],
+                    10,
+                    QuerySource::Preview,
+                )));
             state
                 .session
                 .set_connection_state(ConnectionState::Connecting);
@@ -1007,7 +1022,9 @@ mod tests {
 
             assert!(state.session.metadata().is_none());
             assert!(state.session.tables().is_empty());
+            assert!(state.session.selected_table_key().is_none());
             assert!(state.query.current_result().is_none());
+            assert_eq!(state.ui.explorer_selected(), 0);
             assert!(state.session.connection_state().is_failed());
         }
 

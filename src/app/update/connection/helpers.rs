@@ -4,6 +4,12 @@ use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
 use crate::update::action::ConnectionTarget;
 
+fn reset_sql_and_er_state(state: &mut AppState) {
+    state.sql_modal.reset_prefetch();
+    state.er_preparation.reset();
+    state.ui.reset_er_picker_request();
+}
+
 pub(super) fn reset_for_new_connection(
     state: &mut AppState,
     id: &ConnectionId,
@@ -14,9 +20,7 @@ pub(super) fn reset_for_new_connection(
     state.session.reset(&mut state.query);
     state.result_interaction.reset_view();
     state.ui.set_explorer_selection(None);
-    state.sql_modal.reset_prefetch();
-    state.er_preparation.reset();
-    state.ui.reset_er_picker_request();
+    reset_sql_and_er_state(state);
     state
         .session
         .activate_connection_with_dsn(id, name, database_type, dsn);
@@ -76,4 +80,5 @@ pub(super) fn restore_cache(
         .ui
         .set_explorer_selection(Some(cache.explorer_selected));
     state.result_interaction.reset_view();
+    reset_sql_and_er_state(state);
 }

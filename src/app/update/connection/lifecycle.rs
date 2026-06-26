@@ -320,6 +320,23 @@ mod tests {
     }
 
     #[test]
+    fn switch_with_cache_resets_sql_prefetch() {
+        let mut state = AppState::new("test".to_string());
+        let target_id = ConnectionId::new();
+        state
+            .connection_caches
+            .save(&target_id, ConnectionCache::default());
+        let _ = state.sql_modal.begin_prefetch();
+        state.sql_modal.enqueue_prefetch("public.users".to_string());
+
+        let action = create_switch_action(&target_id, "cached_db");
+        reduce(&mut state, &action);
+
+        assert!(!state.sql_modal.is_prefetch_started());
+        assert!(!state.sql_modal.has_pending_prefetch());
+    }
+
+    #[test]
     fn switch_without_cache_resets_sql_prefetch() {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
