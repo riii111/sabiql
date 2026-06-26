@@ -58,6 +58,10 @@ struct RawIndexColumn {
     seqno: i64,
     cid: i64,
     name: Option<String>,
+    #[serde(default)]
+    desc: i64,
+    #[serde(default)]
+    coll: Option<String>,
     key: i64,
 }
 
@@ -275,6 +279,14 @@ impl SqliteAdapter {
             columns.sort_by_key(|col| col.seqno);
             let has_expression = columns.iter().any(|col| col.key != 0 && col.cid == -2);
             let has_auxiliary_columns = columns.iter().any(|col| col.key == 0);
+            let has_descending_key = columns.iter().any(|col| col.key != 0 && col.desc != 0);
+            let has_custom_collation = columns.iter().any(|col| {
+                col.key != 0
+                    && col
+                        .coll
+                        .as_deref()
+                        .is_some_and(|collation| !collation.eq_ignore_ascii_case("BINARY"))
+            });
             let columns = Self::index_key_column_names(&columns);
             let definition = self.index_definition(path, &raw.name).await;
 
@@ -287,6 +299,12 @@ impl SqliteAdapter {
             }
             if has_auxiliary_columns {
                 attributes = attributes | IndexAttributes::HAS_AUXILIARY_COLUMNS;
+            }
+            if has_descending_key {
+                attributes = attributes | IndexAttributes::DESCENDING;
+            }
+            if has_custom_collation {
+                attributes = attributes | IndexAttributes::CUSTOM_COLLATION;
             }
 
             indexes.push(Index {
@@ -536,7 +554,7 @@ impl SqliteAdapter {
         }));
         parts.extend(detail.indexes.iter().map(|index| {
             format!(
-                "idx={}:{}:{}:{}:{}:{}:{}:{}",
+                "idx={}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
                 index.name,
                 index.columns.join(","),
                 index.is_unique(),
@@ -544,6 +562,8 @@ impl SqliteAdapter {
                 index.is_partial(),
                 index.has_expression(),
                 index.has_auxiliary_columns(),
+                index.has_descending_key(),
+                index.has_custom_collation(),
                 index.definition.clone().unwrap_or_default()
             )
         }));
@@ -1907,24 +1927,32 @@ mod tests {
                 seqno: 0,
                 cid: 1,
                 name: Some("email".to_string()),
+                desc: 0,
+                coll: None,
                 key: 1,
             },
             RawIndexColumn {
                 seqno: 1,
                 cid: -2,
                 name: None,
+                desc: 0,
+                coll: None,
                 key: 1,
             },
             RawIndexColumn {
                 seqno: 2,
                 cid: 99,
                 name: None,
+                desc: 0,
+                coll: None,
                 key: 1,
             },
             RawIndexColumn {
                 seqno: 3,
                 cid: 2,
                 name: Some("rowid".to_string()),
+                desc: 0,
+                coll: None,
                 key: 0,
             },
         ];
@@ -3551,10 +3579,89 @@ mod tests {
             assert!(index.is_partial());
             assert!(index.has_expression());
             assert!(index.has_auxiliary_columns());
+            assert!(index.needs_definition_detail());
             assert!(index.definition.as_deref().is_some_and(|definition| {
                 definition.contains("lower(email)")
                     && definition.contains("WHERE email IS NOT NULL")
             }));
+        }
+
+        #[tokio::test]
+        async fn partial_index_preserves_where_clause_in_definition() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(email TEXT);
+            CREATE INDEX idx_users_email_active
+                ON users(email)
+                WHERE email IS NOT NULL;
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+            let index = detail
+                .indexes
+                .iter()
+                .find(|index| index.name == "idx_users_email_active")
+                .unwrap();
+
+            assert_eq!(index.columns, vec!["email".to_string()]);
+            assert!(index.is_partial());
+            assert!(index.needs_definition_detail());
+            assert!(
+                index
+                    .definition
+                    .as_deref()
+                    .is_some_and(|definition| { definition.contains("WHERE email IS NOT NULL") })
+            );
+        }
+
+        #[tokio::test]
+        async fn descending_and_collation_indexes_preserve_definition() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(name TEXT, created_at TEXT);
+            CREATE INDEX idx_users_name_desc ON users(name DESC);
+            CREATE INDEX idx_users_name_nocase ON users(name COLLATE NOCASE);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            let descending = detail
+                .indexes
+                .iter()
+                .find(|index| index.name == "idx_users_name_desc")
+                .unwrap();
+            assert!(descending.has_descending_key());
+            assert!(descending.needs_definition_detail());
+            assert!(
+                descending
+                    .definition
+                    .as_deref()
+                    .is_some_and(|definition| { definition.contains("DESC") })
+            );
+
+            let collation = detail
+                .indexes
+                .iter()
+                .find(|index| index.name == "idx_users_name_nocase")
+                .unwrap();
+            assert!(collation.has_custom_collation());
+            assert!(collation.needs_definition_detail());
+            assert!(
+                collation
+                    .definition
+                    .as_deref()
+                    .is_some_and(|definition| { definition.contains("COLLATE NOCASE") })
+            );
         }
     }
 
