@@ -357,6 +357,9 @@ impl ConnectionSetupState {
         let message = match error {
             SqliteConnectionConfigError::EmptyPath => "Required",
             SqliteConnectionConfigError::UnsupportedPath => "Unsupported characters",
+            SqliteConnectionConfigError::UnsupportedConnectionFormat => {
+                "Use a regular file path (in-memory and URI filenames unsupported)"
+            }
         };
         self.validation_errors
             .insert(ConnectionField::SqlitePath, message.to_string());
