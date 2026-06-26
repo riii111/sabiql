@@ -14,6 +14,7 @@ use crate::domain::{
 };
 
 mod cli;
+mod error;
 mod sql;
 
 use cli::SqliteCli;
@@ -3449,7 +3450,7 @@ END";
                 )
                 .await;
 
-            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
                 .execute_adhoc(&dsn, "SELECT id FROM users", true)
                 .await
@@ -3511,7 +3512,7 @@ END";
                 )
                 .await;
 
-            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
                 .execute_adhoc(&dsn, "SELECT id FROM users", true)
                 .await
@@ -3534,7 +3535,7 @@ END";
                 )
                 .await;
 
-            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
                 .execute_adhoc(&dsn, "SELECT id FROM users", true)
                 .await
@@ -3551,7 +3552,7 @@ END";
 
             let result = adapter.execute_adhoc(&dsn, query, false).await;
 
-            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
                 .execute_adhoc(&dsn, "SELECT id FROM users", true)
                 .await
@@ -3572,7 +3573,7 @@ END";
                 )
                 .await;
 
-            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
                 .execute_adhoc(&dsn, "SELECT id FROM users", true)
                 .await
@@ -3757,10 +3758,49 @@ END";
                 .await
                 .unwrap();
 
-            assert!(
-                matches!(result, Err(DbOperationError::QueryFailed(message)) if message.contains("FOREIGN KEY constraint failed"))
-            );
+            assert!(matches!(
+                result,
+                Err(DbOperationError::ForeignKeyViolation(_))
+            ));
             assert_eq!(children.rows(), vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn unique_constraint_violation_is_classified() {
+            let (_dir, dsn) = make_sqlite_db(
+                "CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL);",
+            );
+            let adapter = SqliteAdapter::new();
+
+            adapter
+                .execute_write(
+                    &dsn,
+                    "INSERT INTO users(id, email) VALUES (1, 'a@example.com')",
+                    false,
+                )
+                .await
+                .unwrap();
+
+            let result = adapter
+                .execute_write(
+                    &dsn,
+                    "INSERT INTO users(id, email) VALUES (2, 'a@example.com')",
+                    false,
+                )
+                .await;
+
+            assert!(matches!(result, Err(DbOperationError::UniqueViolation(_))));
+        }
+
+        #[tokio::test]
+        async fn syntax_error_stays_query_failed_with_details() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter.execute_adhoc(&dsn, "SELEKT 1", true).await;
+
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(message))
+                    if message.to_ascii_lowercase().contains("syntax error")));
         }
 
         #[tokio::test]
@@ -3886,6 +3926,32 @@ END";
         }
 
         #[tokio::test]
+        async fn export_to_csv_missing_table_returns_object_missing_and_removes_file() {
+            let (dir, dsn) = make_sqlite_db("");
+            let path = dir.path().join("missing_export.csv");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .export_to_csv(&dsn, "SELECT id FROM missing", &path, true)
+                .await;
+
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+            assert!(!path.exists());
+        }
+
+        #[tokio::test]
+        async fn count_query_rows_missing_table_returns_object_missing() {
+            let (_dir, dsn) = make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .count_query_rows(&dsn, "SELECT COUNT(*) FROM missing", true)
+                .await;
+
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+        }
+
+        #[tokio::test]
         async fn read_only_write_fails() {
             let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
@@ -3894,7 +3960,7 @@ END";
                 .execute_write(&dsn, "INSERT INTO users(id) VALUES (1)", true)
                 .await;
 
-            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            assert!(matches!(result, Err(DbOperationError::PermissionDenied(_))));
         }
     }
 

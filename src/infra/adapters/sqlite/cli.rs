@@ -8,6 +8,8 @@ use tokio::time::timeout;
 
 use crate::app::ports::outbound::DbOperationError;
 
+use super::error::classify_query_error;
+
 pub(super) const BUSY_TIMEOUT_MS: u64 = 5_000;
 
 #[derive(Debug, Clone)]
@@ -33,7 +35,7 @@ impl SqliteCli {
     ) -> Result<T, DbOperationError> {
         let output = self.run(path, &["-json"], sql, true).await?;
         if !output.status.success() {
-            return Err(DbOperationError::QueryFailed(output.stderr));
+            return Err(classify_query_error(&output.stderr));
         }
         let stdout = match output.stdout.trim() {
             "" => "[]",
@@ -57,7 +59,7 @@ impl SqliteCli {
             )
             .await?;
         if !output.status.success() {
-            return Err(DbOperationError::QueryFailed(output.stderr));
+            return Err(classify_query_error(&output.stderr));
         }
         Ok(output.stdout)
     }
@@ -77,7 +79,7 @@ impl SqliteCli {
             )
             .await?;
         if !output.status.success() {
-            return Err(DbOperationError::QueryFailed(output.stderr));
+            return Err(classify_query_error(&output.stderr));
         }
         Ok(output.stdout)
     }
@@ -146,7 +148,7 @@ impl SqliteCli {
 
         if !status.success() {
             let _ = tokio::fs::remove_file(output_path).await;
-            return Err(DbOperationError::QueryFailed(stderr));
+            return Err(classify_query_error(&stderr));
         }
 
         Ok(newline_count.saturating_sub(1))
