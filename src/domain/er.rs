@@ -212,7 +212,7 @@ mod tests {
                         to_columns: vec!["id".to_string()],
                         on_delete: FkAction::NoAction,
                         on_update: FkAction::NoAction,
-                        reference_resolved: true,
+                        reference_resolved: true, // parent table exists in metadata
                     },
                     ForeignKey {
                         name: "fk_unresolved".to_string(),
@@ -220,11 +220,11 @@ mod tests {
                         from_table: "child".to_string(),
                         from_columns: vec!["org_id".to_string()],
                         to_schema: "public".to_string(),
-                        to_table: "missing_orgs".to_string(),
+                        to_table: "missing_orgs".to_string(), // parent table absent
                         to_columns: vec!["id".to_string()],
                         on_delete: FkAction::NoAction,
                         on_update: FkAction::NoAction,
-                        reference_resolved: false,
+                        reference_resolved: false, // excluded from ER graph
                     },
                 ],
             );
