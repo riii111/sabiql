@@ -453,7 +453,14 @@ pub(super) fn rollback_to_target(statement: &str) -> Option<&str> {
 
 pub(super) fn savepoint_target(statement: &str) -> Option<&str> {
     let (_, first_end) = next_keyword_from(statement, 0)?;
-    identifier_token_from(statement, first_end).map(|(name, _)| name)
+    let (target, target_end) = identifier_token_from(statement, first_end)?;
+    if first_keyword(statement).eq_ignore_ascii_case("RELEASE")
+        && target.eq_ignore_ascii_case("SAVEPOINT")
+    {
+        identifier_token_from(statement, target_end).map(|(name, _)| name)
+    } else {
+        Some(target)
+    }
 }
 
 fn identifier_token_from(sql: &str, mut i: usize) -> Option<(&str, usize)> {

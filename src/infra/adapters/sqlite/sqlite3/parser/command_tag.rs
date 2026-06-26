@@ -301,6 +301,21 @@ mod tests {
         }
 
         #[test]
+        fn release_savepoint_uses_following_target_name() {
+            let tags = sqlite_statement_tags(
+                &[
+                    "SAVEPOINT outer",
+                    "SAVEPOINT inner",
+                    "INSERT INTO users(id) VALUES (1)",
+                    "RELEASE SAVEPOINT outer",
+                ],
+                &HashMap::from([(2, 1)]),
+            );
+
+            assert_eq!(discard_rolled_back(&tags), vec![CommandTag::Insert(1)]);
+        }
+
+        #[test]
         fn begin_savepoint_release_still_merges_nested_frame() {
             let tags = vec![
                 CommandTag::Begin,

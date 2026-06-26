@@ -166,11 +166,11 @@ impl SqliteCli {
             return Err(classify_query_error(&stderr));
         }
 
-        match count_csv_records(output_path) {
+        match count_csv_records_async(output_path).await {
             Ok(row_count) => Ok(row_count),
             Err(error) => {
                 let _ = tokio::fs::remove_file(output_path).await;
-                Err(DbOperationError::QueryFailed(error.to_string()))
+                Err(error)
             }
         }
     }
@@ -261,6 +261,14 @@ fn count_csv_records(path: &std::path::Path) -> Result<usize, csv::Error> {
     reader
         .records()
         .try_fold(0usize, |count, record| record.map(|_| count + 1))
+}
+
+async fn count_csv_records_async(path: &std::path::Path) -> Result<usize, DbOperationError> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || count_csv_records(&path))
+        .await
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
 }
 
 impl SqliteAdapter {
