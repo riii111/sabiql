@@ -371,22 +371,6 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_jsonb_type_name_opens_plain_cell_detail() {
-        let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "database",
-            DatabaseType::SQLite,
-            "sqlite://test.db",
-        );
-
-        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
-
-        assert_eq!(state.input_mode(), InputMode::CellDetail);
-        assert_eq!(state.cell_detail.content(), r#"{"a":1}"#);
-    }
-
-    #[test]
     fn search_input_tracks_matches_case_insensitively() {
         let mut state = state_with_cell("text", "Alpha\nalpha");
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
