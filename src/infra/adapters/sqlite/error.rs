@@ -124,7 +124,9 @@ mod tests {
             ClassifiedKind::QueryFailed
         )]
         fn classifies_sqlite_stderr(#[case] input: &str, #[case] expected: ClassifiedKind) {
-            assert_eq!(classified_kind(&classify_query_error(input)), expected);
+            let error = classify_query_error(input);
+
+            assert_eq!(classified_kind(&error), expected);
         }
 
         #[test]
@@ -143,16 +145,17 @@ mod tests {
 
         #[test]
         fn unknown_falls_back_safely() {
-            assert!(matches!(
-                classify_query_error("some random error"),
-                DbOperationError::QueryFailed(_)
-            ));
+            let error = classify_query_error("some random error");
+
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
         }
 
         #[test]
         fn empty_stderr_falls_back_to_query_failed() {
+            let error = classify_query_error("   ");
+
             assert!(matches!(
-                classify_query_error("   "),
+                error,
                 DbOperationError::QueryFailed(details) if details.is_empty()
             ));
         }
