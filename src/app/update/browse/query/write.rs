@@ -6,12 +6,13 @@ use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::json::json_diff::compute_json_diff;
+use crate::policy::preview_cell_text::{
+    normalize_for_write_diff, preview_cell_text_handling, uses_structured_json_diff,
+};
 use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::policy::write::write_update::{
-    build_pk_pairs, escape_preview_value, normalize_cell_value_for_diff, uses_jsonb_semantic_diff,
-};
+use crate::policy::write::write_update::{build_pk_pairs, escape_preview_value};
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
@@ -95,20 +96,22 @@ fn build_update_preview(
         sql,
         target_summary: target,
         diff: {
+            let database_type = state.session.active_database_type_or_default();
             let column_data_type = state
                 .session
                 .table_detail()
                 .and_then(|td| td.columns.get(col_idx))
                 .map_or("", |c| c.data_type.as_str());
-            let before = normalize_cell_value_for_diff(
-                column_data_type,
+            let handling = preview_cell_text_handling(database_type, column_data_type);
+            let before = normalize_for_write_diff(
                 state.result_interaction.cell_edit().original_value(),
+                handling,
             );
-            let after = normalize_cell_value_for_diff(
-                column_data_type,
+            let after = normalize_for_write_diff(
                 state.result_interaction.cell_edit().draft_value(),
+                handling,
             );
-            let json_diff = uses_jsonb_semantic_diff(column_data_type)
+            let json_diff = uses_structured_json_diff(handling)
                 .then(|| compute_json_diff(&before, &after, 1))
                 .flatten();
             vec![ColumnDiff {

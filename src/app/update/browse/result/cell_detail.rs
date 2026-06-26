@@ -1,11 +1,11 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
+use crate::policy::preview_cell_text::{format_for_cell_detail, preview_cell_text_handling};
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
@@ -26,11 +26,10 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
                 return DispatchResult::handled();
             };
 
-            let display_value = cell_detail_display_value(
-                &cell_value,
-                data_type.as_deref(),
-                state.session.active_database_type_or_default(),
-            );
+            let database_type = state.session.active_database_type_or_default();
+            let handling =
+                preview_cell_text_handling(database_type, data_type.as_deref().unwrap_or(""));
+            let display_value = format_for_cell_detail(&cell_value, database_type, handling);
             state.cell_detail =
                 CellDetailState::open(row_idx, col_idx, column_name, cell_value, display_value);
             state.modal.push_mode(InputMode::CellDetail);
@@ -160,28 +159,6 @@ fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
         .map(|column| column.data_type.as_str())
 }
 
-fn cell_detail_display_value(
-    value: &str,
-    data_type: Option<&str>,
-    database_type: DatabaseType,
-) -> String {
-    let should_pretty_print_json = data_type == Some("json")
-        || (database_type != DatabaseType::SQLite && looks_like_json_container(value));
-    if !should_pretty_print_json {
-        return value.to_string();
-    }
-
-    serde_json::from_str::<serde_json::Value>(value)
-        .ok()
-        .and_then(|json| serde_json::to_string_pretty(&json).ok())
-        .unwrap_or_else(|| value.to_string())
-}
-
-fn looks_like_json_container(value: &str) -> bool {
-    let trimmed = value.trim_start();
-    trimmed.starts_with('{') || trimmed.starts_with('[')
-}
-
 fn update_search_matches(state: &mut AppState) {
     let query = state.cell_detail.search().input().content().to_string();
     let matches = find_text_matches(state.cell_detail.content(), &query);
@@ -273,6 +250,22 @@ mod tests {
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1,\n  \"b\": 2\n}");
         assert_eq!(state.cell_detail.original_content(), r#"{"b":2,"a":1}"#);
+    }
+
+    #[test]
+    fn sqlite_json_declared_type_shows_raw_detail() {
+        let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("sqlite-test"),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/app.db",
+        );
+
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.content(), r#"{"b":2,"a":1}"#);
     }
 
     #[test]

@@ -20,7 +20,6 @@ use sabiql_app::policy::write::write_guardrails::{
     AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
     WritePreview,
 };
-use sabiql_app::policy::write::write_update::normalize_for_diff;
 use sabiql_app::ports::outbound::DdlGenerator;
 use sabiql_app::services::AppServices;
 use sabiql_domain::{

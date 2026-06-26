@@ -1,29 +1,5 @@
 use crate::domain::QueryValue;
 
-/// Whether diff comparison should treat values as PostgreSQL JSONB semantics.
-pub fn uses_jsonb_semantic_diff(column_data_type: &str) -> bool {
-    column_data_type == "jsonb"
-}
-
-/// Normalize a JSONB cell value for diff display.
-/// Re-serialize valid JSON so before/after share key ordering and formatting.
-pub fn normalize_for_diff(value: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(value)
-        .and_then(|v| serde_json::to_string(&v))
-        .unwrap_or_else(|_| value.to_string())
-}
-
-/// Normalize a cell value for write-preview diff display.
-/// Only PostgreSQL JSONB columns use semantic JSON normalization; all other
-/// columns keep the stored string representation (including SQLite TEXT).
-pub fn normalize_cell_value_for_diff(column_data_type: &str, value: &str) -> String {
-    if uses_jsonb_semantic_diff(column_data_type) {
-        normalize_for_diff(value)
-    } else {
-        value.to_string()
-    }
-}
-
 pub fn escape_preview_value(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -55,53 +31,6 @@ mod tests {
         #[test]
         fn value_with_control_chars_returns_escaped_preview_value() {
             assert_eq!(escape_preview_value("a\\b\"c\nd"), "a\\\\b\\\"c\\nd");
-        }
-
-        #[test]
-        fn json_with_different_key_order_returns_identical_output() {
-            let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;
-            let serde_style = r#"{"company_size":"enterprise","industries":["tech"]}"#;
-            assert_eq!(
-                normalize_for_diff(pg_style),
-                normalize_for_diff(serde_style)
-            );
-        }
-
-        #[test]
-        fn non_json_value_returns_unchanged() {
-            assert_eq!(normalize_for_diff("plain text"), "plain text");
-            assert_eq!(normalize_for_diff("42"), "42");
-        }
-    }
-
-    mod cell_diff_normalization {
-        use super::*;
-
-        #[test]
-        fn jsonb_column_normalizes_key_order() {
-            let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;
-            let serde_style = r#"{"company_size":"enterprise","industries":["tech"]}"#;
-            assert_eq!(
-                normalize_cell_value_for_diff("jsonb", pg_style),
-                normalize_cell_value_for_diff("jsonb", serde_style)
-            );
-        }
-
-        #[test]
-        fn text_column_preserves_json_like_string() {
-            let spaced = r#"{ "a": 1 }"#;
-            let compact = r#"{"a":1}"#;
-            assert_eq!(normalize_cell_value_for_diff("text", spaced), spaced);
-            assert_ne!(
-                normalize_cell_value_for_diff("text", spaced),
-                normalize_cell_value_for_diff("text", compact)
-            );
-        }
-
-        #[test]
-        fn sqlite_text_column_preserves_json_like_string() {
-            let original = r#"{"items":["admin","writer"]}"#;
-            assert_eq!(normalize_cell_value_for_diff("TEXT", original), original);
         }
     }
 
