@@ -37,6 +37,7 @@ pub fn reduce_connection_lifecycle(
                 name,
                 database_type,
             } = target;
+
             if let Some(current_id) = state.session.active_connection_id().cloned() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
@@ -70,6 +71,7 @@ mod tests {
     use crate::domain::connection::DatabaseType;
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::state::ConnectionState;
+    use crate::model::er_state::ErStatus;
     use crate::model::shared::inspector_tab::InspectorTab;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
@@ -240,6 +242,45 @@ mod tests {
             Some(DatabaseType::SQLite)
         );
         assert_eq!(state.session.connection_state(), ConnectionState::Connected);
+    }
+
+    #[test]
+    fn switch_without_cache_clears_pending_er_picker() {
+        let mut state = AppState::new("test".to_string());
+        let new_id = ConnectionId::new();
+        state.ui.set_pending_er_picker(true);
+        let _ = state.er_preparation.start_waiting_run();
+        state
+            .er_preparation
+            .queue_pending_table("public.users".to_string());
+
+        let action = create_switch_action(&new_id, "fresh_db");
+        reduce(&mut state, &action);
+
+        assert!(!state.ui.pending_er_picker());
+        assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+        assert!(state.er_preparation.pending_tables().is_empty());
+    }
+
+    #[test]
+    fn cached_switch_clears_pending_er_picker() {
+        let mut state = AppState::new("test".to_string());
+        let target_id = ConnectionId::new();
+        state.ui.set_pending_er_picker(true);
+        let _ = state.er_preparation.start_waiting_run();
+        state
+            .er_preparation
+            .queue_pending_table("public.users".to_string());
+        state
+            .connection_caches
+            .save(&target_id, ConnectionCache::default());
+
+        let action = create_switch_action(&target_id, "cached_db");
+        reduce(&mut state, &action);
+
+        assert!(!state.ui.pending_er_picker());
+        assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+        assert!(state.er_preparation.pending_tables().is_empty());
     }
 
     #[test]

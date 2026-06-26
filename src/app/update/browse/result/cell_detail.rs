@@ -186,6 +186,12 @@ mod tests {
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/test",
+        );
         state
             .query
             .set_current_result(Arc::new(QueryResult::success(

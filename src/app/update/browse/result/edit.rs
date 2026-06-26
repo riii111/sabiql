@@ -386,6 +386,12 @@ mod tests {
 
         fn state_with_jsonb_column() -> AppState {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let mut table = cell_edit_entry_guardrails::minimal_users_table();
             table.columns = vec![
                 Column {

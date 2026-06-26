@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
+use crate::update::connection::helpers::reset_active_connection_state;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn reduce_connection_selector(
@@ -52,9 +53,7 @@ pub(super) fn reduce_connection_selector(
         }
         Action::ConnectionDeleted(id) => {
             if state.session.active_connection_id() == Some(id) {
-                state.session.reset(&mut state.query);
-                state.result_interaction.reset_view();
-                state.ui.set_explorer_selection(None);
+                reset_active_connection_state(state);
             }
 
             let id_clone = id.clone();
@@ -278,6 +277,7 @@ mod tests {
     mod connection_deleted {
         use super::*;
         use crate::model::connection::state::ConnectionState;
+        use crate::model::er_state::ErStatus;
 
         #[test]
         fn removes_connection_from_list() {
@@ -346,6 +346,11 @@ mod tests {
             state.result_interaction.set_scroll_offset(10);
             state.result_interaction.set_horizontal_offset(20);
             state.result_interaction.stage_row(0);
+            state.ui.set_pending_er_picker(true);
+            let _ = state.er_preparation.start_waiting_run();
+            state
+                .er_preparation
+                .queue_pending_table("public.users".to_string());
 
             reduce_connection_selector(
                 &mut state,
@@ -362,6 +367,9 @@ mod tests {
             assert_eq!(state.result_interaction.horizontal_offset(), 0);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert!(state.result_interaction.pending_write_preview().is_none());
+            assert!(!state.ui.pending_er_picker());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(state.er_preparation.pending_tables().is_empty());
         }
 
         #[test]

@@ -140,11 +140,10 @@ impl Footer {
                     let capabilities = state.session.active_db_capabilities();
                     let active_inspector_tab =
                         capabilities.normalize_inspector_tab(state.ui.inspector_tab());
-                    let mut list = vec![
-                        global::RELOAD.as_hint(),
-                        global::SQL.as_hint(),
-                        global::ER_DIAGRAM.as_hint(),
-                    ];
+                    let mut list = vec![global::RELOAD.as_hint(), global::SQL.as_hint()];
+                    if capabilities.supports_er_diagram() {
+                        list.push(global::ER_DIAGRAM.as_hint());
+                    }
                     if state.ui.focused_pane() == FocusedPane::Explorer {
                         list.push(global::CONNECTIONS.as_hint());
                     }
@@ -429,6 +428,29 @@ mod tests {
 
         assert_eq!(
             hints.contains(&global::INSPECTOR_TABS.as_hint()),
+            expected_visible
+        );
+    }
+
+    #[rstest]
+    #[case(DatabaseType::PostgreSQL, true)]
+    #[case(DatabaseType::SQLite, false)]
+    fn er_hint_visibility_tracks_capability(
+        #[case] database_type: DatabaseType,
+        #[case] expected_visible: bool,
+    ) {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            database_type,
+            "test://database",
+        );
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert_eq!(
+            hints.contains(&global::ER_DIAGRAM.as_hint()),
             expected_visible
         );
     }

@@ -145,6 +145,35 @@ mod tests {
         }
     }
 
+    mod er_picker {
+        use super::*;
+
+        #[test]
+        fn sqlite_connection_rejects_er_picker() {
+            let mut state = create_test_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite://test.db",
+            );
+
+            let effects = super::dispatch_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::ErTablePicker),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("ER diagrams are not available for this connection")
+            );
+            assert!(effects.is_empty());
+        }
+    }
+
     mod settings {
         use super::*;
         use crate::model::shared::theme_id::ThemeId;

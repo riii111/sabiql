@@ -22,18 +22,21 @@ impl CommandPalette {
             theme,
         );
 
-        let items: Vec<ListItem> = palette_commands(state.settings.saved_keymap_preset())
-            .enumerate()
-            .map(|(i, kb)| {
-                let style = if i == state.ui.table_picker().selected() {
-                    theme.picker_selected_style()
-                } else {
-                    Style::default().fg(theme.semantic.text.secondary)
-                };
-                let content = format!("  {:<18} {}", kb.key, kb.description);
-                ListItem::new(content).style(style)
-            })
-            .collect();
+        let items: Vec<ListItem> = palette_commands(
+            state.settings.saved_keymap_preset(),
+            state.session.active_db_capabilities(),
+        )
+        .enumerate()
+        .map(|(i, kb)| {
+            let style = if i == state.ui.table_picker().selected() {
+                theme.picker_selected_style()
+            } else {
+                Style::default().fg(theme.semantic.text.secondary)
+            };
+            let content = format!("  {:<18} {}", kb.key, kb.description);
+            ListItem::new(content).style(style)
+        })
+        .collect();
 
         let list = List::new(items);
         frame.render_widget(list, inner);

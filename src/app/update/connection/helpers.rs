@@ -17,10 +17,7 @@ pub(super) fn reset_for_new_connection(
     name: &str,
     database_type: DatabaseType,
 ) {
-    state.session.reset(&mut state.query);
-    state.result_interaction.reset_view();
-    state.ui.set_explorer_selection(None);
-    reset_sql_and_er_state(state);
+    reset_active_connection_state(state);
     state
         .session
         .activate_connection_with_dsn(id, name, database_type, dsn);
@@ -55,6 +52,13 @@ pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
         state.query.current_result().cloned(),
         state.query.result_history().clone(),
     )
+}
+
+pub(super) fn reset_active_connection_state(state: &mut AppState) {
+    state.session.reset(&mut state.query);
+    state.result_interaction.reset_view();
+    state.ui.set_explorer_selection(None);
+    reset_sql_and_er_state(state);
 }
 
 pub(super) fn restore_cache(
