@@ -1,6 +1,22 @@
+use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
 use crate::update::action::ConnectionTarget;
+
+pub(super) fn reset_for_new_connection(
+    state: &mut AppState,
+    id: &ConnectionId,
+    dsn: &str,
+    name: &str,
+    database_type: DatabaseType,
+) {
+    state.session.reset(&mut state.query);
+    state.result_interaction.reset_view();
+    state.ui.set_explorer_selection(None);
+    state
+        .session
+        .activate_connection_with_dsn(id, name, database_type, dsn);
+}
 
 pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
     state.session.to_cache(

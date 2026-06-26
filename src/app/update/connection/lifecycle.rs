@@ -1,5 +1,4 @@
 use crate::cmd::effect::Effect;
-use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
@@ -7,22 +6,7 @@ use crate::update::action::{Action, ConnectionTarget};
 
 use crate::update::dispatch_result::DispatchResult;
 
-use super::helpers::{restore_cache, save_current_cache};
-
-fn reset_for_new_connection(
-    state: &mut AppState,
-    id: &ConnectionId,
-    dsn: &str,
-    name: &str,
-    database_type: DatabaseType,
-) {
-    state.session.reset(&mut state.query);
-    state.result_interaction.reset_view();
-    state.ui.set_explorer_selection(None);
-    state
-        .session
-        .activate_connection_with_dsn(id, name, database_type, dsn);
-}
+use super::helpers::{reset_for_new_connection, restore_cache, save_current_cache};
 
 pub fn reduce_connection_lifecycle(
     state: &mut AppState,
@@ -83,6 +67,7 @@ pub fn reduce_connection_lifecycle(
 mod tests {
     use super::*;
     use crate::domain::ConnectionId;
+    use crate::domain::connection::DatabaseType;
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::state::ConnectionState;
     use crate::model::shared::inspector_tab::InspectorTab;
