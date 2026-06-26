@@ -35,12 +35,12 @@ fn build_update_preview(
     let row_idx = state
         .result_interaction
         .cell_edit()
-        .row
+        .row()
         .ok_or(EditGuardrailError::NoRowSelectedForEdit)?;
     let col_idx = state
         .result_interaction
         .cell_edit()
-        .col
+        .col()
         .ok_or(EditGuardrailError::NoColumnSelectedForEdit)?;
 
     let row_values = result
@@ -442,8 +442,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "Alice".to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content("Bob".to_string());
+                .cell_edit_set_content("Bob".to_string());
             state
         }
 
@@ -677,8 +676,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "Alice".to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content("Bob".to_string());
+                .cell_edit_set_content("Bob".to_string());
 
             let effects = dispatch_query(
                 &mut state,
@@ -716,8 +714,7 @@ mod tests {
                 .begin_cell_edit(0, 2, r#"{"role":"admin"}"#.to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content(r#"{"role":"user"}"#.to_string());
+                .cell_edit_set_content(r#"{"role":"user"}"#.to_string());
             state
         }
 
@@ -799,8 +796,7 @@ mod tests {
                 .begin_cell_edit(0, 1, r#"{"key":"old"}"#.to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content(r#"{"key":"new"}"#.to_string());
+                .cell_edit_set_content(r#"{"key":"new"}"#.to_string());
 
             let effects = dispatch_query(
                 &mut state,

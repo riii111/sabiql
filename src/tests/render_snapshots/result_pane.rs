@@ -238,8 +238,7 @@ fn result_pane_cell_edit_mode() {
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
     state
         .result_interaction
-        .cell_edit_input_mut()
-        .set_content("new@example.com".to_string());
+        .cell_edit_set_content("new@example.com".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -258,7 +257,7 @@ fn result_pane_cell_edit_cursor_at_head() {
     state
         .result_interaction
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
-    state.result_interaction.cell_edit_input_mut().set_cursor(0);
+    state.result_interaction.cell_edit_set_cursor(0);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -277,7 +276,7 @@ fn result_pane_cell_edit_cursor_at_middle() {
     state
         .result_interaction
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
-    state.result_interaction.cell_edit_input_mut().set_cursor(7);
+    state.result_interaction.cell_edit_set_cursor(7);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -298,8 +297,7 @@ fn result_pane_cell_active_pending_draft() {
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
     state
         .result_interaction
-        .cell_edit_input_mut()
-        .set_content("new@example.com".to_string());
+        .cell_edit_set_content("new@example.com".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -319,10 +317,7 @@ fn result_pane_cell_edit_cursor_at_tail() {
         .result_interaction
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
     let len = state.result_interaction.cell_edit().input().content().len();
-    state
-        .result_interaction
-        .cell_edit_input_mut()
-        .set_cursor(len);
+    state.result_interaction.cell_edit_set_cursor(len);
 
     let output = render_to_string(&mut terminal, &mut state);
 

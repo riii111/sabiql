@@ -93,14 +93,9 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 
             match editable_cell_context(state) {
                 Ok((row_idx, col_idx, value)) => {
-                    if state.result_interaction.cell_edit().row() != Some(row_idx)
-                        || state.result_interaction.cell_edit().col() != Some(col_idx)
-                    {
-                        state
-                            .result_interaction
-                            .begin_cell_edit(row_idx, col_idx, value);
-                        state.result_interaction.clear_write_preview();
-                    }
+                    state
+                        .result_interaction
+                        .ensure_cell_edit_at(row_idx, col_idx, value);
                     state.modal.set_mode(InputMode::CellEdit);
                     DispatchResult::handled()
                 }
@@ -111,11 +106,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             }
         }
         Action::ResultCancelCellEdit => {
-            if state.result_interaction.cell_edit().has_pending_draft() {
-                state.result_interaction.clear_write_preview();
-            } else {
-                state.result_interaction.discard_cell_edit();
-            }
+            state.result_interaction.cancel_cell_edit();
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
@@ -128,32 +119,26 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             target: InputTarget::ResultCellEdit,
             ch: c,
         } => {
-            state
-                .result_interaction
-                .cell_edit_input_mut()
-                .insert_char(*c);
+            state.result_interaction.cell_edit_insert_char(*c);
             DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::ResultCellEdit,
         } => {
-            state.result_interaction.cell_edit_input_mut().backspace();
+            state.result_interaction.cell_edit_backspace();
             DispatchResult::handled()
         }
         Action::TextDelete {
             target: InputTarget::ResultCellEdit,
         } => {
-            state.result_interaction.cell_edit_input_mut().delete();
+            state.result_interaction.cell_edit_delete();
             DispatchResult::handled()
         }
         Action::TextMoveCursor {
             target: InputTarget::ResultCellEdit,
             direction: m,
         } => {
-            state
-                .result_interaction
-                .cell_edit_input_mut()
-                .move_cursor(*m);
+            state.result_interaction.cell_edit_move_cursor(*m);
             DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
@@ -215,8 +200,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content("modified".to_string());
+                .cell_edit_set_content("modified".to_string());
             state.modal.set_mode(InputMode::Normal);
 
             reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
@@ -241,8 +225,7 @@ mod tests {
                 .begin_cell_edit(0, 99, "stale".to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content("stale-modified".to_string());
+                .cell_edit_set_content("stale-modified".to_string());
 
             reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
@@ -382,8 +365,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content("bob".to_string());
+                .cell_edit_set_content("bob".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
             reduce_edit(&mut state, &Action::ResultCancelCellEdit, Instant::now())
@@ -492,10 +474,7 @@ mod tests {
             state
                 .result_interaction
                 .begin_cell_edit(0, 0, content.to_string());
-            state
-                .result_interaction
-                .cell_edit_input_mut()
-                .set_cursor(cursor);
+            state.result_interaction.cell_edit_set_cursor(cursor);
             state
         }
 
