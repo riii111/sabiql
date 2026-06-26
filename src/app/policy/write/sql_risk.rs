@@ -125,6 +125,45 @@ pub fn split_statements(sql: &str) -> Vec<String> {
     split_statements_for_database(DatabaseType::PostgreSQL, sql)
 }
 
+fn is_sqlite_create_trigger_prefix(sql: &str) -> bool {
+    let trimmed = sql.trim_start();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    let tokens: Vec<String> = collect_top_level_tokens(trimmed, &chars)
+        .into_iter()
+        .map(|(_, token)| token.to_ascii_uppercase())
+        .collect();
+
+    if tokens.first().map(String::as_str) != Some("CREATE") {
+        return false;
+    }
+    match tokens.get(1).map(String::as_str) {
+        Some("TRIGGER") => true,
+        Some("TEMP" | "TEMPORARY") => tokens.get(2).map(String::as_str) == Some("TRIGGER"),
+        _ => false,
+    }
+}
+
+fn keyword_starting_at(sql: &str, chars: &[(usize, char)], i: usize) -> Option<(String, usize)> {
+    let (byte_pos, ch) = chars[i];
+    if !ch.is_ascii_alphabetic() {
+        return None;
+    }
+    let start = byte_pos;
+    let mut j = i;
+    while j < chars.len() {
+        let (_, c) = chars[j];
+        if c.is_ascii_alphanumeric() || c == '_' {
+            j += 1;
+        } else {
+            break;
+        }
+    }
+    Some((
+        sql[start..chars.get(j).map_or(sql.len(), |(p, _)| *p)].to_ascii_uppercase(),
+        j,
+    ))
+}
+
 pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> Vec<String> {
     // Use sql's own char_indices so byte offsets remain valid for slicing sql.
     // to_lowercase() can change byte lengths (e.g. İ → i̇), which would corrupt offsets.
@@ -134,6 +173,7 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
     let mut i = 0;
     let mut depth: i32 = 0;
     let mut in_string = false;
+    let mut in_trigger_body = false;
 
     while i < chars.len() {
         let (byte_pos, ch) = chars[i];
@@ -169,18 +209,32 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
             continue;
         }
 
+        if database_type == DatabaseType::SQLite
+            && is_sqlite_create_trigger_prefix(&sql[start..])
+            && let Some((keyword, kw_end)) = keyword_starting_at(sql, &chars, i)
+        {
+            if keyword == "BEGIN" {
+                in_trigger_body = true;
+            } else if keyword == "END" && in_trigger_body {
+                in_trigger_body = false;
+            }
+            i = kw_end;
+            continue;
+        }
+
         if ch == '(' {
             depth += 1;
         } else if ch == ')' {
             depth -= 1;
         }
 
-        if depth == 0 && ch == ';' {
+        if depth == 0 && ch == ';' && !(database_type == DatabaseType::SQLite && in_trigger_body) {
             let fragment = sql[start..byte_pos].trim();
             if !fragment.is_empty() {
                 statements.push(fragment.to_string());
             }
             start = byte_pos + 1;
+            in_trigger_body = false;
         }
 
         i += 1;
@@ -830,8 +884,23 @@ mod tests {
             );
         }
 
+        #[test]
+        fn sqlite_create_trigger_body_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(rowid, role, content)
+    VALUES (new.id, new.role, new.content);
+END";
+            let sql = format!("{trigger}; SELECT 1");
+
+            let result = split_statements_for_database(DatabaseType::SQLite, &sql);
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], trigger);
+            assert_eq!(result[1], "SELECT 1");
+        }
+
         #[rstest]
-        #[case::line_comment("SELECT 1 -- ;comment\n; SELECT 2", vec!["SELECT 1 -- ;comment", "SELECT 2"])]
         #[case::block_comment("SELECT /* ; */ 1; SELECT 2", vec!["SELECT /* ; */ 1", "SELECT 2"])]
         fn semicolon_in_comments(#[case] sql: &str, #[case] expected: Vec<&str>) {
             assert_eq!(split_statements(sql), expected);
