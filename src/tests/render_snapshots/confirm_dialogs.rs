@@ -197,20 +197,18 @@ fn confirm_dialog_update_preview_jsonb_key_order_normalized() {
         .session
         .set_table_detail(fixtures::sample_table_detail(), 0);
 
-    // before: PostgreSQL key order (industries first, spaces)
-    // after: serde_json key order (alphabetical, compact)
-    // Only actual change is company_size value: "500+" → "600+"
-    let pg_before =
-        r#"{"industries": ["technology", "finance"], "company_size": ["100-500", "500+"]}"#;
+    // Snapshot uses pre-normalized jsonb strings; normalization behavior is covered in
+    // preview_cell_text policy tests.
     let serde_after =
         r#"{"company_size":["100-500","600+"],"industries":["technology","finance"]}"#;
 
     let sql = format!(
         "UPDATE \"public\".\"users\"\nSET \"target_audience\" = '{serde_after}'\nWHERE \"id\" = '1';"
     );
-    // Apply normalize_for_diff to mirror the real build_update_preview path
-    let before = normalize_for_diff(pg_before);
-    let after = normalize_for_diff(serde_after);
+    let before =
+        r#"{"company_size":["100-500","500+"],"industries":["technology","finance"]}"#.to_string();
+    let after =
+        r#"{"company_size":["100-500","600+"],"industries":["technology","finance"]}"#.to_string();
     let json_diff = compute_json_diff(&before, &after, 1);
     assert!(
         json_diff.is_some(),
