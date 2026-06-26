@@ -3,7 +3,7 @@ source: src/tests/render_snapshots/inspector.rs
 expression: output
 ---
 test_project | test_db | - | connected | app.db
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [DDL]
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
 │> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  public.posts                         ││Name           Columns        Unique   Partial   Detail                                                                   │
 │  public.comments                      ││idx_users_emai <expression>            ✓         CREATE INDEX idx_users_email_lower ON users(lower(email)) WHERE email IS │
