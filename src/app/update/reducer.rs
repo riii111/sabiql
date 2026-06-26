@@ -192,7 +192,9 @@ mod tests {
     use crate::update::action::ModalKind;
     use crate::update::action::{ConnectionSaveError, ConnectionTarget};
     use crate::update::action::{InputTarget, SelectMotion};
-    use crate::update::test_support::activate_postgres_connection;
+    use crate::update::test_support::{
+        activate_postgres_connection, assert_connection_save_fetch_effects,
+    };
 
     fn create_test_state() -> AppState {
         AppState::new("test_project".to_string())
@@ -907,8 +909,11 @@ mod tests {
 
     mod response_handlers {
         use super::*;
-        use crate::domain::{DatabaseMetadata, MetadataState, TableSummary};
+        use crate::domain::{
+            DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
+        };
         use crate::model::connection::error::ConnectionErrorInfo;
+        use crate::model::connection::state::ConnectionState;
 
         fn metadata_loaded_action(state: &mut AppState, metadata: DatabaseMetadata) -> Action {
             activate_postgres_connection(state, "postgres://localhost/test");
@@ -969,6 +974,59 @@ mod tests {
 
             assert!(state.session.metadata().is_some());
             assert_eq!(state.ui.explorer_selected(), 0);
+        }
+
+        #[test]
+        fn metadata_failed_clears_stale_browse_state_on_initial_connect() {
+            let mut state = create_test_state();
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state.session.mark_connected(Arc::new(DatabaseMetadata {
+                database_name: "stale".to_string(),
+                schemas: vec![],
+                table_summaries: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    None,
+                    false,
+                )],
+            }));
+            state.ui.set_explorer_selected_raw(2);
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query.pagination);
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["col".to_string()],
+                    vec![vec!["val".to_string()]],
+                    10,
+                    QuerySource::Preview,
+                )));
+            state
+                .session
+                .set_connection_state(ConnectionState::Connecting);
+            state.session.set_metadata_state(MetadataState::Loading);
+            let run_id = state.session.begin_metadata_refresh();
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::MetadataFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    error: DbOperationError::ConnectionFailed("connection refused".to_string()),
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert!(state.session.metadata().is_none());
+            assert!(state.session.tables().is_empty());
+            assert!(state.session.selected_table_key().is_none());
+            assert!(state.query.current_result().is_none());
+            assert_eq!(state.ui.explorer_selected(), 0);
+            assert!(state.session.connection_state().is_failed());
         }
 
         #[test]
@@ -1699,8 +1757,7 @@ mod tests {
                 Some("Test Connection")
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+            assert_connection_save_fetch_effects(&effects, DatabaseType::PostgreSQL);
         }
 
         #[test]
@@ -1767,6 +1824,9 @@ mod tests {
     mod confirm_dialog_transitions {
         use super::*;
         use crate::model::shared::confirm_dialog::ConfirmIntent;
+        use crate::policy::write::write_guardrails::{
+            GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+        };
 
         #[test]
         fn confirm_quit_no_connection_sets_should_quit() {
@@ -1811,10 +1871,6 @@ mod tests {
 
         #[test]
         fn confirm_delete_write_then_success_preserves_delete_context() {
-            use crate::policy::write::write_guardrails::{
-                GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
-            };
-
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
@@ -1888,10 +1944,6 @@ mod tests {
 
         #[test]
         fn confirm_delete_write_then_failure_returns_to_normal() {
-            use crate::policy::write::write_guardrails::{
-                GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
-            };
-
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
@@ -1950,6 +2002,7 @@ mod tests {
         use super::*;
         use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
         use crate::model::connection::state::ConnectionState;
+        use crate::model::shared::inspector_tab::InspectorTab;
 
         #[test]
         fn try_connect_with_dsn_starts_connecting() {
@@ -2220,8 +2273,7 @@ mod tests {
                 state.session.metadata_state(),
                 MetadataState::Loading
             ));
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+            assert_connection_save_fetch_effects(&effects, DatabaseType::PostgreSQL);
         }
 
         #[test]
@@ -2270,8 +2322,6 @@ mod tests {
 
         #[test]
         fn switch_connection_restores_from_cache() {
-            use crate::model::shared::inspector_tab::InspectorTab;
-
             let mut state = create_test_state();
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
@@ -2327,6 +2377,7 @@ mod tests {
     mod er_table_picker {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
+        use crate::model::er_state::ErStatus;
 
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
@@ -2540,8 +2591,6 @@ mod tests {
 
         #[test]
         fn prefetch_complete_dispatches_er_generate() {
-            use crate::model::er_state::ErStatus;
-
             let mut state = state_with_metadata();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
@@ -2574,8 +2623,6 @@ mod tests {
 
         #[test]
         fn prefetch_complete_with_failures_does_not_auto_open() {
-            use crate::model::er_state::ErStatus;
-
             let mut state = state_with_metadata();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();

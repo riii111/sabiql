@@ -1,5 +1,4 @@
 use crate::cmd::effect::Effect;
-use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
@@ -7,23 +6,7 @@ use crate::update::action::{Action, ConnectionTarget};
 
 use crate::update::dispatch_result::DispatchResult;
 
-use super::helpers::{
-    reset_active_connection_state, reset_connection_scoped_er_state, restore_cache,
-    save_current_cache,
-};
-
-fn reset_for_new_connection(
-    state: &mut AppState,
-    id: &ConnectionId,
-    dsn: &str,
-    name: &str,
-    database_type: DatabaseType,
-) {
-    reset_active_connection_state(state);
-    state
-        .session
-        .activate_connection_with_dsn(id, name, database_type, dsn);
-}
+use super::helpers::{reset_for_new_connection, restore_cache, save_current_cache};
 
 pub fn reduce_connection_lifecycle(
     state: &mut AppState,
@@ -59,7 +42,6 @@ pub fn reduce_connection_lifecycle(
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
-            reset_connection_scoped_er_state(state);
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
@@ -86,6 +68,7 @@ pub fn reduce_connection_lifecycle(
 mod tests {
     use super::*;
     use crate::domain::ConnectionId;
+    use crate::domain::connection::DatabaseType;
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::state::ConnectionState;
     use crate::model::er_state::ErStatus;
@@ -375,6 +358,37 @@ mod tests {
             state.result_interaction.selection().mode(),
             crate::model::shared::ui_state::ResultNavMode::Scroll
         );
+    }
+
+    #[test]
+    fn switch_with_cache_resets_sql_prefetch() {
+        let mut state = AppState::new("test".to_string());
+        let target_id = ConnectionId::new();
+        state
+            .connection_caches
+            .save(&target_id, ConnectionCache::default());
+        let _ = state.sql_modal.begin_prefetch();
+        state.sql_modal.enqueue_prefetch("public.users".to_string());
+
+        let action = create_switch_action(&target_id, "cached_db");
+        reduce(&mut state, &action);
+
+        assert!(!state.sql_modal.is_prefetch_started());
+        assert!(!state.sql_modal.has_pending_prefetch());
+    }
+
+    #[test]
+    fn switch_without_cache_resets_sql_prefetch() {
+        let mut state = AppState::new("test".to_string());
+        let new_id = ConnectionId::new();
+        let _ = state.sql_modal.begin_prefetch();
+        state.sql_modal.enqueue_prefetch("public.users".to_string());
+
+        let action = create_switch_action(&new_id, "fresh_db");
+        reduce(&mut state, &action);
+
+        assert!(!state.sql_modal.is_prefetch_started());
+        assert!(!state.sql_modal.has_pending_prefetch());
     }
 
     #[test]
