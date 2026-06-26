@@ -10,7 +10,7 @@ use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::{
-    build_pk_pairs, escape_preview_value, normalize_for_diff,
+    build_pk_pairs, escape_preview_value, normalize_cell_value_for_diff, uses_jsonb_semantic_diff,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -95,14 +95,20 @@ fn build_update_preview(
         sql,
         target_summary: target,
         diff: {
-            let before = normalize_for_diff(state.result_interaction.cell_edit().original_value());
-            let after = normalize_for_diff(state.result_interaction.cell_edit().draft_value());
-            let is_jsonb = state
+            let column_data_type = state
                 .session
                 .table_detail()
                 .and_then(|td| td.columns.get(col_idx))
-                .is_some_and(|c| c.data_type == "jsonb");
-            let json_diff = is_jsonb
+                .map_or("", |c| c.data_type.as_str());
+            let before = normalize_cell_value_for_diff(
+                column_data_type,
+                state.result_interaction.cell_edit().original_value(),
+            );
+            let after = normalize_cell_value_for_diff(
+                column_data_type,
+                state.result_interaction.cell_edit().draft_value(),
+            );
+            let json_diff = uses_jsonb_semantic_diff(column_data_type)
                 .then(|| compute_json_diff(&before, &after, 1))
                 .flatten();
             vec![ColumnDiff {
@@ -768,6 +774,52 @@ mod tests {
                 preview.diff[0].json_diff.is_none(),
                 "text column should not have structured diff even if value looks like JSON"
             );
+            assert_eq!(preview.diff[0].before, r#"{"key":"old"}"#);
+            assert_eq!(preview.diff[0].after, r#"{"key":"new"}"#);
+        }
+
+        #[test]
+        fn sqlite_text_json_column_preserves_string_diff() {
+            let mut state = editable_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            let mut detail = users_table_detail();
+            detail.schema = "main".to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.reset_for_table("main", "users");
+
+            let before = r#"{"items":["admin","writer"]}"#;
+            let after = r#"{ "items": [ "admin", "writer" ] }"#;
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, before.to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content(after.to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let preview = match &effects[0] {
+                Effect::DispatchActions(actions) => match actions.first().expect("action") {
+                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            assert!(preview.diff[0].json_diff.is_none());
+            assert_eq!(preview.diff[0].before, before);
+            assert_eq!(preview.diff[0].after, after);
         }
 
         #[test]
