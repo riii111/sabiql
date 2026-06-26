@@ -695,12 +695,39 @@ fn is_create_trigger_prefix(sql: &str) -> bool {
     second.eq_ignore_ascii_case("TRIGGER")
 }
 
+fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
+    let mut index = keyword_start;
+    while index > 0 {
+        index -= 1;
+        match sql.as_bytes()[index] {
+            byte if byte.is_ascii_whitespace() => {}
+            b'.' => return true,
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn is_sqlite_trigger_body_end(
+    keyword: &str,
+    in_trigger_body: bool,
+    trigger_body_stmt_start: bool,
+    sql: &str,
+    keyword_start: usize,
+) -> bool {
+    in_trigger_body
+        && trigger_body_stmt_start
+        && keyword.eq_ignore_ascii_case("END")
+        && !is_dotted_identifier_suffix(sql, keyword_start)
+}
+
 fn try_split_sqlite_statements(sql: &str) -> Result<Vec<&str>, DbOperationError> {
     let bytes = sql.as_bytes();
     let mut statements = Vec::new();
     let mut start = 0;
     let mut i = 0;
     let mut in_trigger_body = false;
+    let mut trigger_body_stmt_start = false;
 
     while i < bytes.len() {
         match bytes[i] {
@@ -724,7 +751,11 @@ fn try_split_sqlite_statements(sql: &str) -> Result<Vec<&str>, DbOperationError>
             b'[' => {
                 i = skip_bracket_quoted(bytes, i);
             }
-            b';' if !in_trigger_body => {
+            b';' if in_trigger_body => {
+                trigger_body_stmt_start = true;
+                i += 1;
+            }
+            b';' => {
                 let statement = sql[start..i].trim();
                 if !statement.is_empty() {
                     statements.push(statement);
@@ -732,6 +763,7 @@ fn try_split_sqlite_statements(sql: &str) -> Result<Vec<&str>, DbOperationError>
                 i += 1;
                 start = i;
                 in_trigger_body = false;
+                trigger_body_stmt_start = false;
             }
             _ => {
                 if bytes[i].is_ascii_alphabetic()
@@ -739,9 +771,23 @@ fn try_split_sqlite_statements(sql: &str) -> Result<Vec<&str>, DbOperationError>
                     && let Some((keyword, kw_end)) = next_keyword_from(sql, i)
                 {
                     if keyword.eq_ignore_ascii_case("BEGIN") {
-                        in_trigger_body = true;
-                    } else if keyword.eq_ignore_ascii_case("END") && in_trigger_body {
+                        if in_trigger_body {
+                            trigger_body_stmt_start = false;
+                        } else {
+                            in_trigger_body = true;
+                            trigger_body_stmt_start = true;
+                        }
+                    } else if is_sqlite_trigger_body_end(
+                        keyword,
+                        in_trigger_body,
+                        trigger_body_stmt_start,
+                        sql,
+                        i,
+                    ) {
                         in_trigger_body = false;
+                        trigger_body_stmt_start = false;
+                    } else if in_trigger_body {
+                        trigger_body_stmt_start = false;
                     }
                     i = kw_end;
                     continue;
@@ -1933,6 +1979,37 @@ END";
     }
 
     #[test]
+    fn split_sqlite_statements_keeps_create_trigger_with_dotted_end_reference() {
+        let trigger = "\
+CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
+END";
+        let sql = format!("{trigger}; SELECT 1 AS value;");
+
+        let statements = try_split_sqlite_statements(&sql).unwrap();
+
+        assert_eq!(statements.len(), 2);
+        assert_eq!(statements[0], trigger);
+        assert_eq!(statements[1], "SELECT 1 AS value");
+    }
+
+    #[test]
+    fn adhoc_execution_query_does_not_insert_probes_when_trigger_references_new_end() {
+        let trigger = "\
+CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
+END";
+        let marker = "probe_marker";
+
+        let execution_query = sqlite_adhoc_execution_query(trigger, marker).unwrap();
+
+        assert!(!execution_query.contains(marker));
+        assert_eq!(execution_query, trigger);
+    }
+
+    #[test]
     fn split_sqlite_statements_rejects_unclosed_create_trigger_body() {
         let error = try_split_sqlite_statements(
             "CREATE TRIGGER t AFTER INSERT ON users BEGIN INSERT INTO logs(id) VALUES (1);",
@@ -2735,6 +2812,51 @@ END";
                 .execute_adhoc(
                     &dsn,
                     "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'agent_messages_fts_ai'",
+                    true,
+                )
+                .await
+                .unwrap();
+
+            let stored = result.rows()[0][0].replace('\n', " ");
+            let expected = trigger.trim().replace('\n', " ");
+            assert!(
+                !stored.contains("__sabiql_sqlite_probe_"),
+                "probe SQL must not appear in stored trigger definition: {stored}"
+            );
+            assert_eq!(stored, expected);
+        }
+
+        #[tokio::test]
+        async fn create_trigger_referencing_new_end_preserves_definition() {
+            let setup = r"
+            CREATE TABLE events(
+                id INTEGER PRIMARY KEY,
+                end INTEGER NOT NULL
+            );
+            CREATE TABLE counters(
+                id INTEGER PRIMARY KEY,
+                end_value INTEGER
+            );
+            CREATE TABLE audit(
+                event_id INTEGER,
+                end_value INTEGER
+            );
+            ";
+            let trigger = r"
+            CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+                UPDATE counters SET end_value = new.end WHERE id = new.id;
+                INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
+            END
+            ";
+            let (_dir, dsn) = make_sqlite_db(setup);
+            let adapter = SqliteAdapter::new();
+
+            adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'sync_end'",
                     true,
                 )
                 .await

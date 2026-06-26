@@ -164,6 +164,32 @@ fn keyword_starting_at(sql: &str, chars: &[(usize, char)], i: usize) -> Option<(
     ))
 }
 
+fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
+    let mut index = keyword_start;
+    while index > 0 {
+        index -= 1;
+        match sql.as_bytes()[index] {
+            byte if byte.is_ascii_whitespace() => {}
+            b'.' => return true,
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn is_sqlite_trigger_body_end(
+    keyword: &str,
+    in_trigger_body: bool,
+    trigger_body_stmt_start: bool,
+    sql: &str,
+    keyword_start: usize,
+) -> bool {
+    in_trigger_body
+        && trigger_body_stmt_start
+        && keyword == "END"
+        && !is_dotted_identifier_suffix(sql, keyword_start)
+}
+
 pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> Vec<String> {
     // Use sql's own char_indices so byte offsets remain valid for slicing sql.
     // to_lowercase() can change byte lengths (e.g. İ → i̇), which would corrupt offsets.
@@ -174,6 +200,7 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
     let mut depth: i32 = 0;
     let mut in_string = false;
     let mut in_trigger_body = false;
+    let mut trigger_body_stmt_start = false;
 
     while i < chars.len() {
         let (byte_pos, ch) = chars[i];
@@ -214,9 +241,23 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
             && let Some((keyword, kw_end)) = keyword_starting_at(sql, &chars, i)
         {
             if keyword == "BEGIN" {
-                in_trigger_body = true;
-            } else if keyword == "END" && in_trigger_body {
+                if in_trigger_body {
+                    trigger_body_stmt_start = false;
+                } else {
+                    in_trigger_body = true;
+                    trigger_body_stmt_start = true;
+                }
+            } else if is_sqlite_trigger_body_end(
+                &keyword,
+                in_trigger_body,
+                trigger_body_stmt_start,
+                sql,
+                byte_pos,
+            ) {
                 in_trigger_body = false;
+                trigger_body_stmt_start = false;
+            } else if in_trigger_body {
+                trigger_body_stmt_start = false;
             }
             i = kw_end;
             continue;
@@ -228,13 +269,18 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
             depth -= 1;
         }
 
-        if depth == 0 && ch == ';' && !(database_type == DatabaseType::SQLite && in_trigger_body) {
-            let fragment = sql[start..byte_pos].trim();
-            if !fragment.is_empty() {
-                statements.push(fragment.to_string());
+        if depth == 0 && ch == ';' {
+            if database_type == DatabaseType::SQLite && in_trigger_body {
+                trigger_body_stmt_start = true;
+            } else {
+                let fragment = sql[start..byte_pos].trim();
+                if !fragment.is_empty() {
+                    statements.push(fragment.to_string());
+                }
+                start = byte_pos + 1;
+                in_trigger_body = false;
+                trigger_body_stmt_start = false;
             }
-            start = byte_pos + 1;
-            in_trigger_body = false;
         }
 
         i += 1;
@@ -900,7 +946,24 @@ END";
             assert_eq!(result[1], "SELECT 1");
         }
 
+        #[test]
+        fn sqlite_create_trigger_with_dotted_end_reference_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id, end_value) VALUES (new.id, old.end);
+END";
+            let sql = format!("{trigger}; SELECT 1");
+
+            let result = split_statements_for_database(DatabaseType::SQLite, &sql);
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], trigger);
+            assert_eq!(result[1], "SELECT 1");
+        }
+
         #[rstest]
+        #[case::line_comment("SELECT 1 -- ;comment\n; SELECT 2", vec!["SELECT 1 -- ;comment", "SELECT 2"])]
         #[case::block_comment("SELECT /* ; */ 1; SELECT 2", vec!["SELECT /* ; */ 1", "SELECT 2"])]
         fn semicolon_in_comments(#[case] sql: &str, #[case] expected: Vec<&str>) {
             assert_eq!(split_statements(sql), expected);
