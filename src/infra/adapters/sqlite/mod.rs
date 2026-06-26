@@ -849,34 +849,10 @@ fn skip_update_of_clause(sql: &str, pos: usize) -> usize {
     }
 }
 
-fn parse_sqlite_trigger_header(
+fn parse_sqlite_trigger_events(
     sql: &str,
     pos: usize,
-) -> Result<(TriggerTiming, Vec<TriggerEvent>, usize), DbOperationError> {
-    let Some((keyword, next)) = next_keyword_from(sql, pos) else {
-        return Err(sqlite_trigger_parse_error(sql, "missing trigger timing"));
-    };
-
-    let (timing, pos) = match keyword.to_ascii_uppercase().as_str() {
-        "BEFORE" => (TriggerTiming::Before, next),
-        "AFTER" => (TriggerTiming::After, next),
-        "INSTEAD" => {
-            let Some((of, next)) = next_keyword_from(sql, next) else {
-                return Err(sqlite_trigger_parse_error(sql, "incomplete INSTEAD OF"));
-            };
-            if !of.eq_ignore_ascii_case("OF") {
-                return Err(sqlite_trigger_parse_error(sql, "expected OF after INSTEAD"));
-            }
-            (TriggerTiming::InsteadOf, next)
-        }
-        _ => {
-            return Err(sqlite_trigger_parse_error(
-                sql,
-                "unsupported trigger timing",
-            ));
-        }
-    };
-
+) -> Result<(Vec<TriggerEvent>, usize), DbOperationError> {
     let mut events = Vec::new();
     let mut pos = pos;
     loop {
@@ -904,7 +880,48 @@ fn parse_sqlite_trigger_header(
         return Err(sqlite_trigger_parse_error(sql, "no trigger events"));
     }
 
-    Ok((timing, events, pos))
+    Ok((events, pos))
+}
+
+fn parse_sqlite_trigger_header(
+    sql: &str,
+    pos: usize,
+) -> Result<(TriggerTiming, Vec<TriggerEvent>, usize), DbOperationError> {
+    let Some((keyword, next)) = next_keyword_from(sql, pos) else {
+        return Err(sqlite_trigger_parse_error(
+            sql,
+            "missing trigger timing or event",
+        ));
+    };
+
+    match keyword.to_ascii_uppercase().as_str() {
+        "BEFORE" => {
+            let (events, pos) = parse_sqlite_trigger_events(sql, next)?;
+            Ok((TriggerTiming::Before, events, pos))
+        }
+        "AFTER" => {
+            let (events, pos) = parse_sqlite_trigger_events(sql, next)?;
+            Ok((TriggerTiming::After, events, pos))
+        }
+        "INSTEAD" => {
+            let Some((of, next)) = next_keyword_from(sql, next) else {
+                return Err(sqlite_trigger_parse_error(sql, "incomplete INSTEAD OF"));
+            };
+            if !of.eq_ignore_ascii_case("OF") {
+                return Err(sqlite_trigger_parse_error(sql, "expected OF after INSTEAD"));
+            }
+            let (events, pos) = parse_sqlite_trigger_events(sql, next)?;
+            Ok((TriggerTiming::InsteadOf, events, pos))
+        }
+        "INSERT" | "UPDATE" | "DELETE" => {
+            let (events, pos) = parse_sqlite_trigger_events(sql, pos)?;
+            Ok((TriggerTiming::Before, events, pos))
+        }
+        _ => Err(sqlite_trigger_parse_error(
+            sql,
+            "unsupported trigger timing or event",
+        )),
+    }
 }
 
 fn parse_sqlite_trigger(trigger_name: &str, sql: &str) -> Result<Trigger, DbOperationError> {
@@ -4961,6 +4978,40 @@ END";
 
             assert_eq!(trigger.timing, TriggerTiming::InsteadOf);
             assert_eq!(trigger.events, vec![TriggerEvent::Delete]);
+        }
+
+        #[test]
+        fn omitted_timing_defaults_to_before() {
+            let sql = "CREATE TRIGGER users_log INSERT ON users BEGIN SELECT 1; END";
+            let trigger = parse_sqlite_trigger("users_log", sql).unwrap();
+
+            assert_eq!(trigger.timing, TriggerTiming::Before);
+            assert_eq!(trigger.events, vec![TriggerEvent::Insert]);
+        }
+    }
+
+    mod trigger_metadata {
+        use super::*;
+
+        #[tokio::test]
+        async fn table_detail_loads_trigger_without_explicit_timing() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            CREATE TRIGGER users_log INSERT ON users BEGIN SELECT 1; END;
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.triggers.len(), 1);
+            assert_eq!(detail.triggers[0].name, "users_log");
+            assert_eq!(detail.triggers[0].timing, TriggerTiming::Before);
+            assert_eq!(detail.triggers[0].events, vec![TriggerEvent::Insert]);
         }
     }
 }
