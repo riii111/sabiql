@@ -264,7 +264,7 @@ fn inspector_foreign_keys_tab_with_data() {
 }
 
 #[test]
-fn inspector_foreign_keys_tab_with_unresolved_reference() {
+fn inspector_foreign_keys_tab_marks_unresolved_reference() {
     let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
     let mut table = fixtures::sample_table_detail();
