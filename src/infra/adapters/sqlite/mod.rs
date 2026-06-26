@@ -86,6 +86,23 @@ struct RawRowCount {
     count: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TableDetailMode {
+    Full,
+    ColumnsAndFks,
+    Signature,
+}
+
+impl TableDetailMode {
+    const fn include_indexes(self) -> bool {
+        matches!(self, Self::Full | Self::Signature)
+    }
+
+    const fn include_row_count(self) -> bool {
+        matches!(self, Self::Full)
+    }
+}
+
 impl SqliteAdapter {
     pub fn new() -> Self {
         Self {
@@ -515,9 +532,10 @@ impl SqliteAdapter {
         &self,
         path: &str,
         table: &str,
-        include_indexes: bool,
-        include_row_count: bool,
+        mode: TableDetailMode,
     ) -> Result<Table, DbOperationError> {
+        let include_indexes = mode.include_indexes();
+        let include_row_count = mode.include_row_count();
         let (indexes, unique_single_columns) = if include_indexes {
             let indexes = self.indexes(path, table).await?;
             let unique_single_columns = indexes
@@ -603,7 +621,7 @@ impl SqliteAdapter {
         table: &RawTable,
     ) -> Result<TableSignature, DbOperationError> {
         let detail = self
-            .table_detail_with_mode(path, &table.name, true, false)
+            .table_detail_with_mode(path, &table.name, TableDetailMode::Signature)
             .await?;
         let mut parts = vec![format!("sql={}", table.sql.clone().unwrap_or_default())];
         parts.extend(detail.columns.iter().map(|column| {
@@ -1850,7 +1868,7 @@ impl MetadataProvider for SqliteAdapter {
         table: &str,
     ) -> Result<Table, DbOperationError> {
         Self::validate_main_schema(schema)?;
-        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, true, true)
+        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, TableDetailMode::Full)
             .await
     }
 
@@ -1861,8 +1879,12 @@ impl MetadataProvider for SqliteAdapter {
         table: &str,
     ) -> Result<Table, DbOperationError> {
         Self::validate_main_schema(schema)?;
-        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, false, false)
-            .await
+        self.table_detail_with_mode(
+            Self::path_from_dsn(dsn)?,
+            table,
+            TableDetailMode::ColumnsAndFks,
+        )
+        .await
     }
 
     async fn fetch_table_signatures(
