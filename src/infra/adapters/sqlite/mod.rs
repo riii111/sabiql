@@ -258,7 +258,7 @@ impl SqliteAdapter {
         let start = Instant::now();
         let stdout = self
             .cli
-            .execute_csv(path, &append_changes_query(query), read_only)
+            .execute_csv(path, &append_changes_query(query)?, read_only)
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
         Ok((parse_affected_rows(&stdout)?, elapsed))
@@ -736,11 +736,58 @@ fn contains_keyword(sql: &str, expected: &str) -> bool {
     false
 }
 
-fn split_sqlite_statements(sql: &str) -> Vec<&str> {
+fn is_create_trigger_prefix(sql: &str) -> bool {
+    let Some((first, pos)) = next_keyword_from(sql, 0) else {
+        return false;
+    };
+    if !first.eq_ignore_ascii_case("CREATE") {
+        return false;
+    }
+    let Some((second, pos)) = next_keyword_from(sql, pos) else {
+        return false;
+    };
+    if second.eq_ignore_ascii_case("TEMP") || second.eq_ignore_ascii_case("TEMPORARY") {
+        let Some((third, _)) = next_keyword_from(sql, pos) else {
+            return false;
+        };
+        return third.eq_ignore_ascii_case("TRIGGER");
+    }
+    second.eq_ignore_ascii_case("TRIGGER")
+}
+
+fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
+    let mut index = keyword_start;
+    while index > 0 {
+        index -= 1;
+        match sql.as_bytes()[index] {
+            byte if byte.is_ascii_whitespace() => {}
+            b'.' => return true,
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn is_sqlite_trigger_body_end(
+    keyword: &str,
+    in_trigger_body: bool,
+    trigger_body_stmt_start: bool,
+    sql: &str,
+    keyword_start: usize,
+) -> bool {
+    in_trigger_body
+        && trigger_body_stmt_start
+        && keyword.eq_ignore_ascii_case("END")
+        && !is_dotted_identifier_suffix(sql, keyword_start)
+}
+
+fn try_split_sqlite_statements(sql: &str) -> Result<Vec<&str>, DbOperationError> {
     let bytes = sql.as_bytes();
     let mut statements = Vec::new();
     let mut start = 0;
     let mut i = 0;
+    let mut in_trigger_body = false;
+    let mut trigger_body_stmt_start = false;
 
     while i < bytes.len() {
         match bytes[i] {
@@ -764,6 +811,10 @@ fn split_sqlite_statements(sql: &str) -> Vec<&str> {
             b'[' => {
                 i = skip_bracket_quoted(bytes, i);
             }
+            b';' if in_trigger_body => {
+                trigger_body_stmt_start = true;
+                i += 1;
+            }
             b';' => {
                 let statement = sql[start..i].trim();
                 if !statement.is_empty() {
@@ -771,17 +822,57 @@ fn split_sqlite_statements(sql: &str) -> Vec<&str> {
                 }
                 i += 1;
                 start = i;
+                in_trigger_body = false;
+                trigger_body_stmt_start = false;
             }
-            _ => i += 1,
+            _ => {
+                if bytes[i].is_ascii_alphabetic()
+                    && is_create_trigger_prefix(&sql[start..])
+                    && let Some((keyword, kw_end)) = next_keyword_from(sql, i)
+                {
+                    if keyword.eq_ignore_ascii_case("BEGIN") {
+                        if in_trigger_body {
+                            trigger_body_stmt_start = false;
+                        } else {
+                            in_trigger_body = true;
+                            trigger_body_stmt_start = true;
+                        }
+                    } else if is_sqlite_trigger_body_end(
+                        keyword,
+                        in_trigger_body,
+                        trigger_body_stmt_start,
+                        sql,
+                        i,
+                    ) {
+                        in_trigger_body = false;
+                        trigger_body_stmt_start = false;
+                    } else if in_trigger_body {
+                        trigger_body_stmt_start = false;
+                    }
+                    i = kw_end;
+                    continue;
+                }
+                i += 1;
+            }
         }
     }
 
     let tail = sql[start..].trim();
     if !tail.is_empty() {
+        if in_trigger_body {
+            return Err(DbOperationError::QueryFailed(
+                "Unclosed CREATE TRIGGER body".to_string(),
+            ));
+        }
+        if is_create_trigger_prefix(tail) && !contains_keyword(tail, "BEGIN") {
+            return Err(DbOperationError::QueryFailed(
+                "Incomplete CREATE TRIGGER statement".to_string(),
+            ));
+        }
         statements.push(tail);
     }
 
-    statements
+    Ok(statements)
 }
 
 fn is_transaction_control(statement: &str) -> bool {
@@ -801,12 +892,12 @@ fn is_write_statement(statement: &str) -> bool {
     )
 }
 
-fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
-    let statements = split_sqlite_statements(query);
-    statements.len() == 1
+fn is_sqlite_rerunnable_export_query(query: &str) -> Result<bool, DbOperationError> {
+    let statements = try_split_sqlite_statements(query)?;
+    Ok(statements.len() == 1
         && statements
             .iter()
-            .all(|statement| is_sqlite_rerunnable_export_statement(statement))
+            .all(|statement| is_sqlite_rerunnable_export_statement(statement)))
 }
 
 fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
@@ -943,17 +1034,17 @@ fn is_rollback_to(statement: &str) -> bool {
     rollback_to_target(statement).is_some() || rollback_has_to_clause(statement)
 }
 
-fn sqlite_wrap_mode(query: &str) -> SqliteWrapMode {
-    let statements = split_sqlite_statements(query);
+fn sqlite_wrap_mode(query: &str) -> Result<SqliteWrapMode, DbOperationError> {
+    let statements = try_split_sqlite_statements(query)?;
     if !needs_write_batch_wrap(&statements) {
-        return SqliteWrapMode::None;
+        return Ok(SqliteWrapMode::None);
     }
 
     if statements.iter().any(|stmt| is_transaction_control(stmt)) {
-        return SqliteWrapMode::None;
+        return Ok(SqliteWrapMode::None);
     }
 
-    SqliteWrapMode::BeginCommit
+    Ok(SqliteWrapMode::BeginCommit)
 }
 
 fn sqlite_transaction_block(query: &str) -> String {
@@ -961,11 +1052,11 @@ fn sqlite_transaction_block(query: &str) -> String {
     format!("BEGIN;\n{trimmed}\n;\nCOMMIT")
 }
 
-fn sqlite_execution_query(query: &str) -> Cow<'_, str> {
-    match sqlite_wrap_mode(query) {
+fn sqlite_execution_query(query: &str) -> Result<Cow<'_, str>, DbOperationError> {
+    Ok(match sqlite_wrap_mode(query)? {
         SqliteWrapMode::BeginCommit => Cow::Owned(sqlite_transaction_block(query)),
         SqliteWrapMode::None => Cow::Borrowed(query),
-    }
+    })
 }
 
 fn sqlite_probe_marker() -> String {
@@ -1002,13 +1093,13 @@ fn sqlite_result_probe(marker: &str, index: usize) -> String {
     format!("SELECT {index} AS \"{stmt_col}\", '{marker}' AS \"{marker_col}\"")
 }
 
-fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
-    let statements = split_sqlite_statements(query);
+fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> Result<String, DbOperationError> {
+    let statements = try_split_sqlite_statements(query)?;
     if statements.is_empty() {
-        return query.to_string();
+        return Ok(query.to_string());
     }
 
-    let wrap_mode = sqlite_wrap_mode(query);
+    let wrap_mode = sqlite_wrap_mode(query)?;
     let mut parts = Vec::with_capacity(statements.len() * 2 + 2);
     if matches!(wrap_mode, SqliteWrapMode::BeginCommit) {
         parts.push("BEGIN".to_string());
@@ -1025,14 +1116,14 @@ fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> String {
     if matches!(wrap_mode, SqliteWrapMode::BeginCommit) {
         parts.push("COMMIT".to_string());
     }
-    parts.join("\n;\n")
+    Ok(parts.join("\n;\n"))
 }
 
-fn append_changes_query(query: &str) -> String {
-    let body = sqlite_execution_query(query).trim_end().to_string();
+fn append_changes_query(query: &str) -> Result<String, DbOperationError> {
+    let body = sqlite_execution_query(query)?.trim_end().to_string();
     // The standalone separator also terminates a trailing line comment before
     // appending the changes() probe.
-    format!("{body}\n;\nSELECT changes() AS affected_rows;")
+    Ok(format!("{body}\n;\nSELECT changes() AS affected_rows;"))
 }
 
 fn dml_keyword(statement: &str) -> Option<&'static str> {
@@ -1813,8 +1904,8 @@ impl QueryExecutor for SqliteAdapter {
     ) -> Result<QueryResult, DbOperationError> {
         let path = Self::path_from_dsn(dsn)?;
         let marker = sqlite_probe_marker();
-        let execution_query = sqlite_adhoc_execution_query(query, &marker);
-        let statements = split_sqlite_statements(query);
+        let statements = try_split_sqlite_statements(query)?;
+        let execution_query = sqlite_adhoc_execution_query(query, &marker)?;
 
         #[expect(
             clippy::disallowed_methods,
@@ -1898,7 +1989,7 @@ impl QueryExecutor for SqliteAdapter {
         path: &std::path::Path,
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
-        if !is_sqlite_rerunnable_export_query(query) {
+        if !is_sqlite_rerunnable_export_query(query)? {
             return Err(sqlite_export_not_rerunnable_error());
         }
         self.cli
@@ -1917,9 +2008,10 @@ mod tests {
 
     #[test]
     fn split_sqlite_statements_ignores_semicolons_in_literals_and_comments() {
-        let statements = split_sqlite_statements(
+        let statements = try_split_sqlite_statements(
             "INSERT INTO logs(message) VALUES ('a;b'); -- ; ignored\nSELECT ';' AS value;",
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             statements,
@@ -1931,10 +2023,108 @@ mod tests {
     }
 
     #[test]
+    fn split_sqlite_statements_keeps_create_trigger_body_together() {
+        let trigger = "\
+CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(rowid, role, content)
+    VALUES (new.id, new.role, new.content);
+END";
+        let sql = format!("{trigger}; SELECT 1 AS value;");
+
+        let statements = try_split_sqlite_statements(&sql).unwrap();
+
+        assert_eq!(statements.len(), 2);
+        assert_eq!(statements[0], trigger);
+        assert_eq!(statements[1], "SELECT 1 AS value");
+    }
+
+    #[test]
+    fn split_sqlite_statements_keeps_create_trigger_with_dotted_end_reference() {
+        let trigger = "\
+CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
+END";
+        let sql = format!("{trigger}; SELECT 1 AS value;");
+
+        let statements = try_split_sqlite_statements(&sql).unwrap();
+
+        assert_eq!(statements.len(), 2);
+        assert_eq!(statements[0], trigger);
+        assert_eq!(statements[1], "SELECT 1 AS value");
+    }
+
+    #[test]
+    fn split_sqlite_statements_keeps_create_trigger_with_case_end_expression() {
+        let trigger = "\
+CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
+    UPDATE counters
+    SET end_value = CASE WHEN new.end > 0 THEN new.end ELSE old.end END
+    WHERE id = new.id;
+    INSERT INTO audit(event_id) VALUES (new.id);
+END";
+        let sql = format!("{trigger}; SELECT 1 AS value;");
+
+        let statements = try_split_sqlite_statements(&sql).unwrap();
+
+        assert_eq!(statements.len(), 2);
+        assert_eq!(statements[0], trigger);
+        assert_eq!(statements[1], "SELECT 1 AS value");
+    }
+
+    #[test]
+    fn adhoc_execution_query_does_not_insert_probes_when_trigger_references_new_end() {
+        let trigger = "\
+CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
+END";
+        let marker = "probe_marker";
+
+        let execution_query = sqlite_adhoc_execution_query(trigger, marker).unwrap();
+
+        assert!(!execution_query.contains(marker));
+        assert_eq!(execution_query, trigger);
+    }
+
+    #[test]
+    fn split_sqlite_statements_rejects_unclosed_create_trigger_body() {
+        let error = try_split_sqlite_statements(
+            "CREATE TRIGGER t AFTER INSERT ON users BEGIN INSERT INTO logs(id) VALUES (1);",
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, DbOperationError::QueryFailed(_)));
+    }
+
+    #[test]
+    fn split_sqlite_statements_rejects_incomplete_create_trigger_without_begin() {
+        let error =
+            try_split_sqlite_statements("CREATE TRIGGER t AFTER INSERT ON users").unwrap_err();
+
+        assert!(matches!(error, DbOperationError::QueryFailed(_)));
+    }
+
+    #[test]
+    fn adhoc_execution_query_does_not_insert_probes_inside_create_trigger() {
+        let trigger = "\
+CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(rowid, role, content)
+    VALUES (new.id, new.role, new.content);
+END";
+        let marker = "probe_marker";
+
+        let execution_query = sqlite_adhoc_execution_query(trigger, marker).unwrap();
+
+        assert!(!execution_query.contains(marker));
+        assert_eq!(execution_query, trigger);
+    }
+
+    #[test]
     fn append_changes_wraps_multi_statement_write_without_explicit_transaction() {
         let query = "INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2);";
 
-        let wrapped = append_changes_query(query);
+        let wrapped = append_changes_query(query).unwrap();
 
         assert_eq!(
             wrapped,
@@ -1946,7 +2136,7 @@ mod tests {
     fn append_changes_wraps_multi_statement_replace_without_explicit_transaction() {
         let query = "REPLACE INTO users(id) VALUES (1); SELECT * FROM missing";
 
-        let wrapped = append_changes_query(query);
+        let wrapped = append_changes_query(query).unwrap();
 
         assert_eq!(
             wrapped,
@@ -1958,7 +2148,7 @@ mod tests {
     fn append_changes_wraps_multi_statement_with_write_without_explicit_transaction() {
         let query = "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload; SELECT * FROM missing";
 
-        let wrapped = append_changes_query(query);
+        let wrapped = append_changes_query(query).unwrap();
 
         assert_eq!(
             wrapped,
@@ -1970,7 +2160,7 @@ mod tests {
     fn append_changes_keeps_explicit_begin_commit_transaction_control() {
         let query = "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT";
 
-        let wrapped = append_changes_query(query);
+        let wrapped = append_changes_query(query).unwrap();
 
         assert_eq!(
             wrapped,
@@ -1982,7 +2172,7 @@ mod tests {
     fn append_changes_keeps_explicit_begin_end_transaction_control() {
         let query = "BEGIN; INSERT INTO users(id) VALUES (1); END";
 
-        let wrapped = append_changes_query(query);
+        let wrapped = append_changes_query(query).unwrap();
 
         assert_eq!(
             wrapped,
@@ -2110,7 +2300,8 @@ mod tests {
             assert_eq!(
                 sqlite_wrap_mode(
                     "INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
-                ),
+                )
+                .unwrap(),
                 SqliteWrapMode::BeginCommit
             );
         }
@@ -2118,7 +2309,7 @@ mod tests {
         #[test]
         fn explicit_begin_is_not_wrapped() {
             assert_eq!(
-                sqlite_wrap_mode("BEGIN; INSERT INTO users(id) VALUES (1); COMMIT"),
+                sqlite_wrap_mode("BEGIN; INSERT INTO users(id) VALUES (1); COMMIT").unwrap(),
                 SqliteWrapMode::None
             );
         }
@@ -2128,7 +2319,8 @@ mod tests {
             assert_eq!(
                 sqlite_wrap_mode(
                     "SAVEPOINT user_sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
-                ),
+                )
+                .unwrap(),
                 SqliteWrapMode::None
             );
         }
@@ -2138,7 +2330,8 @@ mod tests {
             assert_eq!(
                 sqlite_wrap_mode(
                     "INSERT INTO users(id) VALUES (1); SAVEPOINT sp; INSERT INTO users(id) VALUES (2)"
-                ),
+                )
+                .unwrap(),
                 SqliteWrapMode::None
             );
         }
@@ -2670,6 +2863,107 @@ mod tests {
             assert_eq!(result.columns, vec!["value"]);
             assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
             assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+        }
+
+        #[tokio::test]
+        async fn create_trigger_with_multi_statement_body_preserves_definition() {
+            let setup = r"
+            CREATE TABLE agent_messages(
+                id INTEGER PRIMARY KEY,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL
+            );
+            CREATE VIRTUAL TABLE agent_messages_fts USING fts5(role, content);
+            ";
+            let trigger = r"
+            CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
+                INSERT INTO agent_messages_fts(rowid, role, content)
+                VALUES (new.id, new.role, new.content);
+            END
+            ";
+            let (_dir, dsn) = make_sqlite_db(setup);
+            let adapter = SqliteAdapter::new();
+
+            adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'agent_messages_fts_ai'",
+                    true,
+                )
+                .await
+                .unwrap();
+
+            let stored = result.rows()[0][0].replace('\n', " ");
+            let expected = trigger.trim().replace('\n', " ");
+            assert!(
+                !stored.contains("__sabiql_sqlite_probe_"),
+                "probe SQL must not appear in stored trigger definition: {stored}"
+            );
+            assert_eq!(stored, expected);
+        }
+
+        #[tokio::test]
+        async fn create_trigger_referencing_new_end_preserves_definition() {
+            let setup = r"
+            CREATE TABLE events(
+                id INTEGER PRIMARY KEY,
+                end INTEGER NOT NULL
+            );
+            CREATE TABLE counters(
+                id INTEGER PRIMARY KEY,
+                end_value INTEGER
+            );
+            CREATE TABLE audit(
+                event_id INTEGER,
+                end_value INTEGER
+            );
+            ";
+            let trigger = r"
+            CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+                UPDATE counters SET end_value = new.end WHERE id = new.id;
+                INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
+            END
+            ";
+            let (_dir, dsn) = make_sqlite_db(setup);
+            let adapter = SqliteAdapter::new();
+
+            adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'sync_end'",
+                    true,
+                )
+                .await
+                .unwrap();
+
+            let stored = result.rows()[0][0].replace('\n', " ");
+            let expected = trigger.trim().replace('\n', " ");
+            assert!(
+                !stored.contains("__sabiql_sqlite_probe_"),
+                "probe SQL must not appear in stored trigger definition: {stored}"
+            );
+            assert_eq!(stored, expected);
+        }
+
+        #[tokio::test]
+        async fn unclosed_create_trigger_fails_before_execution() {
+            let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let error = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "CREATE TRIGGER t AFTER INSERT ON users BEGIN INSERT INTO logs(id) VALUES (1);",
+                    false,
+                )
+                .await
+                .unwrap_err();
+
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
         }
 
         #[tokio::test]
@@ -3512,14 +3806,14 @@ mod tests {
                 "PRAGMA foreign_keys=OFF",
                 "PRAGMA wal_checkpoint(TRUNCATE)",
             ] {
-                assert!(!is_sqlite_rerunnable_export_query(sql), "{sql}");
+                assert!(!is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");
             }
         }
 
         #[test]
         fn export_guard_allows_read_only_sql() {
             for sql in ["SELECT 1", "PRAGMA table_info(users)"] {
-                assert!(is_sqlite_rerunnable_export_query(sql), "{sql}");
+                assert!(is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");
             }
         }
 

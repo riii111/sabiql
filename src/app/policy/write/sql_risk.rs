@@ -125,6 +125,114 @@ pub fn split_statements(sql: &str) -> Vec<String> {
     split_statements_for_database(DatabaseType::PostgreSQL, sql)
 }
 
+fn is_sqlite_create_trigger_prefix(sql: &str) -> bool {
+    let trimmed = sql.trim_start();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+
+    let Some((first, second_start)) = next_keyword_from(trimmed, &chars, 0) else {
+        return false;
+    };
+    if first != "CREATE" {
+        return false;
+    }
+    let Some((second, third_start)) = next_keyword_from(trimmed, &chars, second_start) else {
+        return false;
+    };
+    match second.as_str() {
+        "TRIGGER" => true,
+        "TEMP" | "TEMPORARY" => next_keyword_from(trimmed, &chars, third_start)
+            .is_some_and(|(third, _)| third == "TRIGGER"),
+        _ => false,
+    }
+}
+
+fn next_keyword_from(sql: &str, chars: &[(usize, char)], mut i: usize) -> Option<(String, usize)> {
+    let mut in_string = false;
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+        if let Some(next_i) = skip_line_comment(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = advance_single_quote(chars, i, ch, &mut in_string) {
+            i = next_i;
+            continue;
+        }
+        if in_string {
+            i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_double_quoted_identifier(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_sqlite_quoted_identifier(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_dollar_quoted_string(sql, chars, i, byte_pos, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(keyword) = keyword_starting_at(sql, chars, i) {
+            return Some(keyword);
+        }
+        i += 1;
+    }
+    None
+}
+
+fn keyword_starting_at(sql: &str, chars: &[(usize, char)], i: usize) -> Option<(String, usize)> {
+    let (byte_pos, ch) = chars[i];
+    if !ch.is_ascii_alphabetic() {
+        return None;
+    }
+    let start = byte_pos;
+    let mut j = i;
+    while j < chars.len() {
+        let (_, c) = chars[j];
+        if c.is_ascii_alphanumeric() || c == '_' {
+            j += 1;
+        } else {
+            break;
+        }
+    }
+    Some((
+        sql[start..chars.get(j).map_or(sql.len(), |(p, _)| *p)].to_ascii_uppercase(),
+        j,
+    ))
+}
+
+fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
+    let mut index = keyword_start;
+    while index > 0 {
+        index -= 1;
+        match sql.as_bytes()[index] {
+            byte if byte.is_ascii_whitespace() => {}
+            b'.' => return true,
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn is_sqlite_trigger_body_end(
+    keyword: &str,
+    in_trigger_body: bool,
+    trigger_body_stmt_start: bool,
+    sql: &str,
+    keyword_start: usize,
+) -> bool {
+    in_trigger_body
+        && trigger_body_stmt_start
+        && keyword == "END"
+        && !is_dotted_identifier_suffix(sql, keyword_start)
+}
+
 pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> Vec<String> {
     // Use sql's own char_indices so byte offsets remain valid for slicing sql.
     // to_lowercase() can change byte lengths (e.g. İ → i̇), which would corrupt offsets.
@@ -134,6 +242,10 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
     let mut i = 0;
     let mut depth: i32 = 0;
     let mut in_string = false;
+    let mut in_trigger_body = false;
+    let mut trigger_body_stmt_start = false;
+    let mut is_trigger_stmt =
+        database_type == DatabaseType::SQLite && is_sqlite_create_trigger_prefix(&sql[start..]);
 
     while i < chars.len() {
         let (byte_pos, ch) = chars[i];
@@ -169,6 +281,30 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
             continue;
         }
 
+        if is_trigger_stmt && let Some((keyword, kw_end)) = keyword_starting_at(sql, &chars, i) {
+            if keyword == "BEGIN" {
+                if in_trigger_body {
+                    trigger_body_stmt_start = false;
+                } else {
+                    in_trigger_body = true;
+                    trigger_body_stmt_start = true;
+                }
+            } else if is_sqlite_trigger_body_end(
+                &keyword,
+                in_trigger_body,
+                trigger_body_stmt_start,
+                sql,
+                byte_pos,
+            ) {
+                in_trigger_body = false;
+                trigger_body_stmt_start = false;
+            } else if in_trigger_body {
+                trigger_body_stmt_start = false;
+            }
+            i = kw_end;
+            continue;
+        }
+
         if ch == '(' {
             depth += 1;
         } else if ch == ')' {
@@ -176,11 +312,19 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
         }
 
         if depth == 0 && ch == ';' {
-            let fragment = sql[start..byte_pos].trim();
-            if !fragment.is_empty() {
-                statements.push(fragment.to_string());
+            if database_type == DatabaseType::SQLite && in_trigger_body {
+                trigger_body_stmt_start = true;
+            } else {
+                let fragment = sql[start..byte_pos].trim();
+                if !fragment.is_empty() {
+                    statements.push(fragment.to_string());
+                }
+                start = byte_pos + 1;
+                in_trigger_body = false;
+                trigger_body_stmt_start = false;
+                is_trigger_stmt = database_type == DatabaseType::SQLite
+                    && is_sqlite_create_trigger_prefix(&sql[start..]);
             }
-            start = byte_pos + 1;
         }
 
         i += 1;
@@ -828,6 +972,68 @@ mod tests {
                 split_statements_for_database(DatabaseType::SQLite, sql),
                 expected
             );
+        }
+
+        #[test]
+        fn sqlite_create_trigger_body_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(rowid, role, content)
+    VALUES (new.id, new.role, new.content);
+END";
+            let sql = format!("{trigger}; SELECT 1");
+
+            let result = split_statements_for_database(DatabaseType::SQLite, &sql);
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], trigger);
+            assert_eq!(result[1], "SELECT 1");
+        }
+
+        #[test]
+        fn sqlite_create_trigger_with_dotted_end_reference_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id, end_value) VALUES (new.id, old.end);
+END";
+            let sql = format!("{trigger}; SELECT 1");
+
+            let result = split_statements_for_database(DatabaseType::SQLite, &sql);
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], trigger);
+            assert_eq!(result[1], "SELECT 1");
+        }
+
+        #[test]
+        fn sqlite_create_trigger_with_case_end_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
+    UPDATE counters
+    SET end_value = CASE WHEN new.end > 0 THEN new.end ELSE old.end END
+    WHERE id = new.id;
+    INSERT INTO audit(event_id) VALUES (new.id);
+END";
+            let sql = format!("{trigger}; SELECT 1");
+
+            let result = split_statements_for_database(DatabaseType::SQLite, &sql);
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], trigger);
+            assert_eq!(result[1], "SELECT 1");
+        }
+
+        #[test]
+        fn sqlite_unclosed_create_trigger_body_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id) VALUES (new.id);";
+
+            let result = split_statements_for_database(DatabaseType::SQLite, trigger);
+
+            assert_eq!(result, vec![trigger]);
         }
 
         #[rstest]
