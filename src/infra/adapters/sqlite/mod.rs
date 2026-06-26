@@ -1829,7 +1829,7 @@ impl MetadataProvider for SqliteAdapter {
             metadata.table_summaries.push(TableSummary::new(
                 MAIN_SCHEMA.to_string(),
                 table.name.clone(),
-                self.row_count(path, &table.name).await,
+                None,
                 false,
             ));
         }
@@ -3886,7 +3886,23 @@ END";
             assert_eq!(metadata.schemas, vec![Schema::new("main")]);
             assert_eq!(metadata.table_summaries.len(), 1);
             assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
-            assert_eq!(metadata.table_summaries[0].row_count_estimate, Some(0));
+            assert!(metadata.table_summaries[0].row_count_estimate.is_none());
+        }
+
+        #[tokio::test]
+        async fn metadata_skips_row_count_even_when_table_has_rows() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            INSERT INTO users(id) VALUES (1), (2), (3);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+
+            assert_eq!(metadata.table_summaries.len(), 1);
+            assert!(metadata.table_summaries[0].row_count_estimate.is_none());
         }
 
         #[tokio::test]
