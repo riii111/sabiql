@@ -128,19 +128,62 @@ pub fn split_statements(sql: &str) -> Vec<String> {
 fn is_sqlite_create_trigger_prefix(sql: &str) -> bool {
     let trimmed = sql.trim_start();
     let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
-    let tokens: Vec<String> = collect_top_level_tokens(trimmed, &chars)
-        .into_iter()
-        .map(|(_, token)| token.to_ascii_uppercase())
-        .collect();
 
-    if tokens.first().map(String::as_str) != Some("CREATE") {
+    let Some((first, second_start)) = next_keyword_from(trimmed, &chars, 0) else {
+        return false;
+    };
+    if first != "CREATE" {
         return false;
     }
-    match tokens.get(1).map(String::as_str) {
-        Some("TRIGGER") => true,
-        Some("TEMP" | "TEMPORARY") => tokens.get(2).map(String::as_str) == Some("TRIGGER"),
+    let Some((second, third_start)) = next_keyword_from(trimmed, &chars, second_start) else {
+        return false;
+    };
+    match second.as_str() {
+        "TRIGGER" => true,
+        "TEMP" | "TEMPORARY" => next_keyword_from(trimmed, &chars, third_start)
+            .is_some_and(|(third, _)| third == "TRIGGER"),
         _ => false,
     }
+}
+
+fn next_keyword_from(sql: &str, chars: &[(usize, char)], mut i: usize) -> Option<(String, usize)> {
+    let mut in_string = false;
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+        if let Some(next_i) = skip_line_comment(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = advance_single_quote(chars, i, ch, &mut in_string) {
+            i = next_i;
+            continue;
+        }
+        if in_string {
+            i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_double_quoted_identifier(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_sqlite_quoted_identifier(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_dollar_quoted_string(sql, chars, i, byte_pos, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(keyword) = keyword_starting_at(sql, chars, i) {
+            return Some(keyword);
+        }
+        i += 1;
+    }
+    None
 }
 
 fn keyword_starting_at(sql: &str, chars: &[(usize, char)], i: usize) -> Option<(String, usize)> {
