@@ -54,6 +54,8 @@ fn is_missing_object(lower: &str) -> bool {
     lower.contains("no such table")
         || lower.contains("no such column")
         || lower.contains("no such view")
+        || lower.contains("no such index")
+        || lower.contains("no such trigger")
 }
 
 #[cfg(test)]
@@ -61,36 +63,68 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum ClassifiedKind {
+        PermissionDenied,
+        ForeignKeyViolation,
+        UniqueViolation,
+        LockTimeout,
+        ObjectMissing,
+        QueryFailed,
+        Other,
+    }
+
+    fn classified_kind(error: &DbOperationError) -> ClassifiedKind {
+        match error {
+            DbOperationError::PermissionDenied(_) => ClassifiedKind::PermissionDenied,
+            DbOperationError::ForeignKeyViolation(_) => ClassifiedKind::ForeignKeyViolation,
+            DbOperationError::UniqueViolation(_) => ClassifiedKind::UniqueViolation,
+            DbOperationError::LockTimeout(_) => ClassifiedKind::LockTimeout,
+            DbOperationError::ObjectMissing(_) => ClassifiedKind::ObjectMissing,
+            DbOperationError::QueryFailed(_) => ClassifiedKind::QueryFailed,
+            _ => ClassifiedKind::Other,
+        }
+    }
+
     mod classification {
         use super::*;
 
         #[rstest]
-        #[case("Error: database is locked", "LockTimeout")]
-        #[case("Runtime error: database is locked (SQLITE_BUSY)", "LockTimeout")]
-        #[case("Error: attempt to write a readonly database", "PermissionDenied")]
-        #[case("Error: FOREIGN KEY constraint failed", "ForeignKeyViolation")]
-        #[case("Error: UNIQUE constraint failed: users.email", "UniqueViolation")]
-        #[case("Parse error: near \"SELEKT\": syntax error", "QueryFailed")]
-        #[case("Error: near \"SELEKT\": syntax error", "QueryFailed")]
-        #[case("Error: no such table: users", "ObjectMissing")]
-        #[case("Error: no such column: missing", "ObjectMissing")]
+        #[case("Error: database is locked", ClassifiedKind::LockTimeout)]
+        #[case(
+            "Runtime error: database is locked (SQLITE_BUSY)",
+            ClassifiedKind::LockTimeout
+        )]
+        #[case(
+            "Error: attempt to write a readonly database",
+            ClassifiedKind::PermissionDenied
+        )]
+        #[case(
+            "Error: FOREIGN KEY constraint failed",
+            ClassifiedKind::ForeignKeyViolation
+        )]
+        #[case(
+            "Error: UNIQUE constraint failed: users.email",
+            ClassifiedKind::UniqueViolation
+        )]
+        #[case(
+            "Parse error: near \"SELEKT\": syntax error",
+            ClassifiedKind::QueryFailed
+        )]
+        #[case("Error: near \"SELEKT\": syntax error", ClassifiedKind::QueryFailed)]
+        #[case("Error: no such table: users", ClassifiedKind::ObjectMissing)]
+        #[case("Error: no such column: missing", ClassifiedKind::ObjectMissing)]
+        #[case("Error: no such index: missing_idx", ClassifiedKind::ObjectMissing)]
+        #[case(
+            "Error: no such trigger: missing_trigger",
+            ClassifiedKind::ObjectMissing
+        )]
         #[case(
             "Error: in prepare, no such table: main.pragma_table_list",
-            "QueryFailed"
+            ClassifiedKind::QueryFailed
         )]
-        fn classifies_sqlite_stderr(#[case] input: &str, #[case] expected: &str) {
-            let error = classify_query_error(input);
-            let actual = match error {
-                DbOperationError::PermissionDenied(_) => "PermissionDenied",
-                DbOperationError::ForeignKeyViolation(_) => "ForeignKeyViolation",
-                DbOperationError::UniqueViolation(_) => "UniqueViolation",
-                DbOperationError::LockTimeout(_) => "LockTimeout",
-                DbOperationError::ObjectMissing(_) => "ObjectMissing",
-                DbOperationError::QueryFailed(_) => "QueryFailed",
-                _ => "Other",
-            };
-
-            assert_eq!(actual, expected);
+        fn classifies_sqlite_stderr(#[case] input: &str, #[case] expected: ClassifiedKind) {
+            assert_eq!(classified_kind(&classify_query_error(input)), expected);
         }
 
         #[test]
