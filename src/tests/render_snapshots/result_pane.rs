@@ -238,7 +238,7 @@ fn result_pane_cell_edit_mode() {
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
     state
         .result_interaction
-        .cell_edit_set_content("new@example.com".to_string());
+        .replace_cell_edit_draft("new@example.com".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -297,7 +297,7 @@ fn result_pane_cell_active_pending_draft() {
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
     state
         .result_interaction
-        .cell_edit_set_content("new@example.com".to_string());
+        .replace_cell_edit_draft("new@example.com".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 

@@ -1139,7 +1139,7 @@ mod tests {
                     .begin_cell_edit(0, 1, "original".to_string());
                 state
                     .result_interaction
-                    .cell_edit_set_content("modified".to_string());
+                    .replace_cell_edit_draft("modified".to_string());
 
                 let result = handle_normal_mode(combo(Key::Esc), &state);
 

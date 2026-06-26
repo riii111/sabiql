@@ -118,15 +118,15 @@ impl ResultInteraction {
         self.cell_edit.move_cursor(direction);
     }
 
-    pub fn cell_edit_set_content(&mut self, content: String) {
-        self.cell_edit.set_content(content);
+    pub fn replace_cell_edit_draft(&mut self, content: String) {
+        self.cell_edit.replace_draft(content);
     }
 
     pub fn cell_edit_set_cursor(&mut self, cursor: usize) {
         self.cell_edit.set_cursor(cursor);
     }
 
-    pub fn cancel_cell_edit(&mut self) {
+    pub fn leave_cell_edit(&mut self) {
         if self.cell_edit.has_pending_draft() {
             self.clear_write_preview();
         } else {
@@ -260,14 +260,14 @@ mod tests {
     }
 
     #[test]
-    fn cancel_cell_edit_preserves_draft_when_changed() {
+    fn leave_cell_edit_preserves_draft_when_changed() {
         let mut ri = ResultInteraction::default();
         ri.activate_cell(2, 4);
         ri.begin_cell_edit(2, 4, "val".to_string());
         ri.set_write_preview(test_preview());
-        ri.cell_edit_set_content("changed".to_string());
+        ri.replace_cell_edit_draft("changed".to_string());
 
-        ri.cancel_cell_edit();
+        ri.leave_cell_edit();
 
         assert!(ri.cell_edit().is_active());
         assert_eq!(ri.cell_edit().draft_value(), "changed");
@@ -275,12 +275,12 @@ mod tests {
     }
 
     #[test]
-    fn cancel_cell_edit_clears_session_when_unchanged() {
+    fn leave_cell_edit_clears_session_when_unchanged() {
         let mut ri = ResultInteraction::default();
         ri.activate_cell(2, 4);
         ri.begin_cell_edit(2, 4, "val".to_string());
 
-        ri.cancel_cell_edit();
+        ri.leave_cell_edit();
 
         assert!(!ri.cell_edit().is_active());
     }

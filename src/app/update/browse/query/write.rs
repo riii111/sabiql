@@ -433,7 +433,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "Alice".to_string());
             state
                 .result_interaction
-                .cell_edit_set_content("Bob".to_string());
+                .replace_cell_edit_draft("Bob".to_string());
             state
         }
 
@@ -667,7 +667,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "Alice".to_string());
             state
                 .result_interaction
-                .cell_edit_set_content("Bob".to_string());
+                .replace_cell_edit_draft("Bob".to_string());
 
             let effects = dispatch_query(
                 &mut state,
@@ -705,7 +705,7 @@ mod tests {
                 .begin_cell_edit(0, 2, r#"{"role":"admin"}"#.to_string());
             state
                 .result_interaction
-                .cell_edit_set_content(r#"{"role":"user"}"#.to_string());
+                .replace_cell_edit_draft(r#"{"role":"user"}"#.to_string());
             state
         }
 
@@ -743,7 +743,7 @@ mod tests {
                 .begin_cell_edit(0, 1, r#"{"key":"old"}"#.to_string());
             state
                 .result_interaction
-                .cell_edit_set_content(r#"{"key":"new"}"#.to_string());
+                .replace_cell_edit_draft(r#"{"key":"new"}"#.to_string());
 
             let effects = dispatch_query(
                 &mut state,
