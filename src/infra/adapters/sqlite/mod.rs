@@ -14,6 +14,7 @@ use crate::domain::{
 };
 
 mod cli;
+mod error;
 mod sql;
 
 use cli::SqliteCli;
