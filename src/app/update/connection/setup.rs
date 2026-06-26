@@ -151,29 +151,34 @@ pub fn reduce_connection_setup(
             DispatchResult::handled()
         }
         Action::ConnectionSetupSave => {
-            let setup = &mut state.connection_setup;
-            validate_all(setup);
-            if setup.has_validation_errors() {
-                DispatchResult::handled()
-            } else {
-                let config = match setup.to_connection_config() {
-                    Ok(config) => config,
-                    Err(error) => {
-                        setup.record_sqlite_config_error(error);
-                        return DispatchResult::handled();
-                    }
-                };
-                state.session.mark_connecting();
-                DispatchResult::handled_with(vec![Effect::SaveAndConnect {
-                    id: setup.editing_id().cloned(),
-                    name: setup
-                        .input(ConnectionField::Name)
-                        .expect("name is a text input")
-                        .content()
-                        .to_string(),
-                    config,
-                }])
+            validate_all(&mut state.connection_setup);
+            if state.connection_setup.has_validation_errors() {
+                return DispatchResult::handled();
             }
+            let config = match state.connection_setup.to_connection_config() {
+                Ok(config) => config,
+                Err(error) => {
+                    state.connection_setup.record_sqlite_config_error(error);
+                    return DispatchResult::handled();
+                }
+            };
+            if state.session.connection_state() == ConnectionState::Connected
+                && let Some(current_id) = state.session.active_connection_id().cloned()
+            {
+                let cache = save_current_cache(state);
+                state.connection_caches.save(&current_id, cache);
+            }
+            state.session.mark_connecting();
+            DispatchResult::handled_with(vec![Effect::SaveAndConnect {
+                id: state.connection_setup.editing_id().cloned(),
+                name: state
+                    .connection_setup
+                    .input(ConnectionField::Name)
+                    .expect("name is a text input")
+                    .content()
+                    .to_string(),
+                config,
+            }])
         }
         Action::ConnectionSetupCancel => {
             if state.connection_setup.is_first_run() {
@@ -199,25 +204,18 @@ pub fn reduce_connection_setup(
         }) => {
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
-
-            if let Some(current_id) = state.session.active_connection_id().cloned()
-                && current_id != *id
-                && state.session.connection_state() == ConnectionState::Connected
-            {
-                let cache = save_current_cache(state);
-                state.connection_caches.save(&current_id, cache);
-            }
             state.connection_caches.remove(id);
 
             reset_for_new_connection(state, id, dsn, name, *database_type);
             let run_id = state.session.begin_connecting(dsn);
-            DispatchResult::handled_with(vec![
+            DispatchResult::handled_with(vec![Effect::Sequence(vec![
+                Effect::CacheInvalidate { dsn: dsn.clone() },
                 Effect::ClearCompletionEngineCache,
                 Effect::FetchMetadata {
                     dsn: dsn.clone(),
                     run_id,
                 },
-            ])
+            ])])
         }
         Action::ConnectionSaveFailed(e) => {
             if !state.session.connection_state().is_connected() {
@@ -572,16 +570,49 @@ mod tests {
             assert!(state.session.selected_table_key().is_none());
             assert!(state.session.connection_state().is_connecting());
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::ClearCompletionEngineCache))
+            assert_eq!(effects.len(), 1);
+            if let Effect::Sequence(seq) = &effects[0] {
+                assert_eq!(seq.len(), 3);
+                assert!(matches!(seq[0], Effect::CacheInvalidate { .. }));
+                assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
+                assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
+            } else {
+                panic!("expected Sequence effect, got {effects:?}");
+            }
+        }
+
+        #[test]
+        fn save_preserves_connected_cache_before_submit() {
+            use std::sync::Arc;
+
+            use crate::domain::{DatabaseMetadata, TableSummary};
+
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::new();
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "current",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/current",
             );
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
-            );
+            state.session.mark_connected(Arc::new(DatabaseMetadata {
+                database_name: "current".to_string(),
+                schemas: vec![],
+                table_summaries: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    None,
+                    false,
+                )],
+            }));
+            state.ui.set_explorer_selected_raw(4);
+            fill_valid_form(&mut state);
+
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+
+            let saved = state.connection_caches.get(&current_id).unwrap();
+            assert_eq!(saved.explorer_selected, 4);
+            assert!(saved.metadata.is_some());
         }
 
         #[test]
@@ -633,11 +664,15 @@ mod tests {
             });
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
-            );
+            assert_eq!(effects.len(), 1);
+            if let Effect::Sequence(seq) = &effects[0] {
+                assert!(
+                    seq.iter()
+                        .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+                );
+            } else {
+                panic!("expected Sequence effect, got {effects:?}");
+            }
             assert_eq!(state.session.dsn(), Some("sqlite:///tmp/app.db"));
             assert_eq!(
                 state.session.active_database_type(),

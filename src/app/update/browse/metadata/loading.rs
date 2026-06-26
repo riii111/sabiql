@@ -109,8 +109,6 @@ pub(super) fn reduce_loading(
                 state.query.clear_current_result();
                 state.ui.set_explorer_selection(None);
                 state.result_interaction.reset_view();
-            }
-            if !was_connected {
                 state.modal.replace_mode(InputMode::ConnectionError);
             }
             if state.er_preparation.status() == ErStatus::Waiting {

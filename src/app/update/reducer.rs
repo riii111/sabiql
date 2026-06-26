@@ -1737,17 +1737,14 @@ mod tests {
                 Some("Test Connection")
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(effects.len(), 2);
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::ClearCompletionEngineCache))
-            );
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
-            );
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::Sequence(_)));
+            if let Effect::Sequence(seq) = &effects[0] {
+                assert_eq!(seq.len(), 3);
+                assert!(matches!(seq[0], Effect::CacheInvalidate { .. }));
+                assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
+                assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
+            }
         }
 
         #[test]
@@ -2267,12 +2264,14 @@ mod tests {
                 state.session.metadata_state(),
                 MetadataState::Loading
             ));
-            assert_eq!(effects.len(), 2);
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
-            );
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::Sequence(_)));
+            if let Effect::Sequence(seq) = &effects[0] {
+                assert!(
+                    seq.iter()
+                        .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+                );
+            }
         }
 
         #[test]
