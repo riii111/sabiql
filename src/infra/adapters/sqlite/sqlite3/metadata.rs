@@ -9,7 +9,7 @@ use crate::domain::{
     IndexType, Schema, Table, TableSignature, TableSummary, Trigger, UNRESOLVED_FK_COLUMN,
 };
 
-use super::super::{MAIN_SCHEMA, SqliteAdapter, sql};
+use super::super::{SqliteAdapter, schema::MAIN_SCHEMA, sql};
 
 mod trigger;
 
