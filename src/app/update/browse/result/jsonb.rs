@@ -339,8 +339,7 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
         state.result_interaction.clear_write_preview();
         state
             .result_interaction
-            .cell_edit_input_mut()
-            .set_content(compact_str);
+            .replace_cell_edit_draft(compact_str);
     }
 }
 

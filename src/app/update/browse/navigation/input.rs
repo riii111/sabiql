@@ -25,10 +25,7 @@ pub fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
             }
             InputMode::CellEdit => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state
-                    .result_interaction
-                    .cell_edit_input_mut()
-                    .insert_str(&clean);
+                state.result_interaction.cell_edit_insert_str(&clean);
                 DispatchResult::handled()
             }
             InputMode::QueryHistoryPicker => {
