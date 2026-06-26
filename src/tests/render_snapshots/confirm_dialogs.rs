@@ -197,9 +197,8 @@ fn confirm_dialog_update_preview_jsonb_key_order_normalized() {
         .session
         .set_table_detail(fixtures::sample_table_detail(), 0);
 
-    // before: PostgreSQL key order (industries first, spaces)
-    // after: serde_json key order (alphabetical, compact)
-    // Only actual change is company_size value: "500+" → "600+"
+    // Snapshot uses pre-normalized jsonb strings; normalization behavior is covered in
+    // preview_cell_text policy tests.
     let serde_after =
         r#"{"company_size":["100-500","600+"],"industries":["technology","finance"]}"#;
 

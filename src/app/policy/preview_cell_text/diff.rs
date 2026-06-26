@@ -9,9 +9,9 @@ fn normalize_jsonb_for_diff(value: &str) -> String {
 pub fn normalize_for_write_diff(value: &str, handling: PreviewCellTextHandling) -> String {
     match handling {
         PreviewCellTextHandling::PostgreSqlJsonb => normalize_jsonb_for_diff(value),
-        PreviewCellTextHandling::RawText | PreviewCellTextHandling::PostgreSqlJson => {
-            value.to_string()
-        }
+        PreviewCellTextHandling::RawText
+        | PreviewCellTextHandling::PostgreSqlJsonLikeText
+        | PreviewCellTextHandling::PostgreSqlJson => value.to_string(),
     }
 }
 

@@ -5,7 +5,10 @@ use crate::model::app_state::AppState;
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
-use crate::policy::preview_cell_text::{format_for_cell_detail, preview_cell_text_handling};
+use crate::policy::preview_cell_text::{
+    format_for_cell_detail, preview_cell_text_display_handling, preview_cell_text_handling,
+    uses_jsonb_detail_modal,
+};
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
@@ -14,7 +17,7 @@ use crate::update::helpers::find_text_matches;
 pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::ResultOpenCellDetail => {
-            if selected_column_is_jsonb(state) {
+            if selected_cell_uses_jsonb_detail_modal(state) {
                 return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
                     Action::OpenModal(ModalKind::JsonbDetail),
                 ])]);
@@ -27,9 +30,10 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             };
 
             let database_type = state.session.active_database_type_or_default();
-            let handling =
-                preview_cell_text_handling(database_type, data_type.as_deref().unwrap_or(""));
-            let display_value = format_for_cell_detail(&cell_value, database_type, handling);
+            let column_data_type = data_type.as_deref().unwrap_or("");
+            let display_handling =
+                preview_cell_text_display_handling(database_type, column_data_type, &cell_value);
+            let display_value = format_for_cell_detail(&cell_value, display_handling);
             state.cell_detail =
                 CellDetailState::open(row_idx, col_idx, column_name, cell_value, display_value);
             state.modal.push_mode(InputMode::CellDetail);
@@ -142,11 +146,18 @@ fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String
     Some((row_idx, col_idx, column_name, cell_value, data_type))
 }
 
-fn selected_column_is_jsonb(state: &AppState) -> bool {
+fn selected_cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
-    selected_column_data_type(state, col_idx).is_some_and(|data_type| data_type == "jsonb")
+    let Some(column_data_type) = selected_column_data_type(state, col_idx) else {
+        return false;
+    };
+    let handling = preview_cell_text_handling(
+        state.session.active_database_type_or_default(),
+        column_data_type,
+    );
+    uses_jsonb_detail_modal(handling)
 }
 
 fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
@@ -319,6 +330,24 @@ mod tests {
             result.expect("yank should copy").as_slice(),
             [Effect::CopyToClipboard { content, .. }] if content == r#"{"b":2,"a":1}"#
         ));
+    }
+
+    #[test]
+    fn sqlite_jsonb_cell_opens_raw_cell_detail() {
+        let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("sqlite-test"),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/app.db",
+        );
+
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert!(state.cell_detail.is_active());
+        assert_eq!(state.cell_detail.content(), r#"{"a":1}"#);
+        assert!(!state.jsonb_detail.is_active());
     }
 
     #[test]
