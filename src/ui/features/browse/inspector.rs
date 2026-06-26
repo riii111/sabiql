@@ -465,7 +465,7 @@ impl Inspector {
             .indexes
             .iter()
             .any(|index| index.index_type != IndexType::Unknown);
-        let has_details = table.indexes.iter().any(Index::needs_definition_detail);
+        let has_details = table.indexes.iter().any(Index::has_index_detail);
         let headers_with_type_and_details =
             ["Name", "Columns", "Type", "Unique", "Partial", "Detail"];
         let headers_with_type = ["Name", "Columns", "Type", "Unique"];
@@ -766,7 +766,7 @@ fn index_row(index: &Index, show_type: bool, show_details: bool) -> Vec<String> 
 }
 
 fn index_detail(index: &Index) -> String {
-    if index.needs_definition_detail()
+    if index.needs_source_definition_detail()
         && let Some(definition) = &index.definition
     {
         return definition.clone();
@@ -782,7 +782,7 @@ fn index_detail(index: &Index) -> String {
     if index.has_descending_key() {
         details.push("descending".to_string());
     }
-    if index.has_custom_collation() {
+    if index.has_non_binary_collation() {
         details.push("collation".to_string());
     }
     details.join("; ")

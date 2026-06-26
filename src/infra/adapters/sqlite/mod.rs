@@ -280,7 +280,7 @@ impl SqliteAdapter {
             let has_expression = columns.iter().any(|col| col.key != 0 && col.cid == -2);
             let has_auxiliary_columns = columns.iter().any(|col| col.key == 0);
             let has_descending_key = columns.iter().any(|col| col.key != 0 && col.desc != 0);
-            let has_custom_collation = columns.iter().any(|col| {
+            let has_non_binary_collation = columns.iter().any(|col| {
                 col.key != 0
                     && col
                         .coll
@@ -303,8 +303,8 @@ impl SqliteAdapter {
             if has_descending_key {
                 attributes = attributes | IndexAttributes::DESCENDING;
             }
-            if has_custom_collation {
-                attributes = attributes | IndexAttributes::CUSTOM_COLLATION;
+            if has_non_binary_collation {
+                attributes = attributes | IndexAttributes::NON_BINARY_COLLATION;
             }
 
             indexes.push(Index {
@@ -563,7 +563,7 @@ impl SqliteAdapter {
                 index.has_expression(),
                 index.has_auxiliary_columns(),
                 index.has_descending_key(),
-                index.has_custom_collation(),
+                index.has_non_binary_collation(),
                 index.definition.clone().unwrap_or_default()
             )
         }));
@@ -3579,7 +3579,7 @@ mod tests {
             assert!(index.is_partial());
             assert!(index.has_expression());
             assert!(index.has_auxiliary_columns());
-            assert!(index.needs_definition_detail());
+            assert!(index.needs_source_definition_detail());
             assert!(index.definition.as_deref().is_some_and(|definition| {
                 definition.contains("lower(email)")
                     && definition.contains("WHERE email IS NOT NULL")
@@ -3610,7 +3610,7 @@ mod tests {
 
             assert_eq!(index.columns, vec!["email".to_string()]);
             assert!(index.is_partial());
-            assert!(index.needs_definition_detail());
+            assert!(index.needs_source_definition_detail());
             assert!(
                 index
                     .definition
@@ -3641,7 +3641,7 @@ mod tests {
                 .find(|index| index.name == "idx_users_name_desc")
                 .unwrap();
             assert!(descending.has_descending_key());
-            assert!(descending.needs_definition_detail());
+            assert!(descending.needs_source_definition_detail());
             assert!(
                 descending
                     .definition
@@ -3654,8 +3654,8 @@ mod tests {
                 .iter()
                 .find(|index| index.name == "idx_users_name_nocase")
                 .unwrap();
-            assert!(collation.has_custom_collation());
-            assert!(collation.needs_definition_detail());
+            assert!(collation.has_non_binary_collation());
+            assert!(collation.needs_source_definition_detail());
             assert!(
                 collation
                     .definition
