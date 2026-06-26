@@ -100,18 +100,22 @@ impl ResultInteraction {
 
     pub fn cell_edit_insert_char(&mut self, ch: char) {
         self.cell_edit.insert_char(ch);
+        self.clear_write_preview();
     }
 
     pub fn cell_edit_insert_str(&mut self, text: &str) {
         self.cell_edit.insert_str(text);
+        self.clear_write_preview();
     }
 
     pub fn cell_edit_backspace(&mut self) {
         self.cell_edit.backspace();
+        self.clear_write_preview();
     }
 
     pub fn cell_edit_delete(&mut self) {
         self.cell_edit.delete();
+        self.clear_write_preview();
     }
 
     pub fn cell_edit_move_cursor(&mut self, direction: CursorMove) {
@@ -120,6 +124,7 @@ impl ResultInteraction {
 
     pub fn replace_cell_edit_draft(&mut self, content: String) {
         self.cell_edit.replace_draft(content);
+        self.clear_write_preview();
     }
 
     pub fn cell_edit_set_cursor(&mut self, cursor: usize) {
@@ -264,13 +269,25 @@ mod tests {
         let mut ri = ResultInteraction::default();
         ri.activate_cell(2, 4);
         ri.begin_cell_edit(2, 4, "val".to_string());
-        ri.set_write_preview(test_preview());
         ri.replace_cell_edit_draft("changed".to_string());
+        ri.set_write_preview(test_preview());
 
         ri.leave_cell_edit();
 
         assert!(ri.cell_edit().is_active());
         assert_eq!(ri.cell_edit().draft_value(), "changed");
+        assert!(ri.pending_write_preview().is_none());
+    }
+
+    #[test]
+    fn cell_edit_mutation_clears_stale_write_preview() {
+        let mut ri = ResultInteraction::default();
+        ri.begin_cell_edit(0, 0, "val".to_string());
+        ri.set_write_preview(test_preview());
+
+        ri.cell_edit_insert_char('x');
+
+        assert_eq!(ri.cell_edit().draft_value(), "valx");
         assert!(ri.pending_write_preview().is_none());
     }
 
