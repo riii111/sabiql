@@ -102,6 +102,15 @@ pub(super) fn reduce_loading(
             let was_connected = state.session.connection_state().is_connected();
             state.session.mark_connection_failed(error.masked_details());
             if !was_connected {
+                state.session.set_metadata(None);
+                state
+                    .session
+                    .clear_table_selection(&mut state.query.pagination);
+                state.query.clear_current_result();
+                state.ui.set_explorer_selection(None);
+                state.result_interaction.reset_view();
+            }
+            if !was_connected {
                 state.modal.replace_mode(InputMode::ConnectionError);
             }
             if state.er_preparation.status() == ErStatus::Waiting {

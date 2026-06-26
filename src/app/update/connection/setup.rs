@@ -5,8 +5,10 @@ use crate::model::app_state::AppState;
 use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
 };
+use crate::model::connection::state::ConnectionState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ConnectionTarget, InputTarget, ModalKind};
+use crate::update::connection::helpers::{reset_for_new_connection, save_current_cache};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
 
@@ -197,14 +199,25 @@ pub fn reduce_connection_setup(
         }) => {
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
-            state
-                .session
-                .activate_connection_with_dsn(id, name, *database_type, dsn);
+
+            if let Some(current_id) = state.session.active_connection_id().cloned()
+                && current_id != *id
+                && state.session.connection_state() == ConnectionState::Connected
+            {
+                let cache = save_current_cache(state);
+                state.connection_caches.save(&current_id, cache);
+            }
+            state.connection_caches.remove(id);
+
+            reset_for_new_connection(state, id, dsn, name, *database_type);
             let run_id = state.session.begin_connecting(dsn);
-            DispatchResult::handled_with(vec![Effect::FetchMetadata {
-                dsn: dsn.clone(),
-                run_id,
-            }])
+            DispatchResult::handled_with(vec![
+                Effect::ClearCompletionEngineCache,
+                Effect::FetchMetadata {
+                    dsn: dsn.clone(),
+                    run_id,
+                },
+            ])
         }
         Action::ConnectionSaveFailed(e) => {
             if !state.session.connection_state().is_connected() {
@@ -509,6 +522,103 @@ mod tests {
             reduce(&mut state, &action, Instant::now());
 
             assert!(!state.session.is_read_only());
+        }
+
+        #[test]
+        fn save_completed_clears_previous_browse_state() {
+            use std::sync::Arc;
+
+            use crate::domain::{
+                DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
+            };
+
+            let mut state = AppState::new("test".to_string());
+            activate_postgres_connection(&mut state, "postgres://localhost/old");
+            state.session.mark_connected(Arc::new(DatabaseMetadata {
+                database_name: "old_db".to_string(),
+                schemas: vec![],
+                table_summaries: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    None,
+                    false,
+                )],
+            }));
+            state.ui.set_explorer_selected_raw(3);
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query.pagination);
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["col".to_string()],
+                    vec![vec!["val".to_string()]],
+                    10,
+                    QuerySource::Preview,
+                )));
+
+            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: "sqlite:///tmp/new.db".to_string(),
+                name: "new.db".to_string(),
+                database_type: DatabaseType::SQLite,
+            });
+            let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(state.session.metadata().is_none());
+            assert!(state.session.tables().is_empty());
+            assert!(state.query.current_result().is_none());
+            assert!(state.session.selected_table_key().is_none());
+            assert!(state.session.connection_state().is_connecting());
+            assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ClearCompletionEngineCache))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+        }
+
+        #[test]
+        fn save_completed_removes_stale_connection_cache_for_saved_profile() {
+            use std::sync::Arc;
+
+            use crate::domain::{DatabaseMetadata, TableSummary};
+            use crate::model::connection::cache::ConnectionCache;
+
+            let mut state = AppState::new("test".to_string());
+            let saved_id = ConnectionId::new();
+            state.connection_caches.save(
+                &saved_id,
+                ConnectionCache {
+                    metadata: Some(Arc::new(DatabaseMetadata {
+                        database_name: "stale".to_string(),
+                        schemas: vec![],
+                        table_summaries: vec![TableSummary::new(
+                            "main".to_string(),
+                            "old_table".to_string(),
+                            None,
+                            false,
+                        )],
+                    })),
+                    ..Default::default()
+                },
+            );
+
+            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
+                id: saved_id.clone(),
+                dsn: "sqlite:///tmp/new.db".to_string(),
+                name: "new.db".to_string(),
+                database_type: DatabaseType::SQLite,
+            });
+            reduce(&mut state, &action, Instant::now());
+
+            assert!(state.connection_caches.get(&saved_id).is_none());
         }
 
         #[test]
