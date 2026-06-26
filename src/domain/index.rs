@@ -18,6 +18,8 @@ impl IndexAttributes {
     pub const PARTIAL: Self = Self(0b0_0100);
     pub const EXPRESSION: Self = Self(0b0_1000);
     pub const HAS_AUXILIARY_COLUMNS: Self = Self(0b1_0000);
+    pub const DESCENDING: Self = Self(0b10_0000);
+    pub const NON_BINARY_COLLATION: Self = Self(0b100_0000);
 
     pub const fn empty() -> Self {
         Self(0)
@@ -68,6 +70,30 @@ impl Index {
     pub const fn has_auxiliary_columns(&self) -> bool {
         self.attributes
             .contains(IndexAttributes::HAS_AUXILIARY_COLUMNS)
+    }
+
+    pub const fn has_descending_key(&self) -> bool {
+        self.attributes.contains(IndexAttributes::DESCENDING)
+    }
+
+    pub const fn has_non_binary_collation(&self) -> bool {
+        self.attributes
+            .contains(IndexAttributes::NON_BINARY_COLLATION)
+    }
+
+    pub const fn has_index_detail(&self) -> bool {
+        self.is_partial()
+            || self.has_expression()
+            || self.has_auxiliary_columns()
+            || self.has_descending_key()
+            || self.has_non_binary_collation()
+    }
+
+    pub const fn needs_source_definition_detail(&self) -> bool {
+        self.is_partial()
+            || self.has_expression()
+            || self.has_descending_key()
+            || self.has_non_binary_collation()
     }
 }
 
@@ -160,6 +186,17 @@ mod tests {
 
             assert!(attributes.contains(IndexAttributes::UNIQUE));
             assert!(attributes.contains(IndexAttributes::PRIMARY));
+        }
+
+        #[test]
+        fn detail_visibility_splits_column_and_source_definition_needs() {
+            let auxiliary_only = make_index(IndexAttributes::HAS_AUXILIARY_COLUMNS);
+            assert!(auxiliary_only.has_index_detail());
+            assert!(!auxiliary_only.needs_source_definition_detail());
+
+            let partial = make_index(IndexAttributes::PARTIAL);
+            assert!(partial.has_index_detail());
+            assert!(partial.needs_source_definition_detail());
         }
 
         #[test]
