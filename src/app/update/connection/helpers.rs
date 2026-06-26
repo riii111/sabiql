@@ -11,6 +11,18 @@ pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
     )
 }
 
+pub(super) fn reset_connection_scoped_er_state(state: &mut AppState) {
+    state.ui.reset_er_picker_request();
+    state.er_preparation.reset();
+}
+
+pub(super) fn reset_active_connection_state(state: &mut AppState) {
+    state.session.reset(&mut state.query);
+    state.result_interaction.reset_view();
+    state.ui.set_explorer_selection(None);
+    reset_connection_scoped_er_state(state);
+}
+
 pub(super) fn restore_cache(
     state: &mut AppState,
     cache: &ConnectionCache,

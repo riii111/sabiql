@@ -21,7 +21,7 @@ pub struct DbCapabilities {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CapabilityFlags {
+struct CapabilityFlags {
     supports_explain: bool,
     supports_er_diagram: bool,
     supports_jsonb_detail: bool,
@@ -42,7 +42,7 @@ impl CapabilityFlags {
 }
 
 impl DbCapabilities {
-    pub(crate) fn new(
+    fn new(
         flags: CapabilityFlags,
         supported_inspector_tabs: Vec<InspectorTab>,
         supported_inspector_info_fields: Vec<InspectorInfoField>,

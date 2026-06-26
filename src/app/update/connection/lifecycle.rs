@@ -7,7 +7,10 @@ use crate::update::action::{Action, ConnectionTarget};
 
 use crate::update::dispatch_result::DispatchResult;
 
-use super::helpers::{restore_cache, save_current_cache};
+use super::helpers::{
+    reset_active_connection_state, reset_connection_scoped_er_state, restore_cache,
+    save_current_cache,
+};
 
 fn reset_for_new_connection(
     state: &mut AppState,
@@ -16,9 +19,7 @@ fn reset_for_new_connection(
     name: &str,
     database_type: DatabaseType,
 ) {
-    state.session.reset(&mut state.query);
-    state.result_interaction.reset_view();
-    state.ui.set_explorer_selection(None);
+    reset_active_connection_state(state);
     state
         .session
         .activate_connection_with_dsn(id, name, database_type, dsn);
@@ -53,12 +54,12 @@ pub fn reduce_connection_lifecycle(
                 name,
                 database_type,
             } = target;
-            state.ui.reset_er_picker_request();
 
             if let Some(current_id) = state.session.active_connection_id().cloned() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
+            reset_connection_scoped_er_state(state);
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
@@ -87,6 +88,7 @@ mod tests {
     use crate::domain::ConnectionId;
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::state::ConnectionState;
+    use crate::model::er_state::ErStatus;
     use crate::model::shared::inspector_tab::InspectorTab;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
@@ -264,11 +266,17 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
         state.ui.set_pending_er_picker(true);
+        let _ = state.er_preparation.start_waiting_run();
+        state
+            .er_preparation
+            .queue_pending_table("public.users".to_string());
 
         let action = create_switch_action(&new_id, "fresh_db");
         reduce(&mut state, &action);
 
         assert!(!state.ui.pending_er_picker());
+        assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+        assert!(state.er_preparation.pending_tables().is_empty());
     }
 
     #[test]
@@ -276,6 +284,10 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();
         state.ui.set_pending_er_picker(true);
+        let _ = state.er_preparation.start_waiting_run();
+        state
+            .er_preparation
+            .queue_pending_table("public.users".to_string());
         state
             .connection_caches
             .save(&target_id, ConnectionCache::default());
@@ -284,6 +296,8 @@ mod tests {
         reduce(&mut state, &action);
 
         assert!(!state.ui.pending_er_picker());
+        assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+        assert!(state.er_preparation.pending_tables().is_empty());
     }
 
     #[test]

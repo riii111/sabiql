@@ -7,6 +7,7 @@ use crate::model::connection::setup::{
 };
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ConnectionTarget, InputTarget, ModalKind};
+use crate::update::connection::helpers::reset_connection_scoped_er_state;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
 
@@ -197,6 +198,7 @@ pub fn reduce_connection_setup(
         }) => {
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
+            reset_connection_scoped_er_state(state);
             state
                 .session
                 .activate_connection_with_dsn(id, name, *database_type, dsn);
@@ -223,6 +225,7 @@ mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionProfile, SslMode};
     use crate::domain::{ConnectionId, DatabaseType};
+    use crate::model::er_state::ErStatus;
     use crate::update::test_support::activate_postgres_connection;
 
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -537,6 +540,28 @@ mod tests {
                 state.session.connection_state(),
                 ConnectionState::Connecting
             );
+        }
+
+        #[test]
+        fn save_completed_clears_er_state_from_previous_connection() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.set_pending_er_picker(true);
+            let _ = state.er_preparation.start_waiting_run();
+            state
+                .er_preparation
+                .queue_pending_table("public.users".to_string());
+
+            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: "sqlite:///tmp/app.db".to_string(),
+                name: "app.db".to_string(),
+                database_type: DatabaseType::SQLite,
+            });
+            reduce(&mut state, &action, Instant::now());
+
+            assert!(!state.ui.pending_er_picker());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(state.er_preparation.pending_tables().is_empty());
         }
     }
 
