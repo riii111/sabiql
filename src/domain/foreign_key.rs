@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+pub const UNRESOLVED_FK_COLUMN: &str = "<unresolved>";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForeignKey {
     pub name: String,
@@ -11,6 +13,7 @@ pub struct ForeignKey {
     pub to_columns: Vec<String>,
     pub on_delete: FkAction,
     pub on_update: FkAction,
+    pub reference_resolved: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -26,6 +29,10 @@ pub enum FkAction {
 impl ForeignKey {
     pub fn referenced_table(&self) -> String {
         format!("{}.{}", self.to_schema, self.to_table)
+    }
+
+    pub fn is_reference_resolved(&self) -> bool {
+        self.reference_resolved
     }
 }
 
@@ -86,6 +93,7 @@ mod tests {
             to_columns: vec!["id".to_string()],
             on_delete: FkAction::default(),
             on_update: FkAction::default(),
+            reference_resolved: true,
         };
 
         assert_eq!(fk.referenced_table(), "public.users");
