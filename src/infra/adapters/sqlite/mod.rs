@@ -456,9 +456,9 @@ impl SqliteAdapter {
             if !Self::cached_table_has_columns(referenced_columns, &fk.table) {
                 return Ok((to.clone(), false));
             }
-            let resolved = referenced_columns
-                .get(&fk.table)
-                .is_some_and(|columns| columns.contains(to));
+            let resolved = referenced_columns.get(&fk.table).is_some_and(|columns| {
+                columns.iter().any(|column| column.eq_ignore_ascii_case(to))
+            });
             Ok((to.clone(), resolved))
         } else if !referenced_primary_keys.contains_key(&fk.table) {
             let columns = self.columns(path, &fk.table).await?;
@@ -4118,6 +4118,26 @@ mod tests {
                 vec![UNRESOLVED_FK_COLUMN.to_string()]
             );
             assert!(!detail.foreign_keys[0].reference_resolved);
+        }
+
+        #[tokio::test]
+        async fn foreign_key_target_column_matches_case_insensitively() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE parent(id INTEGER PRIMARY KEY);
+            CREATE TABLE child(x INTEGER REFERENCES parent(ID));
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "child")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.foreign_keys.len(), 1);
+            assert_eq!(detail.foreign_keys[0].to_columns, vec!["ID".to_string()]);
+            assert!(detail.foreign_keys[0].reference_resolved);
         }
     }
 
