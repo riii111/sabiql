@@ -137,7 +137,7 @@ fn is_sqlite_trigger_body_end(
         && !is_dotted_identifier_suffix(sql, keyword_start)
 }
 
-pub(in crate::adapters::sqlite) fn try_split_sqlite_statements(
+pub(in crate::adapters::sqlite::sqlite3) fn try_split_sqlite_statements(
     sql: &str,
 ) -> Result<Vec<&str>, DbOperationError> {
     let bytes = sql.as_bytes();
@@ -250,7 +250,7 @@ fn is_write_statement(statement: &str) -> bool {
     )
 }
 
-pub(in crate::adapters::sqlite) fn is_sqlite_rerunnable_export_query(
+pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
     query: &str,
 ) -> Result<bool, DbOperationError> {
     let statements = try_split_sqlite_statements(query)?;
@@ -330,7 +330,8 @@ fn is_read_only_sqlite_export_pragma(statement: &str) -> bool {
     !has_assignment && !side_effect_without_assignment
 }
 
-pub(in crate::adapters::sqlite) fn sqlite_export_not_rerunnable_error() -> DbOperationError {
+pub(in crate::adapters::sqlite::sqlite3) fn sqlite_export_not_rerunnable_error() -> DbOperationError
+{
     DbOperationError::UnsupportedOperation(
         "Cannot re-execute this query for CSV export because it contains write or DDL statements"
             .to_string(),
@@ -338,7 +339,7 @@ pub(in crate::adapters::sqlite) fn sqlite_export_not_rerunnable_error() -> DbOpe
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::adapters::sqlite) enum SqliteWrapMode {
+pub(in crate::adapters::sqlite::sqlite3) enum SqliteWrapMode {
     None,
     BeginCommit,
 }
@@ -394,7 +395,7 @@ pub(super) fn is_rollback_to(statement: &str) -> bool {
     rollback_to_target(statement).is_some() || rollback_has_to_clause(statement)
 }
 
-pub(in crate::adapters::sqlite) fn sqlite_wrap_mode(
+pub(in crate::adapters::sqlite::sqlite3) fn sqlite_wrap_mode(
     query: &str,
 ) -> Result<SqliteWrapMode, DbOperationError> {
     let statements = try_split_sqlite_statements(query)?;
@@ -421,7 +422,7 @@ fn sqlite_execution_query(query: &str) -> Result<Cow<'_, str>, DbOperationError>
     })
 }
 
-pub(in crate::adapters::sqlite) fn sqlite_probe_marker() -> String {
+pub(in crate::adapters::sqlite::sqlite3) fn sqlite_probe_marker() -> String {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -455,7 +456,7 @@ fn sqlite_result_probe(marker: &str, index: usize) -> String {
     format!("SELECT {index} AS \"{stmt_col}\", '{marker}' AS \"{marker_col}\"")
 }
 
-pub(in crate::adapters::sqlite) fn sqlite_adhoc_execution_query(
+pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query(
     query: &str,
     marker: &str,
 ) -> Result<String, DbOperationError> {
@@ -484,7 +485,7 @@ pub(in crate::adapters::sqlite) fn sqlite_adhoc_execution_query(
     Ok(parts.join("\n;\n"))
 }
 
-pub(in crate::adapters::sqlite) fn append_changes_query(
+pub(in crate::adapters::sqlite::sqlite3) fn append_changes_query(
     query: &str,
 ) -> Result<String, DbOperationError> {
     let body = sqlite_execution_query(query)?.trim_end().to_string();

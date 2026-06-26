@@ -61,7 +61,7 @@ fn sqlite_side_effect_tag(query: &str) -> Option<CommandTag> {
     }
 }
 
-pub(in crate::adapters::sqlite) fn sqlite_statement_tags(
+pub(in crate::adapters::sqlite::sqlite3) fn sqlite_statement_tags(
     statements: &[&str],
     changes: &HashMap<usize, usize>,
 ) -> Vec<CommandTag> {
@@ -77,7 +77,9 @@ pub(in crate::adapters::sqlite) fn sqlite_statement_tags(
         .collect()
 }
 
-pub(in crate::adapters::sqlite) fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
+pub(in crate::adapters::sqlite::sqlite3) fn discard_rolled_back(
+    tags: &[CommandTag],
+) -> Vec<CommandTag> {
     let mut effective = Vec::new();
     let mut frames: Vec<(Option<String>, Vec<CommandTag>)> = Vec::new();
 
@@ -159,7 +161,7 @@ fn savepoint_frame_index(
         })
 }
 
-pub(in crate::adapters::sqlite) fn aggregate_sqlite_command_tag(
+pub(in crate::adapters::sqlite::sqlite3) fn aggregate_sqlite_command_tag(
     tags: &[CommandTag],
 ) -> Option<CommandTag> {
     let effective = discard_rolled_back(tags);
@@ -175,7 +177,7 @@ pub(in crate::adapters::sqlite) fn aggregate_sqlite_command_tag(
     tags.last().cloned()
 }
 
-pub(in crate::adapters::sqlite) fn command_tag_result(
+pub(in crate::adapters::sqlite::sqlite3) fn command_tag_result(
     query: &str,
     tag: CommandTag,
     elapsed: u64,
@@ -186,7 +188,9 @@ pub(in crate::adapters::sqlite) fn command_tag_result(
         .with_command_tag(tag)
 }
 
-pub(in crate::adapters::sqlite) fn statement_counts_as_select_tag(statement: &str) -> bool {
+pub(in crate::adapters::sqlite::sqlite3) fn statement_counts_as_select_tag(
+    statement: &str,
+) -> bool {
     let keyword = first_keyword(statement);
     keyword.eq_ignore_ascii_case("SELECT") || keyword.eq_ignore_ascii_case("WITH")
 }

@@ -252,31 +252,14 @@ impl SqliteAdapter {
         source: QuerySource,
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
-        self.execute_quoted_query_with_display_query(path, query, query, source, read_only)
-            .await
-    }
-
-    async fn execute_quoted_query_with_display_query(
-        &self,
-        path: &str,
-        execution_query: &str,
-        display_query: &str,
-        source: QuerySource,
-        read_only: bool,
-    ) -> Result<QueryResult, DbOperationError> {
         #[expect(
             clippy::disallowed_methods,
             reason = "infra measures sqlite3 execution time at the I/O boundary"
         )]
         let start = Instant::now();
-        let stdout = self
-            .cli
-            .execute_quote(path, execution_query, read_only)
-            .await?;
+        let stdout = self.cli.execute_quote(path, query, read_only).await?;
         let elapsed = start.elapsed().as_millis() as u64;
-        let mut result = quoted_to_query_result(execution_query, &stdout, source, elapsed)?;
-        result.query = display_query.to_string();
-        Ok(result)
+        quoted_to_query_result(query, &stdout, source, elapsed)
     }
 
     async fn execute_changes_query(
