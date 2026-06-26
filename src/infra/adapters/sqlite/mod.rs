@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
@@ -10,7 +10,7 @@ use crate::app::ports::outbound::{DbOperationError, MetadataProvider, QueryExecu
 use crate::domain::{
     Column, ColumnAttributes, CommandTag, DatabaseMetadata, FkAction, ForeignKey, Index,
     IndexAttributes, IndexType, QueryResult, QuerySource, QueryValue, Schema, Table,
-    TableSignature, TableSummary, WriteExecutionResult,
+    TableSignature, TableSummary, UNRESOLVED_FK_COLUMN, WriteExecutionResult,
 };
 
 mod cli;
@@ -396,30 +396,17 @@ impl SqliteAdapter {
         let mut current: Option<ForeignKey> = None;
         let mut current_id = None;
         let mut referenced_primary_keys = HashMap::new();
+        let mut referenced_columns = HashMap::new();
 
         for fk in raw {
-            let to_column = if let Some(to) = fk.to {
-                to
-            } else {
-                if !referenced_primary_keys.contains_key(&fk.table) {
-                    let primary_key = self.primary_key_columns(path, &fk.table).await?;
-                    referenced_primary_keys.insert(fk.table.clone(), primary_key);
-                }
-                referenced_primary_keys
-                    .get(&fk.table)
-                    .and_then(|primary_key| {
-                        usize::try_from(fk.seq)
-                            .ok()
-                            .and_then(|idx| primary_key.get(idx))
-                    })
-                    .cloned()
-                    .ok_or_else(|| {
-                        DbOperationError::MetadataParseFailed(format!(
-                            "SQLite foreign key references missing primary key column: {}.{}",
-                            fk.table, fk.seq
-                        ))
-                    })?
-            };
+            let (to_column, resolved) = self
+                .resolve_fk_target_column(
+                    path,
+                    &fk,
+                    &mut referenced_primary_keys,
+                    &mut referenced_columns,
+                )
+                .await;
 
             if current_id != Some(fk.id) {
                 if let Some(fk) = current.take() {
@@ -436,12 +423,16 @@ impl SqliteAdapter {
                     to_columns: Vec::new(),
                     on_delete: parse_fk_action(&fk.on_delete)?,
                     on_update: parse_fk_action(&fk.on_update)?,
+                    reference_resolved: resolved,
                 });
             }
 
             if let Some(current) = &mut current {
                 current.from_columns.push(fk.from);
                 current.to_columns.push(to_column);
+                if !resolved {
+                    current.reference_resolved = false;
+                }
             }
         }
 
@@ -450,6 +441,65 @@ impl SqliteAdapter {
         }
 
         Ok(grouped)
+    }
+
+    async fn resolve_fk_target_column(
+        &self,
+        path: &str,
+        fk: &RawForeignKey,
+        referenced_primary_keys: &mut HashMap<String, Vec<String>>,
+        referenced_columns: &mut HashMap<String, HashSet<String>>,
+    ) -> (String, bool) {
+        if let Some(to) = &fk.to {
+            let table_exists = self
+                .ensure_table_columns_cached(path, &fk.table, referenced_columns)
+                .await;
+            if !table_exists {
+                return (to.clone(), false);
+            }
+            let resolved = referenced_columns
+                .get(&fk.table)
+                .is_some_and(|columns| columns.contains(to));
+            (to.clone(), resolved)
+        } else if !referenced_primary_keys.contains_key(&fk.table) {
+            let columns = self.columns(path, &fk.table).await.unwrap_or_default();
+            referenced_primary_keys.insert(fk.table.clone(), Self::extract_primary_key(&columns));
+            Self::primary_key_target_column(fk, referenced_primary_keys.get(&fk.table))
+        } else {
+            Self::primary_key_target_column(fk, referenced_primary_keys.get(&fk.table))
+        }
+    }
+
+    fn primary_key_target_column(
+        fk: &RawForeignKey,
+        primary_key: Option<&Vec<String>>,
+    ) -> (String, bool) {
+        let Some(primary_key) = primary_key.filter(|columns| !columns.is_empty()) else {
+            return (UNRESOLVED_FK_COLUMN.to_string(), false);
+        };
+        match usize::try_from(fk.seq)
+            .ok()
+            .and_then(|idx| primary_key.get(idx))
+        {
+            Some(column) => (column.clone(), true),
+            None => (UNRESOLVED_FK_COLUMN.to_string(), false),
+        }
+    }
+
+    async fn ensure_table_columns_cached(
+        &self,
+        path: &str,
+        table: &str,
+        cache: &mut HashMap<String, HashSet<String>>,
+    ) -> bool {
+        if !cache.contains_key(table) {
+            let columns = self.columns(path, table).await.unwrap_or_default();
+            cache.insert(
+                table.to_string(),
+                columns.into_iter().map(|column| column.name).collect(),
+            );
+        }
+        !cache.get(table).is_some_and(HashSet::is_empty)
     }
 
     async fn table_detail_with_mode(
@@ -569,13 +619,14 @@ impl SqliteAdapter {
         }));
         parts.extend(detail.foreign_keys.iter().map(|fk| {
             format!(
-                "fk={}:{}:{}:{}:{}:{}",
+                "fk={}:{}:{}:{}:{}:{}:{}",
                 fk.name,
                 fk.from_columns.join(","),
                 fk.to_table,
                 fk.to_columns.join(","),
                 fk.on_delete,
-                fk.on_update
+                fk.on_update,
+                fk.reference_resolved
             )
         }));
 
@@ -3983,6 +4034,81 @@ mod tests {
                 detail.foreign_keys[0].to_columns,
                 vec!["a".to_string(), "b".to_string()]
             );
+            assert!(detail.foreign_keys[0].reference_resolved);
+        }
+
+        #[tokio::test]
+        async fn foreign_key_to_missing_table_is_kept_as_unresolved() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            PRAGMA foreign_keys=OFF;
+            CREATE TABLE child(
+                org_id INTEGER REFERENCES missing_orgs(id)
+            );
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "child")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.columns.len(), 1);
+            assert_eq!(detail.foreign_keys.len(), 1);
+            assert_eq!(detail.foreign_keys[0].to_table, "missing_orgs");
+            assert_eq!(detail.foreign_keys[0].to_columns, vec!["id".to_string()]);
+            assert!(!detail.foreign_keys[0].reference_resolved);
+        }
+
+        #[tokio::test]
+        async fn foreign_key_to_missing_column_is_kept_as_unresolved() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            PRAGMA foreign_keys=OFF;
+            CREATE TABLE parent(a INTEGER PRIMARY KEY);
+            CREATE TABLE child(
+                x INTEGER REFERENCES parent(missing_col)
+            );
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "child")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.foreign_keys.len(), 1);
+            assert_eq!(
+                detail.foreign_keys[0].to_columns,
+                vec!["missing_col".to_string()]
+            );
+            assert!(!detail.foreign_keys[0].reference_resolved);
+        }
+
+        #[tokio::test]
+        async fn foreign_key_without_target_columns_and_missing_parent_pk_is_unresolved() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            PRAGMA foreign_keys=OFF;
+            CREATE TABLE parent(a INTEGER);
+            CREATE TABLE child(x INTEGER REFERENCES parent);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "child")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.foreign_keys.len(), 1);
+            assert_eq!(
+                detail.foreign_keys[0].to_columns,
+                vec![UNRESOLVED_FK_COLUMN.to_string()]
+            );
+            assert!(!detail.foreign_keys[0].reference_resolved);
         }
     }
 
