@@ -110,8 +110,7 @@ fn pending_draft_cell_uses_orange_fg() {
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
     state
         .result_interaction
-        .cell_edit_input_mut()
-        .set_content("new@example.com".to_string());
+        .replace_cell_edit_draft("new@example.com".to_string());
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -138,8 +137,7 @@ fn active_cell_edit_uses_yellow_fg() {
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
     state
         .result_interaction
-        .cell_edit_input_mut()
-        .set_content("new@example.com".to_string());
+        .replace_cell_edit_draft("new@example.com".to_string());
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -986,8 +984,7 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
         .begin_cell_edit(0, 0, "1".to_string());
     state
         .result_interaction
-        .cell_edit_input_mut()
-        .set_content("new@example.com".to_string());
+        .replace_cell_edit_draft("new@example.com".to_string());
 
     let draft_buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
