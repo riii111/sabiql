@@ -1995,6 +1995,24 @@ END";
     }
 
     #[test]
+    fn split_sqlite_statements_keeps_create_trigger_with_case_end_expression() {
+        let trigger = "\
+CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
+    UPDATE counters
+    SET end_value = CASE WHEN new.end > 0 THEN new.end ELSE old.end END
+    WHERE id = new.id;
+    INSERT INTO audit(event_id) VALUES (new.id);
+END";
+        let sql = format!("{trigger}; SELECT 1 AS value;");
+
+        let statements = try_split_sqlite_statements(&sql).unwrap();
+
+        assert_eq!(statements.len(), 2);
+        assert_eq!(statements[0], trigger);
+        assert_eq!(statements[1], "SELECT 1 AS value");
+    }
+
+    #[test]
     fn adhoc_execution_query_does_not_insert_probes_when_trigger_references_new_end() {
         let trigger = "\
 CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN

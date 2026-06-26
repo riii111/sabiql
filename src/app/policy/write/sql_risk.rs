@@ -244,6 +244,8 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
     let mut in_string = false;
     let mut in_trigger_body = false;
     let mut trigger_body_stmt_start = false;
+    let mut is_trigger_stmt =
+        database_type == DatabaseType::SQLite && is_sqlite_create_trigger_prefix(&sql[start..]);
 
     while i < chars.len() {
         let (byte_pos, ch) = chars[i];
@@ -279,10 +281,7 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
             continue;
         }
 
-        if database_type == DatabaseType::SQLite
-            && is_sqlite_create_trigger_prefix(&sql[start..])
-            && let Some((keyword, kw_end)) = keyword_starting_at(sql, &chars, i)
-        {
+        if is_trigger_stmt && let Some((keyword, kw_end)) = keyword_starting_at(sql, &chars, i) {
             if keyword == "BEGIN" {
                 if in_trigger_body {
                     trigger_body_stmt_start = false;
@@ -323,6 +322,8 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
                 start = byte_pos + 1;
                 in_trigger_body = false;
                 trigger_body_stmt_start = false;
+                is_trigger_stmt = database_type == DatabaseType::SQLite
+                    && is_sqlite_create_trigger_prefix(&sql[start..]);
             }
         }
 
@@ -1003,6 +1004,36 @@ END";
             assert_eq!(result.len(), 2);
             assert_eq!(result[0], trigger);
             assert_eq!(result[1], "SELECT 1");
+        }
+
+        #[test]
+        fn sqlite_create_trigger_with_case_end_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
+    UPDATE counters
+    SET end_value = CASE WHEN new.end > 0 THEN new.end ELSE old.end END
+    WHERE id = new.id;
+    INSERT INTO audit(event_id) VALUES (new.id);
+END";
+            let sql = format!("{trigger}; SELECT 1");
+
+            let result = split_statements_for_database(DatabaseType::SQLite, &sql);
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], trigger);
+            assert_eq!(result[1], "SELECT 1");
+        }
+
+        #[test]
+        fn sqlite_unclosed_create_trigger_body_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id) VALUES (new.id);";
+
+            let result = split_statements_for_database(DatabaseType::SQLite, trigger);
+
+            assert_eq!(result, vec![trigger]);
         }
 
         #[rstest]
