@@ -420,8 +420,13 @@ mod tests {
     }
 
     mod connection_save {
+        use std::sync::Arc;
+
         use super::*;
-        use crate::domain::MetadataState;
+        use crate::domain::{
+            DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
+        };
+        use crate::model::connection::cache::ConnectionCache;
         use crate::model::connection::state::ConnectionState;
         use crate::update::action::ConnectionTarget;
 
@@ -521,12 +526,6 @@ mod tests {
 
         #[test]
         fn save_completed_clears_previous_browse_state() {
-            use std::sync::Arc;
-
-            use crate::domain::{
-                DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
-            };
-
             let mut state = AppState::new("test".to_string());
             activate_postgres_connection(&mut state, "postgres://localhost/old");
             state.session.mark_connected(Arc::new(DatabaseMetadata {
@@ -572,10 +571,6 @@ mod tests {
 
         #[test]
         fn save_preserves_connected_cache_before_submit() {
-            use std::sync::Arc;
-
-            use crate::domain::{DatabaseMetadata, TableSummary};
-
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::new();
             state.session.activate_connection_with_dsn(
@@ -606,11 +601,6 @@ mod tests {
 
         #[test]
         fn save_completed_removes_stale_connection_cache_for_saved_profile() {
-            use std::sync::Arc;
-
-            use crate::domain::{DatabaseMetadata, TableSummary};
-            use crate::model::connection::cache::ConnectionCache;
-
             let mut state = AppState::new("test".to_string());
             let saved_id = ConnectionId::new();
             state.connection_caches.save(

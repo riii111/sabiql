@@ -908,7 +908,9 @@ mod tests {
 
     mod response_handlers {
         use super::*;
-        use crate::domain::{DatabaseMetadata, MetadataState, TableSummary};
+        use crate::domain::{
+            DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
+        };
         use crate::model::connection::error::ConnectionErrorInfo;
         use crate::model::connection::state::ConnectionState;
 
@@ -975,8 +977,6 @@ mod tests {
 
         #[test]
         fn metadata_failed_clears_stale_browse_state_on_initial_connect() {
-            use crate::domain::{QueryResult, QuerySource};
-
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.session.mark_connected(Arc::new(DatabaseMetadata {
@@ -1823,6 +1823,9 @@ mod tests {
     mod confirm_dialog_transitions {
         use super::*;
         use crate::model::shared::confirm_dialog::ConfirmIntent;
+        use crate::policy::write::write_guardrails::{
+            GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+        };
 
         #[test]
         fn confirm_quit_no_connection_sets_should_quit() {
@@ -1867,10 +1870,6 @@ mod tests {
 
         #[test]
         fn confirm_delete_write_then_success_preserves_delete_context() {
-            use crate::policy::write::write_guardrails::{
-                GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
-            };
-
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
@@ -1944,10 +1943,6 @@ mod tests {
 
         #[test]
         fn confirm_delete_write_then_failure_returns_to_normal() {
-            use crate::policy::write::write_guardrails::{
-                GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
-            };
-
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
@@ -2006,6 +2001,7 @@ mod tests {
         use super::*;
         use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
         use crate::model::connection::state::ConnectionState;
+        use crate::model::shared::inspector_tab::InspectorTab;
 
         #[test]
         fn try_connect_with_dsn_starts_connecting() {
@@ -2325,8 +2321,6 @@ mod tests {
 
         #[test]
         fn switch_connection_restores_from_cache() {
-            use crate::model::shared::inspector_tab::InspectorTab;
-
             let mut state = create_test_state();
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
@@ -2382,6 +2376,7 @@ mod tests {
     mod er_table_picker {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
+        use crate::model::er_state::ErStatus;
 
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
@@ -2593,8 +2588,6 @@ mod tests {
 
         #[test]
         fn prefetch_complete_dispatches_er_generate() {
-            use crate::model::er_state::ErStatus;
-
             let mut state = state_with_metadata();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
@@ -2627,8 +2620,6 @@ mod tests {
 
         #[test]
         fn prefetch_complete_with_failures_does_not_auto_open() {
-            use crate::model::er_state::ErStatus;
-
             let mut state = state_with_metadata();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
