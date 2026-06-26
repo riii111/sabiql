@@ -78,6 +78,7 @@ pub fn sample_table_detail() -> Table {
             to_columns: vec!["id".to_string()],
             on_delete: FkAction::Cascade,
             on_update: FkAction::NoAction,
+            reference_resolved: true,
         }],
         rls: None,
         triggers: vec![Trigger {

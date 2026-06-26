@@ -1815,6 +1815,7 @@ mod tests {
                     to_columns: vec!["id".to_string()],
                     on_delete: FkAction::NoAction,
                     on_update: FkAction::NoAction,
+                    reference_resolved: true,
                 }],
                 indexes: vec![],
                 rls: None,

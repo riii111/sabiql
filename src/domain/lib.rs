@@ -21,7 +21,7 @@ pub use command_tag::CommandTag;
 #[cfg(test)]
 pub use er::ErFkInfo;
 pub use er::ErTableInfo;
-pub use foreign_key::{FkAction, ForeignKey};
+pub use foreign_key::{FkAction, ForeignKey, UNRESOLVED_FK_COLUMN};
 pub use index::{Index, IndexAttributes, IndexType};
 pub use metadata::{DatabaseMetadata, MetadataState};
 pub use query_result::{QueryResult, QuerySource, QueryValue};
