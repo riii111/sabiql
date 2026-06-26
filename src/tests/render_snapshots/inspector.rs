@@ -160,6 +160,64 @@ fn inspector_indexes_tab_shows_sqlite_partial_index_definition() {
 }
 
 #[test]
+fn inspector_indexes_tab_shows_sqlite_descending_index_definition() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.indexes = vec![Index {
+        name: "idx_users_name_desc".to_string(),
+        columns: vec!["name".to_string()],
+        attributes: IndexAttributes::DESCENDING,
+        index_type: IndexType::Unknown,
+        definition: Some("CREATE INDEX idx_users_name_desc ON users(name DESC)".to_string()),
+    }];
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Indexes);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_indexes_tab_shows_sqlite_collation_index_definition() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.indexes = vec![Index {
+        name: "idx_users_name_nocase".to_string(),
+        columns: vec!["name".to_string()],
+        attributes: IndexAttributes::NON_BINARY_COLLATION,
+        index_type: IndexType::Unknown,
+        definition: Some(
+            "CREATE INDEX idx_users_name_nocase ON users(name COLLATE NOCASE)".to_string(),
+        ),
+    }];
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Indexes);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inspector_indexes_tab_shows_sqlite_partial_expression_details() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();

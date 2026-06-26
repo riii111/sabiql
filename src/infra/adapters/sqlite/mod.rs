@@ -3846,5 +3846,80 @@ mod tests {
                     .contains("fk=fk_users_0:org_id:orgs:id:CASCADE:SET NULL")
             );
         }
+
+        #[tokio::test]
+        async fn index_desc_and_collation_change_signature() {
+            let adapter = SqliteAdapter::new();
+            let (_asc_dir, asc_dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(name TEXT);
+            CREATE INDEX idx_users_name ON users(name);
+            ",
+            );
+            let (_desc_dir, desc_dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(name TEXT);
+            CREATE INDEX idx_users_name ON users(name DESC);
+            ",
+            );
+            let (_binary_dir, binary_dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(name TEXT);
+            CREATE INDEX idx_users_name ON users(name);
+            ",
+            );
+            let (_nocase_dir, nocase_dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(name TEXT);
+            CREATE INDEX idx_users_name ON users(name COLLATE NOCASE);
+            ",
+            );
+
+            let asc_signature = adapter
+                .fetch_table_signatures(&asc_dsn)
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|signature| signature.name == "users")
+                .unwrap()
+                .signature;
+            let desc_signature = adapter
+                .fetch_table_signatures(&desc_dsn)
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|signature| signature.name == "users")
+                .unwrap()
+                .signature;
+            let binary_signature = adapter
+                .fetch_table_signatures(&binary_dsn)
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|signature| signature.name == "users")
+                .unwrap()
+                .signature;
+            let nocase_signature = adapter
+                .fetch_table_signatures(&nocase_dsn)
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|signature| signature.name == "users")
+                .unwrap()
+                .signature;
+
+            assert_ne!(asc_signature, desc_signature);
+            assert!(
+                desc_signature.contains(
+                    "idx=idx_users_name:name:false:false:false:false:true:true:false:CREATE INDEX idx_users_name ON users(name DESC)"
+                )
+            );
+            assert_ne!(binary_signature, nocase_signature);
+            assert!(
+                nocase_signature.contains(
+                    "idx=idx_users_name:name:false:false:false:false:true:false:true:CREATE INDEX idx_users_name ON users(name COLLATE NOCASE)"
+                )
+            );
+        }
     }
 }
