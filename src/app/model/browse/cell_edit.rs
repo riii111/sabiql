@@ -1,11 +1,12 @@
+use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::text_input::TextInputState;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CellEditState {
-    pub(crate) row: Option<usize>,
-    pub(crate) col: Option<usize>,
-    pub(crate) original_value: String,
-    pub(crate) input: TextInputState,
+    row: Option<usize>,
+    col: Option<usize>,
+    original_value: String,
+    input: TextInputState,
 }
 
 impl CellEditState {
@@ -36,8 +37,32 @@ impl CellEditState {
         &self.input
     }
 
-    pub fn input_mut(&mut self) -> &mut TextInputState {
-        &mut self.input
+    pub fn insert_char(&mut self, ch: char) {
+        self.input.insert_char(ch);
+    }
+
+    pub fn insert_str(&mut self, text: &str) {
+        self.input.insert_str(text);
+    }
+
+    pub fn backspace(&mut self) {
+        self.input.backspace();
+    }
+
+    pub fn delete(&mut self) {
+        self.input.delete();
+    }
+
+    pub fn move_cursor(&mut self, direction: CursorMove) {
+        self.input.move_cursor(direction);
+    }
+
+    pub fn set_content(&mut self, content: String) {
+        self.input.set_content(content);
+    }
+
+    pub fn set_cursor(&mut self, cursor: usize) {
+        self.input.set_cursor(cursor);
     }
 
     pub fn has_pending_draft(&self) -> bool {
@@ -54,6 +79,15 @@ impl CellEditState {
         self.original_value.clear();
         self.input.clear();
     }
+
+    #[cfg(test)]
+    pub(crate) fn with_selection_for_test(row: Option<usize>, col: Option<usize>) -> Self {
+        Self {
+            row,
+            col,
+            ..Default::default()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -67,9 +101,9 @@ mod tests {
 
         state.begin(3, 5, "Alice".to_string());
 
-        assert_eq!(state.row, Some(3));
-        assert_eq!(state.col, Some(5));
-        assert_eq!(state.original_value, "Alice");
+        assert_eq!(state.row(), Some(3));
+        assert_eq!(state.col(), Some(5));
+        assert_eq!(state.original_value(), "Alice");
         assert_eq!(state.draft_value(), "Alice");
         assert_eq!(state.input.cursor(), 5); // cursor at end
         assert!(state.is_active());
@@ -77,24 +111,14 @@ mod tests {
 
     #[test]
     fn only_row_selected_returns_inactive() {
-        let state = CellEditState {
-            row: Some(1),
-            col: None,
-            original_value: String::new(),
-            input: TextInputState::default(),
-        };
+        let state = CellEditState::with_selection_for_test(Some(1), None);
 
         assert!(!state.is_active());
     }
 
     #[test]
     fn only_col_selected_returns_inactive() {
-        let state = CellEditState {
-            row: None,
-            col: Some(1),
-            original_value: String::new(),
-            input: TextInputState::default(),
-        };
+        let state = CellEditState::with_selection_for_test(None, Some(1));
 
         assert!(!state.is_active());
     }
@@ -111,7 +135,7 @@ mod tests {
     fn has_pending_draft_returns_true_when_draft_differs() {
         let mut state = CellEditState::default();
         state.begin(0, 0, "Alice".to_string());
-        state.input.set_content("Bob".to_string());
+        state.set_content("Bob".to_string());
 
         assert!(state.has_pending_draft());
     }
@@ -127,13 +151,13 @@ mod tests {
     fn clear_after_begin_resets_all_fields() {
         let mut state = CellEditState::default();
         state.begin(1, 2, "Before".to_string());
-        state.input.set_content("After".to_string());
+        state.set_content("After".to_string());
 
         state.clear();
 
-        assert_eq!(state.row, None);
-        assert_eq!(state.col, None);
-        assert_eq!(state.original_value, "");
+        assert_eq!(state.row(), None);
+        assert_eq!(state.col(), None);
+        assert_eq!(state.original_value(), "");
         assert_eq!(state.draft_value(), "");
         assert!(!state.is_active());
     }
@@ -143,12 +167,12 @@ mod tests {
         let mut state = CellEditState::default();
         state.begin(0, 0, "hello".to_string());
 
-        state.input.move_cursor(CursorMove::Home);
-        assert_eq!(state.input.cursor(), 0);
+        state.move_cursor(CursorMove::Home);
+        assert_eq!(state.input().cursor(), 0);
 
-        state.input.insert_char('X');
+        state.insert_char('X');
         assert_eq!(state.draft_value(), "Xhello");
-        assert_eq!(state.input.cursor(), 1);
+        assert_eq!(state.input().cursor(), 1);
     }
 
     #[test]
@@ -156,12 +180,12 @@ mod tests {
         let mut state = CellEditState::default();
         state.begin(0, 0, "abcd".to_string());
 
-        state.input.move_cursor(CursorMove::Left);
-        state.input.move_cursor(CursorMove::Left);
-        state.input.backspace();
+        state.move_cursor(CursorMove::Left);
+        state.move_cursor(CursorMove::Left);
+        state.backspace();
 
         assert_eq!(state.draft_value(), "acd");
-        assert_eq!(state.input.cursor(), 1);
+        assert_eq!(state.input().cursor(), 1);
     }
 
     #[test]
@@ -169,10 +193,10 @@ mod tests {
         let mut state = CellEditState::default();
         state.begin(0, 0, "abcd".to_string());
 
-        state.input.move_cursor(CursorMove::Home);
-        state.input.delete();
+        state.move_cursor(CursorMove::Home);
+        state.delete();
 
         assert_eq!(state.draft_value(), "bcd");
-        assert_eq!(state.input.cursor(), 0);
+        assert_eq!(state.input().cursor(), 0);
     }
 }
