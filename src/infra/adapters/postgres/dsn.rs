@@ -14,16 +14,20 @@ impl PostgresAdapter {
             .map(|s| s.split('?').next().unwrap_or(s))
             .filter(|s| !s.is_empty() && !s.contains('='))
         {
-            return db.to_string();
+            return decode_database_name(db);
         }
         const DBNAME_KEY: &str = "dbname=";
         if let Some(start) = dsn.find(DBNAME_KEY) {
             let rest = &dsn[start + DBNAME_KEY.len()..];
             let end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
-            return rest[..end].to_string();
+            return decode_database_name(&rest[..end]);
         }
         "unknown".to_string()
     }
+}
+
+fn decode_database_name(name: &str) -> String {
+    urlencoding::decode(name).map_or_else(|_| name.to_string(), std::borrow::Cow::into_owned)
 }
 
 impl DsnBuilder for PostgresAdapter {
@@ -114,6 +118,22 @@ mod tests {
         }
 
         #[test]
+        fn uri_path_decodes_percent_encoded_dbname() {
+            assert_eq!(
+                PostgresAdapter::extract_database_name("postgres://localhost/my%2Fdb"),
+                "my/db"
+            );
+        }
+
+        #[test]
+        fn key_value_decodes_percent_encoded_dbname() {
+            assert_eq!(
+                PostgresAdapter::extract_database_name("host=localhost dbname=my%2Fdb"),
+                "my/db"
+            );
+        }
+
+        #[test]
         fn key_value_format() {
             assert_eq!(
                 PostgresAdapter::extract_database_name("host=localhost dbname=mydb user=postgres"),
@@ -158,10 +178,19 @@ mod tests {
         #[test]
         fn roundtrip_build_then_extract_returns_original_dbname() {
             let adapter = PostgresAdapter::new();
-            let profile = super::make_test_profile();
+            let profile = ConnectionProfile::new_postgres(
+                "Test",
+                "localhost",
+                5432,
+                "my/db",
+                "testuser",
+                "testpass",
+                SslMode::Prefer,
+            )
+            .unwrap();
             let dsn = adapter.build_dsn(&profile);
 
-            assert_eq!(PostgresAdapter::extract_database_name(&dsn), "testdb");
+            assert_eq!(PostgresAdapter::extract_database_name(&dsn), "my/db");
         }
     }
 }
