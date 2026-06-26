@@ -451,10 +451,9 @@ impl SqliteAdapter {
         referenced_columns: &mut HashMap<String, HashSet<String>>,
     ) -> Result<(String, bool), DbOperationError> {
         if let Some(to) = &fk.to {
-            let table_exists = self
-                .ensure_table_columns_cached(path, &fk.table, referenced_columns)
+            self.cache_table_columns(path, &fk.table, referenced_columns)
                 .await?;
-            if !table_exists {
+            if !Self::cached_table_has_columns(referenced_columns, &fk.table) {
                 return Ok((to.clone(), false));
             }
             let resolved = referenced_columns
@@ -492,12 +491,12 @@ impl SqliteAdapter {
         }
     }
 
-    async fn ensure_table_columns_cached(
+    async fn cache_table_columns(
         &self,
         path: &str,
         table: &str,
         cache: &mut HashMap<String, HashSet<String>>,
-    ) -> Result<bool, DbOperationError> {
+    ) -> Result<(), DbOperationError> {
         if !cache.contains_key(table) {
             let columns = self.columns(path, table).await?;
             cache.insert(
@@ -505,7 +504,11 @@ impl SqliteAdapter {
                 columns.into_iter().map(|column| column.name).collect(),
             );
         }
-        Ok(!cache.get(table).is_some_and(HashSet::is_empty))
+        Ok(())
+    }
+
+    fn cached_table_has_columns(cache: &HashMap<String, HashSet<String>>, table: &str) -> bool {
+        !cache.get(table).is_some_and(HashSet::is_empty)
     }
 
     async fn table_detail_with_mode(
@@ -4238,6 +4241,31 @@ mod tests {
                 signature
                     .signature
                     .contains("fk=fk_users_0:org_id:orgs:id:CASCADE:SET NULL")
+            );
+        }
+
+        #[tokio::test]
+        async fn unresolved_foreign_key_is_included_in_signature() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            PRAGMA foreign_keys=OFF;
+            CREATE TABLE child(
+                org_id INTEGER REFERENCES missing_orgs(id)
+            );
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
+            let signature = signatures
+                .iter()
+                .find(|signature| signature.name == "child")
+                .expect("child table signature");
+
+            assert!(
+                signature
+                    .signature
+                    .contains("fk=fk_child_0:org_id:missing_orgs:id:NO ACTION:NO ACTION:false")
             );
         }
 
