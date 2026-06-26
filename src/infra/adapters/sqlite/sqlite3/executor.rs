@@ -10,10 +10,10 @@ use crate::app::ports::outbound::DbOperationError;
 
 use super::error::classify_query_error;
 
-pub(super) const BUSY_TIMEOUT_MS: u64 = 5_000;
+pub(in crate::adapters::sqlite) const BUSY_TIMEOUT_MS: u64 = 5_000;
 
 #[derive(Debug, Clone)]
-pub(super) struct SqliteCli {
+pub(in crate::adapters::sqlite) struct SqliteCli {
     timeout_secs: u64,
 }
 
@@ -24,11 +24,11 @@ struct SqliteOutput {
 }
 
 impl SqliteCli {
-    pub(super) fn new() -> Self {
+    pub(in crate::adapters::sqlite) fn new() -> Self {
         Self { timeout_secs: 30 }
     }
 
-    pub(super) async fn execute_json<T: DeserializeOwned>(
+    pub(in crate::adapters::sqlite) async fn execute_json<T: DeserializeOwned>(
         &self,
         path: &str,
         sql: &str,
@@ -44,7 +44,7 @@ impl SqliteCli {
         serde_json::from_str(stdout).map_err(DbOperationError::from)
     }
 
-    pub(super) async fn execute_csv(
+    pub(in crate::adapters::sqlite) async fn execute_csv(
         &self,
         path: &str,
         sql: &str,
@@ -64,7 +64,7 @@ impl SqliteCli {
         Ok(output.stdout)
     }
 
-    pub(super) async fn execute_quote(
+    pub(in crate::adapters::sqlite) async fn execute_quote(
         &self,
         path: &str,
         sql: &str,
@@ -84,7 +84,7 @@ impl SqliteCli {
         Ok(output.stdout)
     }
 
-    pub(super) async fn export_csv(
+    pub(in crate::adapters::sqlite) async fn export_csv(
         &self,
         path: &str,
         sql: &str,
