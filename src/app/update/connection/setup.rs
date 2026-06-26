@@ -8,7 +8,9 @@ use crate::model::connection::setup::{
 use crate::model::connection::state::ConnectionState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ConnectionTarget, InputTarget, ModalKind};
-use crate::update::connection::helpers::{reset_for_new_connection, save_current_cache};
+use crate::update::connection::helpers::{
+    connection_save_fetch_effects, reset_for_new_connection, save_current_cache,
+};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
 
@@ -208,14 +210,7 @@ pub fn reduce_connection_setup(
 
             reset_for_new_connection(state, id, dsn, name, *database_type);
             let run_id = state.session.begin_connecting(dsn);
-            DispatchResult::handled_with(vec![Effect::Sequence(vec![
-                Effect::CacheInvalidate { dsn: dsn.clone() },
-                Effect::ClearCompletionEngineCache,
-                Effect::FetchMetadata {
-                    dsn: dsn.clone(),
-                    run_id,
-                },
-            ])])
+            DispatchResult::handled_with(connection_save_fetch_effects(dsn, run_id, *database_type))
         }
         Action::ConnectionSaveFailed(e) => {
             if !state.session.connection_state().is_connected() {
@@ -234,7 +229,9 @@ mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionProfile, SslMode};
     use crate::domain::{ConnectionId, DatabaseType};
-    use crate::update::test_support::activate_postgres_connection;
+    use crate::update::test_support::{
+        activate_postgres_connection, assert_connection_save_fetch_effects,
+    };
 
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
         reduce_connection_setup(state, action, now).into_effects()
@@ -570,15 +567,7 @@ mod tests {
             assert!(state.session.selected_table_key().is_none());
             assert!(state.session.connection_state().is_connecting());
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
-            assert_eq!(effects.len(), 1);
-            if let Effect::Sequence(seq) = &effects[0] {
-                assert_eq!(seq.len(), 3);
-                assert!(matches!(seq[0], Effect::CacheInvalidate { .. }));
-                assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
-                assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
-            } else {
-                panic!("expected Sequence effect, got {effects:?}");
-            }
+            assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
         }
 
         #[test]
@@ -665,14 +654,7 @@ mod tests {
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
-            if let Effect::Sequence(seq) = &effects[0] {
-                assert!(
-                    seq.iter()
-                        .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
-                );
-            } else {
-                panic!("expected Sequence effect, got {effects:?}");
-            }
+            assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
             assert_eq!(state.session.dsn(), Some("sqlite:///tmp/app.db"));
             assert_eq!(
                 state.session.active_database_type(),

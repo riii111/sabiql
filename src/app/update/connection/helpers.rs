@@ -1,3 +1,4 @@
+use crate::cmd::effect::Effect;
 use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
@@ -13,9 +14,34 @@ pub(super) fn reset_for_new_connection(
     state.session.reset(&mut state.query);
     state.result_interaction.reset_view();
     state.ui.set_explorer_selection(None);
+    state.sql_modal.reset_prefetch();
+    state.er_preparation.reset();
+    state.ui.reset_er_picker_request();
     state
         .session
         .activate_connection_with_dsn(id, name, database_type, dsn);
+}
+
+pub(super) fn connection_save_fetch_effects(
+    dsn: &str,
+    run_id: u64,
+    database_type: DatabaseType,
+) -> Vec<Effect> {
+    let fetch = Effect::FetchMetadata {
+        dsn: dsn.to_string(),
+        run_id,
+    };
+    if database_type == DatabaseType::SQLite {
+        vec![Effect::Sequence(vec![
+            Effect::CacheInvalidate {
+                dsn: dsn.to_string(),
+            },
+            Effect::ClearCompletionEngineCache,
+            fetch,
+        ])]
+    } else {
+        vec![Effect::ClearCompletionEngineCache, fetch]
+    }
 }
 
 pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {

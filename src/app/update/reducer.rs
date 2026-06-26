@@ -191,7 +191,9 @@ mod tests {
     use crate::update::action::ModalKind;
     use crate::update::action::{ConnectionSaveError, ConnectionTarget};
     use crate::update::action::{InputTarget, SelectMotion};
-    use crate::update::test_support::activate_postgres_connection;
+    use crate::update::test_support::{
+        activate_postgres_connection, assert_connection_save_fetch_effects,
+    };
 
     fn create_test_state() -> AppState {
         AppState::new("test_project".to_string())
@@ -1737,14 +1739,7 @@ mod tests {
                 Some("Test Connection")
             );
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::Sequence(_)));
-            if let Effect::Sequence(seq) = &effects[0] {
-                assert_eq!(seq.len(), 3);
-                assert!(matches!(seq[0], Effect::CacheInvalidate { .. }));
-                assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
-                assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
-            }
+            assert_connection_save_fetch_effects(&effects, DatabaseType::PostgreSQL);
         }
 
         #[test]
@@ -2264,14 +2259,7 @@ mod tests {
                 state.session.metadata_state(),
                 MetadataState::Loading
             ));
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::Sequence(_)));
-            if let Effect::Sequence(seq) = &effects[0] {
-                assert!(
-                    seq.iter()
-                        .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
-                );
-            }
+            assert_connection_save_fetch_effects(&effects, DatabaseType::PostgreSQL);
         }
 
         #[test]
