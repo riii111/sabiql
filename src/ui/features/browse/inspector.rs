@@ -796,15 +796,20 @@ fn index_type_label(index_type: &IndexType) -> Option<String> {
 }
 
 fn foreign_key_row(fk: &ForeignKey) -> Vec<String> {
+    let references = format!(
+        "{}.{}({})",
+        fk.to_schema,
+        fk.to_table,
+        fk.to_columns.join(", ")
+    );
     vec![
         fk.name.clone(),
         fk.from_columns.join(", "),
-        format!(
-            "{}.{}({})",
-            fk.to_schema,
-            fk.to_table,
-            fk.to_columns.join(", ")
-        ),
+        if fk.is_reference_resolved() {
+            references
+        } else {
+            format!("{references} (unresolved)")
+        },
     ]
 }
 
