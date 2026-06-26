@@ -86,6 +86,23 @@ struct RawRowCount {
     count: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TableDetailMode {
+    Full,
+    ColumnsAndFks,
+    Signature,
+}
+
+impl TableDetailMode {
+    const fn include_indexes(self) -> bool {
+        matches!(self, Self::Full | Self::Signature)
+    }
+
+    const fn include_row_count(self) -> bool {
+        matches!(self, Self::Full)
+    }
+}
+
 impl SqliteAdapter {
     pub fn new() -> Self {
         Self {
@@ -515,8 +532,10 @@ impl SqliteAdapter {
         &self,
         path: &str,
         table: &str,
-        include_indexes: bool,
+        mode: TableDetailMode,
     ) -> Result<Table, DbOperationError> {
+        let include_indexes = mode.include_indexes();
+        let include_row_count = mode.include_row_count();
         let (indexes, unique_single_columns) = if include_indexes {
             let indexes = self.indexes(path, table).await?;
             let unique_single_columns = indexes
@@ -586,7 +605,11 @@ impl SqliteAdapter {
             indexes,
             rls: None,
             triggers: Vec::new(),
-            row_count_estimate: self.row_count(path, table).await,
+            row_count_estimate: if include_row_count {
+                self.row_count(path, table).await
+            } else {
+                None
+            },
             comment: None,
             source_ddl: self.table_definition(path, table).await,
         })
@@ -597,7 +620,9 @@ impl SqliteAdapter {
         path: &str,
         table: &RawTable,
     ) -> Result<TableSignature, DbOperationError> {
-        let detail = self.table_detail_with_mode(path, &table.name, true).await?;
+        let detail = self
+            .table_detail_with_mode(path, &table.name, TableDetailMode::Signature)
+            .await?;
         let mut parts = vec![format!("sql={}", table.sql.clone().unwrap_or_default())];
         parts.extend(detail.columns.iter().map(|column| {
             format!(
@@ -1829,7 +1854,7 @@ impl MetadataProvider for SqliteAdapter {
             metadata.table_summaries.push(TableSummary::new(
                 MAIN_SCHEMA.to_string(),
                 table.name.clone(),
-                self.row_count(path, &table.name).await,
+                None,
                 false,
             ));
         }
@@ -1843,7 +1868,7 @@ impl MetadataProvider for SqliteAdapter {
         table: &str,
     ) -> Result<Table, DbOperationError> {
         Self::validate_main_schema(schema)?;
-        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, true)
+        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, TableDetailMode::Full)
             .await
     }
 
@@ -1854,8 +1879,12 @@ impl MetadataProvider for SqliteAdapter {
         table: &str,
     ) -> Result<Table, DbOperationError> {
         Self::validate_main_schema(schema)?;
-        self.table_detail_with_mode(Self::path_from_dsn(dsn)?, table, false)
-            .await
+        self.table_detail_with_mode(
+            Self::path_from_dsn(dsn)?,
+            table,
+            TableDetailMode::ColumnsAndFks,
+        )
+        .await
     }
 
     async fn fetch_table_signatures(
@@ -3886,7 +3915,23 @@ END";
             assert_eq!(metadata.schemas, vec![Schema::new("main")]);
             assert_eq!(metadata.table_summaries.len(), 1);
             assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
-            assert_eq!(metadata.table_summaries[0].row_count_estimate, Some(0));
+            assert!(metadata.table_summaries[0].row_count_estimate.is_none());
+        }
+
+        #[tokio::test]
+        async fn skips_row_count_even_when_table_has_rows() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            INSERT INTO users(id) VALUES (1), (2), (3);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+
+            assert_eq!(metadata.table_summaries.len(), 1);
+            assert!(metadata.table_summaries[0].row_count_estimate.is_none());
         }
 
         #[tokio::test]
@@ -4011,6 +4056,29 @@ END";
             assert_eq!(fk.on_delete, FkAction::Cascade);
             assert!(detail.rls.is_none());
             assert!(detail.triggers.is_empty());
+        }
+
+        #[tokio::test]
+        async fn columns_and_fks_skips_row_count() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            INSERT INTO users(id) VALUES (1), (2), (3);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let light = adapter
+                .fetch_table_columns_and_fks(&dsn, "main", "users")
+                .await
+                .unwrap();
+            let full = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert!(light.row_count_estimate.is_none());
+            assert_eq!(full.row_count_estimate, Some(3));
         }
 
         #[tokio::test]
