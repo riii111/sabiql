@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 
 use crate::app::ports::outbound::{DbOperationError, DdlGenerator, SqlDialect};
-use crate::domain::{DatabaseType, QueryValue, Table};
+use crate::domain::{DatabaseType, QueryValue, Table, Trigger};
 
 use super::SqliteAdapter;
 
@@ -225,10 +225,32 @@ pub(super) fn foreign_key_list_query(table: &str) -> String {
     format!("PRAGMA foreign_key_list({})", quote_ident(table))
 }
 
+pub(super) fn trigger_list_query(table: &str) -> String {
+    format!(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = {} ORDER BY name",
+        quote_literal(table)
+    )
+}
+
+fn append_trigger_ddls(ddl: &mut String, triggers: &[Trigger]) {
+    for trigger in triggers {
+        if !ddl.is_empty() {
+            ddl.push('\n');
+        }
+        ddl.push('\n');
+        ddl.push_str(&trigger.function_name);
+        if !trigger.function_name.trim_end().ends_with(';') {
+            ddl.push(';');
+        }
+    }
+}
+
 impl DdlGenerator for SqliteAdapter {
     fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
         if let Some(source_ddl) = table.source_ddl() {
-            return source_ddl.to_string();
+            let mut ddl = source_ddl.to_string();
+            append_trigger_ddls(&mut ddl, &table.triggers);
+            return ddl;
         }
 
         let mut ddl = format!("CREATE TABLE {} (\n", quote_ident(&table.name));
@@ -265,6 +287,7 @@ impl DdlGenerator for SqliteAdapter {
         }
 
         ddl.push_str(");");
+        append_trigger_ddls(&mut ddl, &table.triggers);
         ddl
     }
 }
@@ -331,7 +354,7 @@ impl SqlDialect for SqliteAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, ColumnAttributes};
+    use crate::domain::{Column, ColumnAttributes, Trigger, TriggerEvent, TriggerTiming};
 
     fn make_column(name: &str, data_type: &str, nullable: bool) -> Column {
         Column {
@@ -495,6 +518,10 @@ mod tests {
         assert_eq!(
             foreign_key_list_query(r#"my"table"#),
             r#"PRAGMA foreign_key_list("my""table")"#
+        );
+        assert_eq!(
+            trigger_list_query("users"),
+            "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'users' ORDER BY name"
         );
         assert_eq!(
             index_xinfo_query(r#"my"index"#),
@@ -741,6 +768,32 @@ mod tests {
 
             assert!(ddl.contains("\"created_at\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"));
             assert!(!ddl.contains("COMMENT ON"));
+        }
+
+        #[test]
+        fn source_ddl_appends_trigger_definitions() {
+            let adapter = SqliteAdapter::new();
+            let mut table = make_table(vec![make_column("id", "INTEGER", false)], None);
+            table.source_ddl =
+                Some("CREATE TABLE \"users\" (\n  \"id\" INTEGER NOT NULL\n);".to_string());
+            table.triggers.push(Trigger {
+                name: "users_audit".to_string(),
+                timing: TriggerTiming::After,
+                events: vec![TriggerEvent::Insert],
+                function_name:
+                    "CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END"
+                        .to_string(),
+                security_definer: false,
+            });
+
+            let ddl = adapter.generate_ddl(DatabaseType::SQLite, &table);
+
+            assert!(ddl.starts_with("CREATE TABLE \"users\""));
+            assert!(
+                ddl.contains(
+                    "CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END"
+                )
+            );
         }
     }
 }

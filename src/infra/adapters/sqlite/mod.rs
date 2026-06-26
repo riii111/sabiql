@@ -10,7 +10,8 @@ use crate::app::ports::outbound::{DbOperationError, MetadataProvider, QueryExecu
 use crate::domain::{
     Column, ColumnAttributes, CommandTag, DatabaseMetadata, FkAction, ForeignKey, Index,
     IndexAttributes, IndexType, QueryResult, QuerySource, QueryValue, Schema, Table,
-    TableSignature, TableSummary, UNRESOLVED_FK_COLUMN, WriteExecutionResult,
+    TableSignature, TableSummary, Trigger, TriggerEvent, TriggerTiming, UNRESOLVED_FK_COLUMN,
+    WriteExecutionResult,
 };
 
 mod cli;
@@ -80,6 +81,12 @@ struct RawForeignKey {
     to: Option<String>,
     on_update: String,
     on_delete: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RawTrigger {
+    name: String,
+    sql: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -399,6 +406,23 @@ impl SqliteAdapter {
             .and_then(|row| row.sql)
     }
 
+    async fn triggers(&self, path: &str, table: &str) -> Result<Vec<Trigger>, DbOperationError> {
+        let raw: Vec<RawTrigger> = self
+            .cli
+            .execute_json(path, &sql::trigger_list_query(table))
+            .await?;
+        let mut triggers = Vec::new();
+
+        for raw in raw {
+            if let Some(sql) = raw.sql {
+                triggers.push(parse_sqlite_trigger(&raw.name, &sql)?);
+            }
+        }
+
+        triggers.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(triggers)
+    }
+
     async fn foreign_keys(
         &self,
         path: &str,
@@ -605,7 +629,7 @@ impl SqliteAdapter {
             foreign_keys: self.foreign_keys(path, table).await?,
             indexes,
             rls: None,
-            triggers: Vec::new(),
+            triggers: self.triggers(path, table).await?,
             row_count_estimate: if include_row_count {
                 self.row_count(path, table).await
             } else {
@@ -662,6 +686,20 @@ impl SqliteAdapter {
                 fk.on_delete,
                 fk.on_update,
                 fk.reference_resolved
+            )
+        }));
+        parts.extend(detail.triggers.iter().map(|trigger| {
+            format!(
+                "trg={}:{}:{}:{}",
+                trigger.name,
+                trigger.timing,
+                trigger
+                    .events
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+                trigger.function_name
             )
         }));
 
@@ -760,6 +798,173 @@ fn contains_keyword(sql: &str, expected: &str) -> bool {
         offset = end;
     }
     false
+}
+
+fn sqlite_trigger_parse_error(sql: &str, detail: &str) -> DbOperationError {
+    DbOperationError::MetadataParseFailed(format!(
+        "sqlite trigger parse failed ({detail}): {}",
+        sql.chars().take(120).collect::<String>()
+    ))
+}
+
+fn skip_optional_if_not_exists(sql: &str, pos: usize) -> usize {
+    let Some((keyword, next)) = next_keyword_from(sql, pos) else {
+        return pos;
+    };
+    if !keyword.eq_ignore_ascii_case("IF") {
+        return pos;
+    }
+    let Some((not, next)) = next_keyword_from(sql, next) else {
+        return pos;
+    };
+    if !not.eq_ignore_ascii_case("NOT") {
+        return pos;
+    }
+    let Some((exists, next)) = next_keyword_from(sql, next) else {
+        return pos;
+    };
+    if exists.eq_ignore_ascii_case("EXISTS") {
+        next
+    } else {
+        pos
+    }
+}
+
+fn skip_object_reference(sql: &str, pos: usize) -> usize {
+    let bytes = sql.as_bytes();
+    let mut i = pos;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    let start = match bytes.get(i) {
+        Some(b'"' | b'\'' | b'`') => skip_quoted(bytes, i, bytes[i]),
+        Some(b'[') => skip_bracket_quoted(bytes, i),
+        Some(b) if b.is_ascii_alphanumeric() || *b == b'_' => {
+            let Some((_, end)) = next_keyword_from(sql, i) else {
+                return i;
+            };
+            end
+        }
+        _ => return i,
+    };
+    if bytes.get(start) == Some(&b'.')
+        && let Some((_, end)) = next_keyword_from(sql, start + 1)
+    {
+        return end;
+    }
+    start
+}
+
+fn skip_update_of_clause(sql: &str, pos: usize) -> usize {
+    let Some((keyword, next)) = next_keyword_from(sql, pos) else {
+        return pos;
+    };
+    if !keyword.eq_ignore_ascii_case("OF") {
+        return pos;
+    }
+
+    let mut pos = next;
+    loop {
+        let Some((keyword, next)) = next_keyword_from(sql, pos) else {
+            return pos;
+        };
+        match keyword.to_ascii_uppercase().as_str() {
+            "INSERT" | "UPDATE" | "DELETE" | "ON" | "FOR" | "WHEN" | "BEGIN" => return pos,
+            _ => pos = next,
+        }
+    }
+}
+
+fn parse_sqlite_trigger_header(
+    sql: &str,
+    pos: usize,
+) -> Result<(TriggerTiming, Vec<TriggerEvent>, usize), DbOperationError> {
+    let Some((keyword, next)) = next_keyword_from(sql, pos) else {
+        return Err(sqlite_trigger_parse_error(sql, "missing trigger timing"));
+    };
+
+    let (timing, pos) = match keyword.to_ascii_uppercase().as_str() {
+        "BEFORE" => (TriggerTiming::Before, next),
+        "AFTER" => (TriggerTiming::After, next),
+        "INSTEAD" => {
+            let Some((of, next)) = next_keyword_from(sql, next) else {
+                return Err(sqlite_trigger_parse_error(sql, "incomplete INSTEAD OF"));
+            };
+            if !of.eq_ignore_ascii_case("OF") {
+                return Err(sqlite_trigger_parse_error(sql, "expected OF after INSTEAD"));
+            }
+            (TriggerTiming::InsteadOf, next)
+        }
+        _ => {
+            return Err(sqlite_trigger_parse_error(
+                sql,
+                "unsupported trigger timing",
+            ));
+        }
+    };
+
+    let mut events = Vec::new();
+    let mut pos = pos;
+    loop {
+        let Some((keyword, next)) = next_keyword_from(sql, pos) else {
+            return Err(sqlite_trigger_parse_error(sql, "missing trigger event"));
+        };
+        if keyword.eq_ignore_ascii_case("ON") {
+            break;
+        }
+
+        match keyword.to_ascii_uppercase().as_str() {
+            "INSERT" => events.push(TriggerEvent::Insert),
+            "UPDATE" => {
+                events.push(TriggerEvent::Update);
+                pos = skip_update_of_clause(sql, next);
+                continue;
+            }
+            "DELETE" => events.push(TriggerEvent::Delete),
+            _ => return Err(sqlite_trigger_parse_error(sql, "unsupported trigger event")),
+        }
+        pos = next;
+    }
+
+    if events.is_empty() {
+        return Err(sqlite_trigger_parse_error(sql, "no trigger events"));
+    }
+
+    Ok((timing, events, pos))
+}
+
+fn parse_sqlite_trigger(trigger_name: &str, sql: &str) -> Result<Trigger, DbOperationError> {
+    let Some((first, pos)) = next_keyword_from(sql, 0) else {
+        return Err(sqlite_trigger_parse_error(sql, "missing CREATE"));
+    };
+    if !first.eq_ignore_ascii_case("CREATE") {
+        return Err(sqlite_trigger_parse_error(sql, "expected CREATE"));
+    }
+    let Some((second, pos)) = next_keyword_from(sql, pos) else {
+        return Err(sqlite_trigger_parse_error(sql, "missing TRIGGER"));
+    };
+    if !second.eq_ignore_ascii_case("TRIGGER") {
+        return Err(sqlite_trigger_parse_error(sql, "expected TRIGGER"));
+    }
+
+    let mut pos = pos;
+    if let Some((keyword, next)) = next_keyword_from(sql, pos)
+        && keyword.eq_ignore_ascii_case("TEMP")
+    {
+        pos = next;
+    }
+    pos = skip_optional_if_not_exists(sql, pos);
+    pos = skip_object_reference(sql, pos);
+
+    let (timing, events, _) = parse_sqlite_trigger_header(sql, pos)?;
+
+    Ok(Trigger {
+        name: trigger_name.to_string(),
+        timing,
+        events,
+        function_name: sql.to_string(),
+        security_definer: false,
+    })
 }
 
 fn is_create_trigger_prefix(sql: &str) -> bool {
@@ -4148,6 +4353,33 @@ END";
         }
 
         #[tokio::test]
+        async fn loads_table_bound_triggers() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            CREATE TABLE audit(user_id INTEGER);
+            CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN
+                INSERT INTO audit(user_id) VALUES (new.id);
+            END;
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.triggers.len(), 1);
+            let trigger = &detail.triggers[0];
+            assert_eq!(trigger.name, "users_audit");
+            assert_eq!(trigger.timing, TriggerTiming::After);
+            assert_eq!(trigger.events, vec![TriggerEvent::Insert]);
+            assert!(trigger.function_name.contains("CREATE TRIGGER users_audit"));
+            assert!(!trigger.security_definer);
+        }
+
+        #[tokio::test]
         async fn without_primary_key_sets_primary_key_none() {
             let (_dir, dsn) = make_sqlite_db("CREATE TABLE logs(message TEXT);");
             let adapter = SqliteAdapter::new();
@@ -4790,6 +5022,79 @@ END";
                     "idx=idx_users_name:name:false:false:false:false:true:false:true:CREATE INDEX idx_users_name ON users(name COLLATE NOCASE)"
                 )
             );
+        }
+
+        #[tokio::test]
+        async fn trigger_change_updates_signature() {
+            let setup = r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            CREATE TABLE audit(user_id INTEGER);
+            ";
+            let trigger = r"
+            CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN
+                INSERT INTO audit(user_id) VALUES (new.id);
+            END;
+            ";
+            let (_dir, dsn) = make_sqlite_db(setup);
+            let adapter = SqliteAdapter::new();
+
+            let before = adapter.fetch_table_signatures(&dsn).await.unwrap();
+            let before_signature = before
+                .iter()
+                .find(|signature| signature.name == "users")
+                .unwrap()
+                .signature
+                .clone();
+
+            adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
+
+            let after = adapter.fetch_table_signatures(&dsn).await.unwrap();
+            let after_signature = &after
+                .iter()
+                .find(|signature| signature.name == "users")
+                .unwrap()
+                .signature;
+
+            assert_ne!(before_signature, after_signature.as_str());
+            assert!(
+                after_signature.contains("trg=users_audit:AFTER:INSERT:CREATE TRIGGER users_audit")
+            );
+        }
+    }
+
+    mod trigger_parsing {
+        use super::*;
+
+        #[test]
+        fn parses_after_insert_trigger() {
+            let sql = "CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END";
+            let trigger = parse_sqlite_trigger("users_audit", sql).unwrap();
+
+            assert_eq!(trigger.name, "users_audit");
+            assert_eq!(trigger.timing, TriggerTiming::After);
+            assert_eq!(trigger.events, vec![TriggerEvent::Insert]);
+            assert_eq!(trigger.function_name, sql);
+            assert!(!trigger.security_definer);
+        }
+
+        #[test]
+        fn parses_before_update_of_columns() {
+            let sql =
+                "CREATE TRIGGER users_guard BEFORE UPDATE OF name ON users BEGIN SELECT 1; END";
+            let trigger = parse_sqlite_trigger("users_guard", sql).unwrap();
+
+            assert_eq!(trigger.timing, TriggerTiming::Before);
+            assert_eq!(trigger.events, vec![TriggerEvent::Update]);
+        }
+
+        #[test]
+        fn parses_instead_of_delete_trigger() {
+            let sql =
+                "CREATE TRIGGER users_view_io INSTEAD OF DELETE ON users_view BEGIN SELECT 1; END";
+            let trigger = parse_sqlite_trigger("users_view_io", sql).unwrap();
+
+            assert_eq!(trigger.timing, TriggerTiming::InsteadOf);
+            assert_eq!(trigger.events, vec![TriggerEvent::Delete]);
         }
     }
 }
