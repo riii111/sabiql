@@ -232,13 +232,27 @@ pub(super) fn trigger_list_query(table: &str) -> String {
     )
 }
 
+fn terminate_ddl_statement(ddl: &mut String) {
+    let trimmed_len = ddl.trim_end().len();
+    if trimmed_len == 0 {
+        ddl.clear();
+        return;
+    }
+    ddl.truncate(trimmed_len);
+    if !ddl.ends_with(';') {
+        ddl.push(';');
+    }
+}
+
 fn append_trigger_ddls(ddl: &mut String, triggers: &[Trigger]) {
+    if triggers.is_empty() {
+        return;
+    }
+    terminate_ddl_statement(ddl);
     for trigger in triggers {
-        if !ddl.is_empty() {
-            ddl.push('\n');
-        }
         ddl.push('\n');
-        ddl.push_str(&trigger.function_name);
+        ddl.push('\n');
+        ddl.push_str(trigger.function_name.trim());
         if !trigger.function_name.trim_end().ends_with(';') {
             ddl.push(';');
         }
@@ -775,7 +789,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
             let mut table = make_table(vec![make_column("id", "INTEGER", false)], None);
             table.source_ddl =
-                Some("CREATE TABLE \"users\" (\n  \"id\" INTEGER NOT NULL\n);".to_string());
+                Some("CREATE TABLE \"users\" (\n  \"id\" INTEGER NOT NULL\n)".to_string());
             table.triggers.push(Trigger {
                 name: "users_audit".to_string(),
                 timing: TriggerTiming::After,
@@ -788,11 +802,9 @@ mod tests {
 
             let ddl = adapter.generate_ddl(DatabaseType::SQLite, &table);
 
-            assert!(ddl.starts_with("CREATE TABLE \"users\""));
-            assert!(
-                ddl.contains(
-                    "CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END"
-                )
+            assert_eq!(
+                ddl,
+                "CREATE TABLE \"users\" (\n  \"id\" INTEGER NOT NULL\n);\n\nCREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END;"
             );
         }
     }
