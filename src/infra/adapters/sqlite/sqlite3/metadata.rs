@@ -94,6 +94,14 @@ impl TableDetailMode {
     const fn include_row_count(self) -> bool {
         matches!(self, Self::Full)
     }
+
+    const fn include_triggers(self) -> bool {
+        matches!(self, Self::Full | Self::Signature)
+    }
+
+    const fn include_source_ddl(self) -> bool {
+        matches!(self, Self::Full)
+    }
 }
 
 impl SqliteAdapter {
@@ -493,6 +501,8 @@ impl SqliteAdapter {
     ) -> Result<Table, DbOperationError> {
         let include_indexes = mode.include_indexes();
         let include_row_count = mode.include_row_count();
+        let include_triggers = mode.include_triggers();
+        let include_source_ddl = mode.include_source_ddl();
         let (indexes, unique_single_columns) = if include_indexes {
             let indexes = self.indexes(path, table).await?;
             let unique_single_columns = indexes
@@ -561,14 +571,22 @@ impl SqliteAdapter {
             foreign_keys: self.foreign_keys(path, table).await?,
             indexes,
             rls: None,
-            triggers: self.triggers(path, table).await?,
+            triggers: if include_triggers {
+                self.triggers(path, table).await?
+            } else {
+                Vec::new()
+            },
             row_count_estimate: if include_row_count {
                 self.row_count(path, table).await
             } else {
                 None
             },
             comment: None,
-            source_ddl: self.table_definition(path, table).await,
+            source_ddl: if include_source_ddl {
+                self.table_definition(path, table).await
+            } else {
+                None
+            },
         })
     }
 
@@ -1245,6 +1263,33 @@ mod tests {
 
             assert!(light.row_count_estimate.is_none());
             assert_eq!(full.row_count_estimate, Some(3));
+        }
+
+        #[tokio::test]
+        async fn columns_and_fks_skips_triggers_and_source_ddl() {
+            let (_dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN
+                SELECT 1;
+            END;
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let light = adapter
+                .fetch_table_columns_and_fks(&dsn, "main", "users")
+                .await
+                .unwrap();
+            let full = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert!(light.triggers.is_empty());
+            assert!(light.source_ddl().is_none());
+            assert_eq!(full.triggers.len(), 1);
+            assert!(full.source_ddl().is_some());
         }
 
         #[tokio::test]
