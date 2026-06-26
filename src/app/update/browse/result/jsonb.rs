@@ -441,6 +441,8 @@ mod tests {
 
     mod entry_guards {
         use super::*;
+        use crate::domain::DatabaseType;
+        use crate::domain::connection::ConnectionId;
 
         #[test]
         fn opens_on_valid_jsonb_cell() {
@@ -448,7 +450,7 @@ mod tests {
 
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
@@ -463,7 +465,7 @@ mod tests {
 
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
@@ -475,15 +477,15 @@ mod tests {
         fn blocked_on_sqlite_jsonb_column() {
             let mut state = state_with_jsonb_cell();
             state.session.activate_connection_with_dsn(
-                &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
+                &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
-                crate::domain::DatabaseType::SQLite,
+                DatabaseType::SQLite,
                 "sqlite:///tmp/app.db",
             );
 
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 

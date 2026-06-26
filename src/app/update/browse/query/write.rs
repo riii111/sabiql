@@ -764,8 +764,7 @@ mod tests {
                 .begin_cell_edit(0, 2, before.to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content(after.to_string());
+                .replace_cell_edit_draft(after.to_string());
 
             let effects = dispatch_query(
                 &mut state,
@@ -842,8 +841,7 @@ mod tests {
                 .begin_cell_edit(0, 1, before.to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content(after.to_string());
+                .replace_cell_edit_draft(after.to_string());
 
             let effects = dispatch_query(
                 &mut state,
