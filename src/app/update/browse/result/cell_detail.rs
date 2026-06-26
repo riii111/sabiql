@@ -1,8 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::domain::ColumnAttributes;
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::shared::flash_timer::FlashId;
@@ -27,7 +26,11 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
                 return DispatchResult::handled();
             };
 
-            let display_value = cell_detail_display_value(&cell_value, data_type.as_deref());
+            let display_value = cell_detail_display_value(
+                &cell_value,
+                data_type.as_deref(),
+                state.session.active_database_type_or_default(),
+            );
             state.cell_detail =
                 CellDetailState::open(row_idx, col_idx, column_name, cell_value, display_value);
             state.modal.push_mode(InputMode::CellDetail);
@@ -157,8 +160,13 @@ fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
         .map(|column| column.data_type.as_str())
 }
 
-fn cell_detail_display_value(value: &str, data_type: Option<&str>) -> String {
-    let should_pretty_print_json = data_type == Some("json") || looks_like_json_container(value);
+fn cell_detail_display_value(
+    value: &str,
+    data_type: Option<&str>,
+    database_type: DatabaseType,
+) -> String {
+    let should_pretty_print_json = data_type == Some("json")
+        || (database_type != DatabaseType::SQLite && looks_like_json_container(value));
     if !should_pretty_print_json {
         return value.to_string();
     }
@@ -184,7 +192,8 @@ fn update_search_matches(state: &mut AppState) {
 mod tests {
     use super::*;
     use crate::domain::column::Column;
-    use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::domain::connection::ConnectionId;
+    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
     use std::sync::Arc;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
@@ -264,6 +273,29 @@ mod tests {
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1,\n  \"b\": 2\n}");
         assert_eq!(state.cell_detail.original_content(), r#"{"b":2,"a":1}"#);
+    }
+
+    #[test]
+    fn sqlite_text_json_container_shows_raw_detail() {
+        let mut state = state_with_cell("TEXT", r#"{"items":["admin","writer"]}"#);
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("sqlite-test"),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/app.db",
+        );
+
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(
+            state.cell_detail.content(),
+            r#"{"items":["admin","writer"]}"#
+        );
+        assert_eq!(
+            state.cell_detail.original_content(),
+            r#"{"items":["admin","writer"]}"#
+        );
     }
 
     #[test]
