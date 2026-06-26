@@ -123,7 +123,6 @@ impl SqliteCli {
         let mut writer = tokio::io::BufWriter::new(file);
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
-            let mut newline_count = 0usize;
             if let Some(mut stdout) = stdout {
                 let mut buf = [0u8; 8192];
                 loop {
@@ -131,7 +130,6 @@ impl SqliteCli {
                     if n == 0 {
                         break;
                     }
-                    newline_count += buf[..n].iter().filter(|&&b| b == b'\n').count();
                     writer.write_all(&buf[..n]).await?;
                 }
                 writer.flush().await?;
@@ -145,12 +143,18 @@ impl SqliteCli {
                 String::from_utf8_lossy(&buf).into_owned()
             };
             let status = child.wait().await?;
-            Ok::<_, std::io::Error>((status, stderr, newline_count))
+            Ok::<_, std::io::Error>((status, stderr))
         })
         .await;
 
-        let (status, stderr, newline_count) = match result {
-            Ok(inner) => inner.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?,
+        let (status, stderr) = match result {
+            Ok(inner) => match inner {
+                Ok(values) => values,
+                Err(error) => {
+                    let _ = tokio::fs::remove_file(output_path).await;
+                    return Err(DbOperationError::QueryFailed(error.to_string()));
+                }
+            },
             Err(error) => {
                 let _ = tokio::fs::remove_file(output_path).await;
                 return Err(DbOperationError::Timeout(error.to_string()));
@@ -162,7 +166,13 @@ impl SqliteCli {
             return Err(classify_query_error(&stderr));
         }
 
-        Ok(newline_count.saturating_sub(1))
+        match count_csv_records(output_path) {
+            Ok(row_count) => Ok(row_count),
+            Err(error) => {
+                let _ = tokio::fs::remove_file(output_path).await;
+                Err(DbOperationError::QueryFailed(error.to_string()))
+            }
+        }
     }
 
     async fn run(
@@ -242,6 +252,15 @@ impl SqliteCli {
             stderr,
         })
     }
+}
+
+fn count_csv_records(path: &std::path::Path) -> Result<usize, csv::Error> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_path(path)?;
+    reader
+        .records()
+        .try_fold(0usize, |count, record| record.map(|_| count + 1))
 }
 
 impl SqliteAdapter {
@@ -1606,6 +1625,31 @@ mod tests {
 
             assert_eq!(row_count, 2);
             assert_eq!(csv, "id,name\n1,a\n2,b\n");
+        }
+
+        #[tokio::test]
+        async fn export_to_csv_counts_records_with_embedded_newlines() {
+            let (dir, dsn) = make_sqlite_db(
+                r"
+            CREATE TABLE logs(id INTEGER PRIMARY KEY, message TEXT);
+            INSERT INTO logs(id, message) VALUES (1, 'hello
+world'), (2, 'done');
+            ",
+            );
+            let path = dir.path().join("logs.csv");
+            let adapter = SqliteAdapter::new();
+
+            let row_count = adapter
+                .export_to_csv(
+                    &dsn,
+                    "SELECT id, message FROM logs ORDER BY id",
+                    &path,
+                    true,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(row_count, 2);
         }
 
         #[tokio::test]

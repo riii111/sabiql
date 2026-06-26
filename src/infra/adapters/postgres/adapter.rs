@@ -1,5 +1,5 @@
 pub struct PostgresAdapter {
-    pub(in crate::adapters::postgres) timeout_secs: u64,
+    pub(super) timeout_secs: u64,
 }
 
 impl PostgresAdapter {

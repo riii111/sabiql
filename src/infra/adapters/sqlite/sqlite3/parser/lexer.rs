@@ -140,6 +140,8 @@ fn is_sqlite_trigger_body_end(
 pub(in crate::adapters::sqlite::sqlite3) fn try_split_sqlite_statements(
     sql: &str,
 ) -> Result<Vec<&str>, DbOperationError> {
+    reject_sqlite_meta_commands(sql)?;
+
     let bytes = sql.as_bytes();
     let mut statements = Vec::new();
     let mut start = 0;
@@ -231,6 +233,64 @@ pub(in crate::adapters::sqlite::sqlite3) fn try_split_sqlite_statements(
     }
 
     Ok(statements)
+}
+
+fn reject_sqlite_meta_commands(sql: &str) -> Result<(), DbOperationError> {
+    if contains_sqlite_meta_command(sql) {
+        return Err(DbOperationError::UnsupportedOperation(
+            "SQLite dot commands are not supported".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn contains_sqlite_meta_command(sql: &str) -> bool {
+    let bytes = sql.as_bytes();
+    let mut i = 0;
+    let mut line_start = true;
+
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' | b'\r' => {
+                line_start = true;
+                i += 1;
+            }
+            b' ' | b'\t' if line_start => i += 1,
+            b'.' if line_start => return true,
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                line_start = false;
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    if bytes[i] == b'\n' || bytes[i] == b'\r' {
+                        line_start = true;
+                    }
+                    i += 1;
+                }
+                if i + 1 < bytes.len() {
+                    i += 2;
+                }
+            }
+            b'\'' | b'"' | b'`' => {
+                line_start = false;
+                i = skip_quoted(bytes, i, bytes[i]);
+            }
+            b'[' => {
+                line_start = false;
+                i = skip_bracket_quoted(bytes, i);
+            }
+            _ => {
+                line_start = false;
+                i += 1;
+            }
+        }
+    }
+
+    false
 }
 
 fn is_transaction_control(statement: &str) -> bool {
@@ -373,22 +433,58 @@ pub(super) fn rollback_to_target(statement: &str) -> Option<&str> {
         if !third.eq_ignore_ascii_case("TO") {
             return None;
         }
-        let (fourth, fourth_end) = next_keyword_from(statement, third_end)?;
+        let (fourth, fourth_end) = identifier_token_from(statement, third_end)?;
         if fourth.eq_ignore_ascii_case("SAVEPOINT") {
-            next_keyword_from(statement, fourth_end).map(|(name, _)| name)
+            identifier_token_from(statement, fourth_end).map(|(name, _)| name)
         } else {
-            Some(fourth)
+            identifier_token_from(statement, third_end).map(|(name, _)| name)
         }
     } else if second.eq_ignore_ascii_case("TO") {
-        let (third, third_end) = next_keyword_from(statement, second_end)?;
+        let (third, third_end) = identifier_token_from(statement, second_end)?;
         if third.eq_ignore_ascii_case("SAVEPOINT") {
-            next_keyword_from(statement, third_end).map(|(name, _)| name)
+            identifier_token_from(statement, third_end).map(|(name, _)| name)
         } else {
-            Some(third)
+            identifier_token_from(statement, second_end).map(|(name, _)| name)
         }
     } else {
         None
     }
+}
+
+pub(super) fn savepoint_target(statement: &str) -> Option<&str> {
+    let (_, first_end) = next_keyword_from(statement, 0)?;
+    identifier_token_from(statement, first_end).map(|(name, _)| name)
+}
+
+fn identifier_token_from(sql: &str, mut i: usize) -> Option<(&str, usize)> {
+    let bytes = sql.as_bytes();
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() {
+        return None;
+    }
+
+    let start = i;
+    let end = match bytes[i] {
+        b'"' | b'\'' | b'`' => skip_quoted(bytes, i, bytes[i]),
+        b'[' => skip_bracket_quoted(bytes, i),
+        _ => {
+            while i < bytes.len()
+                && !bytes[i].is_ascii_whitespace()
+                && bytes[i] != b';'
+                && bytes[i] != b','
+            {
+                i += 1;
+            }
+            if i == start {
+                return None;
+            }
+            i
+        }
+    };
+
+    Some((&sql[start..end], end))
 }
 
 pub(super) fn is_rollback_to(statement: &str) -> bool {
@@ -569,6 +665,21 @@ mod tests {
                 "-- ; ignored\nSELECT ';' AS value"
             ]
         );
+    }
+
+    #[test]
+    fn split_sqlite_statements_rejects_dot_commands() {
+        let error = try_split_sqlite_statements("SELECT 1;\n.shell echo unsafe").unwrap_err();
+
+        assert!(matches!(error, DbOperationError::UnsupportedOperation(_)));
+    }
+
+    #[test]
+    fn split_sqlite_statements_allows_dot_at_line_start_inside_literal() {
+        let statements =
+            try_split_sqlite_statements("SELECT '.shell echo safe\n.read file';").unwrap();
+
+        assert_eq!(statements, vec!["SELECT '.shell echo safe\n.read file'"]);
     }
 
     #[test]

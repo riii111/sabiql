@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use crate::domain::{CommandTag, QueryResult, QuerySource};
 
 use super::lexer::{
-    dml_keyword, first_keyword, is_rollback_to, rollback_to_target, second_keyword,
+    dml_keyword, first_keyword, is_rollback_to, rollback_to_target, savepoint_target,
+    second_keyword,
 };
 
 fn ddl_tag(query: &str) -> Option<CommandTag> {
@@ -33,11 +34,11 @@ fn transaction_control_tag(query: &str) -> Option<CommandTag> {
         "ROLLBACK" => Some(CommandTag::Rollback),
         "SAVEPOINT" => Some(CommandTag::Other(format!(
             "SAVEPOINT {}",
-            second_keyword(query).unwrap_or("")
+            savepoint_target(query).unwrap_or("")
         ))),
         "RELEASE" => Some(CommandTag::Other(format!(
             "RELEASE {}",
-            second_keyword(query).unwrap_or("")
+            savepoint_target(query).unwrap_or("")
         ))),
         _ => None,
     }
@@ -278,10 +279,25 @@ mod tests {
                 vec![
                     CommandTag::Other("SAVEPOINT sp".to_string()),
                     CommandTag::Insert(1),
-                    CommandTag::Other("ROLLBACK TO ".to_string()),
+                    CommandTag::Other("ROLLBACK TO \"sp\"".to_string()),
                 ]
             );
             assert!(discard_rolled_back(&tags).is_empty());
+        }
+
+        #[test]
+        fn quoted_savepoint_release_merges_named_frame() {
+            let tags = sqlite_statement_tags(
+                &[
+                    "SAVEPOINT \"outer\"",
+                    "SAVEPOINT \"inner\"",
+                    "INSERT INTO users(id) VALUES (1)",
+                    "RELEASE \"outer\"",
+                ],
+                &HashMap::from([(2, 1)]),
+            );
+
+            assert_eq!(discard_rolled_back(&tags), vec![CommandTag::Insert(1)]);
         }
 
         #[test]
