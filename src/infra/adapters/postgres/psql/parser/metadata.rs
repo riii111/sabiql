@@ -255,6 +255,7 @@ impl PostgresAdapter {
                     to_columns: fk.to_columns,
                     on_delete,
                     on_update,
+                    reference_resolved: true,
                 })
             })
             .collect::<Result<Vec<_>, MetadataParseError>>()

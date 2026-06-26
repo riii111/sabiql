@@ -264,6 +264,33 @@ fn inspector_foreign_keys_tab_with_data() {
 }
 
 #[test]
+fn inspector_foreign_keys_tab_marks_unresolved_reference() {
+    let mut state = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+    let mut table = fixtures::sample_table_detail();
+    table.foreign_keys.push(ForeignKey {
+        name: "fk_users_missing_org".to_string(),
+        from_schema: "public".to_string(),
+        from_table: "users".to_string(),
+        from_columns: vec!["org_id".to_string()],
+        to_schema: "public".to_string(),
+        to_table: "missing_orgs".to_string(),
+        to_columns: vec!["id".to_string()],
+        on_delete: FkAction::NoAction,
+        on_update: FkAction::NoAction,
+        reference_resolved: false,
+    });
+    let _ = state.session.set_table_detail(table, 0);
+
+    state.ui.set_inspector_tab(InspectorTab::ForeignKeys);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inspector_triggers_tab_with_data() {
     let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();

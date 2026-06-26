@@ -10,29 +10,27 @@ use crate::policy::write::write_update::build_pk_pairs;
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
+use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
-fn is_jsonb_cell(state: &AppState) -> bool {
-    if !state
-        .session
-        .active_db_capabilities()
-        .supports_jsonb_detail()
-    {
-        return false;
-    }
+fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
     let Some(td) = state.session.table_detail() else {
         return false;
     };
-    // Ensure table_detail matches current preview target
     if td.schema != state.query.pagination.schema() || td.name != state.query.pagination.table() {
         return false;
     }
-    td.columns
-        .get(col_idx)
-        .is_some_and(|c| c.data_type == "jsonb")
+    let Some(column) = td.columns.get(col_idx) else {
+        return false;
+    };
+    let handling = preview_cell_text_diff_handling(
+        state.session.active_database_type_or_default(),
+        column.data_type.as_str(),
+    );
+    uses_jsonb_detail_modal(handling)
 }
 
 fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {
@@ -87,7 +85,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             }
 
             // JSONB columns open the dedicated detail modal instead of inline edit
-            if is_jsonb_cell(state) {
+            if cell_uses_jsonb_detail_modal(state) {
                 return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
                     Action::OpenModal(ModalKind::JsonbDetail),
                 ])]);
@@ -382,8 +380,9 @@ mod tests {
 
     mod jsonb_dispatch {
         use super::*;
+        use crate::domain::DatabaseType;
         use crate::domain::column::Column;
-        use crate::domain::{ConnectionId, DatabaseType};
+        use crate::domain::connection::ConnectionId;
 
         fn state_with_jsonb_column() -> AppState {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
@@ -432,17 +431,20 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_jsonb_type_name_enters_plain_cell_edit() {
+        fn sqlite_jsonb_cell_opens_inline_edit() {
             let mut state = state_with_jsonb_column();
             state.session.activate_connection_with_dsn(
-                &ConnectionId::new(),
-                "database",
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
                 DatabaseType::SQLite,
-                "sqlite://test.db",
+                "sqlite:///tmp/app.db",
             );
 
-            reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now());
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
 
+            assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(state.result_interaction.cell_edit().is_active());
         }

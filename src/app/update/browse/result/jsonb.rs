@@ -9,6 +9,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
+use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
@@ -40,10 +41,15 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 return DispatchResult::handled();
             };
 
-            let column = match table_detail.columns.get(col_idx) {
-                Some(c) if c.data_type == "jsonb" => c,
-                _ => return DispatchResult::handled(),
+            let database_type = state.session.active_database_type_or_default();
+            let Some(column) = table_detail.columns.get(col_idx) else {
+                return DispatchResult::handled();
             };
+            let handling =
+                preview_cell_text_diff_handling(database_type, column.data_type.as_str());
+            if !uses_jsonb_detail_modal(handling) {
+                return DispatchResult::handled();
+            }
 
             let cell_value = match result.rows().get(row_idx).and_then(|r| r.get(col_idx)) {
                 Some(v) if !v.is_empty() => v,
@@ -435,6 +441,8 @@ mod tests {
 
     mod entry_guards {
         use super::*;
+        use crate::domain::DatabaseType;
+        use crate::domain::connection::ConnectionId;
 
         #[test]
         fn opens_on_valid_jsonb_cell() {
@@ -442,7 +450,7 @@ mod tests {
 
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
@@ -457,7 +465,27 @@ mod tests {
 
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
+                Instant::now(),
+            );
+
+            assert!(!state.jsonb_detail.is_active());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+        }
+
+        #[test]
+        fn blocked_on_sqlite_jsonb_column() {
+            let mut state = state_with_jsonb_cell();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+
+            reduce_jsonb(
+                &mut state,
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
