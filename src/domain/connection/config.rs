@@ -43,6 +43,10 @@ pub enum SqliteConnectionConfigError {
     EmptyPath,
     #[error("SQLite database path contains unsupported characters")]
     UnsupportedPath,
+    #[error(
+        "SQLite in-memory databases and URI filenames are not supported; use a regular file path"
+    )]
+    UnsupportedConnectionFormat,
 }
 
 impl SqliteConnectionConfig {
@@ -79,7 +83,20 @@ fn validate_sqlite_path(path: &str) -> Result<(), SqliteConnectionConfigError> {
     if path.chars().any(|c| c == '\0' || c.is_control()) {
         return Err(SqliteConnectionConfigError::UnsupportedPath);
     }
+    if is_unsupported_sqlite_connection_format(path) {
+        return Err(SqliteConnectionConfigError::UnsupportedConnectionFormat);
+    }
     Ok(())
+}
+
+fn is_unsupported_sqlite_connection_format(path: &str) -> bool {
+    if path.trim() == ":memory:" {
+        return true;
+    }
+
+    path.as_bytes()
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"file:"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,6 +156,63 @@ mod tests {
                 serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "/tmp/app\n.db" }"#);
 
             assert!(result.is_err());
+        }
+
+        #[test]
+        fn rejects_in_memory_database() {
+            let result =
+                serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": ":memory:" }"#);
+
+            assert!(matches!(
+                result,
+                Err(error) if error.to_string().contains("in-memory")
+            ));
+        }
+
+        #[test]
+        fn rejects_uri_filename() {
+            let result = serde_json::from_str::<SqliteConnectionConfig>(
+                r#"{ "path": "file:/tmp/app.db?mode=ro" }"#,
+            );
+
+            assert!(matches!(
+                result,
+                Err(error) if error.to_string().contains("URI filename")
+            ));
+        }
+
+        #[test]
+        fn rejects_uri_filename_case_insensitively() {
+            let result =
+                serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "FILE:/tmp/app.db" }"#);
+
+            assert!(result.is_err());
+        }
+    }
+
+    mod validate_sqlite_path {
+        use super::*;
+
+        #[test]
+        fn accepts_regular_file_path() {
+            assert!(validate_sqlite_path("/tmp/app.db").is_ok());
+            assert!(validate_sqlite_path("./relative/app.db").is_ok());
+        }
+
+        #[test]
+        fn rejects_memory_database() {
+            assert!(matches!(
+                validate_sqlite_path(":memory:"),
+                Err(SqliteConnectionConfigError::UnsupportedConnectionFormat)
+            ));
+        }
+
+        #[test]
+        fn rejects_file_uri() {
+            assert!(matches!(
+                validate_sqlite_path("file:memdb?mode=memory"),
+                Err(SqliteConnectionConfigError::UnsupportedConnectionFormat)
+            ));
         }
     }
 }

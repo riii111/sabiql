@@ -237,4 +237,50 @@ mod tests {
             Err(ConnectionProfileError::InvalidSqlitePath)
         ));
     }
+
+    #[test]
+    fn sqlite_entry_rejects_in_memory_database() {
+        let entry = ConnectionConfigEntry {
+            id: "sqlite-id".to_string(),
+            name: "Local".to_string(),
+            db_type: DatabaseType::SQLite,
+            host: None,
+            port: None,
+            database: None,
+            username: None,
+            password: None,
+            ssl_mode: None,
+            path: Some(":memory:".to_string()),
+        };
+
+        let result = ConnectionProfile::try_from(&entry);
+
+        assert!(matches!(
+            result,
+            Err(ConnectionProfileError::UnsupportedSqliteConnectionFormat)
+        ));
+    }
+
+    #[test]
+    fn sqlite_entry_rejects_uri_filename() {
+        let entry = ConnectionConfigEntry {
+            id: "sqlite-id".to_string(),
+            name: "Local".to_string(),
+            db_type: DatabaseType::SQLite,
+            host: None,
+            port: None,
+            database: None,
+            username: None,
+            password: None,
+            ssl_mode: None,
+            path: Some("file:/tmp/app.db?mode=ro".to_string()),
+        };
+
+        let result = ConnectionProfile::try_from(&entry);
+
+        assert!(matches!(
+            result,
+            Err(ConnectionProfileError::UnsupportedSqliteConnectionFormat)
+        ));
+    }
 }

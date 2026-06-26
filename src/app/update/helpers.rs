@@ -550,6 +550,40 @@ mod tests {
         }
 
         #[test]
+        fn in_memory_database_sets_unsupported_format_error() {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::SQLite);
+            state
+                .input_mut(ConnectionField::SqlitePath)
+                .unwrap()
+                .set_content(":memory:".to_string());
+
+            validate_field(&mut state, ConnectionField::SqlitePath);
+
+            assert_eq!(
+                state.validation_error(ConnectionField::SqlitePath),
+                Some("Use a regular file path (in-memory and URI filenames unsupported)")
+            );
+        }
+
+        #[test]
+        fn uri_filename_sets_unsupported_format_error() {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::SQLite);
+            state
+                .input_mut(ConnectionField::SqlitePath)
+                .unwrap()
+                .set_content("file:/tmp/app.db?mode=ro".to_string());
+
+            validate_field(&mut state, ConnectionField::SqlitePath);
+
+            assert_eq!(
+                state.validation_error(ConnectionField::SqlitePath),
+                Some("Use a regular file path (in-memory and URI filenames unsupported)")
+            );
+        }
+
+        #[test]
         fn validate_all_removes_errors_for_hidden_fields() {
             let mut state = ConnectionSetupState::default();
             state.set_database_type(DatabaseType::SQLite);

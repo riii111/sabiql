@@ -16,6 +16,10 @@ pub enum ConnectionProfileError {
     EmptySqlitePath,
     #[error("SQLite database path contains unsupported characters")]
     InvalidSqlitePath,
+    #[error(
+        "SQLite in-memory databases and URI filenames are not supported; use a regular file path"
+    )]
+    UnsupportedSqliteConnectionFormat,
     #[error("PostgreSQL connection field `{0}` is required")]
     MissingPostgresField(&'static str),
 }
@@ -25,6 +29,9 @@ impl From<SqliteConnectionConfigError> for ConnectionProfileError {
         match error {
             SqliteConnectionConfigError::EmptyPath => Self::EmptySqlitePath,
             SqliteConnectionConfigError::UnsupportedPath => Self::InvalidSqlitePath,
+            SqliteConnectionConfigError::UnsupportedConnectionFormat => {
+                Self::UnsupportedSqliteConnectionFormat
+            }
         }
     }
 }
@@ -212,6 +219,26 @@ mod tests {
             assert!(matches!(
                 result,
                 Err(ConnectionProfileError::InvalidSqlitePath)
+            ));
+        }
+
+        #[test]
+        fn sqlite_profile_rejects_in_memory_database() {
+            let result = ConnectionProfile::new_sqlite("Local", ":memory:");
+
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::UnsupportedSqliteConnectionFormat)
+            ));
+        }
+
+        #[test]
+        fn sqlite_profile_rejects_uri_filename() {
+            let result = ConnectionProfile::new_sqlite("Local", "file:/tmp/app.db?mode=ro");
+
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::UnsupportedSqliteConnectionFormat)
             ));
         }
     }
