@@ -13,6 +13,13 @@ pub(super) fn reduce_er_picker(
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ErTablePicker) => {
+            if !state.session.active_db_capabilities().supports_er_diagram() {
+                state.messages.set_error_at(
+                    "ER diagrams are not available for this connection".to_string(),
+                    now,
+                );
+                return DispatchResult::handled();
+            }
             if state.session.metadata().is_none() {
                 state.ui.request_er_picker_after_metadata();
                 state

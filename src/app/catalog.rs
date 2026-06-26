@@ -1,9 +1,11 @@
 use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
+use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
+use crate::update::action::{Action, ModalKind};
 #[allow(
     clippy::wildcard_imports,
     reason = "help catalog enumerates nearly every keybindings table; explicit list is churn"
@@ -29,6 +31,7 @@ impl HelpDocument {
             filter.content(),
             filter.cursor(),
             state.settings.saved_keymap_preset(),
+            state.session.active_db_capabilities(),
         )
     }
 
@@ -37,7 +40,13 @@ impl HelpDocument {
     }
 
     pub fn new_with_cursor(origin: HelpOrigin, filter: &str, filter_cursor: usize) -> Self {
-        Self::new_with_cursor_and_preset(origin, filter, filter_cursor, origin.keymap_preset())
+        Self::new_with_cursor_and_preset(
+            origin,
+            filter,
+            filter_cursor,
+            origin.keymap_preset(),
+            &DbCapabilities::postgres_like(),
+        )
     }
 
     fn new_with_cursor_and_preset(
@@ -45,10 +54,11 @@ impl HelpDocument {
         filter: &str,
         filter_cursor: usize,
         keymap_preset: KeymapPreset,
+        db_capabilities: &DbCapabilities,
     ) -> Self {
         let normalized = filter.trim().to_lowercase();
-        let mut sections = vec![current_section(origin)];
-        sections.extend(reference_sections(keymap_preset));
+        let mut sections = vec![current_section(origin, db_capabilities)];
+        sections.extend(reference_sections(keymap_preset, db_capabilities));
 
         if !normalized.is_empty() {
             sections = sections
@@ -198,7 +208,7 @@ impl HelpRow {
     }
 }
 
-fn current_section(origin: HelpOrigin) -> HelpSection {
+fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> HelpSection {
     let rows = match origin {
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
@@ -233,7 +243,7 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
             &global::CONNECTIONS,
             &global::SQL,
         ]),
-        HelpOrigin::CommandLine => rows_from_bindings(COMMAND_LINE_KEYS),
+        HelpOrigin::CommandLine => command_line_rows(db_capabilities),
         HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
         HelpOrigin::TablePicker => rows_from_mode_rows(TABLE_PICKER_ROWS),
         HelpOrigin::CommandPalette => rows_from_mode_rows(COMMAND_PALETTE_ROWS),
@@ -271,7 +281,81 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
     }
 }
 
-fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
+fn command_line_rows(db_capabilities: &DbCapabilities) -> Vec<HelpRow> {
+    rows_from_binding_iter(COMMAND_LINE_KEYS.iter().filter(|binding| {
+        !matches!(
+            binding.action,
+            Action::OpenModal(ModalKind::ErTablePicker) if !db_capabilities.supports_er_diagram()
+        )
+    }))
+}
+
+fn reference_sections(
+    keymap_preset: KeymapPreset,
+    db_capabilities: &DbCapabilities,
+) -> Vec<HelpSection> {
+    let mut open_switch_rows = vec![
+        table_picker(keymap_preset),
+        &global::SQL,
+        &global::CONNECTIONS,
+        query_history(keymap_preset),
+        &global::PANE_SWITCH,
+        &global::INSPECTOR_TABS,
+    ];
+    if db_capabilities.supports_er_diagram() {
+        open_switch_rows.insert(2, &global::ER_DIAGRAM);
+    }
+
+    let mut data_action_rows = rows_from_binding_refs(&[
+        &global::RELOAD,
+        csv_export(keymap_preset),
+        &result_active::YANK,
+        &result_active::ROW_YANK,
+        &result_active::STAGE_DELETE,
+        &result_active::UNSTAGE_DELETE,
+        &inspector_ddl::YANK,
+    ]);
+    if db_capabilities.supports_jsonb_detail() {
+        data_action_rows.extend(rows_from_mode_row_refs(&[&jsonb_detail::YANK]));
+    }
+
+    let mut search_filter_rows = rows_from_mode_row_refs(&[
+        &table_picker::TYPE_FILTER,
+        &query_history_picker::TYPE_FILTER,
+    ]);
+    if db_capabilities.supports_er_diagram() {
+        search_filter_rows.insert(
+            1,
+            rows_from_mode_row_refs(&[&er_picker::TYPE_FILTER])[0].clone(),
+        );
+    }
+    if db_capabilities.supports_jsonb_detail() {
+        search_filter_rows.extend(rows_from_bindings(JSONB_SEARCH_KEYS));
+    }
+    search_filter_rows.extend(rows_from_mode_rows(HELP_ROWS));
+
+    let mut editing_rows = merge_rows(&[
+        sql_current_rows(SqlHelpMode::Normal, keymap_preset),
+        sql_current_rows(SqlHelpMode::Insert, keymap_preset),
+        rows_from_bindings(CELL_EDIT_KEYS),
+        rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
+    ]);
+    if db_capabilities.supports_jsonb_detail() {
+        editing_rows.extend(rows_from_mode_rows(JSONB_EDIT_ROWS));
+    }
+
+    let mut advanced_rows = Vec::new();
+    if db_capabilities.supports_explain() {
+        advanced_rows.extend(sql_current_rows(SqlHelpMode::Plan, keymap_preset));
+        advanced_rows.extend(sql_current_rows(SqlHelpMode::Compare, keymap_preset));
+    }
+    if db_capabilities.supports_er_diagram() {
+        advanced_rows.extend(rows_from_mode_rows(er_picker_rows(keymap_preset)));
+    }
+    if db_capabilities.supports_jsonb_detail() {
+        advanced_rows.extend(rows_from_mode_rows(JSONB_DETAIL_ROWS));
+    }
+
     vec![
         section(
             "Common",
@@ -286,55 +370,10 @@ fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
             ]),
         ),
         section("Navigation", rows_from_bindings(NAVIGATION_KEYS)),
-        section(
-            "Open / Switch",
-            rows_from_binding_refs(&[
-                table_picker(keymap_preset),
-                &global::SQL,
-                &global::ER_DIAGRAM,
-                &global::CONNECTIONS,
-                query_history(keymap_preset),
-                &global::PANE_SWITCH,
-                &global::INSPECTOR_TABS,
-            ]),
-        ),
-        section(
-            "Data Actions",
-            merge_rows(&[
-                rows_from_binding_refs(&[
-                    &global::RELOAD,
-                    csv_export(keymap_preset),
-                    &result_active::YANK,
-                    &result_active::ROW_YANK,
-                    &result_active::STAGE_DELETE,
-                    &result_active::UNSTAGE_DELETE,
-                    &inspector_ddl::YANK,
-                ]),
-                rows_from_mode_row_refs(&[&jsonb_detail::YANK]),
-            ]),
-        ),
-        section(
-            "Editing",
-            merge_rows(&[
-                sql_current_rows(SqlHelpMode::Normal, keymap_preset),
-                sql_current_rows(SqlHelpMode::Insert, keymap_preset),
-                rows_from_bindings(CELL_EDIT_KEYS),
-                rows_from_mode_rows(JSONB_EDIT_ROWS),
-                rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
-            ]),
-        ),
-        section(
-            "Search / Filter",
-            merge_rows(&[
-                rows_from_mode_row_refs(&[
-                    &table_picker::TYPE_FILTER,
-                    &er_picker::TYPE_FILTER,
-                    &query_history_picker::TYPE_FILTER,
-                ]),
-                rows_from_bindings(JSONB_SEARCH_KEYS),
-                rows_from_mode_rows(HELP_ROWS),
-            ]),
-        ),
+        section("Open / Switch", rows_from_binding_refs(&open_switch_rows)),
+        section("Data Actions", data_action_rows),
+        section("Editing", editing_rows),
+        section("Search / Filter", search_filter_rows),
         section(
             "Connections",
             merge_rows(&[
@@ -359,16 +398,11 @@ fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
                 rows_from_mode_rows(HELP_ROWS),
             ]),
         ),
-        section(
-            "Advanced",
-            merge_rows(&[
-                sql_current_rows(SqlHelpMode::Plan, keymap_preset),
-                sql_current_rows(SqlHelpMode::Compare, keymap_preset),
-                rows_from_mode_rows(er_picker_rows(keymap_preset)),
-                rows_from_mode_rows(JSONB_DETAIL_ROWS),
-            ]),
-        ),
+        section("Advanced", merge_rows(&[advanced_rows])),
     ]
+    .into_iter()
+    .filter(|section| !section.rows.is_empty())
+    .collect()
 }
 
 fn sql_current_rows(mode: SqlHelpMode, keymap_preset: KeymapPreset) -> Vec<HelpRow> {
@@ -513,8 +547,18 @@ fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::SqlModalTab;
+
+    fn row_descriptions(document: &HelpDocument) -> Vec<&str> {
+        document
+            .sections()
+            .iter()
+            .flat_map(HelpSection::rows)
+            .map(HelpRow::description)
+            .collect()
+    }
 
     #[test]
     fn document_starts_with_current_section() {
@@ -639,6 +683,12 @@ mod tests {
     #[test]
     fn origin_from_state_maps_sql_plan_and_jsonb_search() {
         let mut sql_state = AppState::new("test".to_string());
+        sql_state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/test",
+        );
         sql_state.modal.set_mode(InputMode::SqlModal);
         sql_state.sql_modal.set_active_tab(SqlModalTab::Plan);
         let sql_document = HelpDocument::new(HelpOrigin::from_state(&sql_state), "");
@@ -656,6 +706,79 @@ mod tests {
         assert_eq!(
             jsonb_document.sections()[0].title(),
             "Current: JSONB Search"
+        );
+    }
+
+    #[test]
+    fn from_state_omits_postgresql_only_reference_rows_for_sqlite() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::SQLite,
+            "sqlite://test.db",
+        );
+        let origin = HelpOrigin::from_state(&state);
+        state.ui.help_mut().open(origin);
+
+        let document = HelpDocument::from_state(&state);
+        let descriptions = row_descriptions(&document);
+
+        assert!(
+            !descriptions
+                .iter()
+                .any(|description| description.contains("ER Diagram"))
+        );
+        assert!(
+            !descriptions
+                .iter()
+                .any(|description| description.contains("EXPLAIN"))
+        );
+        assert!(
+            !descriptions
+                .iter()
+                .any(|description| description.contains("JSONB"))
+        );
+    }
+
+    #[test]
+    fn sqlite_sql_help_origin_normalizes_unsupported_plan_tab() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::SQLite,
+            "sqlite://test.db",
+        );
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.set_active_tab(SqlModalTab::Plan);
+
+        let document = HelpDocument::new(HelpOrigin::from_state(&state), "");
+
+        assert_eq!(document.sections()[0].title(), "Current: SQL Editor");
+    }
+
+    #[test]
+    fn sqlite_command_line_help_omits_erd_command() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::SQLite,
+            "sqlite://test.db",
+        );
+        state.modal.set_mode(InputMode::CommandLine);
+        let origin = HelpOrigin::from_state(&state);
+        state.ui.help_mut().open(origin);
+
+        let document = HelpDocument::from_state(&state);
+
+        assert_eq!(document.sections()[0].title(), "Current: Command Line");
+        assert!(
+            !document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.key() == ":erd")
         );
     }
 }

@@ -99,9 +99,13 @@ fn build_update_preview(
             let after = normalize_for_diff(state.result_interaction.cell_edit().draft_value());
             let is_jsonb = state
                 .session
-                .table_detail()
-                .and_then(|td| td.columns.get(col_idx))
-                .is_some_and(|c| c.data_type == "jsonb");
+                .active_db_capabilities()
+                .supports_jsonb_detail()
+                && state
+                    .session
+                    .table_detail()
+                    .and_then(|td| td.columns.get(col_idx))
+                    .is_some_and(|c| c.data_type == "jsonb");
             let json_diff = is_jsonb
                 .then(|| compute_json_diff(&before, &after, 1))
                 .flatten();
@@ -735,6 +739,34 @@ mod tests {
                 preview.diff[0].json_diff.is_some(),
                 "jsonb column should have structured diff"
             );
+        }
+
+        #[test]
+        fn sqlite_jsonb_type_name_does_not_produce_structured_diff() {
+            let mut state = editable_state_with_jsonb();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite://test.db",
+            );
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let preview = match &effects[0] {
+                Effect::DispatchActions(actions) => match actions.first().expect("action") {
+                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            assert!(preview.diff[0].json_diff.is_none());
         }
 
         #[test]

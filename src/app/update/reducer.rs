@@ -123,6 +123,7 @@ fn reduce_inner(
                 let cmd_action = palette_action_for_index(
                     state.ui.table_picker().selected(),
                     state.settings.saved_keymap_preset(),
+                    state.session.active_db_capabilities(),
                 );
                 state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
@@ -2329,6 +2330,7 @@ mod tests {
 
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -2365,6 +2367,7 @@ mod tests {
         #[test]
         fn open_without_metadata_sets_pending() {
             let mut state = create_test_state();
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             let now = Instant::now();
 
             let effects = reduce(
@@ -2781,11 +2784,14 @@ mod tests {
         }
 
         fn palette_index_of(state: &AppState, target: impl Fn(&Action) -> bool) -> usize {
-            palette_commands(state.settings.saved_keymap_preset())
-                .enumerate()
-                .find(|(_, kb)| target(&kb.action))
-                .map(|(i, _)| i)
-                .expect("action must exist in palette")
+            palette_commands(
+                state.settings.saved_keymap_preset(),
+                state.session.active_db_capabilities(),
+            )
+            .enumerate()
+            .find(|(_, kb)| target(&kb.action))
+            .map(|(i, _)| i)
+            .expect("action must exist in palette")
         }
 
         fn same_palette_action(left: &Action, right: &Action) -> bool {

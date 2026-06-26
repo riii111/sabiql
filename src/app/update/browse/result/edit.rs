@@ -13,6 +13,13 @@ use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
 fn is_jsonb_cell(state: &AppState) -> bool {
+    if !state
+        .session
+        .active_db_capabilities()
+        .supports_jsonb_detail()
+    {
+        return false;
+    }
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
@@ -394,9 +401,16 @@ mod tests {
     mod jsonb_dispatch {
         use super::*;
         use crate::domain::column::Column;
+        use crate::domain::{ConnectionId, DatabaseType};
 
         fn state_with_jsonb_column() -> AppState {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let mut table = cell_edit_entry_guardrails::minimal_users_table();
             table.columns = vec![
                 Column {
@@ -433,6 +447,22 @@ mod tests {
                 &effects[0],
                 Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
             ));
+        }
+
+        #[test]
+        fn sqlite_jsonb_type_name_enters_plain_cell_edit() {
+            let mut state = state_with_jsonb_column();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                DatabaseType::SQLite,
+                "sqlite://test.db",
+            );
+
+            reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(state.result_interaction.cell_edit().is_active());
         }
     }
 

@@ -141,6 +141,13 @@ fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String
 }
 
 fn selected_column_is_jsonb(state: &AppState) -> bool {
+    if !state
+        .session
+        .active_db_capabilities()
+        .supports_jsonb_detail()
+    {
+        return false;
+    }
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
@@ -184,11 +191,17 @@ fn update_search_matches(state: &mut AppState) {
 mod tests {
     use super::*;
     use crate::domain::column::Column;
-    use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::domain::{ConnectionId, DatabaseType, QueryResult, QuerySource, Table};
     use std::sync::Arc;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/test",
+        );
         state
             .query
             .set_current_result(Arc::new(QueryResult::success(
@@ -308,6 +321,22 @@ mod tests {
                 if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
         ));
         assert!(!state.cell_detail.is_active());
+    }
+
+    #[test]
+    fn sqlite_jsonb_type_name_opens_plain_cell_detail() {
+        let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::SQLite,
+            "sqlite://test.db",
+        );
+
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1\n}");
     }
 
     #[test]

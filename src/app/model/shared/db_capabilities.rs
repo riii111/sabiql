@@ -14,6 +14,8 @@ pub enum InspectorInfoField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
     supports_explain: bool,
+    supports_er_diagram: bool,
+    supports_jsonb_detail: bool,
     supported_inspector_tabs: Vec<InspectorTab>,
     supported_inspector_info_fields: Vec<InspectorInfoField>,
 }
@@ -21,6 +23,8 @@ pub struct DbCapabilities {
 impl DbCapabilities {
     pub(crate) fn new(
         supports_explain: bool,
+        supports_er_diagram: bool,
+        supports_jsonb_detail: bool,
         supported_inspector_tabs: Vec<InspectorTab>,
         supported_inspector_info_fields: Vec<InspectorInfoField>,
     ) -> Self {
@@ -42,6 +46,8 @@ impl DbCapabilities {
         );
         Self {
             supports_explain,
+            supports_er_diagram,
+            supports_jsonb_detail,
             supported_inspector_tabs,
             supported_inspector_info_fields,
         }
@@ -50,6 +56,8 @@ impl DbCapabilities {
     pub fn disconnected() -> Self {
         Self::new(
             false,
+            false,
+            false,
             vec![InspectorTab::Info],
             vec![InspectorInfoField::Schema, InspectorInfoField::TableName],
         )
@@ -57,6 +65,8 @@ impl DbCapabilities {
 
     pub fn postgres_like() -> Self {
         Self::new(
+            true,
+            true,
             true,
             vec![
                 InspectorTab::Info,
@@ -79,6 +89,8 @@ impl DbCapabilities {
 
     pub fn sqlite_like() -> Self {
         Self::new(
+            false,
+            false,
             false,
             vec![
                 InspectorTab::Info,
@@ -104,6 +116,14 @@ impl DbCapabilities {
 
     pub fn supports_explain(&self) -> bool {
         self.supports_explain
+    }
+
+    pub fn supports_er_diagram(&self) -> bool {
+        self.supports_er_diagram
+    }
+
+    pub fn supports_jsonb_detail(&self) -> bool {
+        self.supports_jsonb_detail
     }
 
     pub fn supported_inspector_tabs(&self) -> &[InspectorTab] {
@@ -201,6 +221,8 @@ mod tests {
             let caps = DbCapabilities::postgres_like();
 
             assert!(caps.supports_explain());
+            assert!(caps.supports_er_diagram());
+            assert!(caps.supports_jsonb_detail());
             assert!(caps.supports_inspector_tab(InspectorTab::Ddl));
             assert_eq!(caps.supported_inspector_tabs().len(), 7);
             assert_eq!(
@@ -220,6 +242,8 @@ mod tests {
             let caps = DbCapabilities::sqlite_like();
 
             assert!(!caps.supports_explain());
+            assert!(!caps.supports_er_diagram());
+            assert!(!caps.supports_jsonb_detail());
             assert_eq!(
                 caps.supported_inspector_tabs(),
                 &[
@@ -258,6 +282,8 @@ mod tests {
             let caps = DbCapabilities::disconnected();
 
             assert!(!caps.supports_explain());
+            assert!(!caps.supports_er_diagram());
+            assert!(!caps.supports_jsonb_detail());
             assert_eq!(caps.supported_inspector_tabs(), &[InspectorTab::Info]);
             assert_eq!(
                 caps.supported_inspector_info_fields(),
@@ -274,6 +300,8 @@ mod tests {
         fn unsupported_inspector_tab_returns_first_supported_tab() {
             let caps = DbCapabilities::new(
                 false,
+                false,
+                false,
                 vec![InspectorTab::Info, InspectorTab::Columns],
                 vec![InspectorInfoField::Owner],
             );
@@ -288,6 +316,8 @@ mod tests {
         fn supported_sql_modal_tab_passes_through() {
             let caps = DbCapabilities::new(
                 true,
+                true,
+                true,
                 vec![InspectorTab::Info],
                 vec![InspectorInfoField::Owner],
             );
@@ -301,6 +331,8 @@ mod tests {
         #[test]
         fn unsupported_sql_modal_tab_returns_sql() {
             let no_explain_caps = DbCapabilities::new(
+                false,
+                false,
                 false,
                 vec![InspectorTab::Info],
                 vec![InspectorInfoField::Owner],
@@ -319,7 +351,8 @@ mod tests {
         #[test]
         #[should_panic(expected = "DbCapabilities requires at least one supported inspector tab")]
         fn rejects_empty_supported_inspector_tabs() {
-            let _ = DbCapabilities::new(false, vec![], vec![InspectorInfoField::Owner]);
+            let _ =
+                DbCapabilities::new(false, false, false, vec![], vec![InspectorInfoField::Owner]);
         }
 
         #[test]
@@ -327,13 +360,15 @@ mod tests {
             expected = "DbCapabilities requires at least one supported inspector info field"
         )]
         fn rejects_empty_supported_inspector_info_fields() {
-            let _ = DbCapabilities::new(false, vec![InspectorTab::Info], vec![]);
+            let _ = DbCapabilities::new(false, false, false, vec![InspectorTab::Info], vec![]);
         }
 
         #[test]
         #[should_panic(expected = "DbCapabilities supported inspector tabs must be unique")]
         fn rejects_duplicate_supported_inspector_tabs() {
             let _ = DbCapabilities::new(
+                false,
+                false,
                 false,
                 vec![InspectorTab::Info, InspectorTab::Info],
                 vec![InspectorInfoField::Schema],
@@ -344,6 +379,8 @@ mod tests {
         #[should_panic(expected = "DbCapabilities supported inspector info fields must be unique")]
         fn rejects_duplicate_supported_inspector_info_fields() {
             let _ = DbCapabilities::new(
+                false,
+                false,
                 false,
                 vec![InspectorTab::Info],
                 vec![InspectorInfoField::Schema, InspectorInfoField::Schema],

@@ -118,7 +118,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Action::ResultCellYank
         }
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
-        Key::Char('e') => Action::OpenModal(ModalKind::ErTablePicker),
+        Key::Char('e') if state.session.active_db_capabilities().supports_er_diagram() => {
+            Action::OpenModal(ModalKind::ErTablePicker)
+        }
         Key::Char('c') if state.ui.focused_pane() == FocusedPane::Explorer => {
             Action::OpenModal(ModalKind::ConnectionSelector)
         }
@@ -132,6 +134,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::connection::error::ConnectionErrorInfo;
     use crate::model::shared::key_sequence::KeySequenceState;
     use crate::model::shared::settings::KeymapPreset;
@@ -158,6 +161,17 @@ mod tests {
     fn browse_state_with_preset(preset: KeymapPreset) -> AppState {
         let mut state = browse_state();
         state.settings.load_keymap_preset(preset);
+        state
+    }
+
+    fn connected_state(database_type: DatabaseType) -> AppState {
+        let mut state = browse_state();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            database_type,
+            "test://database",
+        );
         state
     }
 
@@ -272,6 +286,27 @@ mod tests {
                 let result = handle_normal_mode(input, &state);
 
                 assert!(same_payload_free_action(&result, &expected));
+            }
+
+            #[test]
+            fn er_key_opens_picker_for_postgresql() {
+                let state = connected_state(DatabaseType::PostgreSQL);
+
+                let result = handle_normal_mode(combo(Key::Char('e')), &state);
+
+                assert!(matches!(
+                    result,
+                    Action::OpenModal(ModalKind::ErTablePicker)
+                ));
+            }
+
+            #[test]
+            fn er_key_is_ignored_for_sqlite() {
+                let state = connected_state(DatabaseType::SQLite);
+
+                let result = handle_normal_mode(combo(Key::Char('e')), &state);
+
+                assert!(matches!(result, Action::None));
             }
 
             #[rstest]

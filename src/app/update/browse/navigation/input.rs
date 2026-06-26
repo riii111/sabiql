@@ -149,7 +149,11 @@ pub fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
             target: ListTarget::CommandPalette,
             motion: ListMotion::Next,
         } => {
-            let max = palette_command_count(state.settings.saved_keymap_preset()).saturating_sub(1);
+            let max = palette_command_count(
+                state.settings.saved_keymap_preset(),
+                state.session.active_db_capabilities(),
+            )
+            .saturating_sub(1);
             let selected = state.ui.table_picker().selected();
             if selected < max {
                 state.ui.table_picker_mut().set_selection(selected + 1);
