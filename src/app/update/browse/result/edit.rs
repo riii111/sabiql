@@ -106,7 +106,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             }
         }
         Action::ResultCancelCellEdit => {
-            state.result_interaction.cancel_cell_edit();
+            state.result_interaction.leave_cell_edit();
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
@@ -200,7 +200,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state
                 .result_interaction
-                .cell_edit_set_content("modified".to_string());
+                .replace_cell_edit_draft("modified".to_string());
             state.modal.set_mode(InputMode::Normal);
 
             reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
@@ -225,7 +225,7 @@ mod tests {
                 .begin_cell_edit(0, 99, "stale".to_string());
             state
                 .result_interaction
-                .cell_edit_set_content("stale-modified".to_string());
+                .replace_cell_edit_draft("stale-modified".to_string());
 
             reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
@@ -365,7 +365,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state
                 .result_interaction
-                .cell_edit_set_content("bob".to_string());
+                .replace_cell_edit_draft("bob".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
             reduce_edit(&mut state, &Action::ResultCancelCellEdit, Instant::now())

@@ -57,7 +57,7 @@ impl CellEditState {
         self.input.move_cursor(direction);
     }
 
-    pub fn set_content(&mut self, content: String) {
+    pub fn replace_draft(&mut self, content: String) {
         self.input.set_content(content);
     }
 
@@ -135,7 +135,7 @@ mod tests {
     fn has_pending_draft_returns_true_when_draft_differs() {
         let mut state = CellEditState::default();
         state.begin(0, 0, "Alice".to_string());
-        state.set_content("Bob".to_string());
+        state.replace_draft("Bob".to_string());
 
         assert!(state.has_pending_draft());
     }
@@ -151,7 +151,7 @@ mod tests {
     fn clear_after_begin_resets_all_fields() {
         let mut state = CellEditState::default();
         state.begin(1, 2, "Before".to_string());
-        state.set_content("After".to_string());
+        state.replace_draft("After".to_string());
 
         state.clear();
 
