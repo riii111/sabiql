@@ -311,7 +311,11 @@ pub fn handle_sql_modal_keys_with_prefix(
     }
 
     if alt && combo.key == Key::Char('e') {
-        return Action::ExplainAnalyzeRequest;
+        return if supports_explain_analyze {
+            Action::ExplainAnalyzeRequest
+        } else {
+            Action::None
+        };
     }
 
     if completion_visible {
@@ -1376,6 +1380,21 @@ mod tests {
             );
 
             assert_action(result, Expected::ExplainAnalyzeRequest);
+        }
+
+        #[test]
+        fn editing_alt_e_is_noop_when_analyze_is_unsupported() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_alt(Key::Char('e')),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+                None,
+                KeymapPreset::Default,
+                false,
+            );
+
+            assert!(matches!(result, Action::None));
         }
 
         #[rstest]

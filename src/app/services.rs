@@ -15,6 +15,8 @@ impl AppServices {
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
     pub fn stub() -> Self {
+        use crate::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;
+
         fn quote_literal(value: &str) -> String {
             format!("'{}'", value.replace('\'', "''"))
         }
@@ -67,35 +69,7 @@ impl AppServices {
             ) -> Option<String> {
                 match database_type {
                     DatabaseType::PostgreSQL => Some(format!("EXPLAIN {query}")),
-                    DatabaseType::SQLite => {
-                        use crate::policy::sql::statement_classifier::{self, StatementKind};
-                        let trimmed = query.trim();
-                        if trimmed.len() >= 19
-                            && trimmed[..19].eq_ignore_ascii_case("EXPLAIN QUERY PLAN")
-                        {
-                            let inner = trimmed[19..].trim_start();
-                            if matches!(
-                                statement_classifier::classify(inner),
-                                StatementKind::Select
-                            ) {
-                                return Some(trimmed.to_string());
-                            }
-                            return None;
-                        }
-                        if statement_classifier::first_keyword(trimmed)
-                            .is_some_and(|keyword| keyword.eq_ignore_ascii_case("EXPLAIN"))
-                        {
-                            return None;
-                        }
-                        if matches!(
-                            statement_classifier::classify(trimmed),
-                            StatementKind::Select
-                        ) {
-                            Some(format!("EXPLAIN QUERY PLAN {trimmed}"))
-                        } else {
-                            None
-                        }
-                    }
+                    DatabaseType::SQLite => build_sqlite_explain_query_plan_sql(query),
                 }
             }
 
@@ -174,7 +148,19 @@ impl AppServices {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::QueryValue;
+    use crate::domain::{DatabaseType, QueryValue};
+
+    #[test]
+    fn stub_sqlite_explain_passes_through_existing_query_plan_prefix() {
+        let services = AppServices::stub();
+
+        assert_eq!(
+            services
+                .sql_dialect
+                .build_explain_sql(DatabaseType::SQLite, "EXPLAIN QUERY PLAN SELECT 1"),
+            Some("EXPLAIN QUERY PLAN SELECT 1".to_string())
+        );
+    }
 
     #[test]
     fn stub_sql_dialect_formats_typed_values() {

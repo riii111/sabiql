@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use crate::app::policy::sql::statement_classifier::{self, StatementKind};
+use crate::app::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::{DbOperationError, DdlGenerator, SqlDialect};
 use crate::domain::{DatabaseType, QueryValue, Table, Trigger};
 
@@ -307,40 +307,9 @@ impl DdlGenerator for SqliteAdapter {
     }
 }
 
-const SQLITE_EXPLAIN_QUERY_PLAN_PREFIX: &str = "EXPLAIN QUERY PLAN";
-
-fn explain_query_plan_sql(query: &str) -> Option<String> {
-    let trimmed = query.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    if trimmed.len() >= SQLITE_EXPLAIN_QUERY_PLAN_PREFIX.len()
-        && trimmed[..SQLITE_EXPLAIN_QUERY_PLAN_PREFIX.len()]
-            .eq_ignore_ascii_case(SQLITE_EXPLAIN_QUERY_PLAN_PREFIX)
-    {
-        let inner = trimmed[SQLITE_EXPLAIN_QUERY_PLAN_PREFIX.len()..].trim_start();
-        if matches!(statement_classifier::classify(inner), StatementKind::Select) {
-            return Some(trimmed.to_string());
-        }
-        return None;
-    }
-    if statement_classifier::first_keyword(trimmed)
-        .is_some_and(|keyword| keyword.eq_ignore_ascii_case("EXPLAIN"))
-    {
-        return None;
-    }
-    if !matches!(
-        statement_classifier::classify(trimmed),
-        StatementKind::Select
-    ) {
-        return None;
-    }
-    Some(format!("EXPLAIN QUERY PLAN {trimmed}"))
-}
-
 impl SqlDialect for SqliteAdapter {
     fn build_explain_sql(&self, _database_type: DatabaseType, query: &str) -> Option<String> {
-        explain_query_plan_sql(query)
+        build_sqlite_explain_query_plan_sql(query)
     }
 
     fn build_explain_analyze_sql(
