@@ -46,6 +46,7 @@ pub struct AppState {
     pub jsonb_detail: JsonbDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub settings: SettingsState,
+    pub sqlite_diagnostics: crate::model::sqlite::diagnostics::SqliteDiagnosticsState,
     pub explain: ExplainContext,
     pub modal: ModalState,
     pub flash_timers: FlashTimerStore,
@@ -77,6 +78,8 @@ impl AppState {
             jsonb_detail: JsonbDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             settings: SettingsState::default(),
+            sqlite_diagnostics: crate::model::sqlite::diagnostics::SqliteDiagnosticsState::default(
+            ),
             explain: ExplainContext::default(),
             modal: ModalState::default(),
             flash_timers: FlashTimerStore::default(),
@@ -173,6 +176,13 @@ impl AppState {
         );
         if let Some(height) = output.explain_compare_viewport_height {
             self.explain.set_compare_viewport_height(height);
+        }
+        if let (Some(content), Some(viewport)) = (
+            output.sqlite_diagnostics_content_line_count,
+            output.sqlite_diagnostics_viewport_height,
+        ) {
+            self.sqlite_diagnostics
+                .apply_viewport_metrics(content, viewport);
         }
     }
 

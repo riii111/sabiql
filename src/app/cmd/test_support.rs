@@ -7,14 +7,18 @@ use crate::cmd::cache::TtlCache;
 use crate::cmd::runner::{
     ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
 };
+use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::query_history::QueryHistoryEntry;
-use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};
+use crate::domain::{
+    ConnectionId, DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource,
+};
+use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder,
     ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
     MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore,
-    ServiceFileError, SettingsStore, SettingsStoreError,
+    ServiceFileError, SettingsStore, SettingsStoreError, SqliteDiagnosticsProvider,
 };
 use crate::update::action::Action;
 
@@ -112,6 +116,22 @@ impl SettingsStore for NoopSettingsStore {
     }
 }
 
+pub struct NoopSqliteDiagnosticsProvider;
+#[async_trait::async_trait]
+impl SqliteDiagnosticsProvider for NoopSqliteDiagnosticsProvider {
+    async fn fetch_diagnostics_core(
+        &self,
+        _dsn: &str,
+        _read_only: bool,
+    ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
+        Ok(SqliteDiagnosticsSnapshot::default())
+    }
+
+    async fn fetch_quick_check(&self, _dsn: &str, _read_only: bool) -> DiagnosticField {
+        DiagnosticField::default()
+    }
+}
+
 pub fn make_runner(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
@@ -147,6 +167,7 @@ pub fn make_runner_with_dsn(
         QueryDeps {
             query_executor,
             query_history_store: Arc::new(NoopQueryHistoryStore),
+            sqlite_diagnostics: Arc::new(NoopSqliteDiagnosticsProvider),
         },
         ErDeps {
             er_exporter: Arc::new(NoopErExporter),

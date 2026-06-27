@@ -263,6 +263,7 @@ fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> Help
             &connection_setup::DROPDOWN_NAV,
         ]),
         HelpOrigin::ConnectionError => rows_from_mode_rows(CONNECTION_ERROR_ROWS),
+        HelpOrigin::SqliteDiagnostics => rows_from_mode_rows(SQLITE_DIAGNOSTICS_ROWS),
         HelpOrigin::ConfirmDialog => rows_from_bindings(CONFIRM_DIALOG_KEYS),
         HelpOrigin::ConnectionSelector => rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
         HelpOrigin::ErTablePicker { keymap_preset } => {
@@ -304,6 +305,9 @@ fn reference_sections(
     ];
     if db_capabilities.supports_er_diagram() {
         open_switch_rows.insert(2, &global::ER_DIAGRAM);
+    }
+    if db_capabilities.supports_sqlite_diagnostics() {
+        open_switch_rows.insert(2, sqlite_diagnostics(keymap_preset));
     }
 
     let mut data_action_rows = rows_from_binding_refs(&[

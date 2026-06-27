@@ -18,4 +18,5 @@ pub enum InputMode {
     JsonbDetail,
     JsonbEdit,
     CellDetail,
+    SqliteDiagnostics,
 }

@@ -16,6 +16,7 @@ const PALETTE_COMMANDS: &[KeyBinding] = &[
     global::SQL,
     global::ER_DIAGRAM,
     global::CONNECTIONS,
+    global::SQLITE_DIAGNOSTICS,
     global::CSV_EXPORT,
     global::READ_ONLY,
     global::EXIT_READ_ONLY,
@@ -32,6 +33,7 @@ const IDE_PALETTE_COMMANDS: &[KeyBinding] = &[
     global::SQL,
     global::ER_DIAGRAM,
     global::CONNECTIONS,
+    global::SQLITE_DIAGNOSTICS_IDE,
     global::CSV_EXPORT_IDE,
     global::READ_ONLY_IDE,
     global::EXIT_READ_ONLY_IDE,
@@ -72,6 +74,10 @@ fn palette_command_supported(kb: &KeyBinding, db_capabilities: &DbCapabilities) 
     !matches!(
         kb.action,
         Action::OpenModal(ModalKind::ErTablePicker) if !db_capabilities.supports_er_diagram()
+    ) && !matches!(
+        kb.action,
+        Action::OpenModal(ModalKind::SqliteDiagnostics)
+            if !db_capabilities.supports_sqlite_diagnostics()
     )
 }
 
@@ -176,6 +182,23 @@ mod tests {
             !commands
                 .iter()
                 .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::ErTablePicker)))
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::SqliteDiagnostics)))
+        );
+    }
+
+    #[test]
+    fn postgres_palette_omits_sqlite_diagnostics_command() {
+        let commands = palette_commands(KeymapPreset::Default, &DbCapabilities::postgres_like())
+            .collect::<Vec<_>>();
+
+        assert!(
+            !commands
+                .iter()
+                .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::SqliteDiagnostics)))
         );
     }
 }

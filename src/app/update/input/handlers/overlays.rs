@@ -20,6 +20,12 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
     keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
 }
 
+pub fn handle_sqlite_diagnostics_keys(combo: KeyCombo) -> Action {
+    keybindings::SQLITE_DIAGNOSTICS
+        .resolve(&combo)
+        .unwrap_or(Action::None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,6 +199,17 @@ mod tests {
             let result = handle_confirm_dialog_keys(combo(code));
 
             assert!(matches!(result, Action::None));
+        }
+    }
+
+    mod sqlite_diagnostics_keys {
+        use super::*;
+
+        #[test]
+        fn question_mark_toggles_help() {
+            let result = handle_sqlite_diagnostics_keys(combo(Key::Char('?')));
+
+            assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
         }
     }
 }
