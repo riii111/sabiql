@@ -122,16 +122,20 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                     entry.port.unwrap_or(5432),
                     required_postgres_field(entry.database.as_ref(), "database")?,
                     required_postgres_field(entry.username.as_ref(), "username")?,
-                    entry.password.clone().unwrap_or_default(),
-                    entry.ssl_mode.unwrap_or_default(),
+                    match &entry.password {
+                        Some(password) => password.clone(),
+                        None => String::new(),
+                    },
+                    entry.ssl_mode.unwrap_or(SslMode::Prefer),
                 )),
             ),
             DatabaseType::SQLite => Self::with_id_and_config(
                 id,
                 name.as_str().to_string(),
-                ConnectionConfig::SQLite(SqliteConnectionConfig::new(
-                    entry.path.clone().unwrap_or_default(),
-                )?),
+                ConnectionConfig::SQLite(SqliteConnectionConfig::new(match &entry.path {
+                    Some(path) => path.clone(),
+                    None => String::new(),
+                })?),
             ),
         }
     }

@@ -12,3 +12,15 @@ pub struct TableStorage {
     pub without_rowid: bool,
     pub virtual_module: Option<String>,
 }
+
+impl TableStorage {
+    #[must_use]
+    pub const fn regular_table() -> Self {
+        Self {
+            kind: TableObjectKind::Table,
+            is_strict: false,
+            without_rowid: false,
+            virtual_module: None,
+        }
+    }
+}
