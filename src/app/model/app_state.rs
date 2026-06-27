@@ -332,10 +332,10 @@ mod tests {
     }
 
     fn make_metadata(table_summaries: Vec<TableSummary>) -> Arc<DatabaseMetadata> {
-        Arc::new(DatabaseMetadata {
-            database_name: "test".to_string(),
-            schemas: vec![],
-            table_summaries,
+        Arc::new({
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = table_summaries;
+            metadata
         })
     }
 

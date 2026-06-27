@@ -52,7 +52,7 @@ pub fn dispatch_metadata(state: &mut AppState, action: &Action, now: Instant) ->
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
     use crate::model::app_state::AppState;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
     use crate::update::action::Action;
@@ -74,21 +74,26 @@ mod tests {
         Box::new(crate::test_support::table::minimal(schema, name))
     }
 
+    fn test_metadata(database_name: &str, table_summaries: Vec<TableSummary>) -> DatabaseMetadata {
+        let mut metadata = DatabaseMetadata::new(database_name.to_string());
+        metadata.table_summaries = table_summaries;
+        metadata
+    }
+
     mod freshness_guards {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         fn metadata_with_users() -> Arc<DatabaseMetadata> {
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            Arc::new(test_metadata(
+                "test",
+                vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
                 )],
-            })
+            ))
         }
 
         #[test]
@@ -617,16 +622,15 @@ mod tests {
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables
+            Arc::new(test_metadata(
+                "test",
+                tables
                     .into_iter()
                     .map(|(schema, name)| {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)
                     })
                     .collect(),
-            })
+            ))
         }
 
         fn metadata_loaded_action(state: &mut AppState, metadata: Arc<DatabaseMetadata>) -> Action {
@@ -724,11 +728,7 @@ mod tests {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
-            })
+            Arc::new(test_metadata("test", tables))
         }
 
         #[test]

@@ -186,7 +186,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::ConnectionStoreError;
     use crate::update::action::ModalKind;
@@ -198,6 +198,12 @@ mod tests {
 
     fn create_test_state() -> AppState {
         AppState::new("test_project".to_string())
+    }
+
+    fn test_metadata(database_name: &str, table_summaries: Vec<TableSummary>) -> DatabaseMetadata {
+        let mut metadata = DatabaseMetadata::new(database_name.to_string());
+        metadata.table_summaries = table_summaries;
+        metadata
     }
 
     mod pure_actions {
@@ -939,11 +945,7 @@ mod tests {
         fn metadata_loaded_with_empty_tables_selects_none() {
             let mut state = create_test_state();
             state.ui.set_explorer_selected_raw(5);
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            };
+            let metadata = test_metadata("test", vec![]);
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state, metadata);
 
@@ -957,16 +959,15 @@ mod tests {
         fn metadata_loaded_with_tables_selects_first() {
             let mut state = create_test_state();
             state.ui.set_explorer_selected_raw(3);
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            let metadata = test_metadata(
+                "test",
+                vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
                 )],
-            };
+            );
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state, metadata);
 
@@ -980,16 +981,15 @@ mod tests {
         fn metadata_failed_clears_stale_browse_state_on_initial_connect() {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.mark_connected(Arc::new(DatabaseMetadata {
-                database_name: "stale".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            state.session.mark_connected(Arc::new(test_metadata(
+                "stale",
+                vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
                 )],
-            }));
+            )));
             state.ui.set_explorer_selected_raw(2);
             let _ = state
                 .session
@@ -1222,16 +1222,15 @@ mod tests {
         }
 
         fn users_metadata() -> Arc<DatabaseMetadata> {
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            Arc::new(test_metadata(
+                "test",
+                vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     Some(100),
                     false,
                 )],
-            })
+            ))
         }
 
         #[test]
@@ -1280,7 +1279,7 @@ mod tests {
 
     mod effect_producing_actions {
         use super::*;
-        use crate::domain::{DatabaseMetadata, MetadataState};
+        use crate::domain::MetadataState;
 
         #[test]
         fn load_metadata_with_dsn_returns_fetch_effect() {
@@ -1370,11 +1369,7 @@ mod tests {
             assert!(state.session.is_reloading());
 
             // Metadata loaded
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            };
+            let metadata = test_metadata("test", vec![]);
             let action = Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
@@ -1407,7 +1402,6 @@ mod tests {
 
     mod er_diagram {
         use super::*;
-        use crate::domain::DatabaseMetadata;
         use crate::model::er_state::ErStatus;
 
         #[test]
@@ -1425,11 +1419,9 @@ mod tests {
         fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            })));
+            state
+                .session
+                .set_metadata(Some(Arc::new(test_metadata("test", vec![]))));
             let _ = state.sql_modal.begin_prefetch();
             state
                 .er_preparation
@@ -1448,11 +1440,9 @@ mod tests {
         fn prefetch_started_true_emits_smart_refresh() {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            })));
+            state
+                .session
+                .set_metadata(Some(Arc::new(test_metadata("test", vec![]))));
             let _ = state.sql_modal.begin_prefetch();
             let now = Instant::now();
 
@@ -1467,11 +1457,9 @@ mod tests {
         fn no_prefetch_emits_smart_refresh() {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            })));
+            state
+                .session
+                .set_metadata(Some(Arc::new(test_metadata("test", vec![]))));
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1810,6 +1798,15 @@ mod tests {
             GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
         };
 
+        fn low_risk_unblocked() -> GuardrailDecision {
+            GuardrailDecision {
+                risk_level: RiskLevel::Low,
+                blocked: false,
+                reason: None,
+                target_summary: None,
+            }
+        }
+
         #[test]
         fn confirm_quit_no_connection_sets_should_quit() {
             let mut state = create_test_state();
@@ -1867,12 +1864,7 @@ mod tests {
                     key_values: vec![("id".to_string(), crate::domain::QueryValue::text("2"))],
                 },
                 diff: vec![],
-                guardrail: GuardrailDecision {
-                    risk_level: RiskLevel::Low,
-                    blocked: false,
-                    reason: None,
-                    target_summary: None,
-                },
+                guardrail: low_risk_unblocked(),
             });
             state.query.set_delete_refresh_target(0, Some(499), 1);
             state.confirm_dialog.open(
@@ -1939,12 +1931,7 @@ mod tests {
                     key_values: vec![],
                 },
                 diff: vec![],
-                guardrail: GuardrailDecision {
-                    risk_level: RiskLevel::Low,
-                    blocked: false,
-                    reason: None,
-                    target_summary: None,
-                },
+                guardrail: low_risk_unblocked(),
             });
             state.confirm_dialog.open(
                 "",
@@ -1982,7 +1969,7 @@ mod tests {
 
     mod connection_state_tests {
         use super::*;
-        use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
+        use crate::domain::{ConnectionId, MetadataState};
         use crate::model::connection::state::ConnectionState;
         use crate::model::shared::inspector_tab::InspectorTab;
 
@@ -2079,11 +2066,7 @@ mod tests {
                 .set_connection_state(ConnectionState::Connecting);
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            };
+            let metadata = test_metadata("test", vec![]);
             let now = Instant::now();
 
             reduce(
@@ -2322,11 +2305,7 @@ mod tests {
             let cached = crate::model::connection::cache::ConnectionCache {
                 explorer_selected: 10,
                 inspector_tab: InspectorTab::Indexes,
-                metadata: Some(Arc::new(DatabaseMetadata {
-                    database_name: "cached_db".to_string(),
-                    schemas: vec![],
-                    table_summaries: vec![],
-                })),
+                metadata: Some(Arc::new(test_metadata("cached_db", vec![]))),
                 ..Default::default()
             };
             state.connection_caches.save(&conn_b, cached);
@@ -2364,14 +2343,13 @@ mod tests {
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![
+            state.session.set_metadata(Some(Arc::new(test_metadata(
+                "test",
+                vec![
                     TableSummary::new("public".to_string(), "users".to_string(), None, false),
                     TableSummary::new("public".to_string(), "posts".to_string(), None, false),
                 ],
-            })));
+            ))));
             state
         }
 
@@ -2417,16 +2395,15 @@ mod tests {
         }
 
         fn sample_metadata() -> Arc<DatabaseMetadata> {
-            Arc::new(DatabaseMetadata {
-                database_name: "test_db".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            Arc::new(test_metadata(
+                "test_db",
+                vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     Some(100),
                     false,
                 )],
-            })
+            ))
         }
 
         fn metadata_loaded_action(state: &mut AppState) -> Action {
@@ -2642,7 +2619,7 @@ mod tests {
 
     mod pagination_integration {
         use super::*;
-        use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
+        use crate::domain::{QueryResult, QuerySource, TableSummary};
         use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
         use std::sync::Arc;
 
@@ -2652,16 +2629,15 @@ mod tests {
             let now = Instant::now();
 
             // Load metadata with a table
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            let metadata = test_metadata(
+                "test",
+                vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     Some(1200),
                     false,
                 )],
-            };
+            );
             let run_id = state.session.begin_metadata_refresh();
             reduce(
                 &mut state,

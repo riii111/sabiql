@@ -931,6 +931,22 @@ mod tests {
         CompletionEngine::new()
     }
 
+    fn test_column(
+        name: &str,
+        data_type: &str,
+        attributes: ColumnAttributes,
+        ordinal_position: i32,
+    ) -> Column {
+        Column {
+            name: name.to_string(),
+            data_type: data_type.to_string(),
+            default: None,
+            attributes,
+            comment: None,
+            ordinal_position,
+        }
+    }
+
     fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
         Table {
             schema: schema.to_string(),
@@ -938,13 +954,8 @@ mod tests {
             columns: columns
                 .iter()
                 .enumerate()
-                .map(|(i, col)| Column {
-                    name: (*col).to_string(),
-                    data_type: "text".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: (i + 1) as i32,
+                .map(|(i, col)| {
+                    test_column(col, "text", ColumnAttributes::NULLABLE, (i + 1) as i32)
                 })
                 .collect(),
             ..crate::test_support::table::minimal("", "")

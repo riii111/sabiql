@@ -472,6 +472,16 @@ mod tests {
 
     fn test_preview() -> WritePreview {
         use crate::policy::write::write_guardrails::*;
+
+        fn low_risk_unblocked() -> GuardrailDecision {
+            GuardrailDecision {
+                risk_level: RiskLevel::Low,
+                blocked: false,
+                reason: None,
+                target_summary: None,
+            }
+        }
+
         WritePreview {
             operation: WriteOperation::Update,
             sql: "UPDATE t SET x=1".to_string(),
@@ -481,12 +491,7 @@ mod tests {
                 key_values: vec![],
             },
             diff: vec![],
-            guardrail: GuardrailDecision {
-                risk_level: RiskLevel::Low,
-                blocked: false,
-                reason: None,
-                target_summary: None,
-            },
+            guardrail: low_risk_unblocked(),
         }
     }
 }
