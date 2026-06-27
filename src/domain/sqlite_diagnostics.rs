@@ -64,6 +64,20 @@ impl SqliteDiagnosticsSnapshot {
             .ok_value()
             .map(|summary| summary.eq_ignore_ascii_case("ok"))
     }
+
+    #[must_use]
+    pub fn core_fetch_failed(db_file: DiagnosticField) -> Self {
+        Self {
+            db_file,
+            sqlite_version: DiagnosticField::Unavailable,
+            foreign_keys: DiagnosticField::Unavailable,
+            journal_mode: DiagnosticField::Unavailable,
+            query_only: DiagnosticField::Unavailable,
+            busy_timeout: DiagnosticField::Unavailable,
+            database_list: DiagnosticField::Unavailable,
+            quick_check: DiagnosticField::Unavailable,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -104,5 +118,14 @@ mod tests {
         };
 
         assert_eq!(snapshot.quick_check_is_ok(), Some(false));
+    }
+
+    #[test]
+    fn core_fetch_failed_marks_non_db_file_fields_unavailable() {
+        let snapshot = SqliteDiagnosticsSnapshot::core_fetch_failed(DiagnosticField::err("boom"));
+
+        assert!(snapshot.db_file.is_err());
+        assert_eq!(snapshot.sqlite_version, DiagnosticField::Unavailable);
+        assert_eq!(snapshot.quick_check, DiagnosticField::Unavailable);
     }
 }
