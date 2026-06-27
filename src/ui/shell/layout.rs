@@ -20,6 +20,7 @@ use crate::features::connections::setup::ConnectionSetup;
 use crate::features::overlays::confirm_dialog::{ConfirmDialog, ConfirmPreviewMetrics};
 use crate::features::overlays::help::HelpOverlay;
 use crate::features::overlays::settings::SettingsOverlay;
+use crate::features::overlays::sqlite_diagnostics::SqliteDiagnosticsOverlay;
 use crate::features::pickers::PickerRenderMetrics;
 use crate::features::pickers::command_palette::CommandPalette;
 use crate::features::pickers::er_table_picker::ErTablePicker;
@@ -171,6 +172,9 @@ impl MainLayout {
             InputMode::Help => HelpOverlay::render(frame, state, theme),
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, theme),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now, theme),
+            InputMode::SqliteDiagnostics => {
+                SqliteDiagnosticsOverlay::render(frame, state, theme);
+            }
             _ => {}
         }
 

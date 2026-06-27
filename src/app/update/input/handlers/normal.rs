@@ -44,6 +44,17 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('p') if kb::table_picker(keymap_preset).combos.contains(&combo) => {
                 return Action::OpenModal(ModalKind::TablePicker);
             }
+            Key::Char('d')
+                if kb::sqlite_diagnostics(keymap_preset)
+                    .combos
+                    .contains(&combo)
+                    && state
+                        .session
+                        .active_db_capabilities()
+                        .supports_sqlite_diagnostics() =>
+            {
+                return Action::OpenModal(ModalKind::SqliteDiagnostics);
+            }
             // Ctrl+N/P navigation disabled on main screen; use j/k or arrows.
             // Modals/pickers handle Ctrl+N/P via their own bindings.
             // NOTE: vim/classify.rs still maps Ctrl+N/P → MoveDown/MoveUp for modal
@@ -120,6 +131,14 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
         Key::Char('e') if state.session.active_db_capabilities().supports_er_diagram() => {
             Action::OpenModal(ModalKind::ErTablePicker)
+        }
+        Key::Char('D')
+            if state
+                .session
+                .active_db_capabilities()
+                .supports_sqlite_diagnostics() =>
+        {
+            Action::OpenModal(ModalKind::SqliteDiagnostics)
         }
         Key::Char('c') if state.ui.focused_pane() == FocusedPane::Explorer => {
             Action::OpenModal(ModalKind::ConnectionSelector)

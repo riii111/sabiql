@@ -157,6 +157,14 @@ impl DbCapabilities {
         self.supports_jsonb_detail
     }
 
+    pub fn supports_sqlite_diagnostics(&self) -> bool {
+        !self.supports_explain()
+            && !self.supports_er_diagram()
+            && !self.supports_jsonb_detail()
+            && self.supports_inspector_tab(InspectorTab::Triggers)
+            && !self.supports_inspector_tab(InspectorTab::Rls)
+    }
+
     pub fn supported_inspector_tabs(&self) -> &[InspectorTab] {
         &self.supported_inspector_tabs
     }
@@ -255,6 +263,7 @@ mod tests {
             assert!(caps.supports_explain_analyze());
             assert!(caps.supports_er_diagram());
             assert!(caps.supports_jsonb_detail());
+            assert!(!caps.supports_sqlite_diagnostics());
             assert!(caps.supports_inspector_tab(InspectorTab::Ddl));
             assert_eq!(caps.supported_inspector_tabs().len(), 7);
             assert_eq!(
@@ -277,6 +286,7 @@ mod tests {
             assert!(!caps.supports_explain_analyze());
             assert!(!caps.supports_er_diagram());
             assert!(!caps.supports_jsonb_detail());
+            assert!(caps.supports_sqlite_diagnostics());
             assert_eq!(
                 caps.supported_inspector_tabs(),
                 &[

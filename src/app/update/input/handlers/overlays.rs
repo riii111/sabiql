@@ -20,6 +20,12 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
     keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
 }
 
+pub fn handle_sqlite_diagnostics_keys(combo: KeyCombo) -> Action {
+    keybindings::SQLITE_DIAGNOSTICS
+        .resolve(&combo)
+        .unwrap_or(Action::None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

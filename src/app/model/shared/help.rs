@@ -107,6 +107,7 @@ pub enum HelpOrigin {
         keymap_preset: KeymapPreset,
     },
     ConnectionError,
+    SqliteDiagnostics,
     ConfirmDialog,
     ConnectionSelector,
     ErTablePicker {
@@ -136,6 +137,7 @@ impl HelpOrigin {
             | Self::Settings
             | Self::Help
             | Self::ConnectionError
+            | Self::SqliteDiagnostics
             | Self::ConfirmDialog
             | Self::ConnectionSelector
             | Self::QueryHistoryPicker
@@ -166,6 +168,7 @@ impl HelpOrigin {
                 keymap_preset: state.settings.saved_keymap_preset(),
             },
             InputMode::ConnectionError => Self::ConnectionError,
+            InputMode::SqliteDiagnostics => Self::SqliteDiagnostics,
             InputMode::ConfirmDialog => Self::ConfirmDialog,
             InputMode::ConnectionSelector => Self::ConnectionSelector,
             InputMode::ErTablePicker => Self::ErTablePicker {
@@ -205,6 +208,7 @@ impl HelpOrigin {
             Self::SqlModal { mode, .. } => mode.label(),
             Self::ConnectionSetup { .. } => "Connection Setup",
             Self::ConnectionError => "Connection Error",
+            Self::SqliteDiagnostics => "SQLite Diagnostics",
             Self::ConfirmDialog => "Confirm Dialog",
             Self::ConnectionSelector => "Connection Selector",
             Self::ErTablePicker { .. } => "ER Table Picker",

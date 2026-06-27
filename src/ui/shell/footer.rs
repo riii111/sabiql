@@ -17,7 +17,7 @@ use crate::app::update::input::keybindings::{
     connection_setup, connection_setup_save, csv_export, er_picker, er_picker_select_all,
     exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail, jsonb_edit,
     jsonb_search, overlay, query_history, query_history_picker, read_only, result_active, settings,
-    sql_modal, sql_modal_confirming, sql_modal_plan, table_picker,
+    sql_modal, sql_modal_confirming, sql_modal_plan, sqlite_diagnostics, table_picker,
     table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
@@ -143,6 +143,9 @@ impl Footer {
                     let mut list = vec![global::RELOAD.as_hint(), global::SQL.as_hint()];
                     if capabilities.supports_er_diagram() {
                         list.push(global::ER_DIAGRAM.as_hint());
+                    }
+                    if capabilities.supports_sqlite_diagnostics() {
+                        list.push(sqlite_diagnostics(keymap_preset).as_hint());
                     }
                     if state.ui.focused_pane() == FocusedPane::Explorer {
                         list.push(global::CONNECTIONS.as_hint());
@@ -286,6 +289,10 @@ impl Footer {
                     connection_error::ESC_CLOSE.as_hint(),
                 ]
             }
+            InputMode::SqliteDiagnostics => vec![
+                sqlite_diagnostics::SCROLL.as_hint(),
+                sqlite_diagnostics::ESC_CLOSE.as_hint(),
+            ],
             InputMode::ErTablePicker => vec![
                 er_picker::ENTER_GENERATE.as_hint(),
                 er_picker::SELECT.as_hint(),

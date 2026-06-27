@@ -232,6 +232,24 @@ pub mod global {
         action: Action::OpenModal(ModalKind::QueryHistoryPicker),
         combos: &[KeyCombo::plain(Key::Char('O'))],
     };
+
+    pub const SQLITE_DIAGNOSTICS: KeyBinding = KeyBinding {
+        key_short: "^D",
+        key: "Ctrl+D",
+        desc_short: "Diagnostics",
+        description: "Open SQLite Diagnostics",
+        action: Action::OpenModal(ModalKind::SqliteDiagnostics),
+        combos: &[KeyCombo::ctrl(Key::Char('d'))],
+    };
+
+    pub const SQLITE_DIAGNOSTICS_IDE: KeyBinding = KeyBinding {
+        key_short: "D",
+        key: "D",
+        desc_short: "Diagnostics",
+        description: "Open SQLite Diagnostics",
+        action: Action::OpenModal(ModalKind::SqliteDiagnostics),
+        combos: &[KeyCombo::plain(Key::Char('D'))],
+    };
 }
 
 pub const DEFAULT_GLOBAL_KEYS: &[KeyBinding] = &[
@@ -328,6 +346,13 @@ pub fn query_history(preset: KeymapPreset) -> &'static KeyBinding {
     match preset {
         KeymapPreset::Default => &global::QUERY_HISTORY,
         KeymapPreset::Ide => &global::QUERY_HISTORY_IDE,
+    }
+}
+
+pub fn sqlite_diagnostics(preset: KeymapPreset) -> &'static KeyBinding {
+    match preset {
+        KeymapPreset::Default => &global::SQLITE_DIAGNOSTICS,
+        KeymapPreset::Ide => &global::SQLITE_DIAGNOSTICS_IDE,
     }
 }
 
