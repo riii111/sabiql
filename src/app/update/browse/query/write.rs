@@ -980,15 +980,6 @@ mod tests {
         use crate::ports::outbound::DbOperationError;
 
         fn delete_preview() -> WritePreview {
-            fn low_risk_unblocked() -> GuardrailDecision {
-                GuardrailDecision {
-                    risk_level: RiskLevel::Low,
-                    blocked: false,
-                    reason: None,
-                    target_summary: None,
-                }
-            }
-
             WritePreview {
                 operation: WriteOperation::Delete,
                 sql: "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';".to_string(),
@@ -998,7 +989,12 @@ mod tests {
                     key_values: vec![("id".to_string(), QueryValue::text("2"))],
                 },
                 diff: vec![],
-                guardrail: low_risk_unblocked(),
+                guardrail: GuardrailDecision {
+                    risk_level: RiskLevel::Low,
+                    blocked: false,
+                    reason: None,
+                    target_summary: None,
+                },
             }
         }
 

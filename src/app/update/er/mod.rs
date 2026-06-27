@@ -21,7 +21,7 @@ mod tests {
 
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
     use crate::update::action::{SmartErRefreshError, SmartErRefreshResult};
@@ -49,12 +49,6 @@ mod tests {
         state.er_preparation.mark_idle();
     }
 
-    fn test_metadata(database_name: &str, table_summaries: Vec<TableSummary>) -> DatabaseMetadata {
-        let mut metadata = DatabaseMetadata::new(database_name.to_string());
-        metadata.table_summaries = table_summaries;
-        metadata
-    }
-
     mod er_open_diagram {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
@@ -63,7 +57,11 @@ mod tests {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
-            Arc::new(test_metadata("test", tables))
+            Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: tables,
+            })
         }
 
         #[test]
@@ -170,14 +168,17 @@ mod tests {
 
     mod er_generate_from_cache {
         use super::*;
+        use crate::domain::DatabaseMetadata;
 
         #[test]
         fn idle_status_returns_generate_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.mark_idle();
-            state
-                .session
-                .set_metadata(Some(Arc::new(test_metadata("test", vec![]))));
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: vec![],
+            })));
             state
                 .er_preparation
                 .set_targets(vec!["public.users".to_string()]);
@@ -218,7 +219,11 @@ mod tests {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
-            Arc::new(test_metadata("test", tables))
+            Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: tables,
+            })
         }
 
         #[test]
@@ -441,7 +446,11 @@ mod tests {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
-            Arc::new(test_metadata("test", tables))
+            Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: tables,
+            })
         }
 
         #[test]

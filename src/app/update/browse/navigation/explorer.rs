@@ -195,12 +195,6 @@ mod tests {
     use std::sync::Arc;
     use std::time::Instant;
 
-    fn test_metadata(database_name: &str, table_summaries: Vec<TableSummary>) -> DatabaseMetadata {
-        let mut metadata = DatabaseMetadata::new(database_name.to_string());
-        metadata.table_summaries = table_summaries;
-        metadata
-    }
-
     fn state_with_tables(count: usize, pane_height: u16) -> AppState {
         let mut state = AppState::new("test".to_string());
         state.ui.set_explorer_pane_height(pane_height);
@@ -208,9 +202,11 @@ mod tests {
         let tables: Vec<TableSummary> = (0..count)
             .map(|i| TableSummary::new("public".to_string(), format!("table_{i}"), Some(0), false))
             .collect();
-        state
-            .session
-            .set_metadata(Some(Arc::new(test_metadata("test", tables))));
+        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+            database_name: "test".to_string(),
+            schemas: vec![],
+            table_summaries: tables,
+        })));
         state.ui.set_explorer_selection(Some(0));
         state
     }
@@ -225,9 +221,11 @@ mod tests {
                 TableSummary::new("public".to_string(), (*name).to_string(), Some(0), false)
             })
             .collect();
-        state
-            .session
-            .set_metadata(Some(Arc::new(test_metadata("test", tables))));
+        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+            database_name: "test".to_string(),
+            schemas: vec![],
+            table_summaries: tables,
+        })));
         state
     }
 
@@ -762,9 +760,11 @@ mod tests {
                         without_rowid: true,
                         ..TableStorage::default()
                     });
-            state
-                .session
-                .set_metadata(Some(Arc::new(test_metadata("test", vec![summary]))));
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: vec![summary],
+            })));
 
             let expected = explorer_table_label_width(state.tables()[0]).saturating_sub(10);
             for _ in 0..32 {

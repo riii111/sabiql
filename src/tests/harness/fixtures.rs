@@ -1,23 +1,23 @@
-use sabiql_app::policy::write::write_guardrails::{GuardrailDecision, RiskLevel};
 use sabiql_domain::{
-    Column, ColumnAttributes, DatabaseMetadata, DiagnosticField, FkAction, ForeignKey, Index,
-    IndexAttributes, IndexType, QueryResult, QuerySource, SqliteDiagnosticsSnapshot, Table,
-    TableSummary, Trigger, TriggerEvent, TriggerTiming,
+    Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
+    IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
 pub fn sample_metadata() -> DatabaseMetadata {
-    let mut metadata = DatabaseMetadata::new("test_db".to_string());
-    metadata.table_summaries = vec![
-        TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-        TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-        TableSummary::new(
-            "public".to_string(),
-            "comments".to_string(),
-            Some(200),
-            false,
-        ),
-    ];
-    metadata
+    DatabaseMetadata {
+        database_name: "test_db".to_string(),
+        table_summaries: vec![
+            TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
+            TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
+            TableSummary::new(
+                "public".to_string(),
+                "comments".to_string(),
+                Some(200),
+                false,
+            ),
+        ],
+        schemas: vec![],
+    }
 }
 
 pub fn sample_table_detail() -> Table {
@@ -90,19 +90,6 @@ pub fn sample_table_detail() -> Table {
     table
 }
 
-pub fn loaded_sqlite_diagnostics() -> SqliteDiagnosticsSnapshot {
-    SqliteDiagnosticsSnapshot {
-        db_file: DiagnosticField::ok("/tmp/app.db"),
-        sqlite_version: DiagnosticField::ok("3.45.0"),
-        foreign_keys: DiagnosticField::ok("on"),
-        journal_mode: DiagnosticField::ok("wal"),
-        query_only: DiagnosticField::ok("off"),
-        busy_timeout: DiagnosticField::ok("5000"),
-        database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
-        quick_check: DiagnosticField::ok("ok"),
-    }
-}
-
 pub fn sample_query_result() -> QueryResult {
     QueryResult::success(
         "SELECT * FROM users LIMIT 100".to_string(),
@@ -132,13 +119,4 @@ pub fn empty_query_result() -> QueryResult {
         5,
         QuerySource::Preview,
     )
-}
-
-pub fn low_risk_guardrail() -> GuardrailDecision {
-    GuardrailDecision {
-        risk_level: RiskLevel::Low,
-        blocked: false,
-        reason: None,
-        target_summary: None,
-    }
 }

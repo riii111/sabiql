@@ -290,12 +290,6 @@ mod tests {
         }
     }
 
-    fn test_metadata(database_name: &str, table_summaries: Vec<TableSummary>) -> DatabaseMetadata {
-        let mut metadata = DatabaseMetadata::new(database_name.to_string());
-        metadata.table_summaries = table_summaries;
-        metadata
-    }
-
     mod render {
         use super::*;
         use crate::model::browse::jsonb_detail::JsonbDetailState;
@@ -375,15 +369,16 @@ mod tests {
             );
 
             let state = &mut AppState::new("test".to_string());
-            state.session.set_metadata(Some(Arc::new(test_metadata(
-                "test",
-                vec![TableSummary::new(
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: vec![TableSummary::new(
                     "public".to_string(),
                     "abcdefghij".to_string(),
                     Some(0),
                     false,
                 )],
-            ))));
+            })));
             state.ui.set_explorer_horizontal_offset(20);
 
             let ce = RefCell::new(CompletionEngine::new());

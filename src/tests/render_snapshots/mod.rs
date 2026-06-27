@@ -17,7 +17,8 @@ use sabiql_app::model::sql_editor::completion::{CompletionCandidate, CompletionK
 use sabiql_app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalTab};
 use sabiql_app::policy::json::json_diff::compute_json_diff;
 use sabiql_app::policy::write::write_guardrails::{
-    AdhocRiskDecision, ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+    AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
+    WritePreview,
 };
 use sabiql_app::ports::outbound::DdlGenerator;
 use sabiql_app::services::AppServices;

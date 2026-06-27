@@ -165,16 +165,9 @@ pub fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::services::AppServices;
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
-
-    fn test_metadata(database_name: &str, table_summaries: Vec<TableSummary>) -> DatabaseMetadata {
-        let mut metadata = DatabaseMetadata::new(database_name.to_string());
-        metadata.table_summaries = table_summaries;
-        metadata
-    }
 
     mod paste {
         use super::*;
@@ -392,7 +385,7 @@ mod tests {
 
     mod picker_navigation {
         use super::*;
-        use crate::domain::TableSummary;
+        use crate::domain::{DatabaseMetadata, TableSummary};
         use std::sync::Arc;
 
         fn state_with_tables(count: usize) -> AppState {
@@ -400,9 +393,11 @@ mod tests {
             let tables: Vec<TableSummary> = (0..count)
                 .map(|i| TableSummary::new("public".to_string(), format!("t{i}"), Some(0), false))
                 .collect();
-            state
-                .session
-                .set_metadata(Some(Arc::new(test_metadata("test", tables))));
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: tables,
+            })));
             state
         }
 

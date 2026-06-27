@@ -449,13 +449,13 @@ mod tests {
     use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
 
     fn make_metadata(db_name: &str) -> Arc<DatabaseMetadata> {
-        Arc::new({
-            let mut metadata = DatabaseMetadata::new(db_name.to_string());
-            metadata.table_summaries = vec![
+        Arc::new(DatabaseMetadata {
+            database_name: db_name.to_string(),
+            schemas: vec![],
+            table_summaries: vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-            ];
-            metadata
+            ],
         })
     }
 

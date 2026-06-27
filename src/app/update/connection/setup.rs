@@ -236,7 +236,7 @@ pub fn reduce_connection_setup(
 mod tests {
     use super::*;
     use crate::domain::connection::{ConnectionProfile, SslMode};
-    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::er_state::ErStatus;
     use crate::update::test_support::{
         activate_postgres_connection, assert_connection_save_fetch_effects,
@@ -257,12 +257,6 @@ mod tests {
             SslMode::default(),
         )
         .unwrap()
-    }
-
-    fn test_metadata(database_name: &str, table_summaries: Vec<TableSummary>) -> DatabaseMetadata {
-        let mut metadata = DatabaseMetadata::new(database_name.to_string());
-        metadata.table_summaries = table_summaries;
-        metadata
     }
 
     mod paste {
@@ -438,7 +432,9 @@ mod tests {
         use std::sync::Arc;
 
         use super::*;
-        use crate::domain::{MetadataState, QueryResult, QuerySource, TableSummary};
+        use crate::domain::{
+            DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
+        };
         use crate::model::connection::cache::ConnectionCache;
         use crate::model::connection::state::ConnectionState;
         use crate::update::action::ConnectionTarget;
@@ -541,15 +537,16 @@ mod tests {
         fn save_completed_clears_previous_browse_state() {
             let mut state = AppState::new("test".to_string());
             activate_postgres_connection(&mut state, "postgres://localhost/old");
-            state.session.mark_connected(Arc::new(test_metadata(
-                "old_db",
-                vec![TableSummary::new(
+            state.session.mark_connected(Arc::new(DatabaseMetadata {
+                database_name: "old_db".to_string(),
+                schemas: vec![],
+                table_summaries: vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
                 )],
-            )));
+            }));
             state.ui.set_explorer_selected_raw(3);
             let _ = state
                 .session
@@ -591,15 +588,16 @@ mod tests {
                 DatabaseType::PostgreSQL,
                 "postgres://localhost/current",
             );
-            state.session.mark_connected(Arc::new(test_metadata(
-                "current",
-                vec![TableSummary::new(
+            state.session.mark_connected(Arc::new(DatabaseMetadata {
+                database_name: "current".to_string(),
+                schemas: vec![],
+                table_summaries: vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
                 )],
-            )));
+            }));
             state.ui.set_explorer_selected_raw(4);
             fill_valid_form(&mut state);
 
@@ -617,15 +615,16 @@ mod tests {
             state.connection_caches.save(
                 &saved_id,
                 ConnectionCache {
-                    metadata: Some(Arc::new(test_metadata(
-                        "stale",
-                        vec![TableSummary::new(
+                    metadata: Some(Arc::new(DatabaseMetadata {
+                        database_name: "stale".to_string(),
+                        schemas: vec![],
+                        table_summaries: vec![TableSummary::new(
                             "main".to_string(),
                             "old_table".to_string(),
                             None,
                             false,
                         )],
-                    ))),
+                    })),
                     ..Default::default()
                 },
             );

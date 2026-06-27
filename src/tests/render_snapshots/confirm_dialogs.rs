@@ -18,7 +18,12 @@ fn make_update_preview_with_key(diff: Vec<ColumnDiff>, sql: String, id: &str) ->
             key_values: vec![("id".to_string(), QueryValue::text(id))],
         },
         diff,
-        guardrail: fixtures::low_risk_guardrail(),
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
     }
 }
 
@@ -131,7 +136,12 @@ fn confirm_dialog_delete_preview_low_risk() {
             key_values: vec![("id".to_string(), QueryValue::text("3"))],
         },
         diff: vec![],
-        guardrail: fixtures::low_risk_guardrail(),
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
     });
     open_write_confirm(&mut state, "Confirm DELETE: users", &sql);
 
