@@ -368,6 +368,38 @@ mod tests {
             assert_eq!(info.summary(), "SQLite database file not found");
         }
 
+        #[rstest]
+        #[case(
+            "SQLite path is a directory, not a file: /tmp/dir.db",
+            ConnectionErrorKind::SqlitePathIsDirectory
+        )]
+        #[case(
+            "SQLite path is not a regular file: /tmp/pipe.db",
+            ConnectionErrorKind::SqlitePathNotRegularFile
+        )]
+        #[case(
+            "Cannot read SQLite database file: /tmp/app.db: permission denied",
+            ConnectionErrorKind::SqliteReadAccessDenied
+        )]
+        #[case(
+            "Cannot access SQLite database file: /tmp/app.db: permission denied",
+            ConnectionErrorKind::SqlitePathAccessDenied
+        )]
+        #[case(
+            "Cannot read SQLite database file metadata: /tmp/app.db: device offline",
+            ConnectionErrorKind::SqlitePathIo
+        )]
+        fn from_db_operation_error_classifies_sqlite_path_errors(
+            #[case] details: &str,
+            #[case] expected_kind: ConnectionErrorKind,
+        ) {
+            let info = ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::ConnectionFailed(details.to_string()),
+            );
+
+            assert_eq!(info.kind, expected_kind);
+        }
+
         #[test]
         fn from_db_operation_error_classifies_sqlite_table_list_requirement() {
             let info = ConnectionErrorInfo::from_db_operation_error(

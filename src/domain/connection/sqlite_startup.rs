@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use super::config::{SqliteConnectionConfig, SqliteConnectionConfigError};
-use super::sqlite_path::SqlitePathError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SqliteStartupTarget {
@@ -14,8 +13,6 @@ pub enum SqliteStartupError {
     Config(#[from] SqliteConnectionConfigError),
     #[error("Unsupported SQLite target; use a .db/.sqlite/.sqlite3 file path or sqlite:// DSN")]
     UnsupportedFormat,
-    #[error("{0}")]
-    Path(#[from] SqlitePathError),
 }
 
 impl SqliteStartupTarget {
