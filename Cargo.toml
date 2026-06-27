@@ -77,7 +77,7 @@ default = []
 self-update = ["dep:self_update"]
 
 [dev-dependencies]
-sabiql-domain.workspace = true
+sabiql-domain = { workspace = true, features = ["test-support"] }
 sabiql-app = { workspace = true, features = ["test-support"] }
 sabiql-ui = { workspace = true, features = ["test-support"] }
 ratatui.workspace = true

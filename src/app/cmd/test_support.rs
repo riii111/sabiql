@@ -227,11 +227,7 @@ pub fn make_runner_with_dsn(
 }
 
 pub fn sample_metadata() -> DatabaseMetadata {
-    DatabaseMetadata {
-        database_name: "testdb".to_string(),
-        schemas: vec![],
-        table_summaries: vec![],
-    }
+    DatabaseMetadata::new("testdb".to_string())
 }
 
 pub fn sample_query_result() -> QueryResult {
