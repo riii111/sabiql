@@ -15,6 +15,10 @@ pub enum SqliteStartupError {
     UnsupportedFormat,
     #[error("SQLite database file not found: {0}")]
     FileNotFound(String),
+    #[error("Cannot access SQLite database file: {0}")]
+    PathAccessDenied(String),
+    #[error("Cannot read SQLite database file metadata: {0}")]
+    Io(String),
     #[error("SQLite path is a directory, not a file: {0}")]
     IsDirectory(String),
 }
@@ -25,10 +29,6 @@ impl SqliteStartupTarget {
         Ok(Self {
             config: SqliteConnectionConfig::new(path)?,
         })
-    }
-
-    pub fn config(&self) -> &SqliteConnectionConfig {
-        &self.config
     }
 
     pub fn path(&self) -> &str {
@@ -88,13 +88,20 @@ fn has_sqlite_file_extension(path: &str) -> bool {
 
 fn validate_sqlite_file_path(path: &Path) -> Result<(), SqliteStartupError> {
     let display = path.display().to_string();
-    let metadata = std::fs::metadata(path).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::NotFound {
-            SqliteStartupError::FileNotFound(display.clone())
-        } else {
-            SqliteStartupError::FileNotFound(format!("{display} ({error})"))
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(SqliteStartupError::FileNotFound(display));
         }
-    })?;
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Err(SqliteStartupError::PathAccessDenied(format!(
+                "{display}: {error}"
+            )));
+        }
+        Err(error) => {
+            return Err(SqliteStartupError::Io(format!("{display}: {error}")));
+        }
+    };
 
     if metadata.is_dir() {
         return Err(SqliteStartupError::IsDirectory(display));

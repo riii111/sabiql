@@ -72,7 +72,7 @@ pub(super) fn reduce_connection_error(
             state.modal.replace_mode(InputMode::ConnectionSetup);
             DispatchResult::handled()
         }
-        Action::RetryServiceConnection => {
+        Action::RetryConnection => {
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 state.connection_error.clear();
                 let run_id = state.session.begin_connecting(&dsn);
