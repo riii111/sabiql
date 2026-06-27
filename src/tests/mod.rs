@@ -21,6 +21,50 @@ fn update_subcommand_is_recognized() {
 }
 
 #[test]
+fn database_positional_is_recognized() {
+    let args = Args::parse_from(["sabiql", "/tmp/app.db"]);
+    assert_eq!(args.database.as_deref(), Some("/tmp/app.db"));
+    assert!(args.command.is_none());
+}
+
+#[test]
+fn database_positional_does_not_conflict_with_update_subcommand() {
+    let args = Args::parse_from(["sabiql", "update"]);
+    assert!(args.database.is_none());
+    assert!(matches!(args.command, Some(Command::Update)));
+}
+
+mod cli_sqlite_startup {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use crate::resolve_cli_sqlite_target;
+
+    #[test]
+    fn resolves_existing_sqlite_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("app.db");
+        fs::write(&path, b"").unwrap();
+
+        let target = resolve_cli_sqlite_target(path.to_str().unwrap()).unwrap();
+
+        assert_eq!(target.path(), path.to_str().unwrap());
+        assert_eq!(target.dsn(), format!("sqlite://{}", path.display()));
+    }
+
+    #[test]
+    fn rejects_missing_file_before_startup() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("missing.db");
+
+        let error = resolve_cli_sqlite_target(path.to_str().unwrap()).unwrap_err();
+
+        assert!(error.to_string().contains("not found"));
+    }
+}
+
+#[test]
 #[cfg(not(feature = "self-update"))]
 fn disabled_message_contains_version_and_upgrade_guidance() {
     let msg = self_update_disabled_message();
