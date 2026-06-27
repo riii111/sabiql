@@ -10,6 +10,7 @@ pub mod catalog;
 pub mod cmd;
 pub mod model;
 pub mod policy;
+pub mod present;
 pub mod update;
 
 pub mod ports;

@@ -156,16 +156,10 @@ impl SqliteAdapter {
     }
 
     fn storage_for_raw_table(table: &RawTable) -> TableStorage {
-        table_storage_from_pragma(
-            if table.r#type.is_empty() {
-                "table"
-            } else {
-                &table.r#type
-            },
-            table.wr,
-            table.strict,
-            table.sql.as_deref(),
-        )
+        if table.r#type.is_empty() {
+            return table_storage_from_legacy_sql(table.sql.as_deref());
+        }
+        table_storage_from_pragma(&table.r#type, table.wr, table.strict, table.sql.as_deref())
     }
 
     async fn table_storage(
@@ -803,6 +797,21 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn legacy_list_row_uses_sql_for_storage() {
+        let table = RawTable {
+            name: "settings".to_string(),
+            sql: Some("CREATE TABLE settings(id INTEGER PRIMARY KEY) WITHOUT ROWID;".to_string()),
+            r#type: String::new(),
+            wr: 0,
+            strict: 0,
+        };
+
+        let storage = SqliteAdapter::storage_for_raw_table(&table);
+
+        assert!(storage.without_rowid);
+    }
 
     #[test]
     fn index_key_column_names_preserves_expression_and_unknown_key_columns() {

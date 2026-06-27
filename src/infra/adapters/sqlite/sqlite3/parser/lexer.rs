@@ -147,18 +147,58 @@ fn module_name_at(sql: &str, start: usize) -> Option<String> {
     while i < bytes.len() && bytes[i].is_ascii_whitespace() {
         i += 1;
     }
-    if i >= bytes.len() || !bytes[i].is_ascii_alphabetic() && bytes[i] != b'_' {
+    if i >= bytes.len() {
         return None;
     }
-    let name_start = i;
-    while i < bytes.len() && is_ident_char(bytes[i]) {
-        i += 1;
-    }
-    let name = sql[name_start..i].trim();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name.to_string())
+    match bytes[i] {
+        b'\'' | b'"' | b'`' => {
+            let quote = bytes[i];
+            i += 1;
+            let name_start = i;
+            while i < bytes.len() {
+                if bytes[i] == quote {
+                    if i + 1 < bytes.len() && bytes[i + 1] == quote {
+                        i += 2;
+                    } else {
+                        let name = sql[name_start..i].trim();
+                        return if name.is_empty() {
+                            None
+                        } else {
+                            Some(name.to_string())
+                        };
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            None
+        }
+        b'[' => {
+            i += 1;
+            let name_start = i;
+            while i < bytes.len() && bytes[i] != b']' {
+                i += 1;
+            }
+            let name = sql[name_start..i].trim();
+            if name.is_empty() {
+                None
+            } else {
+                Some(name.to_string())
+            }
+        }
+        b if b.is_ascii_alphabetic() || b == b'_' => {
+            let name_start = i;
+            while i < bytes.len() && is_ident_char(bytes[i]) {
+                i += 1;
+            }
+            let name = sql[name_start..i].trim();
+            if name.is_empty() {
+                None
+            } else {
+                Some(name.to_string())
+            }
+        }
+        _ => None,
     }
 }
 
@@ -976,6 +1016,22 @@ END";
     fn virtual_table_module_name_skips_quoted_table_name() {
         assert_eq!(
             virtual_table_module_name(r#"CREATE VIRTUAL TABLE "using" USING fts5(body);"#),
+            Some("fts5".to_string())
+        );
+    }
+
+    #[test]
+    fn virtual_table_module_name_reads_double_quoted_module() {
+        assert_eq!(
+            virtual_table_module_name(r#"CREATE VIRTUAL TABLE notes USING "fts5"(body);"#),
+            Some("fts5".to_string())
+        );
+    }
+
+    #[test]
+    fn virtual_table_module_name_reads_bracket_quoted_module() {
+        assert_eq!(
+            virtual_table_module_name("CREATE VIRTUAL TABLE notes USING [fts5](body);"),
             Some("fts5".to_string())
         );
     }

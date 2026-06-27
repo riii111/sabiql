@@ -128,6 +128,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_quoted_virtual_module_name() {
+        assert_eq!(
+            virtual_table_module_name(r#"CREATE VIRTUAL TABLE notes USING "fts5"(body);"#),
+            Some("fts5".to_string())
+        );
+        assert_eq!(
+            virtual_table_module_name("CREATE VIRTUAL TABLE notes USING [fts5](body);"),
+            Some("fts5".to_string())
+        );
+    }
+
+    #[test]
     fn table_name_containing_strict_does_not_mark_strict_when_pragma_is_zero() {
         let storage = table_storage_from_pragma(
             "table",

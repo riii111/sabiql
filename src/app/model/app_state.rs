@@ -23,6 +23,7 @@ use crate::model::shared::settings::SettingsState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
+use crate::present::table_storage::max_explorer_table_label_width;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -125,12 +126,7 @@ impl AppState {
             .set_explorer_pane_height(output.explorer_pane_height);
         self.ui
             .set_explorer_content_width(output.explorer_content_width);
-        let max_name_width = self
-            .tables()
-            .iter()
-            .map(|table| table.qualified_name().chars().count())
-            .max()
-            .unwrap_or(0);
+        let max_name_width = max_explorer_table_label_width(self.tables());
         let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width());
         self.ui
             .set_explorer_horizontal_offset(self.ui.explorer_horizontal_offset().min(max_offset));
@@ -347,16 +343,6 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            owner: None,
-            columns: Vec::new(),
-            primary_key: None,
-            foreign_keys: Vec::new(),
-            indexes: Vec::new(),
-            rls: None,
-            triggers: Vec::new(),
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
             ..Default::default()
         }
     }
