@@ -36,33 +36,72 @@ pub(super) fn table_storage_from_pragma(
     if storage.kind == TableObjectKind::Virtual {
         storage.virtual_module = sql.and_then(parse_virtual_module);
     }
-    enrich_storage_from_sql(storage, sql)
+    enrich_kind_from_sql(&mut storage, sql);
+    storage
 }
 
-fn enrich_storage_from_sql(mut storage: TableStorage, sql: Option<&str>) -> TableStorage {
-    let Some(sql) = sql else {
-        return storage;
-    };
-    let upper = sql.to_ascii_uppercase();
-    if storage.kind == TableObjectKind::Table
-        && sql.to_ascii_lowercase().contains("create virtual table")
-    {
-        storage.kind = TableObjectKind::Virtual;
-        storage.virtual_module = parse_virtual_module(sql);
-    }
-    if !storage.without_rowid && upper.contains("WITHOUT ROWID") {
-        storage.without_rowid = true;
-    }
-    if !storage.is_strict && upper.contains(" STRICT") {
-        storage.is_strict = true;
+pub(super) fn table_storage_from_legacy_sql(sql: Option<&str>) -> TableStorage {
+    let mut storage = TableStorage::default();
+    enrich_kind_from_sql(&mut storage, sql);
+    if let Some(sql) = sql {
+        let (is_strict, without_rowid) = parse_table_tail_options(sql);
+        storage.is_strict = is_strict;
+        storage.without_rowid = without_rowid;
     }
     storage
 }
 
+fn enrich_kind_from_sql(storage: &mut TableStorage, sql: Option<&str>) {
+    let Some(sql) = sql else {
+        return;
+    };
+    if storage.kind == TableObjectKind::Table
+        && normalize_ddl_whitespace(sql)
+            .to_ascii_lowercase()
+            .contains("create virtual table")
+    {
+        storage.kind = TableObjectKind::Virtual;
+        storage.virtual_module = parse_virtual_module(sql);
+    }
+}
+
+fn normalize_ddl_whitespace(sql: &str) -> String {
+    sql.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn parse_table_tail_options(sql: &str) -> (bool, bool) {
+    let normalized = normalize_ddl_whitespace(sql);
+    let upper = normalized.to_ascii_uppercase();
+    let Some(paren_end) = upper.rfind(')') else {
+        return parse_option_tokens(&upper);
+    };
+    parse_option_tokens(&upper[paren_end + 1..])
+}
+
+fn parse_option_tokens(tail: &str) -> (bool, bool) {
+    let tail = tail.trim().trim_end_matches(';').trim();
+    let tokens: Vec<&str> = tail.split_whitespace().collect();
+    let mut is_strict = false;
+    let mut without_rowid = false;
+    let mut idx = 0;
+    while idx < tokens.len() {
+        match tokens[idx] {
+            "STRICT" => is_strict = true,
+            "WITHOUT" if tokens.get(idx + 1) == Some(&"ROWID") => {
+                without_rowid = true;
+                idx += 1;
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+    (is_strict, without_rowid)
+}
+
 fn parse_virtual_module(sql: &str) -> Option<String> {
-    let lower = sql.to_ascii_lowercase();
-    let using_idx = lower.find(" using ")?;
-    let rest = sql[using_idx + 7..].trim_start();
+    let normalized = normalize_ddl_whitespace(sql).to_ascii_lowercase();
+    let using_idx = normalized.find(" using ")?;
+    let rest = normalized[using_idx + 7..].trim_start();
     let module = rest
         .split(|c: char| c.is_whitespace() || c == '(')
         .next()?
@@ -87,16 +126,42 @@ mod tests {
     }
 
     #[test]
-    fn legacy_sql_enriches_virtual_and_without_rowid() {
+    fn parses_virtual_module_when_using_starts_on_new_line() {
+        assert_eq!(
+            parse_virtual_module("CREATE VIRTUAL TABLE notes_fts\nUSING fts5(body);"),
+            Some("fts5".to_string())
+        );
+    }
+
+    #[test]
+    fn table_name_containing_strict_does_not_mark_strict_when_pragma_is_zero() {
         let storage = table_storage_from_pragma(
             "table",
             0,
             0,
-            Some("CREATE TABLE settings(key TEXT PRIMARY KEY) WITHOUT ROWID;"),
+            Some("CREATE TABLE strict_users(id INTEGER PRIMARY KEY, name TEXT);"),
         );
+
+        assert!(!storage.is_strict);
+    }
+
+    #[test]
+    fn legacy_sql_parses_without_rowid_from_table_tail() {
+        let storage = table_storage_from_legacy_sql(Some(
+            "CREATE TABLE settings(key TEXT PRIMARY KEY) WITHOUT ROWID;",
+        ));
 
         assert!(storage.without_rowid);
         assert_eq!(storage.kind, TableObjectKind::Table);
+    }
+
+    #[test]
+    fn legacy_sql_parses_strict_from_table_tail_only() {
+        let storage = table_storage_from_legacy_sql(Some(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY) STRICT;",
+        ));
+
+        assert!(storage.is_strict);
     }
 
     #[test]

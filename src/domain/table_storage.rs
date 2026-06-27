@@ -46,13 +46,6 @@ impl TableStorage {
         Some(format!(" [{}]", parts.join("+")))
     }
 
-    pub fn kind_label(&self) -> &'static str {
-        match self.kind {
-            TableObjectKind::Table => "Table",
-            TableObjectKind::Virtual => "Virtual table",
-        }
-    }
-
     pub fn kind_detail(&self) -> String {
         match (&self.kind, &self.virtual_module) {
             (TableObjectKind::Virtual, Some(module)) => format!("Virtual table ({module})"),

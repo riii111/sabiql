@@ -15,7 +15,7 @@ use super::super::{SqliteAdapter, schema::MAIN_SCHEMA, sql};
 mod storage;
 mod trigger;
 
-use storage::{RawTableStorage, table_storage_from_pragma};
+use storage::{RawTableStorage, table_storage_from_legacy_sql, table_storage_from_pragma};
 use trigger::parse_sqlite_trigger;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -183,12 +183,7 @@ impl SqliteAdapter {
                 if sql::is_table_list_unavailable(&message) =>
             {
                 let sql = self.table_definition(path, table).await;
-                Ok(Some(table_storage_from_pragma(
-                    "table",
-                    0,
-                    0,
-                    sql.as_deref(),
-                )))
+                Ok(Some(table_storage_from_legacy_sql(sql.as_deref())))
             }
             Err(error) => Err(error),
         }
@@ -950,11 +945,12 @@ mod tests {
             let (_dir, dsn) = make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
+            CREATE TABLE strict_users(id INTEGER PRIMARY KEY, name TEXT);
             CREATE TABLE settings(
                 key TEXT PRIMARY KEY,
                 value TEXT
             ) WITHOUT ROWID;
-            CREATE TABLE strict_users(id INTEGER PRIMARY KEY, name TEXT) STRICT;
+            CREATE TABLE typed_users(id INTEGER PRIMARY KEY, name TEXT) STRICT;
             CREATE VIRTUAL TABLE notes_fts USING fts5(body);
             ",
             );
@@ -976,7 +972,12 @@ mod tests {
 
             assert!(storage_by_name["settings"].without_rowid);
 
-            assert!(storage_by_name["strict_users"].is_strict);
+            assert!(
+                !storage_by_name["strict_users"].is_strict,
+                "table name containing 'strict' must not infer STRICT from DDL when pragma.strict is 0"
+            );
+
+            assert!(storage_by_name["typed_users"].is_strict);
 
             assert_eq!(
                 storage_by_name["notes_fts"].kind,

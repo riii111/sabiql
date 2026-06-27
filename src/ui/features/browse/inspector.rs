@@ -256,11 +256,11 @@ impl Inspector {
                 Span::raw(table.storage.kind_detail()),
             ]),
             InspectorInfoField::TableFlags => {
-                let value = table
-                    .storage
-                    .flags_label()
-                    .map_or_else(|| Cow::Borrowed("(none)"), Cow::Owned);
-                let style = if table.storage.flags_label().is_some() {
+                let flags = table.storage.flags_label();
+                let value = flags
+                    .as_ref()
+                    .map_or(Cow::Borrowed("(none)"), |label| Cow::Owned(label.clone()));
+                let style = if flags.is_some() {
                     Style::default()
                 } else {
                     Style::default().fg(theme.semantic.text.placeholder)
