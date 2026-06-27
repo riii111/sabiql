@@ -459,7 +459,7 @@ mod tests {
                 }],
                 primary_key: Some(vec!["id".to_string()]),
                 row_count_estimate: Some(0),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }));
             state
         }

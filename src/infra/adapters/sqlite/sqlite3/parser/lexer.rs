@@ -179,6 +179,9 @@ fn module_name_at(sql: &str, start: usize) -> Option<String> {
             while i < bytes.len() && bytes[i] != b']' {
                 i += 1;
             }
+            if i >= bytes.len() {
+                return None;
+            }
             let name = sql[name_start..i].trim();
             if name.is_empty() {
                 None
@@ -1029,10 +1032,10 @@ END";
     }
 
     #[test]
-    fn virtual_table_module_name_reads_bracket_quoted_module() {
+    fn virtual_table_module_name_rejects_unclosed_bracket_module() {
         assert_eq!(
-            virtual_table_module_name("CREATE VIRTUAL TABLE notes USING [fts5](body);"),
-            Some("fts5".to_string())
+            virtual_table_module_name("CREATE VIRTUAL TABLE notes USING [fts5(body);"),
+            None
         );
     }
 }

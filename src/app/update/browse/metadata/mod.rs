@@ -71,11 +71,7 @@ mod tests {
     }
 
     fn empty_table(schema: &str, name: &str) -> Box<crate::domain::Table> {
-        Box::new(crate::domain::Table {
-            schema: schema.to_string(),
-            name: name.to_string(),
-            ..Default::default()
-        })
+        Box::new(crate::domain::Table::minimal_for_test(schema, name))
     }
 
     mod freshness_guards {

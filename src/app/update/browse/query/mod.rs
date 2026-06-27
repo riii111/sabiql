@@ -158,7 +158,7 @@ pub(super) mod tests {
                 function_name: "f".to_string(),
                 security_definer: false,
             }],
-            ..Default::default()
+            ..Table::minimal_for_test("", "")
         }
     }
 

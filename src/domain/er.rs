@@ -185,7 +185,7 @@ mod tests {
                 schema: "public".to_string(),
                 name: name.to_string(),
                 foreign_keys,
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }
         }
 

@@ -947,7 +947,7 @@ mod tests {
                     ordinal_position: (i + 1) as i32,
                 })
                 .collect(),
-            ..Default::default()
+            ..Table::minimal_for_test("", "")
         }
     }
 
@@ -956,7 +956,7 @@ mod tests {
             schema: "public".to_string(),
             name: "test".to_string(),
             columns: vec![col1, col2],
-            ..Default::default()
+            ..Table::minimal_for_test("", "")
         }
     }
 
@@ -1236,7 +1236,7 @@ mod tests {
                     },
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             };
 
             let candidates = e.column_candidates(Some(&table), "user");
@@ -1615,7 +1615,7 @@ mod tests {
                     },
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1700,7 +1700,7 @@ mod tests {
                     },
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1779,7 +1779,7 @@ mod tests {
                     on_update: FkAction::NoAction,
                     reference_resolved: true,
                 }],
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }
         }
 
@@ -1851,7 +1851,7 @@ mod tests {
                         ordinal_position: 2,
                     },
                 ],
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             };
 
             // "id" is contained in "user_id"
@@ -1885,7 +1885,7 @@ mod tests {
                         ordinal_position: 2,
                     },
                 ],
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             };
 
             let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
@@ -1926,7 +1926,7 @@ mod tests {
                         ordinal_position: 2,
                     },
                 ],
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             };
 
             let recent = vec!["email".to_string()];
@@ -2053,7 +2053,7 @@ mod tests {
                     comment: None,
                     ordinal_position: 1,
                 }],
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2138,7 +2138,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2150,7 +2150,7 @@ mod tests {
             Table {
                 schema: schema.to_string(),
                 name: name.to_string(),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }
         }
 
@@ -2214,7 +2214,7 @@ mod tests {
                     },
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }
         }
 
@@ -2417,7 +2417,7 @@ mod tests {
                     comment: None,
                     ordinal_position: 1,
                 }],
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             };
 
             let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);

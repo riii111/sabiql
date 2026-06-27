@@ -1217,7 +1217,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "old_table".to_string(),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }
         }
 
@@ -1520,7 +1520,7 @@ mod tests {
             Box::new(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             })
         }
 

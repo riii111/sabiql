@@ -98,7 +98,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..Default::default()
+            ..Table::minimal_for_test("", "")
         }
     }
 

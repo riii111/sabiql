@@ -957,10 +957,15 @@ mod tests {
             assert_eq!(table_names, vec!["notes", "notes_fts"]);
         }
 
-        #[tokio::test]
-        async fn classifies_table_storage_kinds_in_metadata() {
-            let (_dir, dsn) = make_sqlite_db(
-                r"
+        struct TableStorageMetadataFixture {
+            _dir: tempfile::TempDir,
+            storage_by_name: std::collections::HashMap<String, crate::domain::TableStorage>,
+        }
+
+        impl TableStorageMetadataFixture {
+            async fn new() -> Self {
+                let (dir, dsn) = make_sqlite_db(
+                    r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             CREATE TABLE strict_users(id INTEGER PRIMARY KEY, name TEXT);
             CREATE TABLE settings(
@@ -970,38 +975,72 @@ mod tests {
             CREATE TABLE typed_users(id INTEGER PRIMARY KEY, name TEXT) STRICT;
             CREATE VIRTUAL TABLE notes_fts USING fts5(body);
             ",
-            );
-            let adapter = SqliteAdapter::new();
+                );
+                let adapter = SqliteAdapter::new();
+                let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+                let storage_by_name = metadata
+                    .table_summaries
+                    .iter()
+                    .map(|summary| (summary.name.clone(), summary.storage.clone()))
+                    .collect();
 
-            let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
-            let storage_by_name: std::collections::HashMap<_, _> = metadata
-                .table_summaries
-                .iter()
-                .map(|summary| (summary.name.as_str(), summary.storage.clone()))
-                .collect();
+                Self {
+                    _dir: dir,
+                    storage_by_name,
+                }
+            }
+
+            fn storage(&self, name: &str) -> &crate::domain::TableStorage {
+                &self.storage_by_name[name]
+            }
+        }
+
+        #[tokio::test]
+        async fn metadata_classifies_regular_table_storage() {
+            let fixture = TableStorageMetadataFixture::new().await;
 
             assert_eq!(
-                storage_by_name["users"].kind,
+                fixture.storage("users").kind,
                 crate::domain::TableObjectKind::Table
             );
-            assert!(!storage_by_name["users"].is_strict);
-            assert!(!storage_by_name["users"].without_rowid);
+            assert!(!fixture.storage("users").is_strict);
+            assert!(!fixture.storage("users").without_rowid);
+        }
 
-            assert!(storage_by_name["settings"].without_rowid);
+        #[tokio::test]
+        async fn metadata_classifies_without_rowid_table_storage() {
+            let fixture = TableStorageMetadataFixture::new().await;
+
+            assert!(fixture.storage("settings").without_rowid);
+        }
+
+        #[tokio::test]
+        async fn metadata_does_not_infer_strict_from_table_name() {
+            let fixture = TableStorageMetadataFixture::new().await;
 
             assert!(
-                !storage_by_name["strict_users"].is_strict,
+                !fixture.storage("strict_users").is_strict,
                 "table name containing 'strict' must not infer STRICT from DDL when pragma.strict is 0"
             );
+        }
 
-            assert!(storage_by_name["typed_users"].is_strict);
+        #[tokio::test]
+        async fn metadata_classifies_strict_table_storage() {
+            let fixture = TableStorageMetadataFixture::new().await;
+
+            assert!(fixture.storage("typed_users").is_strict);
+        }
+
+        #[tokio::test]
+        async fn metadata_classifies_virtual_table_storage() {
+            let fixture = TableStorageMetadataFixture::new().await;
 
             assert_eq!(
-                storage_by_name["notes_fts"].kind,
+                fixture.storage("notes_fts").kind,
                 crate::domain::TableObjectKind::Virtual
             );
             assert_eq!(
-                storage_by_name["notes_fts"].virtual_module.as_deref(),
+                fixture.storage("notes_fts").virtual_module.as_deref(),
                 Some("fts5")
             );
         }

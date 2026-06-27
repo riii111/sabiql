@@ -142,7 +142,7 @@ mod tests {
                 name: "test_table".to_string(),
                 columns: cols,
                 row_count_estimate: Some(0),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }));
             state
         }

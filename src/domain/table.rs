@@ -17,7 +17,7 @@ fn make_display_name(schema: &str, name: &str, omit_public: bool) -> String {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Table {
     pub schema: String,
     pub name: String,
@@ -45,6 +45,28 @@ impl Table {
 
     pub fn source_ddl(&self) -> Option<&str> {
         self.source_ddl.as_deref()
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl Table {
+    #[must_use]
+    pub fn minimal_for_test(schema: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            schema: schema.into(),
+            name: name.into(),
+            owner: None,
+            columns: Vec::new(),
+            primary_key: None,
+            foreign_keys: Vec::new(),
+            indexes: Vec::new(),
+            rls: None,
+            triggers: Vec::new(),
+            row_count_estimate: None,
+            comment: None,
+            source_ddl: None,
+            storage: TableStorage::default(),
+        }
     }
 }
 
@@ -114,11 +136,7 @@ mod tests {
     use super::*;
 
     fn make_table(schema: &str, name: &str) -> Table {
-        Table {
-            schema: schema.to_string(),
-            name: name.to_string(),
-            ..Default::default()
-        }
+        Table::minimal_for_test(schema, name)
     }
 
     fn make_summary(schema: &str, name: &str) -> TableSummary {

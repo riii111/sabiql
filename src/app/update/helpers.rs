@@ -684,7 +684,7 @@ mod tests {
                     },
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }));
             state.query.pagination.reset_for_table("main", "users");
             state.result_interaction.stage_row(0);

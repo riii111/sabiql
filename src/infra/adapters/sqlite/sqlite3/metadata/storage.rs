@@ -70,8 +70,36 @@ fn parse_table_tail_options(sql: &str) -> (bool, bool) {
     parse_option_tokens(&upper[paren_end + 1..])
 }
 
+fn strip_sql_comments(sql: &str) -> String {
+    let bytes = sql.as_bytes();
+    let mut out = String::with_capacity(sql.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+        } else if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            if i + 1 < bytes.len() {
+                i += 2;
+            }
+        } else {
+            out.push(char::from(bytes[i]));
+            i += 1;
+        }
+    }
+    out
+}
+
 fn normalize_ddl_whitespace(sql: &str) -> String {
-    sql.split_whitespace().collect::<Vec<_>>().join(" ")
+    strip_sql_comments(sql)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn parse_option_tokens(tail: &str) -> (bool, bool) {
@@ -181,6 +209,20 @@ mod tests {
         ));
 
         assert!(storage.is_strict);
+    }
+
+    #[test]
+    fn legacy_sql_ignores_sql_comments_in_table_tail_options() {
+        let without_rowid = table_storage_from_legacy_sql(Some(
+            "CREATE TABLE settings(key TEXT PRIMARY KEY) WITHOUT /* c */ ROWID;",
+        ));
+        let strict = table_storage_from_legacy_sql(Some(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY) ) /* WITHOUT ROWID */ STRICT;",
+        ));
+
+        assert!(without_rowid.without_rowid);
+        assert!(strict.is_strict);
+        assert!(!strict.without_rowid);
     }
 
     #[test]

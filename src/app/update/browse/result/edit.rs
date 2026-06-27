@@ -161,7 +161,7 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 primary_key: Some(vec!["id".to_string()]),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }
         }
 
@@ -268,7 +268,7 @@ mod tests {
                 schema: "public".to_string(),
                 name: "posts".to_string(),
                 primary_key: Some(vec!["id".to_string()]),
-                ..Default::default()
+                ..Table::minimal_for_test("", "")
             }));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())

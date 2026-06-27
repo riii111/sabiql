@@ -343,7 +343,7 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            ..Default::default()
+            ..Table::minimal_for_test("", "")
         }
     }
 
