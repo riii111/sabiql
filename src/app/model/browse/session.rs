@@ -393,6 +393,16 @@ impl BrowseSession {
         self.dsn.as_ref().is_some_and(|d| d.starts_with("service="))
     }
 
+    pub fn is_ephemeral_connection(&self) -> bool {
+        self.active_connection
+            .as_ref()
+            .is_some_and(|connection| connection.id.is_ephemeral_cli())
+    }
+
+    pub fn can_reenter_connection_setup(&self) -> bool {
+        !self.is_service_connection() && !self.is_ephemeral_connection()
+    }
+
     #[cfg(test)]
     pub(crate) fn set_metadata_state(&mut self, state: MetadataState) {
         self.metadata_state = state;

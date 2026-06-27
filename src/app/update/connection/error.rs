@@ -64,7 +64,7 @@ pub(super) fn reduce_connection_error(
             DispatchResult::handled()
         }
         Action::ReenterConnectionSetup => {
-            if state.session.is_service_connection() {
+            if !state.session.can_reenter_connection_setup() {
                 return DispatchResult::handled();
             }
             state.connection_error.clear();
