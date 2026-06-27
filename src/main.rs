@@ -116,6 +116,7 @@ async fn main() -> Result<()> {
         QueryDeps {
             query_executor: Arc::clone(&adapter_registry) as _,
             query_history_store: Arc::new(FileQueryHistoryStore::new()),
+            sqlite_diagnostics: Arc::clone(&adapter_registry) as _,
         },
         ErDeps {
             er_exporter: Arc::new(DotExporter::new()),

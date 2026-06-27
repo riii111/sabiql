@@ -46,6 +46,7 @@ pub struct AppState {
     pub jsonb_detail: JsonbDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub settings: SettingsState,
+    pub sqlite_diagnostics: crate::model::sqlite::diagnostics::SqliteDiagnosticsState,
     pub explain: ExplainContext,
     pub modal: ModalState,
     pub flash_timers: FlashTimerStore,
@@ -77,6 +78,8 @@ impl AppState {
             jsonb_detail: JsonbDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             settings: SettingsState::default(),
+            sqlite_diagnostics: crate::model::sqlite::diagnostics::SqliteDiagnosticsState::default(
+            ),
             explain: ExplainContext::default(),
             modal: ModalState::default(),
             flash_timers: FlashTimerStore::default(),

@@ -16,6 +16,7 @@ use crate::ports::outbound::settings_store::SettingsStoreError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
+use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Table};
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -65,6 +66,7 @@ pub enum ScrollTarget {
     Explorer,
     JsonbDetail,
     CellDetail,
+    SqliteDiagnostics,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,6 +192,7 @@ pub enum ModalKind {
     CellDetail,
     ConnectionSetup,
     ConnectionSelector,
+    SqliteDiagnostics,
 }
 
 #[derive(Debug, Clone)]
@@ -338,6 +341,13 @@ pub enum Action {
     ConnectionDeleted(ConnectionId),
     ConnectionDeleteFailed(ConnectionStoreError),
     RequestEditSelectedConnection,
+
+    // SQLite diagnostics
+    SqliteDiagnosticsLoaded {
+        dsn: String,
+        run_id: u64,
+        snapshot: Box<SqliteDiagnosticsSnapshot>,
+    },
 
     // Settings
     SettingsSelectNext,
