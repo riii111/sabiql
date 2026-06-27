@@ -307,9 +307,21 @@ impl DdlGenerator for SqliteAdapter {
     }
 }
 
+const SQLITE_EXPLAIN_QUERY_PLAN_PREFIX: &str = "EXPLAIN QUERY PLAN";
+
 fn explain_query_plan_sql(query: &str) -> Option<String> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.len() >= SQLITE_EXPLAIN_QUERY_PLAN_PREFIX.len()
+        && trimmed[..SQLITE_EXPLAIN_QUERY_PLAN_PREFIX.len()]
+            .eq_ignore_ascii_case(SQLITE_EXPLAIN_QUERY_PLAN_PREFIX)
+    {
+        let inner = trimmed[SQLITE_EXPLAIN_QUERY_PLAN_PREFIX.len()..].trim_start();
+        if matches!(statement_classifier::classify(inner), StatementKind::Select) {
+            return Some(trimmed.to_string());
+        }
         return None;
     }
     if statement_classifier::first_keyword(trimmed)
@@ -509,6 +521,19 @@ mod tests {
         assert_eq!(
             adapter.build_explain_analyze_sql(DatabaseType::SQLite, "SELECT 1"),
             None
+        );
+    }
+
+    #[test]
+    fn explain_generation_passes_through_existing_query_plan_prefix() {
+        let adapter = SqliteAdapter::new();
+
+        assert_eq!(
+            adapter.build_explain_sql(
+                DatabaseType::SQLite,
+                "EXPLAIN QUERY PLAN SELECT * FROM users"
+            ),
+            Some("EXPLAIN QUERY PLAN SELECT * FROM users".to_string())
         );
     }
 

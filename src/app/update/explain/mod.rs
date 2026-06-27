@@ -174,6 +174,60 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_explain_prefixed_query_sets_prefix_specific_error() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("EXPLAIN SELECT 1".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("EXPLAIN QUERY PLAN is added automatically; enter a SELECT query only")
+            );
+        }
+
+        #[test]
+        fn sqlite_explain_analyze_request_stops_before_confirmation() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainAnalyzeRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("EXPLAIN ANALYZE is not supported for SQLite")
+            );
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+            assert!(!matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                    | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
+            ));
+        }
+
+        #[test]
         fn multi_statement_sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
             state

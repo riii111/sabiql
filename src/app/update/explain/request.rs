@@ -46,7 +46,7 @@ pub(super) fn reduce_request(
             {
                 Some(query) => query,
                 None if state.session.active_db_capabilities().supports_explain() => {
-                    mark_explain_unsupported_query(state);
+                    mark_explain_unsupported_query(state, &content);
                     return DispatchResult::handled();
                 }
                 None => {

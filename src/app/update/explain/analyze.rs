@@ -12,7 +12,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
     begin_explain_running, finish_explain_unsupported_analyze, is_multi_statement,
-    reject_unsupported_explain, show_explain_error_on_plan,
+    reject_unsupported_explain_analyze, show_explain_error_on_plan,
 };
 
 pub(super) fn reduce_analyze(
@@ -23,7 +23,7 @@ pub(super) fn reduce_analyze(
 ) -> DispatchResult {
     match action {
         Action::ExplainAnalyzeRequest => {
-            if reject_unsupported_explain(state) {
+            if reject_unsupported_explain_analyze(state) {
                 return DispatchResult::handled();
             }
             let content = state.sql_modal.editor.content().trim().to_string();
@@ -92,7 +92,7 @@ pub(super) fn reduce_analyze(
         }
 
         Action::ExplainAnalyzeConfirm => {
-            if reject_unsupported_explain(state) {
+            if reject_unsupported_explain_analyze(state) {
                 return DispatchResult::handled();
             }
             let query = match state.sql_modal.status() {

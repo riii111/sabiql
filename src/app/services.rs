@@ -70,6 +70,18 @@ impl AppServices {
                     DatabaseType::SQLite => {
                         use crate::policy::sql::statement_classifier::{self, StatementKind};
                         let trimmed = query.trim();
+                        if trimmed.len() >= 19
+                            && trimmed[..19].eq_ignore_ascii_case("EXPLAIN QUERY PLAN")
+                        {
+                            let inner = trimmed[19..].trim_start();
+                            if matches!(
+                                statement_classifier::classify(inner),
+                                StatementKind::Select
+                            ) {
+                                return Some(trimmed.to_string());
+                            }
+                            return None;
+                        }
                         if statement_classifier::first_keyword(trimmed)
                             .is_some_and(|keyword| keyword.eq_ignore_ascii_case("EXPLAIN"))
                         {

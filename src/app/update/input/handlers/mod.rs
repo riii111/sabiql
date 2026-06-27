@@ -59,6 +59,10 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
                     .normalize_sql_modal_tab(state.sql_modal.active_tab()),
                 state.ui.key_sequence().pending_prefix(),
                 state.settings.saved_keymap_preset(),
+                state
+                    .session
+                    .active_db_capabilities()
+                    .supports_explain_analyze(),
             )
         }
         InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
