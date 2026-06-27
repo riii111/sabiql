@@ -88,6 +88,8 @@ On first run, enter your connection details. They are saved to your platform con
 - macOS: `~/Library/Application Support/sabiql/connections.toml`
 - Linux: `~/.config/sabiql/connections.toml`
 
+For PostgreSQL, fill in host, port, database, and credentials. For SQLite, set **Type** to `SQLite` and enter the path to a database file (for example `/path/to/app.db`).
+
 Press `?` for help.
 
 Open Settings with `,` to switch themes, keymap presets, and the ER diagram browser command.
@@ -96,12 +98,28 @@ Open Settings with `,` to switch themes, keymap presets, and the ER diagram brow
 
 ## Requirements
 
-- `psql` CLI (PostgreSQL client)
-- Graphviz (optional, for ER diagrams): `brew install graphviz`
+Install the CLI for the database you want to open:
+
+- **PostgreSQL:** `psql` (PostgreSQL client)
+- **SQLite:** `sqlite3` (SQLite shell)
+
+Optional:
+
+- Graphviz (for ER diagrams on PostgreSQL): `brew install graphviz`
 
 ### Android / Termux
 
-Android/Termux support is build-only, not full platform support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. `psql` is still required.
+Android/Termux support is build-only, not full platform support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. Install `psql` for PostgreSQL and `sqlite3` for SQLite.
+
+## SQLite Limitations
+
+SQLite support covers browsing, editing, and ad-hoc SQL on regular database files. A few things are intentionally out of scope today:
+
+- **File paths only** — In-memory databases (`:memory:`) and URI filenames (`file:...`) are not supported.
+- **No EXPLAIN workflow** — Plan and compare tabs in the SQL modal are PostgreSQL-only.
+- **No ER diagrams** — Graphviz export requires PostgreSQL metadata.
+- **No JSON tree view** — Structured JSON editing is PostgreSQL-only.
+- **Virtual tables** — Databases with FTS, RTree, or other virtual tables require `sqlite3` 3.37.0 or later.
 
 ## Development
 
