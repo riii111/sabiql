@@ -3,10 +3,12 @@ use std::sync::Arc;
 
 use crate::app::ports::outbound::{
     DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
+    SqliteDiagnosticsProvider,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
-    DatabaseMetadata, QueryResult, QueryValue, Table, TableSignature, WriteExecutionResult,
+    DatabaseMetadata, QueryResult, QueryValue, SqliteDiagnosticsSnapshot, Table, TableSignature,
+    WriteExecutionResult,
 };
 use async_trait::async_trait;
 
@@ -479,5 +481,37 @@ mod tests {
 
         assert_eq!(detail.schema, "main");
         assert_eq!(detail.name, "users");
+    }
+}
+
+#[async_trait]
+impl SqliteDiagnosticsProvider for DbAdapterRegistry {
+    async fn fetch_diagnostics(
+        &self,
+        dsn: &str,
+        read_only: bool,
+    ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL => Err(DbOperationError::ConnectionFailed(
+                "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
+            )),
+            DatabaseType::SQLite => self.sqlite.fetch_diagnostics(dsn, read_only).await,
+        }
+    }
+}
+
+#[cfg(test)]
+mod sqlite_diagnostics_registry {
+    use super::*;
+
+    #[tokio::test]
+    async fn postgres_dsn_is_rejected() {
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let result = registry
+            .fetch_diagnostics("postgres://localhost/db", true)
+            .await;
+
+        assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
     }
 }
