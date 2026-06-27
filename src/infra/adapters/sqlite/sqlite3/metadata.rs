@@ -114,6 +114,10 @@ impl TableDetailMode {
     const fn include_source_ddl(self) -> bool {
         matches!(self, Self::Full)
     }
+
+    const fn include_storage(self) -> bool {
+        !matches!(self, Self::Signature)
+    }
 }
 
 impl SqliteAdapter {
@@ -611,7 +615,11 @@ impl SqliteAdapter {
             })
             .collect();
         let primary_key = (!primary_key.is_empty()).then_some(primary_key);
-        let storage = self.table_storage(path, table).await?.unwrap_or_default();
+        let storage = if mode.include_storage() {
+            self.table_storage(path, table).await?.unwrap_or_default()
+        } else {
+            TableStorage::default()
+        };
 
         Ok(Table {
             schema: MAIN_SCHEMA.to_string(),

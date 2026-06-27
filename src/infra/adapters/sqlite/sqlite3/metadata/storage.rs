@@ -1,3 +1,4 @@
+use super::super::parser::lexer::{is_create_virtual_table_prefix, virtual_table_module_name};
 use crate::domain::{TableObjectKind, TableStorage};
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -34,15 +35,14 @@ pub(super) fn table_storage_from_pragma(
         virtual_module: None,
     };
     if storage.kind == TableObjectKind::Virtual {
-        storage.virtual_module = sql.and_then(parse_virtual_module);
+        storage.virtual_module = sql.and_then(virtual_table_module_name);
     }
-    enrich_kind_from_sql(&mut storage, sql);
     storage
 }
 
 pub(super) fn table_storage_from_legacy_sql(sql: Option<&str>) -> TableStorage {
     let mut storage = TableStorage::default();
-    enrich_kind_from_sql(&mut storage, sql);
+    enrich_kind_from_legacy_sql(&mut storage, sql);
     if let Some(sql) = sql {
         let (is_strict, without_rowid) = parse_table_tail_options(sql);
         storage.is_strict = is_strict;
@@ -51,22 +51,14 @@ pub(super) fn table_storage_from_legacy_sql(sql: Option<&str>) -> TableStorage {
     storage
 }
 
-fn enrich_kind_from_sql(storage: &mut TableStorage, sql: Option<&str>) {
+fn enrich_kind_from_legacy_sql(storage: &mut TableStorage, sql: Option<&str>) {
     let Some(sql) = sql else {
         return;
     };
-    if storage.kind == TableObjectKind::Table
-        && normalize_ddl_whitespace(sql)
-            .to_ascii_lowercase()
-            .contains("create virtual table")
-    {
+    if is_create_virtual_table_prefix(sql) {
         storage.kind = TableObjectKind::Virtual;
-        storage.virtual_module = parse_virtual_module(sql);
+        storage.virtual_module = virtual_table_module_name(sql);
     }
-}
-
-fn normalize_ddl_whitespace(sql: &str) -> String {
-    sql.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn parse_table_tail_options(sql: &str) -> (bool, bool) {
@@ -78,39 +70,33 @@ fn parse_table_tail_options(sql: &str) -> (bool, bool) {
     parse_option_tokens(&upper[paren_end + 1..])
 }
 
+fn normalize_ddl_whitespace(sql: &str) -> String {
+    sql.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn parse_option_tokens(tail: &str) -> (bool, bool) {
     let tail = tail.trim().trim_end_matches(';').trim();
-    let tokens: Vec<&str> = tail.split_whitespace().collect();
+    let tokens: Vec<&str> = tail
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .filter(|token| !token.is_empty())
+        .collect();
     let mut is_strict = false;
     let mut without_rowid = false;
     let mut idx = 0;
     while idx < tokens.len() {
-        match tokens[idx] {
-            "STRICT" => is_strict = true,
-            "WITHOUT" if tokens.get(idx + 1) == Some(&"ROWID") => {
-                without_rowid = true;
-                idx += 1;
-            }
-            _ => {}
+        if tokens[idx].eq_ignore_ascii_case("STRICT") {
+            is_strict = true;
+        } else if tokens[idx].eq_ignore_ascii_case("WITHOUT")
+            && tokens
+                .get(idx + 1)
+                .is_some_and(|token| token.eq_ignore_ascii_case("ROWID"))
+        {
+            without_rowid = true;
+            idx += 1;
         }
         idx += 1;
     }
     (is_strict, without_rowid)
-}
-
-fn parse_virtual_module(sql: &str) -> Option<String> {
-    let normalized = normalize_ddl_whitespace(sql).to_ascii_lowercase();
-    let using_idx = normalized.find(" using ")?;
-    let rest = normalized[using_idx + 7..].trim_start();
-    let module = rest
-        .split(|c: char| c.is_whitespace() || c == '(')
-        .next()?
-        .trim();
-    if module.is_empty() {
-        None
-    } else {
-        Some(module.to_string())
-    }
 }
 
 #[cfg(test)]
@@ -120,7 +106,7 @@ mod tests {
     #[test]
     fn parses_virtual_module_from_ddl() {
         assert_eq!(
-            parse_virtual_module("CREATE VIRTUAL TABLE notes_fts USING fts5(body);"),
+            virtual_table_module_name("CREATE VIRTUAL TABLE notes_fts USING fts5(body);"),
             Some("fts5".to_string())
         );
     }
@@ -128,7 +114,15 @@ mod tests {
     #[test]
     fn parses_virtual_module_when_using_starts_on_new_line() {
         assert_eq!(
-            parse_virtual_module("CREATE VIRTUAL TABLE notes_fts\nUSING fts5(body);"),
+            virtual_table_module_name("CREATE VIRTUAL TABLE notes_fts\nUSING fts5(body);"),
+            Some("fts5".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_virtual_module_after_quoted_table_name_containing_using() {
+        assert_eq!(
+            virtual_table_module_name(r#"CREATE VIRTUAL TABLE "using" USING fts5(body);"#),
             Some("fts5".to_string())
         );
     }
@@ -143,6 +137,19 @@ mod tests {
         );
 
         assert!(!storage.is_strict);
+    }
+
+    #[test]
+    fn default_literal_does_not_mark_virtual_when_pragma_type_is_table() {
+        let storage = table_storage_from_pragma(
+            "table",
+            0,
+            0,
+            Some("CREATE TABLE docs(body TEXT DEFAULT 'create virtual table');"),
+        );
+
+        assert_eq!(storage.kind, TableObjectKind::Table);
+        assert!(storage.virtual_module.is_none());
     }
 
     #[test]
@@ -162,6 +169,21 @@ mod tests {
         ));
 
         assert!(storage.is_strict);
+    }
+
+    #[test]
+    fn legacy_sql_parses_comma_separated_table_options() {
+        let strict_first = table_storage_from_legacy_sql(Some(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY) STRICT, WITHOUT ROWID;",
+        ));
+        let without_rowid_first = table_storage_from_legacy_sql(Some(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY) WITHOUT ROWID, STRICT;",
+        ));
+
+        assert!(strict_first.is_strict);
+        assert!(strict_first.without_rowid);
+        assert!(without_rowid_first.is_strict);
+        assert!(without_rowid_first.without_rowid);
     }
 
     #[test]
