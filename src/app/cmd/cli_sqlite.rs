@@ -1,9 +1,13 @@
-use std::io::ErrorKind;
 use std::path::Path;
 
 use uuid::{Uuid, uuid};
 
-use crate::domain::{ConnectionId, SqliteConnectionConfig, SqliteConnectionConfigError};
+use crate::domain::{
+    ConnectionId, SqliteConnectionConfig, SqliteConnectionConfigError, SqlitePathError,
+};
+use crate::model::app_state::AppState;
+use crate::model::shared::input_mode::InputMode;
+use crate::ports::outbound::SqlitePathValidator;
 
 const CLI_SQLITE_CONNECTION_NAMESPACE: Uuid = uuid!("a3b5c7d9-1e2f-4a6b-8c0d-2e4f6a8b0c1d");
 
@@ -18,26 +22,22 @@ pub enum CliSqliteTargetError {
     Config(#[from] SqliteConnectionConfigError),
     #[error("Unsupported SQLite target; use a .db/.sqlite/.sqlite3 file path or sqlite:// DSN")]
     UnsupportedFormat,
-    #[error("SQLite database file not found: {0}")]
-    FileNotFound(String),
-    #[error("Cannot access SQLite database file: {0}")]
-    PathAccessDenied(String),
-    #[error("Cannot read SQLite database file metadata: {0}")]
-    Io(String),
-    #[error("SQLite path is a directory, not a file: {0}")]
-    IsDirectory(String),
 }
 
-impl CliSqliteTargetError {
-    pub fn from_file_metadata_error(path_display: &str, error: &std::io::Error) -> Self {
-        match error.kind() {
-            ErrorKind::NotFound => Self::FileNotFound(path_display.to_string()),
-            ErrorKind::PermissionDenied => {
-                Self::PathAccessDenied(format!("{path_display}: {error}"))
-            }
-            _ => Self::Io(format!("{path_display}: {error}")),
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CliSqliteResolveError {
+    #[error("{0}")]
+    Target(#[from] CliSqliteTargetError),
+    #[error("{0}")]
+    Path(#[from] SqlitePathError),
+    #[error("invalid SQLite path")]
+    InvalidPathEncoding,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CliSqliteActivateError {
+    #[error("Cannot resolve SQLite database path: {0}")]
+    Canonicalize(#[from] std::io::Error),
 }
 
 impl CliSqliteTarget {
@@ -62,11 +62,43 @@ impl CliSqliteTarget {
             .and_then(|name| name.to_str())
             .map_or_else(|| self.config.path().to_string(), str::to_owned)
     }
+
+    pub fn path_for_validation(&self) -> &Path {
+        Path::new(self.config.path())
+    }
 }
 
 pub fn connection_id_for_path(path: &str) -> ConnectionId {
     let derived = Uuid::new_v5(&CLI_SQLITE_CONNECTION_NAMESPACE, path.as_bytes());
     ConnectionId::from_string(format!("cli-sqlite-{}", derived.as_simple()))
+}
+
+pub fn resolve_cli_sqlite_target(
+    database: &str,
+    validator: &impl SqlitePathValidator,
+) -> Result<CliSqliteTarget, CliSqliteResolveError> {
+    let target = CliSqliteTarget::parse_cli_argument(database)?;
+    let path = target
+        .path_for_validation()
+        .to_str()
+        .ok_or(CliSqliteResolveError::InvalidPathEncoding)?;
+    validator.validate_database_path(path)?;
+    Ok(target)
+}
+
+pub fn activate_cli_sqlite_connection(
+    state: &mut AppState,
+    target: &CliSqliteTarget,
+) -> Result<(), CliSqliteActivateError> {
+    let canonical_path = std::fs::canonicalize(target.path())?;
+    let connection_id = connection_id_for_path(&canonical_path.to_string_lossy());
+    state.session.activate_cli_ephemeral_connection(
+        &connection_id,
+        &target.display_name(),
+        &target.dsn(),
+    );
+    state.modal.set_mode(InputMode::Normal);
+    Ok(())
 }
 
 fn parse_cli_path(input: &str) -> Result<String, CliSqliteTargetError> {
@@ -179,39 +211,6 @@ mod tests {
             let target = CliSqliteTarget::parse_cli_argument("/tmp/projects/app.db").unwrap();
 
             assert_eq!(target.display_name(), "app.db");
-        }
-    }
-
-    mod from_file_metadata_error {
-        use super::*;
-        use std::io::{Error, ErrorKind};
-
-        #[rstest]
-        #[case(
-            ErrorKind::NotFound,
-            "No such file",
-            CliSqliteTargetError::FileNotFound("/tmp/app.db".to_string())
-        )]
-        #[case(
-            ErrorKind::PermissionDenied,
-            "permission denied",
-            CliSqliteTargetError::PathAccessDenied("/tmp/app.db: permission denied".to_string())
-        )]
-        #[case(
-            ErrorKind::Other,
-            "device offline",
-            CliSqliteTargetError::Io("/tmp/app.db: device offline".to_string())
-        )]
-        fn maps_error_kind(
-            #[case] kind: ErrorKind,
-            #[case] message: &str,
-            #[case] expected: CliSqliteTargetError,
-        ) {
-            let error = Error::new(kind, message);
-            assert_eq!(
-                CliSqliteTargetError::from_file_metadata_error("/tmp/app.db", &error),
-                expected
-            );
         }
     }
 

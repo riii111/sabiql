@@ -1,13 +1,16 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::connection::ConnectionProfileError;
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
 };
 use crate::model::connection::state::ConnectionState;
 use crate::model::shared::input_mode::InputMode;
-use crate::update::action::{Action, ConnectionTarget, InputTarget, ModalKind};
+use crate::update::action::{
+    Action, ConnectionSaveError, ConnectionTarget, InputTarget, ModalKind,
+};
 use crate::update::connection::helpers::{
     connection_save_fetch_effects, reset_for_new_connection, save_current_cache,
 };
@@ -213,6 +216,11 @@ pub fn reduce_connection_setup(
             DispatchResult::handled_with(connection_save_fetch_effects(dsn, run_id, *database_type))
         }
         Action::ConnectionSaveFailed(e) => {
+            if let ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(error)) = &e {
+                state
+                    .connection_setup
+                    .record_sqlite_path_error(error.clone());
+            }
             if !state.session.connection_state().is_connected() {
                 state.session.mark_disconnected();
             }

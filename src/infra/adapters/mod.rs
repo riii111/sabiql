@@ -25,4 +25,4 @@ pub use postgres::PostgresAdapter;
 pub use query_history::FileQueryHistoryStore;
 pub use registry::DbAdapterRegistry;
 pub use settings_store::TomlSettingsStore;
-pub use sqlite::SqliteAdapter;
+pub use sqlite::{FsSqlitePathValidator, SqliteAdapter};

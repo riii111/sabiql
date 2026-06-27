@@ -23,7 +23,7 @@ use crate::model::app_state::AppState;
 use crate::ports::outbound::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
-    Renderer, SettingsStore, SqliteDiagnosticsProvider,
+    Renderer, SettingsStore, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -32,6 +32,7 @@ pub struct ConnectionDeps {
     pub dsn_builder: Arc<dyn DsnBuilder>,
     pub connection_store: Arc<dyn ConnectionStore>,
     pub pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
+    pub sqlite_path_validator: Arc<dyn SqlitePathValidator>,
 }
 
 pub struct QueryDeps {
@@ -169,11 +170,9 @@ impl EffectRunner {
                 cmd_connection::run(
                     e,
                     &self.action_tx,
-                    &self.connection.dsn_builder,
+                    &self.connection,
                     &self.metadata_provider,
                     &self.metadata_cache,
-                    &self.connection.connection_store,
-                    self.connection.pg_service_entry_reader.as_ref(),
                     state,
                 )
                 .await?;
@@ -191,6 +190,7 @@ impl EffectRunner {
                     &self.action_tx,
                     &self.metadata_provider,
                     &self.metadata_cache,
+                    &self.connection.sqlite_path_validator,
                     state,
                     completion_engine,
                 )

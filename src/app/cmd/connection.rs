@@ -5,23 +5,22 @@ use tokio::sync::mpsc;
 
 use crate::cmd::cache::TtlCache;
 use crate::cmd::effect::Effect;
+use crate::cmd::runner::ConnectionDeps;
+use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::DatabaseMetadata;
-use crate::domain::connection::{ConnectionId, ConnectionProfile, DatabaseType};
-use crate::model::app_state::AppState;
-use crate::ports::outbound::{
-    ConnectionStore, ConnectionStoreError, DsnBuilder, MetadataProvider, PgServiceEntryReader,
-    ServiceFileError,
+use crate::domain::connection::{
+    ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
 };
+use crate::model::app_state::AppState;
+use crate::ports::outbound::{ConnectionStoreError, MetadataProvider, ServiceFileError};
 use crate::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
 
 pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
-    dsn_builder: &Arc<dyn DsnBuilder>,
+    connection: &ConnectionDeps,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
-    connection_store: &Arc<dyn ConnectionStore>,
-    pg_service_entry_reader: Option<&Arc<dyn PgServiceEntryReader>>,
     state: &AppState,
 ) -> Result<()> {
     match effect {
@@ -39,13 +38,30 @@ pub(crate) async fn run(
                 }
             };
             let id = profile.id.clone();
-            let dsn = dsn_builder.build_dsn(&profile);
+            let dsn = connection.dsn_builder.build_dsn(&profile);
             let name = profile.name.as_str().to_string();
             let database_type = profile.database_type();
-            let store = Arc::clone(connection_store);
+            let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
             if profile.database_type() == DatabaseType::SQLite {
+                let path = profile
+                    .sqlite_config()
+                    .expect("SQLite profile requires SQLite config")
+                    .path()
+                    .to_string();
+                if let Err(error) =
+                    validate_sqlite_database_path(&connection.sqlite_path_validator, path).await
+                {
+                    action_tx
+                        .send(Action::ConnectionSaveFailed(
+                            ConnectionProfileError::SqlitePath(error).into(),
+                        ))
+                        .await
+                        .ok();
+                    return Ok(());
+                }
+
                 tokio::task::spawn_blocking(move || match store.save(&profile) {
                     Ok(()) => {
                         tx.blocking_send(Action::ConnectionSaveCompleted(ConnectionTarget {
@@ -96,7 +112,7 @@ pub(crate) async fn run(
         }
 
         Effect::LoadConnectionForEdit { id } => {
-            let store = Arc::clone(connection_store);
+            let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || match store.find_by_id(&id) {
@@ -118,8 +134,8 @@ pub(crate) async fn run(
         }
 
         Effect::LoadConnections => {
-            let store = Arc::clone(connection_store);
-            let reader = pg_service_entry_reader.cloned();
+            let store = Arc::clone(&connection.connection_store);
+            let reader = connection.pg_service_entry_reader.clone();
             let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || {
@@ -147,7 +163,7 @@ pub(crate) async fn run(
         }
 
         Effect::DeleteConnection { id } => {
-            let store = Arc::clone(connection_store);
+            let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || match store.delete(&id) {
@@ -163,7 +179,7 @@ pub(crate) async fn run(
 
         Effect::SwitchConnection { connection_index } => {
             if let Some(profile) = state.connections().get(connection_index) {
-                let dsn = dsn_builder.build_dsn(profile);
+                let dsn = connection.dsn_builder.build_dsn(profile);
                 let name = profile.display_name().to_string();
                 let id = profile.id.clone();
                 let database_type = profile.database_type();
@@ -215,8 +231,8 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::cmd::test_support::*;
     use crate::domain::connection::{
-        ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SqliteConnectionConfig,
-        SslMode,
+        ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
+        SqliteConnectionConfig, SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
     use crate::ports::outbound::connection_store::MockConnectionStore;
@@ -226,7 +242,9 @@ mod tests {
         ConnectionStoreError, DsnBuilder, RenderOutput, RenderResult, Renderer,
     };
     use crate::services::AppServices;
-    use crate::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
+    use crate::update::action::{
+        Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
+    };
 
     struct NoopRenderer;
     impl Renderer for NoopRenderer {
@@ -242,6 +260,8 @@ mod tests {
 
     mod save_connection {
         use super::*;
+        use std::fs;
+        use tempfile::tempdir;
 
         struct SqliteDsnBuilder;
         impl DsnBuilder for SqliteDsnBuilder {
@@ -252,6 +272,12 @@ mod tests {
 
         #[tokio::test]
         async fn sqlite_profile_is_saved_before_adapter_metadata_exists() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("app.db");
+            fs::write(&path, b"").unwrap();
+            let path_str = path.to_str().unwrap().to_string();
+            let expected_dsn = format!("sqlite://{path_str}");
+
             let mut mock_store = MockConnectionStore::new();
             mock_store.expect_save().once().returning(|profile| {
                 assert_eq!(profile.database_type(), DatabaseType::SQLite);
@@ -279,7 +305,7 @@ mod tests {
                         id: None,
                         name: "Local".to_string(),
                         config: ConnectionConfig::SQLite(
-                            SqliteConnectionConfig::new("/tmp/app.db").unwrap(),
+                            SqliteConnectionConfig::new(path_str).unwrap(),
                         ),
                     }],
                     &mut renderer,
@@ -295,8 +321,64 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             assert!(
-                matches!(action, Action::ConnectionSaveCompleted(ConnectionTarget { ref dsn, .. }) if dsn == "sqlite:///tmp/app.db"),
+                matches!(action, Action::ConnectionSaveCompleted(ConnectionTarget { ref dsn, .. }) if dsn == &expected_dsn),
                 "expected sqlite ConnectionSaveCompleted, got {action:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn sqlite_missing_file_is_rejected_before_save() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("missing.db");
+            let path_str = path.to_str().unwrap().to_string();
+
+            let mut mock_store = MockConnectionStore::new();
+            mock_store.expect_save().never();
+
+            let cache = TtlCache::new(300);
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = make_runner_with_dsn(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(mock_store),
+                cache,
+                tx,
+                Arc::new(SqliteDsnBuilder),
+            );
+
+            let state = &mut AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "Local".to_string(),
+                        config: ConnectionConfig::SQLite(
+                            SqliteConnectionConfig::new(path_str).unwrap(),
+                        ),
+                    }],
+                    &mut renderer,
+                    state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
+            assert!(
+                matches!(
+                    action,
+                    Action::ConnectionSaveFailed(ConnectionSaveError::Validation(
+                        ConnectionProfileError::SqlitePath(SqlitePathError::FileNotFound(_))
+                    ))
+                ),
+                "expected sqlite path validation failure, got {action:?}"
             );
         }
     }
@@ -454,6 +536,7 @@ mod tests {
                     dsn_builder: Arc::new(NoopDsnBuilder),
                     connection_store: Arc::new(mock_store),
                     pg_service_entry_reader: None,
+                    sqlite_path_validator: Arc::new(TestFsSqlitePathValidator),
                 },
                 QueryDeps {
                     query_executor: Arc::new(MockQueryExecutor::new()),

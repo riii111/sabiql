@@ -82,6 +82,7 @@ sabiql-app = { workspace = true, features = ["test-support"] }
 sabiql-ui = { workspace = true, features = ["test-support"] }
 ratatui.workspace = true
 insta.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 
 [lints]

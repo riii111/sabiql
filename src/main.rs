@@ -4,7 +4,6 @@
 )]
 
 use std::cell::RefCell;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -23,7 +22,7 @@ mod tests;
 mod render_snapshots;
 
 use sabiql_app::cmd::cache::TtlCache;
-use sabiql_app::cmd::cli_sqlite::{CliSqliteTarget, CliSqliteTargetError, connection_id_for_path};
+use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
@@ -41,8 +40,8 @@ use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
 use sabiql_infra::adapters::{
     ArboardClipboard, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter,
-    NativeFolderOpener, PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
-    TomlSettingsStore,
+    FsSqlitePathValidator, NativeFolderOpener, PgServiceFileReader, PostgresAdapter,
+    TomlConnectionStore, TomlSettingsStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -93,7 +92,10 @@ async fn main() -> Result<()> {
     }
 
     let cli_sqlite = match args.database {
-        Some(database) => Some(resolve_cli_sqlite_target(&database)?),
+        Some(database) => Some(
+            resolve_cli_sqlite_target(&database, &FsSqlitePathValidator)
+                .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?,
+        ),
         None => None,
     };
 
@@ -122,6 +124,7 @@ async fn main() -> Result<()> {
             dsn_builder: Arc::clone(&adapter_registry) as _,
             connection_store: Arc::clone(&connection_store) as _,
             pg_service_entry_reader: Some(Arc::clone(&pg_service_entry_reader)),
+            sqlite_path_validator: Arc::new(FsSqlitePathValidator),
         },
         QueryDeps {
             query_executor: Arc::clone(&adapter_registry) as _,
@@ -199,16 +202,8 @@ async fn main() -> Result<()> {
     }
 
     if let Some(target) = cli_sqlite.as_ref() {
-        let canonical_path = std::fs::canonicalize(target.path()).map_err(|error| {
-            CliSqliteTargetError::from_file_metadata_error(target.path(), &error)
-        })?;
-        let connection_id = connection_id_for_path(&canonical_path.to_string_lossy());
-        state.session.activate_cli_ephemeral_connection(
-            &connection_id,
-            &target.display_name(),
-            &target.dsn(),
-        );
-        state.modal.set_mode(InputMode::Normal);
+        activate_cli_sqlite_connection(&mut state, target)
+            .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
     }
 
     let mut tui = TuiRunner::new()?;
@@ -523,25 +518,6 @@ async fn drain_and_process_terminal_events(
             services,
         )
         .await?;
-    }
-
-    Ok(())
-}
-
-fn resolve_cli_sqlite_target(input: &str) -> Result<CliSqliteTarget> {
-    let target = CliSqliteTarget::parse_cli_argument(input)?;
-    validate_cli_sqlite_file(target.path())?;
-    Ok(target)
-}
-
-fn validate_cli_sqlite_file(path: &str) -> Result<(), CliSqliteTargetError> {
-    let path = Path::new(path);
-    let display = path.display().to_string();
-    let metadata = std::fs::metadata(path)
-        .map_err(|error| CliSqliteTargetError::from_file_metadata_error(&display, &error))?;
-
-    if metadata.is_dir() {
-        return Err(CliSqliteTargetError::IsDirectory(display));
     }
 
     Ok(())

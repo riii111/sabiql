@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SqliteConnectionConfigError,
-    SslMode,
+    SqlitePathError, SslMode,
 };
 use crate::model::shared::text_input::TextInputState;
 
@@ -360,6 +360,19 @@ impl ConnectionSetupState {
             SqliteConnectionConfigError::UnsupportedConnectionFormat => {
                 "Use a regular file path (in-memory and URI filenames unsupported)"
             }
+        };
+        self.validation_errors
+            .insert(ConnectionField::SqlitePath, message.to_string());
+    }
+
+    pub fn record_sqlite_path_error(&mut self, error: SqlitePathError) {
+        let message = match error {
+            SqlitePathError::FileNotFound(_) => "File not found",
+            SqlitePathError::IsDirectory(_) => "Path is a directory",
+            SqlitePathError::NotRegularFile(_) => "Not a regular file",
+            SqlitePathError::ReadAccessDenied(_) => "Read permission denied",
+            SqlitePathError::PathAccessDenied(_) => "Access denied",
+            SqlitePathError::Io(_) => "Cannot access file",
         };
         self.validation_errors
             .insert(ConnectionField::SqlitePath, message.to_string());

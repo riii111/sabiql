@@ -6,6 +6,7 @@ use super::config::{
 use super::database_type::DatabaseType;
 use super::id::ConnectionId;
 use super::name::{ConnectionName, ConnectionNameError};
+use super::sqlite_path::SqlitePathError;
 use super::ssl_mode::SslMode;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -22,6 +23,8 @@ pub enum ConnectionProfileError {
     UnsupportedSqliteConnectionFormat,
     #[error("PostgreSQL connection field `{0}` is required")]
     MissingPostgresField(&'static str),
+    #[error("{0}")]
+    SqlitePath(#[from] SqlitePathError),
 }
 
 impl From<SqliteConnectionConfigError> for ConnectionProfileError {
