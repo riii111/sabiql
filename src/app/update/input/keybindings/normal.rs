@@ -239,7 +239,10 @@ pub mod global {
         desc_short: "Diagnostics",
         description: "Open SQLite Diagnostics",
         action: Action::OpenModal(ModalKind::SqliteDiagnostics),
-        combos: &[KeyCombo::ctrl_shift(Key::Char('d'))],
+        combos: &[
+            KeyCombo::ctrl_shift(Key::Char('d')),
+            KeyCombo::ctrl(Key::Char('D')),
+        ],
     };
 
     pub const SQLITE_DIAGNOSTICS_IDE: KeyBinding = KeyBinding {

@@ -171,7 +171,7 @@ mod tests {
         assert!(snapshot.busy_timeout.is_ok());
         assert!(snapshot.database_list.is_ok());
         assert!(snapshot.quick_check.is_ok());
-        assert!(snapshot.quick_check_result().unwrap().is_ok);
+        assert!(snapshot.quick_check_is_ok().unwrap());
     }
 
     #[tokio::test]

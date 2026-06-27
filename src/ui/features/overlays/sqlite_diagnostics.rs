@@ -8,6 +8,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::sqlite::diagnostics::{DiagnosticFieldKind, display_rows};
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
+use crate::primitives::utils::text_utils::wrapped_line_count;
 use crate::theme::ThemePalette;
 
 pub struct SqliteDiagnosticsRenderMetrics {
@@ -32,48 +33,68 @@ impl SqliteDiagnosticsOverlay {
             theme,
         );
         let viewport_height = inner.height as usize;
+        let viewport_width = inner.width.max(1);
 
         if state.sqlite_diagnostics.is_loading() {
+            let lines = vec![
+                Line::raw(""),
+                Line::from(Span::styled(
+                    "Loading diagnostics...",
+                    Style::default().fg(theme.semantic.status.warning),
+                )),
+            ];
+            let content_line_count = wrapped_content_line_count(&lines, viewport_width) as usize;
+            let scroll = state
+                .sqlite_diagnostics
+                .scroll_offset()
+                .min(content_line_count.saturating_sub(viewport_height));
             frame.render_widget(
-                Paragraph::new(vec![
-                    Line::raw(""),
-                    Line::from(Span::styled(
-                        "Loading diagnostics...",
-                        Style::default().fg(theme.semantic.status.warning),
-                    )),
-                ]),
+                Paragraph::new(lines)
+                    .wrap(Wrap { trim: false })
+                    .scroll((scroll as u16, 0)),
                 inner,
             );
             return SqliteDiagnosticsRenderMetrics {
-                content_line_count: 2,
+                content_line_count,
                 viewport_height,
             };
         }
 
         let Some(snapshot) = state.sqlite_diagnostics.snapshot() else {
+            let lines = vec![Line::from(Span::styled(
+                "Diagnostics unavailable.",
+                Style::default().fg(theme.semantic.status.error),
+            ))];
+            let content_line_count = wrapped_content_line_count(&lines, viewport_width) as usize;
+            let scroll = state
+                .sqlite_diagnostics
+                .scroll_offset()
+                .min(content_line_count.saturating_sub(viewport_height));
             frame.render_widget(
-                Paragraph::new(Line::from(Span::styled(
-                    "Diagnostics unavailable.",
-                    Style::default().fg(theme.semantic.status.error),
-                ))),
+                Paragraph::new(lines)
+                    .wrap(Wrap { trim: false })
+                    .scroll((scroll as u16, 0)),
                 inner,
             );
             return SqliteDiagnosticsRenderMetrics {
-                content_line_count: 1,
+                content_line_count,
                 viewport_height,
             };
         };
 
         let lines = build_render_lines(snapshot, theme);
-        let content_line_count = lines.len();
-        let scroll = state.sqlite_diagnostics.scroll_offset();
-        let visible = lines
-            .into_iter()
-            .skip(scroll)
-            .take(viewport_height)
-            .collect::<Vec<_>>();
+        let content_line_count = wrapped_content_line_count(&lines, viewport_width) as usize;
+        let scroll = state
+            .sqlite_diagnostics
+            .scroll_offset()
+            .min(content_line_count.saturating_sub(viewport_height));
 
-        frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), inner);
+        frame.render_widget(
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .scroll((scroll as u16, 0)),
+            inner,
+        );
 
         SqliteDiagnosticsRenderMetrics {
             content_line_count,
@@ -101,6 +122,23 @@ pub fn build_render_lines(
         );
     }
     lines
+}
+
+fn lines_to_text(lines: &[Line<'_>]) -> String {
+    lines
+        .iter()
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn wrapped_content_line_count(lines: &[Line<'_>], viewport_width: u16) -> u16 {
+    wrapped_line_count(&lines_to_text(lines), viewport_width)
 }
 
 fn append_field_lines(
@@ -149,15 +187,11 @@ fn field_style(
 
     if field.is_ok() {
         if kind == DiagnosticFieldKind::QuickCheck
-            && snapshot
-                .quick_check_result()
-                .is_some_and(|result| !result.is_ok)
+            && snapshot.quick_check_is_ok().is_some_and(|is_ok| !is_ok)
         {
             Style::default().fg(theme.semantic.status.error)
         } else if kind == DiagnosticFieldKind::QuickCheck
-            && snapshot
-                .quick_check_result()
-                .is_some_and(|result| result.is_ok)
+            && snapshot.quick_check_is_ok().is_some_and(|is_ok| is_ok)
         {
             Style::default().fg(theme.semantic.status.success)
         } else {
@@ -207,5 +241,21 @@ mod tests {
                 .iter()
                 .any(|span| span.content.contains("aux|/tmp/aux.db"))
         }));
+    }
+
+    #[test]
+    fn wrapped_content_line_count_exceeds_logical_lines_for_long_values() {
+        let snapshot = SqliteDiagnosticsSnapshot {
+            db_file: DiagnosticField::ok(
+                "/tmp/very/long/database/path/that/will/wrap/in/a/narrow/viewport.db",
+            ),
+            ..Default::default()
+        };
+        let theme = palette_for(ThemeId::Default);
+        let lines = build_render_lines(&snapshot, theme);
+        let logical_lines = lines.len();
+        let wrapped_lines = wrapped_content_line_count(&lines, 24) as usize;
+
+        assert!(wrapped_lines > logical_lines);
     }
 }

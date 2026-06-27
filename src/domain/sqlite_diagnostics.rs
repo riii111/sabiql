@@ -34,12 +34,6 @@ impl DiagnosticField {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QuickCheckResult {
-    pub summary: String,
-    pub is_ok: bool,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SqliteDiagnosticsSnapshot {
     pub db_file: DiagnosticField,
@@ -53,14 +47,11 @@ pub struct SqliteDiagnosticsSnapshot {
 }
 
 impl SqliteDiagnosticsSnapshot {
-    pub fn quick_check_result(&self) -> Option<QuickCheckResult> {
+    pub fn quick_check_is_ok(&self) -> Option<bool> {
         self.quick_check
             .value
             .as_ref()
-            .map(|summary| QuickCheckResult {
-                summary: summary.clone(),
-                is_ok: self.quick_check.is_ok() && summary.eq_ignore_ascii_case("ok"),
-            })
+            .map(|summary| self.quick_check.is_ok() && summary.eq_ignore_ascii_case("ok"))
     }
 }
 
@@ -77,15 +68,22 @@ mod tests {
     }
 
     #[test]
-    fn quick_check_result_detects_ok_summary() {
+    fn quick_check_is_ok_detects_ok_summary() {
         let snapshot = SqliteDiagnosticsSnapshot {
             quick_check: DiagnosticField::ok("ok"),
             ..Default::default()
         };
 
-        let result = snapshot.quick_check_result().unwrap();
+        assert_eq!(snapshot.quick_check_is_ok(), Some(true));
+    }
 
-        assert!(result.is_ok);
-        assert_eq!(result.summary, "ok");
+    #[test]
+    fn quick_check_is_ok_detects_failure_summary() {
+        let snapshot = SqliteDiagnosticsSnapshot {
+            quick_check: DiagnosticField::ok("row 1 missing from index idx_users"),
+            ..Default::default()
+        };
+
+        assert_eq!(snapshot.quick_check_is_ok(), Some(false));
     }
 }

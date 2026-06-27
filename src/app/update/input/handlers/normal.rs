@@ -1022,6 +1022,18 @@ mod tests {
                         Action::OpenModal(ModalKind::SqliteDiagnostics)
                     ));
                 }
+
+                #[test]
+                fn normalized_ctrl_uppercase_d_opens_diagnostics() {
+                    let state = sqlite_connected_state();
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('D')), &state);
+
+                    assert!(matches!(
+                        result,
+                        Action::OpenModal(ModalKind::SqliteDiagnostics)
+                    ));
+                }
             }
 
             #[test]
