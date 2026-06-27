@@ -1,36 +1,48 @@
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct DiagnosticField {
-    pub value: Option<String>,
-    pub error: Option<String>,
+pub enum DiagnosticField {
+    #[default]
+    Unavailable,
+    Ok(String),
+    Err(String),
 }
 
 impl DiagnosticField {
     pub fn ok(value: impl Into<String>) -> Self {
-        Self {
-            value: Some(value.into()),
-            error: None,
-        }
+        Self::Ok(value.into())
     }
 
     pub fn err(message: impl Into<String>) -> Self {
-        Self {
-            value: None,
-            error: Some(message.into()),
+        Self::Err(message.into())
+    }
+
+    pub fn ok_value(&self) -> Option<&str> {
+        match self {
+            Self::Ok(value) => Some(value.as_str()),
+            Self::Unavailable | Self::Err(_) => None,
+        }
+    }
+
+    pub fn err_message(&self) -> Option<&str> {
+        match self {
+            Self::Err(message) => Some(message.as_str()),
+            Self::Unavailable | Self::Ok(_) => None,
         }
     }
 
     pub fn display(&self) -> String {
-        if let Some(value) = &self.value {
-            value.clone()
-        } else if let Some(error) = &self.error {
-            format!("(failed: {error})")
-        } else {
-            "(unavailable)".to_string()
+        match self {
+            Self::Ok(value) => value.clone(),
+            Self::Err(error) => format!("(failed: {error})"),
+            Self::Unavailable => "(unavailable)".to_string(),
         }
     }
 
     pub fn is_ok(&self) -> bool {
-        self.value.is_some() && self.error.is_none()
+        matches!(self, Self::Ok(_))
+    }
+
+    pub fn is_err(&self) -> bool {
+        matches!(self, Self::Err(_))
     }
 }
 
@@ -49,9 +61,8 @@ pub struct SqliteDiagnosticsSnapshot {
 impl SqliteDiagnosticsSnapshot {
     pub fn quick_check_is_ok(&self) -> Option<bool> {
         self.quick_check
-            .value
-            .as_ref()
-            .map(|summary| self.quick_check.is_ok() && summary.eq_ignore_ascii_case("ok"))
+            .ok_value()
+            .map(|summary| summary.eq_ignore_ascii_case("ok"))
     }
 }
 
@@ -65,6 +76,14 @@ mod tests {
 
         assert_eq!(field.display(), "(failed: timeout)");
         assert!(!field.is_ok());
+    }
+
+    #[test]
+    fn diagnostic_field_rejects_invalid_public_construction() {
+        let field = DiagnosticField::ok("value");
+
+        assert_eq!(field.ok_value(), Some("value"));
+        assert!(field.err_message().is_none());
     }
 
     #[test]

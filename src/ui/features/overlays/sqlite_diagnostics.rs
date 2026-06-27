@@ -43,21 +43,7 @@ impl SqliteDiagnosticsOverlay {
                     Style::default().fg(theme.semantic.status.warning),
                 )),
             ];
-            let content_line_count = wrapped_content_line_count(&lines, viewport_width) as usize;
-            let scroll = state
-                .sqlite_diagnostics
-                .scroll_offset()
-                .min(content_line_count.saturating_sub(viewport_height));
-            frame.render_widget(
-                Paragraph::new(lines)
-                    .wrap(Wrap { trim: false })
-                    .scroll((scroll as u16, 0)),
-                inner,
-            );
-            return SqliteDiagnosticsRenderMetrics {
-                content_line_count,
-                viewport_height,
-            };
+            return render_lines(frame, inner, state, lines, viewport_width, viewport_height);
         }
 
         let Some(snapshot) = state.sqlite_diagnostics.snapshot() else {
@@ -65,21 +51,7 @@ impl SqliteDiagnosticsOverlay {
                 "Diagnostics unavailable.",
                 Style::default().fg(theme.semantic.status.error),
             ))];
-            let content_line_count = wrapped_content_line_count(&lines, viewport_width) as usize;
-            let scroll = state
-                .sqlite_diagnostics
-                .scroll_offset()
-                .min(content_line_count.saturating_sub(viewport_height));
-            frame.render_widget(
-                Paragraph::new(lines)
-                    .wrap(Wrap { trim: false })
-                    .scroll((scroll as u16, 0)),
-                inner,
-            );
-            return SqliteDiagnosticsRenderMetrics {
-                content_line_count,
-                viewport_height,
-            };
+            return render_lines(frame, inner, state, lines, viewport_width, viewport_height);
         };
 
         let quick_check_override = state
@@ -87,23 +59,32 @@ impl SqliteDiagnosticsOverlay {
             .is_quick_check_pending()
             .then_some("Running...");
         let lines = build_render_lines(snapshot, theme, quick_check_override);
-        let content_line_count = wrapped_content_line_count(&lines, viewport_width) as usize;
-        let scroll = state
-            .sqlite_diagnostics
-            .scroll_offset()
-            .min(content_line_count.saturating_sub(viewport_height));
+        render_lines(frame, inner, state, lines, viewport_width, viewport_height)
+    }
+}
 
-        frame.render_widget(
-            Paragraph::new(lines)
-                .wrap(Wrap { trim: false })
-                .scroll((scroll as u16, 0)),
-            inner,
-        );
-
-        SqliteDiagnosticsRenderMetrics {
-            content_line_count,
-            viewport_height,
-        }
+fn render_lines(
+    frame: &mut Frame,
+    inner: ratatui::layout::Rect,
+    state: &AppState,
+    lines: Vec<Line<'static>>,
+    viewport_width: u16,
+    viewport_height: usize,
+) -> SqliteDiagnosticsRenderMetrics {
+    let content_line_count = wrapped_content_line_count(&lines, viewport_width) as usize;
+    let scroll = state
+        .sqlite_diagnostics
+        .scroll_offset()
+        .min(content_line_count.saturating_sub(viewport_height));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0)),
+        inner,
+    );
+    SqliteDiagnosticsRenderMetrics {
+        content_line_count,
+        viewport_height,
     }
 }
 

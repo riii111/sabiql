@@ -98,7 +98,7 @@ mod tests {
             Action::SqliteDiagnosticsCoreLoaded {
                 snapshot,
                 ..
-            } if snapshot.sqlite_version.value.as_deref() == Some("3.45.0")
+            } if snapshot.sqlite_version.ok_value() == Some("3.45.0")
         ));
     }
 
@@ -127,7 +127,7 @@ mod tests {
             Action::SqliteDiagnosticsQuickCheckLoaded {
                 quick_check,
                 ..
-            } if quick_check.value.as_deref() == Some("ok")
+            } if quick_check.ok_value() == Some("ok")
         ));
     }
 
@@ -156,7 +156,7 @@ mod tests {
             Action::SqliteDiagnosticsCoreLoaded {
                 snapshot,
                 ..
-            } if snapshot.db_file.error.is_some()
+            } if snapshot.db_file.is_err()
         ));
     }
 }

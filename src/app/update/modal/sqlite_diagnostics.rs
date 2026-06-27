@@ -207,8 +207,7 @@ mod tests {
                 .snapshot()
                 .unwrap()
                 .quick_check
-                .value
-                .as_deref(),
+                .ok_value(),
             Some("ok")
         );
     }

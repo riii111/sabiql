@@ -178,7 +178,7 @@ mod tests {
         assert!(snapshot.query_only.is_ok());
         assert!(snapshot.busy_timeout.is_ok());
         assert!(snapshot.database_list.is_ok());
-        assert_eq!(snapshot.quick_check.value, None);
+        assert!(matches!(snapshot.quick_check, DiagnosticField::Unavailable));
     }
 
     #[tokio::test]
@@ -191,8 +191,7 @@ mod tests {
         assert!(quick_check.is_ok());
         assert!(
             quick_check
-                .value
-                .as_deref()
+                .ok_value()
                 .is_some_and(|value| value.eq_ignore_ascii_case("ok"))
         );
     }
@@ -201,28 +200,28 @@ mod tests {
     fn scalar_field_maps_query_failure_to_error() {
         let field = scalar_field(Err(DbOperationError::QueryFailed("boom".to_string())));
 
-        assert!(field.error.is_some());
+        assert!(field.is_err());
     }
 
     #[test]
     fn scalar_field_maps_empty_rows_to_error() {
         let field = scalar_field(Ok(empty_query_result()));
 
-        assert_eq!(field.error.as_deref(), Some("empty result"));
+        assert_eq!(field.err_message(), Some("empty result"));
     }
 
     #[test]
     fn quick_check_field_maps_empty_rows_to_error() {
         let field = quick_check_field(Ok(empty_query_result()));
 
-        assert_eq!(field.error.as_deref(), Some("quick_check: empty result"));
+        assert_eq!(field.err_message(), Some("quick_check: empty result"));
     }
 
     #[test]
     fn database_list_field_maps_empty_rows_to_error() {
         let field = database_list_field(Ok(empty_query_result()));
 
-        assert_eq!(field.error.as_deref(), Some("database_list: empty result"));
+        assert_eq!(field.err_message(), Some("database_list: empty result"));
     }
 
     #[test]

@@ -283,7 +283,7 @@ mod tests {
         );
 
         assert_eq!(
-            state.snapshot().unwrap().sqlite_version.value.as_deref(),
+            state.snapshot().unwrap().sqlite_version.ok_value(),
             Some("3.45.0")
         );
     }
@@ -329,10 +329,7 @@ mod tests {
         );
 
         assert!(!state.is_quick_check_pending());
-        assert_eq!(
-            state.snapshot().unwrap().quick_check.value.as_deref(),
-            Some("ok")
-        );
+        assert_eq!(state.snapshot().unwrap().quick_check.ok_value(), Some("ok"));
     }
 
     #[test]
