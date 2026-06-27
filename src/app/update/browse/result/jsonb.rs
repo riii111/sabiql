@@ -361,7 +361,6 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            owner: None,
             columns: vec![
                 Column {
                     name: "id".to_string(),
@@ -381,13 +380,6 @@ mod tests {
                 },
             ],
             primary_key: Some(vec!["id".to_string()]),
-            foreign_keys: vec![],
-            indexes: vec![],
-            rls: None,
-            triggers: vec![],
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
             ..Default::default()
         }
     }

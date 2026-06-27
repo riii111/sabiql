@@ -1217,16 +1217,6 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "old_table".to_string(),
-                owner: None,
-                columns: vec![],
-                primary_key: None,
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
                 ..Default::default()
             }
         }
@@ -1530,16 +1520,6 @@ mod tests {
             Box::new(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
-                columns: vec![],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
                 ..Default::default()
             })
         }

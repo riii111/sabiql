@@ -125,7 +125,6 @@ pub(super) mod tests {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            owner: None,
             columns: vec![
                 Column {
                     name: "id".to_string(),
@@ -145,7 +144,6 @@ pub(super) mod tests {
                 },
             ],
             primary_key: Some(vec!["id".to_string()]),
-            foreign_keys: vec![],
             indexes: vec![Index {
                 name: "users_pkey".to_string(),
                 columns: vec!["id".to_string()],
@@ -153,7 +151,6 @@ pub(super) mod tests {
                 index_type: IndexType::BTree,
                 definition: None,
             }],
-            rls: None,
             triggers: vec![Trigger {
                 name: "trg".to_string(),
                 timing: TriggerTiming::After,
@@ -161,9 +158,6 @@ pub(super) mod tests {
                 function_name: "f".to_string(),
                 security_definer: false,
             }],
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
             ..Default::default()
         }
     }

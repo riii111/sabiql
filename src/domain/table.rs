@@ -117,17 +117,7 @@ mod tests {
         Table {
             schema: schema.to_string(),
             name: name.to_string(),
-            owner: None,
-            columns: Vec::new(),
-            primary_key: None,
-            foreign_keys: Vec::new(),
-            indexes: Vec::new(),
-            rls: None,
-            triggers: Vec::new(),
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
-            storage: TableStorage::default(),
+            ..Default::default()
         }
     }
 

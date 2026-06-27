@@ -205,7 +205,6 @@ mod tests {
         state.session.set_table_detail_raw(Some(Table {
             schema: "public".to_string(),
             name: "notes".to_string(),
-            owner: None,
             columns: vec![
                 Column {
                     name: "id".to_string(),
@@ -225,13 +224,6 @@ mod tests {
                 },
             ],
             primary_key: Some(vec!["id".to_string()]),
-            foreign_keys: vec![],
-            indexes: vec![],
-            rls: None,
-            triggers: vec![],
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
             ..Default::default()
         }));
         state.result_interaction.activate_cell(0, 1);

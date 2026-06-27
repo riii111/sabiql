@@ -129,7 +129,6 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![Column {
                     name: "id".to_string(),
                     data_type: "integer".to_string(),
@@ -139,13 +138,6 @@ mod tests {
                     ordinal_position: 1,
                 }],
                 primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
                 ..Default::default()
             }));
             state
