@@ -177,6 +177,13 @@ impl AppState {
         if let Some(height) = output.explain_compare_viewport_height {
             self.explain.set_compare_viewport_height(height);
         }
+        if let (Some(content), Some(viewport)) = (
+            output.sqlite_diagnostics_content_line_count,
+            output.sqlite_diagnostics_viewport_height,
+        ) {
+            self.sqlite_diagnostics
+                .apply_viewport_metrics(content, viewport);
+        }
     }
 
     pub fn result_visible_rows(&self) -> usize {

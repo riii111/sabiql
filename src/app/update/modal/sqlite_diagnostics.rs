@@ -63,8 +63,7 @@ pub(super) fn reduce_sqlite_diagnostics(
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            let max_scroll = state.sqlite_diagnostics.line_count().saturating_sub(1);
-            state.sqlite_diagnostics.scroll_down(max_scroll);
+            state.sqlite_diagnostics.scroll_down();
             DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
@@ -139,5 +138,25 @@ mod tests {
         .unwrap();
 
         assert!(state.sqlite_diagnostics.snapshot().is_none());
+    }
+
+    #[test]
+    fn scroll_down_is_clamped_when_content_fits_viewport() {
+        let mut state = AppState::new("test".to_string());
+        activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        state.sqlite_diagnostics.apply_viewport_metrics(5, 10);
+
+        reduce_sqlite_diagnostics(
+            &mut state,
+            &Action::Scroll {
+                target: ScrollTarget::SqliteDiagnostics,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line,
+            },
+            Instant::now(),
+        )
+        .unwrap();
+
+        assert_eq!(state.sqlite_diagnostics.scroll_offset(), 0);
     }
 }

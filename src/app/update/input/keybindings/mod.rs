@@ -173,6 +173,10 @@ mod tests {
                 global::QUERY_HISTORY,
                 Action::OpenModal(ModalKind::QueryHistoryPicker)
             )]
+            #[case(
+                global::SQLITE_DIAGNOSTICS,
+                Action::OpenModal(ModalKind::SqliteDiagnostics)
+            )]
             fn global_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
                 assert_payload_free_action_eq(&kb, &expected);
             }

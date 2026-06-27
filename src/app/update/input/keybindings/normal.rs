@@ -234,12 +234,12 @@ pub mod global {
     };
 
     pub const SQLITE_DIAGNOSTICS: KeyBinding = KeyBinding {
-        key_short: "^D",
-        key: "Ctrl+D",
+        key_short: "^⇧D",
+        key: "Ctrl+Shift+D",
         desc_short: "Diagnostics",
         description: "Open SQLite Diagnostics",
         action: Action::OpenModal(ModalKind::SqliteDiagnostics),
-        combos: &[KeyCombo::ctrl(Key::Char('d'))],
+        combos: &[KeyCombo::ctrl_shift(Key::Char('d'))],
     };
 
     pub const SQLITE_DIAGNOSTICS_IDE: KeyBinding = KeyBinding {
@@ -271,6 +271,7 @@ pub const DEFAULT_GLOBAL_KEYS: &[KeyBinding] = &[
     global::READ_ONLY,
     global::EXIT_READ_ONLY,
     global::QUERY_HISTORY,
+    global::SQLITE_DIAGNOSTICS,
 ];
 
 pub const IDE_GLOBAL_KEYS: &[KeyBinding] = &[
@@ -292,6 +293,7 @@ pub const IDE_GLOBAL_KEYS: &[KeyBinding] = &[
     global::READ_ONLY_IDE,
     global::EXIT_READ_ONLY_IDE,
     global::QUERY_HISTORY_IDE,
+    global::SQLITE_DIAGNOSTICS_IDE,
 ];
 
 pub const GLOBAL_KEYS: &[KeyBinding] = DEFAULT_GLOBAL_KEYS;

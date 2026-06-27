@@ -166,15 +166,24 @@ impl MainLayout {
             _ => None,
         };
 
+        let (sqlite_diagnostics_content_line_count, sqlite_diagnostics_viewport_height) =
+            match state.input_mode() {
+                InputMode::SqliteDiagnostics => {
+                    let metrics = SqliteDiagnosticsOverlay::render(frame, state, theme);
+                    (
+                        Some(metrics.content_line_count),
+                        Some(metrics.viewport_height),
+                    )
+                }
+                _ => (None, None),
+            };
+
         match state.input_mode() {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
             InputMode::Help => HelpOverlay::render(frame, state, theme),
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, theme),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now, theme),
-            InputMode::SqliteDiagnostics => {
-                SqliteDiagnosticsOverlay::render(frame, state, theme);
-            }
             _ => {}
         }
 
@@ -193,6 +202,8 @@ impl MainLayout {
             confirm_preview_content_height,
             confirm_preview_scroll,
             explain_compare_viewport_height,
+            sqlite_diagnostics_content_line_count,
+            sqlite_diagnostics_viewport_height,
             ..output
         }
     }

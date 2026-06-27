@@ -13,11 +13,46 @@ enum LoadState {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticFieldKind {
+    DbFile,
+    SqliteVersion,
+    ForeignKeys,
+    JournalMode,
+    QueryOnly,
+    BusyTimeout,
+    DatabaseList,
+    QuickCheck,
+}
+
+impl DiagnosticFieldKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::DbFile => "Database file",
+            Self::SqliteVersion => "SQLite version",
+            Self::ForeignKeys => "Foreign keys",
+            Self::JournalMode => "Journal mode",
+            Self::QueryOnly => "Query only",
+            Self::BusyTimeout => "Busy timeout (ms)",
+            Self::DatabaseList => "Attached databases",
+            Self::QuickCheck => "Quick check",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticDisplayRow {
+    pub kind: DiagnosticFieldKind,
+    pub value: String,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SqliteDiagnosticsState {
     next_run_id: u64,
     load_state: LoadState,
     scroll_offset: usize,
+    content_line_count: Option<usize>,
+    visible_rows: Option<usize>,
 }
 
 impl SqliteDiagnosticsState {
@@ -26,6 +61,8 @@ impl SqliteDiagnosticsState {
         let run_id = self.next_run_id;
         self.load_state = LoadState::Loading { run_id };
         self.scroll_offset = 0;
+        self.content_line_count = None;
+        self.visible_rows = None;
         run_id
     }
 
@@ -67,8 +104,8 @@ impl SqliteDiagnosticsState {
         self.scroll_offset = self.scroll_offset.saturating_sub(1);
     }
 
-    pub fn scroll_down(&mut self, max_scroll: usize) {
-        if self.scroll_offset < max_scroll {
+    pub fn scroll_down(&mut self) {
+        if self.scroll_offset < self.max_scroll() {
             self.scroll_offset += 1;
         }
     }
@@ -76,34 +113,59 @@ impl SqliteDiagnosticsState {
     pub fn clear(&mut self) {
         self.load_state = LoadState::Idle;
         self.scroll_offset = 0;
+        self.content_line_count = None;
+        self.visible_rows = None;
     }
 
-    pub fn line_count(&self) -> usize {
-        self.snapshot()
-            .map_or(0, |snapshot| display_lines(snapshot).len())
+    pub fn max_scroll(&self) -> usize {
+        match (self.content_line_count, self.visible_rows) {
+            (Some(content), Some(visible)) => content.saturating_sub(visible),
+            _ => 0,
+        }
+    }
+
+    pub fn apply_viewport_metrics(&mut self, content_line_count: usize, visible_rows: usize) {
+        self.content_line_count = Some(content_line_count);
+        self.visible_rows = Some(visible_rows);
+        self.scroll_offset = self.scroll_offset.min(self.max_scroll());
     }
 }
 
-pub fn display_lines(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<(String, String)> {
-    vec![
-        ("Database file".to_string(), snapshot.db_file.display()),
+pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDisplayRow> {
+    [
+        (DiagnosticFieldKind::DbFile, snapshot.db_file.display()),
         (
-            "SQLite version".to_string(),
+            DiagnosticFieldKind::SqliteVersion,
             snapshot.sqlite_version.display(),
         ),
-        ("Foreign keys".to_string(), snapshot.foreign_keys.display()),
-        ("Journal mode".to_string(), snapshot.journal_mode.display()),
-        ("Query only".to_string(), snapshot.query_only.display()),
         (
-            "Busy timeout (ms)".to_string(),
+            DiagnosticFieldKind::ForeignKeys,
+            snapshot.foreign_keys.display(),
+        ),
+        (
+            DiagnosticFieldKind::JournalMode,
+            snapshot.journal_mode.display(),
+        ),
+        (
+            DiagnosticFieldKind::QueryOnly,
+            snapshot.query_only.display(),
+        ),
+        (
+            DiagnosticFieldKind::BusyTimeout,
             snapshot.busy_timeout.display(),
         ),
         (
-            "Attached databases".to_string(),
+            DiagnosticFieldKind::DatabaseList,
             snapshot.database_list.display(),
         ),
-        ("Quick check".to_string(), snapshot.quick_check.display()),
+        (
+            DiagnosticFieldKind::QuickCheck,
+            snapshot.quick_check.display(),
+        ),
     ]
+    .into_iter()
+    .map(|(kind, value)| DiagnosticDisplayRow { kind, value })
+    .collect()
 }
 
 #[cfg(test)]
@@ -147,5 +209,26 @@ mod tests {
             state.snapshot().unwrap().sqlite_version.value.as_deref(),
             Some("3.45.0")
         );
+    }
+
+    #[test]
+    fn max_scroll_is_zero_when_content_fits_viewport() {
+        let mut state = SqliteDiagnosticsState::default();
+        state.apply_viewport_metrics(5, 10);
+
+        assert_eq!(state.max_scroll(), 0);
+        state.scroll_down();
+        assert_eq!(state.scroll_offset(), 0);
+    }
+
+    #[test]
+    fn max_scroll_clamps_to_content_minus_visible_rows() {
+        let mut state = SqliteDiagnosticsState::default();
+        state.apply_viewport_metrics(12, 5);
+
+        assert_eq!(state.max_scroll(), 7);
+        state.scroll_offset = 99;
+        state.apply_viewport_metrics(12, 5);
+        assert_eq!(state.scroll_offset(), 7);
     }
 }
