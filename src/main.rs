@@ -198,7 +198,10 @@ async fn main() -> Result<()> {
     }
 
     if let Some(target) = cli_sqlite.as_ref() {
-        let connection_id = connection_id_for_path(target.path());
+        let canonical_path = std::fs::canonicalize(target.path()).map_err(|error| {
+            CliSqliteTargetError::from_file_metadata_error(target.path(), &error)
+        })?;
+        let connection_id = connection_id_for_path(&canonical_path.to_string_lossy());
         state.session.activate_cli_ephemeral_connection(
             &connection_id,
             &target.display_name(),

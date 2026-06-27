@@ -1,7 +1,11 @@
 use std::io::ErrorKind;
 use std::path::Path;
 
+use uuid::{Uuid, uuid};
+
 use crate::domain::{ConnectionId, SqliteConnectionConfig, SqliteConnectionConfigError};
+
+const CLI_SQLITE_CONNECTION_NAMESPACE: Uuid = uuid!("a3b5c7d9-1e2f-4a6b-8c0d-2e4f6a8b0c1d");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliSqliteTarget {
@@ -61,7 +65,8 @@ impl CliSqliteTarget {
 }
 
 pub fn connection_id_for_path(path: &str) -> ConnectionId {
-    ConnectionId::from_string(format!("cli-sqlite:{path}"))
+    let derived = Uuid::new_v5(&CLI_SQLITE_CONNECTION_NAMESPACE, path.as_bytes());
+    ConnectionId::from_string(format!("cli-sqlite-{}", derived.as_simple()))
 }
 
 fn parse_cli_path(input: &str) -> Result<String, CliSqliteTargetError> {
@@ -219,7 +224,22 @@ mod tests {
             let second = connection_id_for_path("/tmp/app.db");
 
             assert_eq!(first, second);
-            assert_eq!(first.as_str(), "cli-sqlite:/tmp/app.db");
+        }
+
+        #[test]
+        fn is_file_name_safe() {
+            let connection_id = connection_id_for_path("/tmp/app.db");
+
+            assert!(connection_id.as_str().starts_with("cli-sqlite-"));
+            assert!(!connection_id.as_str().contains('/'));
+        }
+
+        #[test]
+        fn differs_for_different_paths() {
+            let first = connection_id_for_path("/tmp/app.db");
+            let second = connection_id_for_path("/tmp/other.db");
+
+            assert_ne!(first, second);
         }
     }
 }

@@ -956,9 +956,11 @@ mod tests {
 
         #[test]
         fn is_ephemeral_connection_detects_cli_connection() {
+            use crate::cmd::cli_sqlite::connection_id_for_path;
+
             let mut session = BrowseSession::default();
             session.activate_cli_ephemeral_connection(
-                &ConnectionId::from_string("cli-sqlite:/tmp/app.db"),
+                &connection_id_for_path("/tmp/app.db"),
                 "app.db",
                 "sqlite:///tmp/app.db",
             );
