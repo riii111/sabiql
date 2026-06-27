@@ -4,6 +4,7 @@
 )]
 
 use std::cell::RefCell;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -22,7 +23,7 @@ mod tests;
 mod render_snapshots;
 
 use sabiql_app::cmd::cache::TtlCache;
-use sabiql_app::cmd::cli_sqlite::resolve_cli_sqlite_database;
+use sabiql_app::cmd::cli_sqlite::{CliSqliteTarget, CliSqliteTargetError, connection_id_for_path};
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
@@ -92,7 +93,7 @@ async fn main() -> Result<()> {
     }
 
     let cli_sqlite = match args.database {
-        Some(database) => Some(resolve_cli_sqlite_database(&database)?),
+        Some(database) => Some(resolve_cli_sqlite_target(&database)?),
         None => None,
     };
 
@@ -196,10 +197,13 @@ async fn main() -> Result<()> {
         Err(_) => {}
     }
 
-    if let Some(database) = cli_sqlite.as_ref() {
-        state
-            .session
-            .activate_cli_ephemeral_connection(&database.display_name(), &database.dsn());
+    if let Some(target) = cli_sqlite.as_ref() {
+        let connection_id = connection_id_for_path(target.path());
+        state.session.activate_cli_ephemeral_connection(
+            &connection_id,
+            &target.display_name(),
+            &target.dsn(),
+        );
         state.modal.set_mode(InputMode::Normal);
     }
 
@@ -515,6 +519,25 @@ async fn drain_and_process_terminal_events(
             services,
         )
         .await?;
+    }
+
+    Ok(())
+}
+
+fn resolve_cli_sqlite_target(input: &str) -> Result<CliSqliteTarget> {
+    let target = CliSqliteTarget::parse_cli_argument(input)?;
+    validate_cli_sqlite_file(target.path())?;
+    Ok(target)
+}
+
+fn validate_cli_sqlite_file(path: &str) -> Result<(), CliSqliteTargetError> {
+    let path = Path::new(path);
+    let display = path.display().to_string();
+    let metadata = std::fs::metadata(path)
+        .map_err(|error| CliSqliteTargetError::from_file_metadata_error(&display, &error))?;
+
+    if metadata.is_dir() {
+        return Err(CliSqliteTargetError::IsDirectory(display));
     }
 
     Ok(())

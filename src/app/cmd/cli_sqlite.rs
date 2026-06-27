@@ -1,15 +1,15 @@
 use std::io::ErrorKind;
 use std::path::Path;
 
-use crate::domain::{SqliteConnectionConfig, SqliteConnectionConfigError};
+use crate::domain::{ConnectionId, SqliteConnectionConfig, SqliteConnectionConfigError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CliSqliteDatabase {
+pub struct CliSqliteTarget {
     config: SqliteConnectionConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum CliSqliteDatabaseError {
+pub enum CliSqliteTargetError {
     #[error("{0}")]
     Config(#[from] SqliteConnectionConfigError),
     #[error("Unsupported SQLite target; use a .db/.sqlite/.sqlite3 file path or sqlite:// DSN")]
@@ -24,8 +24,20 @@ pub enum CliSqliteDatabaseError {
     IsDirectory(String),
 }
 
-impl CliSqliteDatabase {
-    pub fn parse_cli_argument(input: &str) -> Result<Self, CliSqliteDatabaseError> {
+impl CliSqliteTargetError {
+    pub fn from_file_metadata_error(path_display: &str, error: &std::io::Error) -> Self {
+        match error.kind() {
+            ErrorKind::NotFound => Self::FileNotFound(path_display.to_string()),
+            ErrorKind::PermissionDenied => {
+                Self::PathAccessDenied(format!("{path_display}: {error}"))
+            }
+            _ => Self::Io(format!("{path_display}: {error}")),
+        }
+    }
+}
+
+impl CliSqliteTarget {
+    pub fn parse_cli_argument(input: &str) -> Result<Self, CliSqliteTargetError> {
         let path = parse_cli_path(input)?;
         Ok(Self {
             config: SqliteConnectionConfig::new(path)?,
@@ -48,36 +60,15 @@ impl CliSqliteDatabase {
     }
 }
 
-pub fn resolve_cli_sqlite_database(
-    input: &str,
-) -> Result<CliSqliteDatabase, CliSqliteDatabaseError> {
-    let database = CliSqliteDatabase::parse_cli_argument(input)?;
-    validate_cli_sqlite_file(database.path())?;
-    Ok(database)
+pub fn connection_id_for_path(path: &str) -> ConnectionId {
+    ConnectionId::from_string(format!("cli-sqlite:{path}"))
 }
 
-fn validate_cli_sqlite_file(path: &str) -> Result<(), CliSqliteDatabaseError> {
-    let path = Path::new(path);
-    let display = path.display().to_string();
-    let metadata = match std::fs::metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) => {
-            return Err(metadata_error(&display, error.kind(), &error.to_string()));
-        }
-    };
-
-    if metadata.is_dir() {
-        return Err(CliSqliteDatabaseError::IsDirectory(display));
-    }
-
-    Ok(())
-}
-
-fn parse_cli_path(input: &str) -> Result<String, CliSqliteDatabaseError> {
+fn parse_cli_path(input: &str) -> Result<String, CliSqliteTargetError> {
     let trimmed = input.trim();
     let path = if let Some(path) = trimmed.strip_prefix("sqlite://") {
         if path.is_empty() {
-            return Err(CliSqliteDatabaseError::UnsupportedFormat);
+            return Err(CliSqliteTargetError::UnsupportedFormat);
         }
         path
     } else {
@@ -87,13 +78,13 @@ fn parse_cli_path(input: &str) -> Result<String, CliSqliteDatabaseError> {
     validate_cli_path(path)
 }
 
-fn validate_cli_path(path: &str) -> Result<String, CliSqliteDatabaseError> {
+fn validate_cli_path(path: &str) -> Result<String, CliSqliteTargetError> {
     if looks_like_non_sqlite_target(path) {
-        return Err(CliSqliteDatabaseError::UnsupportedFormat);
+        return Err(CliSqliteTargetError::UnsupportedFormat);
     }
 
     if !has_sqlite_file_extension(path) {
-        return Err(CliSqliteDatabaseError::UnsupportedFormat);
+        return Err(CliSqliteTargetError::UnsupportedFormat);
     }
 
     Ok(path.to_string())
@@ -114,32 +105,20 @@ fn has_sqlite_file_extension(path: &str) -> bool {
         })
 }
 
-fn metadata_error(display: &str, kind: ErrorKind, source: &str) -> CliSqliteDatabaseError {
-    match kind {
-        ErrorKind::NotFound => CliSqliteDatabaseError::FileNotFound(display.to_string()),
-        ErrorKind::PermissionDenied => {
-            CliSqliteDatabaseError::PathAccessDenied(format!("{display}: {source}"))
-        }
-        _ => CliSqliteDatabaseError::Io(format!("{display}: {source}")),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
-    use std::fs;
-    use tempfile::tempdir;
 
     mod parse_cli_argument {
         use super::*;
 
         #[test]
         fn accepts_sqlite_dsn() {
-            let database = CliSqliteDatabase::parse_cli_argument("sqlite:///tmp/app.db").unwrap();
+            let target = CliSqliteTarget::parse_cli_argument("sqlite:///tmp/app.db").unwrap();
 
-            assert_eq!(database.path(), "/tmp/app.db");
-            assert_eq!(database.dsn(), "sqlite:///tmp/app.db");
+            assert_eq!(target.path(), "/tmp/app.db");
+            assert_eq!(target.dsn(), "sqlite:///tmp/app.db");
         }
 
         #[rstest]
@@ -148,9 +127,9 @@ mod tests {
         #[case("archive.SQLITE3")]
         #[case("./relative/app.db")]
         fn accepts_file_paths_with_supported_extensions(#[case] input: &str) {
-            let database = CliSqliteDatabase::parse_cli_argument(input).unwrap();
+            let target = CliSqliteTarget::parse_cli_argument(input).unwrap();
 
-            assert_eq!(database.path(), input);
+            assert_eq!(target.path(), input);
         }
 
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,17 +150,17 @@ mod tests {
         #[case("sqlite:///tmp/app", ExpectedRejection::UnsupportedFormat)]
         #[case("sqlite://:memory:", ExpectedRejection::UnsupportedFormat)]
         fn rejects_unsupported_targets(#[case] input: &str, #[case] expected: ExpectedRejection) {
-            let result = CliSqliteDatabase::parse_cli_argument(input);
+            let result = CliSqliteTarget::parse_cli_argument(input);
 
             match expected {
                 ExpectedRejection::UnsupportedFormat => {
                     assert!(matches!(
                         result,
-                        Err(CliSqliteDatabaseError::UnsupportedFormat)
+                        Err(CliSqliteTargetError::UnsupportedFormat)
                     ));
                 }
                 ExpectedRejection::Config => {
-                    assert!(matches!(result, Err(CliSqliteDatabaseError::Config(_))));
+                    assert!(matches!(result, Err(CliSqliteTargetError::Config(_))));
                 }
             }
         }
@@ -192,99 +171,55 @@ mod tests {
 
         #[test]
         fn uses_file_name() {
-            let database = CliSqliteDatabase::parse_cli_argument("/tmp/projects/app.db").unwrap();
+            let target = CliSqliteTarget::parse_cli_argument("/tmp/projects/app.db").unwrap();
 
-            assert_eq!(database.display_name(), "app.db");
+            assert_eq!(target.display_name(), "app.db");
         }
     }
 
-    mod metadata_error {
+    mod from_file_metadata_error {
         use super::*;
+        use std::io::{Error, ErrorKind};
 
         #[rstest]
         #[case(
             ErrorKind::NotFound,
             "No such file",
-            CliSqliteDatabaseError::FileNotFound("/tmp/app.db".to_string())
+            CliSqliteTargetError::FileNotFound("/tmp/app.db".to_string())
         )]
         #[case(
             ErrorKind::PermissionDenied,
             "permission denied",
-            CliSqliteDatabaseError::PathAccessDenied("/tmp/app.db: permission denied".to_string())
+            CliSqliteTargetError::PathAccessDenied("/tmp/app.db: permission denied".to_string())
         )]
         #[case(
             ErrorKind::Other,
             "device offline",
-            CliSqliteDatabaseError::Io("/tmp/app.db: device offline".to_string())
+            CliSqliteTargetError::Io("/tmp/app.db: device offline".to_string())
         )]
-        fn maps_error_kind_to_cli_error(
+        fn maps_error_kind(
             #[case] kind: ErrorKind,
-            #[case] source: &str,
-            #[case] expected: CliSqliteDatabaseError,
+            #[case] message: &str,
+            #[case] expected: CliSqliteTargetError,
         ) {
-            assert_eq!(metadata_error("/tmp/app.db", kind, source), expected);
+            let error = Error::new(kind, message);
+            assert_eq!(
+                CliSqliteTargetError::from_file_metadata_error("/tmp/app.db", &error),
+                expected
+            );
         }
     }
 
-    mod validate_cli_sqlite_file {
+    mod connection_id_for_path {
         use super::*;
 
         #[test]
-        fn accepts_existing_file() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("app.db");
-            fs::write(&path, b"").unwrap();
+        fn is_stable_for_same_path() {
+            let first = connection_id_for_path("/tmp/app.db");
+            let second = connection_id_for_path("/tmp/app.db");
 
-            assert!(validate_cli_sqlite_file(path.to_str().unwrap()).is_ok());
-        }
-
-        #[test]
-        fn rejects_missing_file() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("missing.db");
-
-            assert!(matches!(
-                validate_cli_sqlite_file(path.to_str().unwrap()),
-                Err(CliSqliteDatabaseError::FileNotFound(_))
-            ));
-        }
-
-        #[test]
-        fn rejects_directory() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("folder.db");
-            fs::create_dir(&path).unwrap();
-
-            assert!(matches!(
-                validate_cli_sqlite_file(path.to_str().unwrap()),
-                Err(CliSqliteDatabaseError::IsDirectory(_))
-            ));
-        }
-    }
-
-    mod resolve_cli_sqlite_database {
-        use super::*;
-
-        #[test]
-        fn resolves_existing_sqlite_file() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("app.db");
-            fs::write(&path, b"").unwrap();
-
-            let database = resolve_cli_sqlite_database(path.to_str().unwrap()).unwrap();
-
-            assert_eq!(database.path(), path.to_str().unwrap());
-            assert_eq!(database.dsn(), format!("sqlite://{}", path.display()));
-        }
-
-        #[test]
-        fn rejects_missing_file() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("missing.db");
-
-            let error = resolve_cli_sqlite_database(path.to_str().unwrap()).unwrap_err();
-
-            assert!(matches!(error, CliSqliteDatabaseError::FileNotFound(_)));
+            assert_eq!(first, second);
+            assert_eq!(first.as_str(), "cli-sqlite:/tmp/app.db");
         }
     }
 }

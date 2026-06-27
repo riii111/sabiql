@@ -149,10 +149,14 @@ mod tests {
 
         #[test]
         fn blocked_for_cli_ephemeral_connection() {
+            use crate::cmd::cli_sqlite::connection_id_for_path;
+
             let mut state = AppState::new("test".to_string());
-            state
-                .session
-                .activate_cli_ephemeral_connection("app.db", "sqlite:///tmp/app.db");
+            state.session.activate_cli_ephemeral_connection(
+                &connection_id_for_path("/tmp/app.db"),
+                "app.db",
+                "sqlite:///tmp/app.db",
+            );
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());

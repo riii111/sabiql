@@ -155,9 +155,9 @@ impl BrowseSession {
         self.read_only = false;
     }
 
-    pub fn activate_cli_ephemeral_connection(&mut self, name: &str, dsn: &str) {
+    pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
         self.active_connection = Some(ActiveConnection {
-            id: ConnectionId::new(),
+            id: id.clone(),
             name: name.to_string(),
             database_type: DatabaseType::SQLite,
             origin: ConnectionOrigin::CliEphemeral,
@@ -957,7 +957,11 @@ mod tests {
         #[test]
         fn is_ephemeral_connection_detects_cli_connection() {
             let mut session = BrowseSession::default();
-            session.activate_cli_ephemeral_connection("app.db", "sqlite:///tmp/app.db");
+            session.activate_cli_ephemeral_connection(
+                &ConnectionId::from_string("cli-sqlite:/tmp/app.db"),
+                "app.db",
+                "sqlite:///tmp/app.db",
+            );
 
             assert!(session.is_ephemeral_connection());
             assert!(!session.can_reenter_connection_setup());

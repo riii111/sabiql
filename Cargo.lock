@@ -2599,7 +2599,6 @@ dependencies = [
  "sabiql-infra",
  "sabiql-ui",
  "self_update",
- "tempfile",
  "tokio",
 ]
 
