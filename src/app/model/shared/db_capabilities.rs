@@ -39,6 +39,12 @@ impl CapabilityFlags {
         supports_er_diagram: true,
         supports_jsonb_detail: true,
     };
+
+    const SQLITE: Self = Self {
+        supports_explain: true,
+        supports_er_diagram: false,
+        supports_jsonb_detail: false,
+    };
 }
 
 impl DbCapabilities {
@@ -104,7 +110,7 @@ impl DbCapabilities {
 
     pub fn sqlite_like() -> Self {
         Self::new(
-            CapabilityFlags::NONE,
+            CapabilityFlags::SQLITE,
             vec![
                 InspectorTab::Info,
                 InspectorTab::Columns,
@@ -255,7 +261,7 @@ mod tests {
         fn sqlite_omits_postgresql_only_info_fields() {
             let caps = DbCapabilities::sqlite_like();
 
-            assert!(!caps.supports_explain());
+            assert!(caps.supports_explain());
             assert!(!caps.supports_er_diagram());
             assert!(!caps.supports_jsonb_detail());
             assert_eq!(
@@ -277,7 +283,10 @@ mod tests {
                     InspectorInfoField::TableName,
                 ]
             );
-            assert_eq!(caps.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
+            assert_eq!(
+                caps.supported_sql_modal_tabs(),
+                &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
+            );
         }
 
         #[test]
