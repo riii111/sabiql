@@ -59,12 +59,6 @@ pub struct SqliteDiagnosticsSnapshot {
 }
 
 impl SqliteDiagnosticsSnapshot {
-    pub fn quick_check_is_ok(&self) -> Option<bool> {
-        self.quick_check
-            .ok_value()
-            .map(|summary| summary.eq_ignore_ascii_case("ok"))
-    }
-
     #[must_use]
     pub fn core_fetch_failed(db_file: DiagnosticField) -> Self {
         Self {
@@ -77,6 +71,12 @@ impl SqliteDiagnosticsSnapshot {
             database_list: DiagnosticField::Unavailable,
             quick_check: DiagnosticField::Unavailable,
         }
+    }
+
+    pub fn quick_check_is_ok(&self) -> Option<bool> {
+        self.quick_check
+            .ok_value()
+            .map(|summary| summary.eq_ignore_ascii_case("ok"))
     }
 }
 

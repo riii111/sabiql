@@ -5,15 +5,6 @@ use sabiql_domain::{
     TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
-pub fn low_risk_guardrail() -> GuardrailDecision {
-    GuardrailDecision {
-        risk_level: RiskLevel::Low,
-        blocked: false,
-        reason: None,
-        target_summary: None,
-    }
-}
-
 pub fn sample_metadata() -> DatabaseMetadata {
     let mut metadata = DatabaseMetadata::new("test_db".to_string());
     metadata.table_summaries = vec![
@@ -141,4 +132,13 @@ pub fn empty_query_result() -> QueryResult {
         5,
         QuerySource::Preview,
     )
+}
+
+pub fn low_risk_guardrail() -> GuardrailDecision {
+    GuardrailDecision {
+        risk_level: RiskLevel::Low,
+        blocked: false,
+        reason: None,
+        target_summary: None,
+    }
 }
