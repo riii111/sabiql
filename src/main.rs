@@ -28,6 +28,7 @@ use sabiql_app::cmd::render_schedule::next_animation_deadline;
 use sabiql_app::cmd::runner::{
     ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
 };
+use sabiql_app::cmd::sqlite_startup::validate_sqlite_startup_file;
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
@@ -37,7 +38,7 @@ use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
-use sabiql_domain::{ConnectionId, DatabaseType, SqliteStartupError, SqliteStartupTarget};
+use sabiql_domain::{ConnectionId, DatabaseType, SqliteStartupTarget};
 use sabiql_infra::adapters::{
     ArboardClipboard, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter,
     NativeFolderOpener, PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
@@ -521,13 +522,9 @@ async fn drain_and_process_terminal_events(
 }
 
 fn resolve_cli_sqlite_target(database: &str) -> Result<SqliteStartupTarget> {
-    let target = SqliteStartupTarget::from_cli_input(database).map_err(cli_sqlite_error)?;
-    target.validate_file_on_disk().map_err(cli_sqlite_error)?;
+    let target = SqliteStartupTarget::from_cli_input(database)?;
+    validate_sqlite_startup_file(&target)?;
     Ok(target)
-}
-
-fn cli_sqlite_error(error: SqliteStartupError) -> color_eyre::Report {
-    color_eyre::eyre::eyre!("Error: {error}")
 }
 
 fn activate_cli_sqlite_connection(state: &mut AppState, target: &SqliteStartupTarget) {

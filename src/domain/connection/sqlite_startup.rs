@@ -45,10 +45,6 @@ impl SqliteStartupTarget {
             .and_then(|name| name.to_str())
             .map_or_else(|| self.config.path().to_string(), str::to_owned)
     }
-
-    pub fn validate_file_on_disk(&self) -> Result<(), SqliteStartupError> {
-        validate_sqlite_file_path(Path::new(self.config.path()))
-    }
 }
 
 fn parse_cli_path(input: &str) -> Result<String, SqliteStartupError> {
@@ -86,36 +82,10 @@ fn has_sqlite_file_extension(path: &str) -> bool {
         })
 }
 
-fn validate_sqlite_file_path(path: &Path) -> Result<(), SqliteStartupError> {
-    let display = path.display().to_string();
-    let metadata = match std::fs::metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(SqliteStartupError::FileNotFound(display));
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-            return Err(SqliteStartupError::PathAccessDenied(format!(
-                "{display}: {error}"
-            )));
-        }
-        Err(error) => {
-            return Err(SqliteStartupError::Io(format!("{display}: {error}")));
-        }
-    };
-
-    if metadata.is_dir() {
-        return Err(SqliteStartupError::IsDirectory(display));
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
-    use std::fs;
-    use tempfile::tempdir;
 
     mod parse_cli_path {
         use super::*;
@@ -164,45 +134,6 @@ mod tests {
             let target = SqliteStartupTarget::from_cli_input("/tmp/projects/app.db").unwrap();
 
             assert_eq!(target.display_name(), "app.db");
-        }
-    }
-
-    mod validate_file_on_disk {
-        use super::*;
-
-        #[test]
-        fn accepts_existing_file() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("app.db");
-            fs::write(&path, b"").unwrap();
-            let target = SqliteStartupTarget::from_cli_input(path.to_str().unwrap()).unwrap();
-
-            assert!(target.validate_file_on_disk().is_ok());
-        }
-
-        #[test]
-        fn rejects_missing_file() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("missing.db");
-            let target = SqliteStartupTarget::from_cli_input(path.to_str().unwrap()).unwrap();
-
-            assert!(matches!(
-                target.validate_file_on_disk(),
-                Err(SqliteStartupError::FileNotFound(_))
-            ));
-        }
-
-        #[test]
-        fn rejects_directory() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("folder.db");
-            fs::create_dir(&path).unwrap();
-            let target = SqliteStartupTarget::from_cli_input(path.to_str().unwrap()).unwrap();
-
-            assert!(matches!(
-                target.validate_file_on_disk(),
-                Err(SqliteStartupError::IsDirectory(_))
-            ));
         }
     }
 }

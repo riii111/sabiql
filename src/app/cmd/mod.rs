@@ -8,6 +8,7 @@ pub mod render_schedule;
 pub mod runner;
 pub mod settings;
 pub mod sql_editor;
+pub mod sqlite_startup;
 pub mod utility;
 
 #[cfg(test)]
