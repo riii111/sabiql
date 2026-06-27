@@ -2,12 +2,21 @@ use crate::policy::sql::statement_classifier::{self, StatementKind};
 
 pub const SQLITE_EXPLAIN_QUERY_PLAN_PREFIX: &str = "EXPLAIN QUERY PLAN";
 
+fn is_valid_explain_query_plan_boundary(rest: &str) -> bool {
+    if rest.is_empty() {
+        return false;
+    }
+    let first = rest.as_bytes()[0];
+    first.is_ascii_whitespace() || rest.starts_with("--") || rest.starts_with("/*")
+}
+
 fn strip_sqlite_explain_query_plan_prefix(trimmed: &str) -> Option<&str> {
     let prefix = SQLITE_EXPLAIN_QUERY_PLAN_PREFIX;
     trimmed
         .get(..prefix.len())
         .filter(|head| head.eq_ignore_ascii_case(prefix))
         .and_then(|_| trimmed.get(prefix.len()..))
+        .filter(|rest| is_valid_explain_query_plan_boundary(rest))
         .map(str::trim_start)
 }
 
@@ -69,6 +78,22 @@ mod tests {
     }
 
     #[test]
+    fn rejects_query_plan_prefix_without_boundary() {
+        assert_eq!(
+            build_sqlite_explain_query_plan_sql("EXPLAIN QUERY PLANSELECT 1"),
+            None
+        );
+    }
+
+    #[test]
+    fn passes_through_query_plan_with_sql_comment_after_prefix() {
+        assert_eq!(
+            build_sqlite_explain_query_plan_sql("EXPLAIN QUERY PLAN -- note\nSELECT 1"),
+            Some("EXPLAIN QUERY PLAN -- note\nSELECT 1".to_string())
+        );
+    }
+
+    #[test]
     fn prefix_check_does_not_panic_at_non_char_boundary() {
         let input = format!("EXPLAIN QUERY PLA{} SELECT 1", '\u{1F600}');
         let _ = build_sqlite_explain_query_plan_sql(&input);
@@ -83,10 +108,10 @@ mod tests {
     }
 
     #[test]
-    fn multiline_select_with_leading_emoji_line_is_wrapped() {
+    fn multiline_select_with_leading_sql_comment_is_wrapped() {
         assert_eq!(
-            build_sqlite_explain_query_plan_sql("😀\nSELECT 1"),
-            Some("EXPLAIN QUERY PLAN 😀\nSELECT 1".to_string())
+            build_sqlite_explain_query_plan_sql("-- filter\nSELECT 1"),
+            Some("EXPLAIN QUERY PLAN -- filter\nSELECT 1".to_string())
         );
     }
 }
