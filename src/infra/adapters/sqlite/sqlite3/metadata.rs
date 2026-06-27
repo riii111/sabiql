@@ -996,7 +996,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn metadata_classifies_regular_table_storage() {
+        async fn classifies_regular_table_storage() {
             let fixture = TableStorageMetadataFixture::new().await;
 
             assert_eq!(
@@ -1008,14 +1008,14 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn metadata_classifies_without_rowid_table_storage() {
+        async fn classifies_without_rowid_table_storage() {
             let fixture = TableStorageMetadataFixture::new().await;
 
             assert!(fixture.storage("settings").without_rowid);
         }
 
         #[tokio::test]
-        async fn metadata_does_not_infer_strict_from_table_name() {
+        async fn does_not_infer_strict_from_table_name() {
             let fixture = TableStorageMetadataFixture::new().await;
 
             assert!(
@@ -1025,14 +1025,14 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn metadata_classifies_strict_table_storage() {
+        async fn classifies_strict_table_storage() {
             let fixture = TableStorageMetadataFixture::new().await;
 
             assert!(fixture.storage("typed_users").is_strict);
         }
 
         #[tokio::test]
-        async fn metadata_classifies_virtual_table_storage() {
+        async fn classifies_virtual_table_storage() {
             let fixture = TableStorageMetadataFixture::new().await;
 
             assert_eq!(
