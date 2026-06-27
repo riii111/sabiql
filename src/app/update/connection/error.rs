@@ -64,7 +64,7 @@ pub(super) fn reduce_connection_error(
             DispatchResult::handled()
         }
         Action::ReenterConnectionSetup => {
-            if state.session.is_service_connection() {
+            if !state.session.can_reenter_connection_setup() {
                 return DispatchResult::handled();
             }
             state.connection_error.clear();
@@ -139,6 +139,22 @@ mod tests {
                 "service",
                 DatabaseType::PostgreSQL,
                 "service=mydb",
+            );
+            state.modal.set_mode(InputMode::ConnectionError);
+
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::ConnectionError);
+        }
+
+        #[test]
+        fn blocked_for_ephemeral_cli_connection() {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::ephemeral_cli(),
+                "app.db",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
             );
             state.modal.set_mode(InputMode::ConnectionError);
 
