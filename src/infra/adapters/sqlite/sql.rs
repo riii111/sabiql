@@ -1,5 +1,6 @@
 use std::fmt::Write as _;
 
+use crate::app::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::{DbOperationError, DdlGenerator, SqlDialect};
 use crate::domain::{DatabaseType, QueryValue, Table, Trigger};
 
@@ -307,8 +308,8 @@ impl DdlGenerator for SqliteAdapter {
 }
 
 impl SqlDialect for SqliteAdapter {
-    fn build_explain_sql(&self, _database_type: DatabaseType, _query: &str) -> Option<String> {
-        None
+    fn build_explain_sql(&self, _database_type: DatabaseType, query: &str) -> Option<String> {
+        build_sqlite_explain_query_plan_sql(query)
     }
 
     fn build_explain_analyze_sql(
@@ -458,16 +459,50 @@ mod tests {
     }
 
     #[test]
-    fn explain_generation_is_unsupported() {
+    fn explain_generation_wraps_select_with_query_plan() {
         let adapter = SqliteAdapter::new();
 
         assert_eq!(
             adapter.build_explain_sql(DatabaseType::SQLite, "SELECT 1"),
+            Some("EXPLAIN QUERY PLAN SELECT 1".to_string())
+        );
+        assert_eq!(
+            adapter.build_explain_sql(
+                DatabaseType::SQLite,
+                "WITH cte AS (SELECT 1 AS n) SELECT * FROM cte"
+            ),
+            Some("EXPLAIN QUERY PLAN WITH cte AS (SELECT 1 AS n) SELECT * FROM cte".to_string())
+        );
+    }
+
+    #[test]
+    fn explain_generation_rejects_non_select_and_prefixed_explain() {
+        let adapter = SqliteAdapter::new();
+
+        assert_eq!(
+            adapter.build_explain_sql(DatabaseType::SQLite, "DELETE FROM users"),
+            None
+        );
+        assert_eq!(
+            adapter.build_explain_sql(DatabaseType::SQLite, "EXPLAIN SELECT 1"),
             None
         );
         assert_eq!(
             adapter.build_explain_analyze_sql(DatabaseType::SQLite, "SELECT 1"),
             None
+        );
+    }
+
+    #[test]
+    fn explain_generation_passes_through_existing_query_plan_prefix() {
+        let adapter = SqliteAdapter::new();
+
+        assert_eq!(
+            adapter.build_explain_sql(
+                DatabaseType::SQLite,
+                "EXPLAIN QUERY PLAN SELECT * FROM users"
+            ),
+            Some("EXPLAIN QUERY PLAN SELECT * FROM users".to_string())
         );
     }
 

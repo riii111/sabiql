@@ -11,9 +11,16 @@ pub enum InspectorInfoField {
     TableName,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExplainCapability {
+    None,
+    QueryPlanOnly,
+    QueryPlanAndAnalyze,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
-    supports_explain: bool,
+    explain: ExplainCapability,
     supports_er_diagram: bool,
     supports_jsonb_detail: bool,
     supported_inspector_tabs: Vec<InspectorTab>,
@@ -22,22 +29,28 @@ pub struct DbCapabilities {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CapabilityFlags {
-    supports_explain: bool,
+    explain: ExplainCapability,
     supports_er_diagram: bool,
     supports_jsonb_detail: bool,
 }
 
 impl CapabilityFlags {
     const NONE: Self = Self {
-        supports_explain: false,
+        explain: ExplainCapability::None,
         supports_er_diagram: false,
         supports_jsonb_detail: false,
     };
 
     const POSTGRESQL: Self = Self {
-        supports_explain: true,
+        explain: ExplainCapability::QueryPlanAndAnalyze,
         supports_er_diagram: true,
         supports_jsonb_detail: true,
+    };
+
+    const SQLITE: Self = Self {
+        explain: ExplainCapability::QueryPlanOnly,
+        supports_er_diagram: false,
+        supports_jsonb_detail: false,
     };
 }
 
@@ -64,7 +77,7 @@ impl DbCapabilities {
             "DbCapabilities supported inspector info fields must be unique"
         );
         Self {
-            supports_explain: flags.supports_explain,
+            explain: flags.explain,
             supports_er_diagram: flags.supports_er_diagram,
             supports_jsonb_detail: flags.supports_jsonb_detail,
             supported_inspector_tabs,
@@ -104,7 +117,7 @@ impl DbCapabilities {
 
     pub fn sqlite_like() -> Self {
         Self::new(
-            CapabilityFlags::NONE,
+            CapabilityFlags::SQLITE,
             vec![
                 InspectorTab::Info,
                 InspectorTab::Columns,
@@ -129,7 +142,11 @@ impl DbCapabilities {
     }
 
     pub fn supports_explain(&self) -> bool {
-        self.supports_explain
+        !matches!(self.explain, ExplainCapability::None)
+    }
+
+    pub fn supports_explain_analyze(&self) -> bool {
+        matches!(self.explain, ExplainCapability::QueryPlanAndAnalyze)
     }
 
     pub fn supports_er_diagram(&self) -> bool {
@@ -235,6 +252,7 @@ mod tests {
             let caps = DbCapabilities::postgres_like();
 
             assert!(caps.supports_explain());
+            assert!(caps.supports_explain_analyze());
             assert!(caps.supports_er_diagram());
             assert!(caps.supports_jsonb_detail());
             assert!(caps.supports_inspector_tab(InspectorTab::Ddl));
@@ -255,7 +273,8 @@ mod tests {
         fn sqlite_omits_postgresql_only_info_fields() {
             let caps = DbCapabilities::sqlite_like();
 
-            assert!(!caps.supports_explain());
+            assert!(caps.supports_explain());
+            assert!(!caps.supports_explain_analyze());
             assert!(!caps.supports_er_diagram());
             assert!(!caps.supports_jsonb_detail());
             assert_eq!(
@@ -277,7 +296,10 @@ mod tests {
                     InspectorInfoField::TableName,
                 ]
             );
-            assert_eq!(caps.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
+            assert_eq!(
+                caps.supported_sql_modal_tabs(),
+                &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
+            );
         }
 
         #[test]
@@ -297,6 +319,7 @@ mod tests {
             let caps = DbCapabilities::disconnected();
 
             assert!(!caps.supports_explain());
+            assert!(!caps.supports_explain_analyze());
             assert!(!caps.supports_er_diagram());
             assert!(!caps.supports_jsonb_detail());
             assert_eq!(caps.supported_inspector_tabs(), &[InspectorTab::Info]);

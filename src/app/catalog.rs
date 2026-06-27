@@ -252,7 +252,7 @@ fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> Help
         HelpOrigin::SqlModal {
             mode,
             keymap_preset,
-        } => sql_current_rows(mode, keymap_preset),
+        } => sql_current_rows(mode, keymap_preset, db_capabilities),
         HelpOrigin::ConnectionSetup { keymap_preset } => rows_from_binding_refs(&[
             &connection_setup::TAB_NAV,
             &connection_setup::TAB_NEXT,
@@ -332,8 +332,8 @@ fn reference_sections(
     search_filter_rows.extend(rows_from_mode_rows(HELP_ROWS));
 
     let mut editing_rows = merge_rows(&[
-        sql_current_rows(SqlHelpMode::Normal, keymap_preset),
-        sql_current_rows(SqlHelpMode::Insert, keymap_preset),
+        sql_current_rows(SqlHelpMode::Normal, keymap_preset, db_capabilities),
+        sql_current_rows(SqlHelpMode::Insert, keymap_preset, db_capabilities),
         rows_from_bindings(CELL_EDIT_KEYS),
         rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
     ]);
@@ -343,8 +343,16 @@ fn reference_sections(
 
     let mut advanced_rows = Vec::new();
     if db_capabilities.supports_explain() {
-        advanced_rows.extend(sql_current_rows(SqlHelpMode::Plan, keymap_preset));
-        advanced_rows.extend(sql_current_rows(SqlHelpMode::Compare, keymap_preset));
+        advanced_rows.extend(sql_current_rows(
+            SqlHelpMode::Plan,
+            keymap_preset,
+            db_capabilities,
+        ));
+        advanced_rows.extend(sql_current_rows(
+            SqlHelpMode::Compare,
+            keymap_preset,
+            db_capabilities,
+        ));
     }
     if db_capabilities.supports_er_diagram() {
         advanced_rows.extend(rows_from_mode_rows(er_picker_rows(keymap_preset)));
@@ -402,7 +410,11 @@ fn reference_sections(
     .collect()
 }
 
-fn sql_current_rows(mode: SqlHelpMode, keymap_preset: KeymapPreset) -> Vec<HelpRow> {
+fn sql_current_rows(
+    mode: SqlHelpMode,
+    keymap_preset: KeymapPreset,
+    db_capabilities: &DbCapabilities,
+) -> Vec<HelpRow> {
     match mode {
         SqlHelpMode::Normal => rows_from_binding_refs(&[
             &sql_modal_normal::RUN,
@@ -427,25 +439,35 @@ fn sql_current_rows(mode: SqlHelpMode, keymap_preset: KeymapPreset) -> Vec<HelpR
                 &sql_modal::CLEAR,
             ]),
         },
-        SqlHelpMode::Plan => rows_from_binding_refs(&[
-            sql_modal_plan_explain(keymap_preset),
-            &sql_modal_plan::ANALYZE,
-            &sql_modal_plan::YANK,
-            &sql_modal_plan::SCROLL,
-            &sql_modal_plan::TAB,
-            &sql_modal_plan::BACKTAB,
-            &sql_modal_plan::CLOSE,
-        ]),
-        SqlHelpMode::Compare => rows_from_binding_refs(&[
-            sql_modal_compare_explain(keymap_preset),
-            &sql_modal_compare::ANALYZE,
-            &sql_modal_compare::EDIT_QUERY,
-            &sql_modal_compare::YANK,
-            &sql_modal_compare::SCROLL,
-            &sql_modal_compare::TAB,
-            &sql_modal_compare::BACKTAB,
-            &sql_modal_compare::CLOSE,
-        ]),
+        SqlHelpMode::Plan => {
+            let mut bindings: Vec<&KeyBinding> = vec![sql_modal_plan_explain(keymap_preset)];
+            if db_capabilities.supports_explain_analyze() {
+                bindings.push(&sql_modal_plan::ANALYZE);
+            }
+            bindings.extend([
+                &sql_modal_plan::YANK,
+                &sql_modal_plan::SCROLL,
+                &sql_modal_plan::TAB,
+                &sql_modal_plan::BACKTAB,
+                &sql_modal_plan::CLOSE,
+            ]);
+            rows_from_binding_refs(&bindings)
+        }
+        SqlHelpMode::Compare => {
+            let mut bindings: Vec<&KeyBinding> = vec![sql_modal_compare_explain(keymap_preset)];
+            if db_capabilities.supports_explain_analyze() {
+                bindings.push(&sql_modal_compare::ANALYZE);
+            }
+            bindings.extend([
+                &sql_modal_compare::EDIT_QUERY,
+                &sql_modal_compare::YANK,
+                &sql_modal_compare::SCROLL,
+                &sql_modal_compare::TAB,
+                &sql_modal_compare::BACKTAB,
+                &sql_modal_compare::CLOSE,
+            ]);
+            rows_from_binding_refs(&bindings)
+        }
         SqlHelpMode::Confirm => rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
     }
 }
@@ -727,9 +749,14 @@ mod tests {
                 .any(|description| description.contains("ER Diagram"))
         );
         assert!(
-            !descriptions
+            descriptions
                 .iter()
                 .any(|description| description.contains("EXPLAIN"))
+        );
+        assert!(
+            !descriptions
+                .iter()
+                .any(|description| description.contains("ANALYZE"))
         );
         assert!(
             !descriptions
@@ -739,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_sql_help_origin_normalizes_unsupported_plan_tab() {
+    fn sqlite_sql_help_origin_includes_plan_tab() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -752,7 +779,7 @@ mod tests {
 
         let document = HelpDocument::new(HelpOrigin::from_state(&state), "");
 
-        assert_eq!(document.sections()[0].title(), "Current: SQL Editor");
+        assert_eq!(document.sections()[0].title(), "Current: SQL Editor Plan");
     }
 
     #[test]

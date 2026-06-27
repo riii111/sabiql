@@ -59,6 +59,10 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
                     .normalize_sql_modal_tab(state.sql_modal.active_tab()),
                 state.ui.key_sequence().pending_prefix(),
                 state.settings.saved_keymap_preset(),
+                state
+                    .session
+                    .active_db_capabilities()
+                    .supports_explain_analyze(),
             )
         }
         InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
@@ -128,13 +132,6 @@ mod tests {
             state
                 .sql_modal
                 .set_active_tab(crate::model::sql_editor::modal::SqlModalTab::Plan);
-
-            state.session.activate_connection_with_dsn(
-                &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
-                "sqlite",
-                crate::domain::DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
-            );
 
             let result = handle_key_event(combo(Key::Char('i')), &state);
 
