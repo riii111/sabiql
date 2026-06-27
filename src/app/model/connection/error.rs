@@ -177,25 +177,7 @@ fn classify_sqlite_path_connection_error(message: &str) -> Option<ConnectionErro
     use crate::domain::SqlitePathError;
     use crate::policy::sqlite_path::connection_error_kind;
 
-    let kind = if let Some(path) = message.strip_prefix("SQLite database file not found: ") {
-        connection_error_kind(&SqlitePathError::FileNotFound(path.to_string()))
-    } else if let Some(path) = message.strip_prefix("SQLite path is a directory, not a file: ") {
-        connection_error_kind(&SqlitePathError::IsDirectory(path.to_string()))
-    } else if let Some(path) = message.strip_prefix("SQLite path is not a regular file: ") {
-        connection_error_kind(&SqlitePathError::NotRegularFile(path.to_string()))
-    } else if let Some(details) = message.strip_prefix("Cannot read SQLite database file: ") {
-        connection_error_kind(&SqlitePathError::ReadAccessDenied(details.to_string()))
-    } else if let Some(details) = message.strip_prefix("Cannot access SQLite database file: ") {
-        connection_error_kind(&SqlitePathError::PathAccessDenied(details.to_string()))
-    } else if let Some(details) =
-        message.strip_prefix("Cannot read SQLite database file metadata: ")
-    {
-        connection_error_kind(&SqlitePathError::Io(details.to_string()))
-    } else {
-        return None;
-    };
-
-    Some(kind)
+    SqlitePathError::from_display_message(message).map(|error| connection_error_kind(&error))
 }
 
 fn is_connection_lost_message(lower: &str) -> bool {

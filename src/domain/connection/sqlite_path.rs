@@ -14,6 +14,33 @@ pub enum SqlitePathError {
     Io(String),
 }
 
+impl SqlitePathError {
+    pub fn from_display_message(message: &str) -> Option<Self> {
+        const NOT_FOUND: &str = "SQLite database file not found: ";
+        const IS_DIRECTORY: &str = "SQLite path is a directory, not a file: ";
+        const NOT_REGULAR_FILE: &str = "SQLite path is not a regular file: ";
+        const READ_ACCESS_DENIED: &str = "Cannot read SQLite database file: ";
+        const PATH_ACCESS_DENIED: &str = "Cannot access SQLite database file: ";
+        const IO: &str = "Cannot read SQLite database file metadata: ";
+
+        if let Some(path) = message.strip_prefix(NOT_FOUND) {
+            Some(Self::FileNotFound(path.to_string()))
+        } else if let Some(path) = message.strip_prefix(IS_DIRECTORY) {
+            Some(Self::IsDirectory(path.to_string()))
+        } else if let Some(path) = message.strip_prefix(NOT_REGULAR_FILE) {
+            Some(Self::NotRegularFile(path.to_string()))
+        } else if let Some(details) = message.strip_prefix(READ_ACCESS_DENIED) {
+            Some(Self::ReadAccessDenied(details.to_string()))
+        } else if let Some(details) = message.strip_prefix(PATH_ACCESS_DENIED) {
+            Some(Self::PathAccessDenied(details.to_string()))
+        } else {
+            message
+                .strip_prefix(IO)
+                .map(|details| Self::Io(details.to_string()))
+        }
+    }
+}
+
 pub fn sqlite_path_from_dsn(dsn: &str) -> Option<&str> {
     dsn.strip_prefix("sqlite://")
         .filter(|path| !path.is_empty())

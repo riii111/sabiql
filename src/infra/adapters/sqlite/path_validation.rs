@@ -1,8 +1,18 @@
 use std::path::Path;
 
+use crate::app::ports::outbound::SqlitePathValidator;
 use crate::domain::{SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error};
 
-pub fn validate_sqlite_database_path(path: &Path) -> Result<(), SqlitePathError> {
+#[derive(Debug, Default, Clone, Copy)]
+pub struct FsSqlitePathValidator;
+
+impl SqlitePathValidator for FsSqlitePathValidator {
+    fn validate_database_path(&self, path: &str) -> Result<(), SqlitePathError> {
+        validate_sqlite_database_path(Path::new(path))
+    }
+}
+
+fn validate_sqlite_database_path(path: &Path) -> Result<(), SqlitePathError> {
     let display = path.display().to_string();
     let metadata = match std::fs::metadata(path) {
         Ok(metadata) => metadata,
@@ -33,10 +43,6 @@ pub fn validate_sqlite_database_path(path: &Path) -> Result<(), SqlitePathError>
     }
 }
 
-pub fn validate_sqlite_database_path_str(path: &str) -> Result<(), SqlitePathError> {
-    validate_sqlite_database_path(Path::new(path))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,7 +55,11 @@ mod tests {
         let path = dir.path().join("app.db");
         fs::write(&path, b"").unwrap();
 
-        assert!(validate_sqlite_database_path(&path).is_ok());
+        assert!(
+            FsSqlitePathValidator
+                .validate_database_path(path.to_str().unwrap())
+                .is_ok()
+        );
     }
 
     #[test]
@@ -58,7 +68,7 @@ mod tests {
         let path = dir.path().join("missing.db");
 
         assert!(matches!(
-            validate_sqlite_database_path(&path),
+            FsSqlitePathValidator.validate_database_path(path.to_str().unwrap()),
             Err(SqlitePathError::FileNotFound(_))
         ));
     }
@@ -70,7 +80,7 @@ mod tests {
         fs::create_dir(&path).unwrap();
 
         assert!(matches!(
-            validate_sqlite_database_path(&path),
+            FsSqlitePathValidator.validate_database_path(path.to_str().unwrap()),
             Err(SqlitePathError::IsDirectory(_))
         ));
     }
@@ -85,7 +95,7 @@ mod tests {
         Command::new("mkfifo").arg(&path).status().expect("mkfifo");
 
         assert!(matches!(
-            validate_sqlite_database_path(&path),
+            FsSqlitePathValidator.validate_database_path(path.to_str().unwrap()),
             Err(SqlitePathError::NotRegularFile(_))
         ));
     }

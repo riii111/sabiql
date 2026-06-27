@@ -5,26 +5,22 @@ use tokio::sync::mpsc;
 
 use crate::cmd::cache::TtlCache;
 use crate::cmd::effect::Effect;
-use crate::cmd::sqlite_path::validate_sqlite_database_path_str;
+use crate::cmd::runner::ConnectionDeps;
+use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::DatabaseMetadata;
 use crate::domain::connection::{
     ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
 };
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{
-    ConnectionStore, ConnectionStoreError, DsnBuilder, MetadataProvider, PgServiceEntryReader,
-    ServiceFileError,
-};
+use crate::ports::outbound::{ConnectionStoreError, MetadataProvider, ServiceFileError};
 use crate::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
 
 pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
-    dsn_builder: &Arc<dyn DsnBuilder>,
+    connection: &ConnectionDeps,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
-    connection_store: &Arc<dyn ConnectionStore>,
-    pg_service_entry_reader: Option<&Arc<dyn PgServiceEntryReader>>,
     state: &AppState,
 ) -> Result<()> {
     match effect {
@@ -42,10 +38,10 @@ pub(crate) async fn run(
                 }
             };
             let id = profile.id.clone();
-            let dsn = dsn_builder.build_dsn(&profile);
+            let dsn = connection.dsn_builder.build_dsn(&profile);
             let name = profile.name.as_str().to_string();
             let database_type = profile.database_type();
-            let store = Arc::clone(connection_store);
+            let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
             if profile.database_type() == DatabaseType::SQLite {
@@ -54,7 +50,9 @@ pub(crate) async fn run(
                     .expect("SQLite profile requires SQLite config")
                     .path()
                     .to_string();
-                if let Err(error) = validate_sqlite_database_path_str(&path) {
+                if let Err(error) =
+                    validate_sqlite_database_path(&connection.sqlite_path_validator, path).await
+                {
                     action_tx
                         .send(Action::ConnectionSaveFailed(
                             ConnectionProfileError::SqlitePath(error).into(),
@@ -114,7 +112,7 @@ pub(crate) async fn run(
         }
 
         Effect::LoadConnectionForEdit { id } => {
-            let store = Arc::clone(connection_store);
+            let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || match store.find_by_id(&id) {
@@ -136,8 +134,8 @@ pub(crate) async fn run(
         }
 
         Effect::LoadConnections => {
-            let store = Arc::clone(connection_store);
-            let reader = pg_service_entry_reader.cloned();
+            let store = Arc::clone(&connection.connection_store);
+            let reader = connection.pg_service_entry_reader.clone();
             let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || {
@@ -165,7 +163,7 @@ pub(crate) async fn run(
         }
 
         Effect::DeleteConnection { id } => {
-            let store = Arc::clone(connection_store);
+            let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || match store.delete(&id) {
@@ -181,7 +179,7 @@ pub(crate) async fn run(
 
         Effect::SwitchConnection { connection_index } => {
             if let Some(profile) = state.connections().get(connection_index) {
-                let dsn = dsn_builder.build_dsn(profile);
+                let dsn = connection.dsn_builder.build_dsn(profile);
                 let name = profile.display_name().to_string();
                 let id = profile.id.clone();
                 let database_type = profile.database_type();
@@ -538,6 +536,9 @@ mod tests {
                     dsn_builder: Arc::new(NoopDsnBuilder),
                     connection_store: Arc::new(mock_store),
                     pg_service_entry_reader: None,
+                    sqlite_path_validator: Arc::new(
+                        crate::cmd::test_support::TestFsSqlitePathValidator,
+                    ),
                 },
                 QueryDeps {
                     query_executor: Arc::new(MockQueryExecutor::new()),

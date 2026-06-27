@@ -7,12 +7,12 @@ use tokio::sync::mpsc;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
-use crate::cmd::sqlite_path::validate_sqlite_database_path_str;
+use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::DatabaseMetadata;
 use crate::domain::sqlite_path_from_dsn;
 use crate::model::app_state::AppState;
 use crate::policy::sqlite_path::to_db_operation_error;
-use crate::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
 use crate::update::action::Action;
 
 pub async fn run(
@@ -20,12 +20,21 @@ pub async fn run(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
+    sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     _state: &mut AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match effect {
         Effect::FetchMetadata { dsn, run_id } => {
-            fetch_metadata(action_tx, metadata_provider, metadata_cache, dsn, run_id).await
+            fetch_metadata(
+                action_tx,
+                metadata_provider,
+                metadata_cache,
+                sqlite_path_validator,
+                dsn,
+                run_id,
+            )
+            .await
         }
         Effect::FetchTableDetail {
             dsn,
@@ -90,11 +99,13 @@ async fn fetch_metadata(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
+    sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     dsn: String,
     run_id: u64,
 ) -> Result<()> {
     if let Some(path) = sqlite_path_from_dsn(&dsn)
-        && let Err(error) = validate_sqlite_database_path_str(path)
+        && let Err(error) =
+            validate_sqlite_database_path(sqlite_path_validator, path.to_string()).await
     {
         action_tx
             .send(Action::MetadataFailed {

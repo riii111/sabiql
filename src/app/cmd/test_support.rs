@@ -9,14 +9,54 @@ use crate::cmd::runner::{
 };
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::query_history::QueryHistoryEntry;
-use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};
+use crate::domain::{
+    ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource, SqlitePathError,
+    classify_sqlite_metadata_error, classify_sqlite_read_error,
+};
 use crate::ports::outbound::{
     ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder,
     ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
     MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore,
-    ServiceFileError, SettingsStore, SettingsStoreError,
+    ServiceFileError, SettingsStore, SettingsStoreError, SqlitePathValidator,
 };
 use crate::update::action::Action;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TestFsSqlitePathValidator;
+
+impl SqlitePathValidator for TestFsSqlitePathValidator {
+    fn validate_database_path(&self, path: &str) -> Result<(), SqlitePathError> {
+        let path = Path::new(path);
+        let display = path.display().to_string();
+        let metadata = match std::fs::metadata(path) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                return Err(classify_sqlite_metadata_error(
+                    &display,
+                    error.kind(),
+                    &error.to_string(),
+                ));
+            }
+        };
+
+        if metadata.is_dir() {
+            return Err(SqlitePathError::IsDirectory(display));
+        }
+
+        if !metadata.is_file() {
+            return Err(SqlitePathError::NotRegularFile(display));
+        }
+
+        match std::fs::File::open(path) {
+            Ok(_) => Ok(()),
+            Err(error) => Err(classify_sqlite_read_error(
+                &display,
+                error.kind(),
+                &error.to_string(),
+            )),
+        }
+    }
+}
 
 pub struct NoopConfigWriter;
 impl ConfigWriter for NoopConfigWriter {
@@ -143,6 +183,7 @@ pub fn make_runner_with_dsn(
             dsn_builder,
             connection_store,
             pg_service_entry_reader: Some(Arc::new(NoopPgServiceEntryReader)),
+            sqlite_path_validator: Arc::new(TestFsSqlitePathValidator),
         },
         QueryDeps {
             query_executor,

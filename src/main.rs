@@ -28,12 +28,12 @@ use sabiql_app::cmd::render_schedule::next_animation_deadline;
 use sabiql_app::cmd::runner::{
     ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
 };
-use sabiql_app::cmd::sqlite_path::validate_sqlite_database_path;
 use sabiql_app::domain::{ConnectionId, DatabaseType, SqliteStartupError, SqliteStartupTarget};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError, SettingsStore,
+    SqlitePathValidator,
 };
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
@@ -41,8 +41,8 @@ use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
 use sabiql_infra::adapters::{
     ArboardClipboard, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter,
-    NativeFolderOpener, PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
-    TomlSettingsStore,
+    FsSqlitePathValidator, NativeFolderOpener, PgServiceFileReader, PostgresAdapter,
+    TomlConnectionStore, TomlSettingsStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -122,6 +122,7 @@ async fn main() -> Result<()> {
             dsn_builder: Arc::clone(&adapter_registry) as _,
             connection_store: Arc::clone(&connection_store) as _,
             pg_service_entry_reader: Some(Arc::clone(&pg_service_entry_reader)),
+            sqlite_path_validator: Arc::new(FsSqlitePathValidator),
         },
         QueryDeps {
             query_executor: Arc::clone(&adapter_registry) as _,
@@ -524,7 +525,12 @@ async fn drain_and_process_terminal_events(
 pub(crate) fn resolve_cli_sqlite_target(database: &str) -> Result<SqliteStartupTarget> {
     let target = SqliteStartupTarget::from_cli_input(database)
         .map_err(|error: SqliteStartupError| color_eyre::eyre::eyre!(error.to_string()))?;
-    validate_sqlite_database_path(target.path_for_validation())
+    let path = target
+        .path_for_validation()
+        .to_str()
+        .ok_or_else(|| color_eyre::eyre::eyre!("invalid SQLite path"))?;
+    FsSqlitePathValidator
+        .validate_database_path(path)
         .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
     Ok(target)
 }
