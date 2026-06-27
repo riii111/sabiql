@@ -170,6 +170,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             }
         }
 
@@ -285,6 +286,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             }));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())

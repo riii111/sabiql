@@ -692,6 +692,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             }));
             state.query.pagination.reset_for_table("main", "users");
             state.result_interaction.stage_row(0);

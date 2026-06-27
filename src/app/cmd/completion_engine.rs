@@ -956,6 +956,7 @@ mod tests {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
+            ..Default::default()
         }
     }
 
@@ -973,6 +974,7 @@ mod tests {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
+            ..Default::default()
         }
     }
 
@@ -1260,6 +1262,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             };
 
             let candidates = e.column_candidates(Some(&table), "user");
@@ -1646,6 +1649,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1738,6 +1742,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1823,6 +1828,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             }
         }
 
@@ -1903,6 +1909,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             };
 
             // "id" is contained in "user_id"
@@ -1945,6 +1952,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             };
 
             let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
@@ -1994,6 +2002,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             };
 
             let recent = vec!["email".to_string()];
@@ -2129,6 +2138,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2223,6 +2233,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2244,6 +2255,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             }
         }
 
@@ -2315,6 +2327,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             }
         }
 
@@ -2526,6 +2539,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             };
 
             let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);

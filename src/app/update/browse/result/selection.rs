@@ -146,6 +146,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                ..Default::default()
             }));
             state
         }

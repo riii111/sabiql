@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
-use crate::domain::{Column, DatabaseMetadata, Table, TableSignature};
+use crate::domain::{Column, DatabaseMetadata, Table, TableSignature, TableStorage};
 
 use super::PostgresAdapter;
 
@@ -70,6 +70,7 @@ impl MetadataProvider for PostgresAdapter {
             row_count_estimate: table_info.row_count_estimate,
             comment: table_info.comment,
             source_ddl: None,
+            storage: TableStorage::default(),
         })
     }
 
@@ -97,6 +98,7 @@ impl MetadataProvider for PostgresAdapter {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
+            storage: TableStorage::default(),
         })
     }
 }
