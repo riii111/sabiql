@@ -1,7 +1,7 @@
 # sabiql
 ![hero](https://github.com/user-attachments/assets/745ab18f-915c-4017-81a6-465c5c5ee11c)
 
-A fast, driver-less TUI to browse, query, and edit PostgreSQL databases — no drivers, no setup, just `psql`.
+A fast, driver-less TUI to browse, query, and edit PostgreSQL and SQLite databases — no drivers, no setup, just your database CLI (`psql` or `sqlite3`).
 
 [![CI](https://github.com/riii111/sabiql/actions/workflows/ci.yml/badge.svg)](https://github.com/riii111/sabiql/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,11 +10,11 @@ A fast, driver-less TUI to browse, query, and edit PostgreSQL databases — no d
 
 > Vim-first · Safe by design · Oil-and-vinegar UI · Fast and lightweight
 
-sabiql wraps your existing `psql` CLI. No Rust database drivers, no connection pools, no extra dependencies. Point it at your database and get a full-featured TUI. Your `psql` config, `.pgpass`, SSL setup all just work.
+sabiql wraps your existing database CLI. For PostgreSQL it uses `psql`; for SQLite it uses `sqlite3`. No Rust database drivers, no connection pools, no extra dependencies. Point it at your database and get a full-featured TUI. Your `psql` config, `.pgpass`, and SSL setup all just work for PostgreSQL connections.
 
 Inspired by [oil.nvim](https://github.com/stevearc/oil.nvim)'s "oil and vinegar" philosophy: UI elements appear only when needed, never occupying your screen permanently. Vim-native keybindings (`j/k`, `dd`, `/`) let you navigate and edit without leaving your muscle memory.
 
-Destructive operations are guarded. Inline edits and row deletions always show a preview modal before touching your data. Read-only mode (`Ctrl+R`) goes further — block all writes at the PostgreSQL session level with a single keystroke.
+Destructive operations are guarded. Inline edits and row deletions always show a preview modal before touching your data. Read-only mode (`Ctrl+R`) goes further — block all writes at the database client level with a single keystroke.
 
 Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featured alternative to GUI tools like DBeaver or DataGrip, without ever leaving the terminal.
 
@@ -33,7 +33,7 @@ PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement w
 
 - **Read-Only Mode** (`Ctrl+R`) — Toggle safe-browse mode; writes are blocked at both app and DB session level
 - **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; browse past results with `Ctrl+H`; recall previous queries with `Ctrl+O`
-- **ER Diagram** (`e`) — Generate relationship diagrams via Graphviz, opened instantly in your browser
+- **ER Diagram** (`e`) — Generate relationship diagrams via Graphviz, opened instantly in your browser (PostgreSQL only)
 - **Inspector Pane** (`2`) — Column details, types, constraints, and indexes for any table
 
 ### Editing
@@ -45,7 +45,7 @@ PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement w
 
 ### Query Analysis
 
-- **EXPLAIN / EXPLAIN ANALYZE** — Run your query, then switch tabs to instantly view its execution plan. Compare two plans side-by-side to pinpoint performance bottlenecks — no copy-paste, no external tools, all within the same modal.
+- **EXPLAIN / EXPLAIN ANALYZE** — Run your query, then switch tabs to instantly view its execution plan. Compare two plans side-by-side to pinpoint performance bottlenecks — no copy-paste, no external tools, all within the same modal. (PostgreSQL only)
 
 ### Navigation
 
