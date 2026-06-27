@@ -148,8 +148,8 @@ nix develop
 - [x] EXPLAIN workflow (plan tree view & comparison)
 - [x] JSON/JSONB support (tree view, editing, validation)
 - [x] Theme switching (Sabiql Dark / Light)
+- [x] SQLite support
 - [ ] Neovim integration (`sabiql.nvim`)
-- [ ] SQLite support
 - [ ] Zero-config connection (env vars, `.pgpass`, URI auto-detect)
 - [ ] Google Cloud SQL / AlloyDB support
 - [ ] MySQL support
