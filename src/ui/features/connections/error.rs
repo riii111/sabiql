@@ -173,12 +173,12 @@ impl ConnectionError {
             Style::default().fg(theme.semantic.text.muted),
         )];
 
-        if state.session.is_service_connection() {
-            spans.push(key_chip("r", theme));
-            spans.push(Span::raw(" Retry  "));
-        } else {
+        if state.session.can_reenter_connection_setup() {
             spans.push(key_chip("e", theme));
             spans.push(Span::raw(" Re-enter  "));
+        } else {
+            spans.push(key_chip("r", theme));
+            spans.push(Span::raw(" Retry  "));
         }
 
         spans.extend([

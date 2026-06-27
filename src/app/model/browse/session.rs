@@ -6,6 +6,7 @@ use crate::domain::{
 use crate::model::browse::query_execution::{PaginationState, QueryExecution};
 use crate::model::browse::result_history::ResultHistory;
 use crate::model::connection::cache::ConnectionCache;
+use crate::model::connection::origin::ConnectionOrigin;
 use crate::model::connection::state::ConnectionState;
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::db_capabilities::DbCapabilities;
@@ -16,6 +17,7 @@ struct ActiveConnection {
     id: ConnectionId,
     name: String,
     database_type: DatabaseType,
+    origin: ConnectionOrigin,
 }
 
 // # Invariants
@@ -146,8 +148,21 @@ impl BrowseSession {
             id: id.clone(),
             name: name.to_string(),
             database_type,
+            origin: ConnectionOrigin::Profile,
         });
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
+        self.dsn = Some(dsn.to_string());
+        self.read_only = false;
+    }
+
+    pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
+        self.active_connection = Some(ActiveConnection {
+            id: id.clone(),
+            name: name.to_string(),
+            database_type: DatabaseType::SQLite,
+            origin: ConnectionOrigin::CliEphemeral,
+        });
+        self.active_db_capabilities = DbCapabilities::for_database_type(DatabaseType::SQLite);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
     }
@@ -164,6 +179,7 @@ impl BrowseSession {
             id: id.clone(),
             name: name.to_string(),
             database_type,
+            origin: ConnectionOrigin::Profile,
         });
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
     }
@@ -391,6 +407,16 @@ impl BrowseSession {
 
     pub fn is_service_connection(&self) -> bool {
         self.dsn.as_ref().is_some_and(|d| d.starts_with("service="))
+    }
+
+    pub fn is_ephemeral_connection(&self) -> bool {
+        self.active_connection
+            .as_ref()
+            .is_some_and(|connection| connection.origin.is_ephemeral())
+    }
+
+    pub fn can_reenter_connection_setup(&self) -> bool {
+        !self.is_service_connection() && !self.is_ephemeral_connection()
     }
 
     #[cfg(test)]
@@ -926,6 +952,35 @@ mod tests {
                 ..Default::default()
             };
             assert!(!session.is_service_connection());
+        }
+
+        #[test]
+        fn is_ephemeral_connection_detects_cli_connection() {
+            use crate::cmd::cli_sqlite::connection_id_for_path;
+
+            let mut session = BrowseSession::default();
+            session.activate_cli_ephemeral_connection(
+                &connection_id_for_path("/tmp/app.db"),
+                "app.db",
+                "sqlite:///tmp/app.db",
+            );
+
+            assert!(session.is_ephemeral_connection());
+            assert!(!session.can_reenter_connection_setup());
+        }
+
+        #[test]
+        fn can_reenter_connection_setup_for_saved_profile() {
+            let mut session = BrowseSession::default();
+            session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "Local",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+
+            assert!(!session.is_ephemeral_connection());
+            assert!(session.can_reenter_connection_setup());
         }
 
         #[test]

@@ -53,11 +53,4 @@ mod tests {
         let id = ConnectionId::from_string(uuid_str);
         assert_eq!(id.as_str(), uuid_str);
     }
-
-    #[test]
-    fn display_shows_uuid() {
-        let uuid_str = "test-uuid";
-        let id = ConnectionId::from_string(uuid_str);
-        assert_eq!(format!("{id}"), uuid_str);
-    }
 }

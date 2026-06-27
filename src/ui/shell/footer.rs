@@ -273,10 +273,10 @@ impl Footer {
                 ]
             }
             InputMode::ConnectionError => {
-                let first = if state.session.is_service_connection() {
-                    connection_error::RETRY.as_hint()
-                } else {
+                let first = if state.session.can_reenter_connection_setup() {
                     connection_error::EDIT.as_hint()
+                } else {
+                    connection_error::RETRY.as_hint()
                 };
                 vec![
                     first,

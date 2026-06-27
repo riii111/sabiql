@@ -463,10 +463,10 @@ mod tests {
         }
 
         #[test]
-        fn r_key_retries_service_connection() {
+        fn r_key_retries_connection() {
             let result = handle_connection_error_keys(combo(Key::Char('r')));
 
-            assert!(matches!(result, Action::RetryServiceConnection));
+            assert!(matches!(result, Action::RetryConnection));
         }
     }
 

@@ -4,6 +4,7 @@
 )]
 
 use std::cell::RefCell;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -22,6 +23,7 @@ mod tests;
 mod render_snapshots;
 
 use sabiql_app::cmd::cache::TtlCache;
+use sabiql_app::cmd::cli_sqlite::{CliSqliteTarget, CliSqliteTargetError, connection_id_for_path};
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
@@ -50,6 +52,9 @@ use sabiql_ui::tui::TuiRunner;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// SQLite database file (.db, .sqlite, .sqlite3) or sqlite:// DSN
+    database: Option<String>,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -86,6 +91,11 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
     }
+
+    let cli_sqlite = match args.database {
+        Some(database) => Some(resolve_cli_sqlite_target(&database)?),
+        None => None,
+    };
 
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
@@ -148,10 +158,10 @@ async fn main() -> Result<()> {
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
             load_service_entries(&mut state, Some(&*pg_service_entry_reader));
-            if state.service_entries().is_empty() {
+            if cli_sqlite.is_none() && state.service_entries().is_empty() {
                 state.connection_setup.set_first_run(true);
                 state.modal.set_mode(InputMode::ConnectionSetup);
-            } else {
+            } else if cli_sqlite.is_none() {
                 state.modal.set_mode(InputMode::ConnectionSelector);
                 state.ui.set_connection_list_selection(Some(0));
             }
@@ -165,10 +175,12 @@ async fn main() -> Result<()> {
             state.set_connections(profiles);
             load_service_entries(&mut state, Some(&*pg_service_entry_reader));
 
-            state.modal.set_mode(InputMode::ConnectionSelector);
-            state.ui.set_connection_list_selection(Some(0));
+            if cli_sqlite.is_none() {
+                state.modal.set_mode(InputMode::ConnectionSelector);
+                state.ui.set_connection_list_selection(Some(0));
+            }
         }
-        Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
+        Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_sqlite.is_none() => {
             eprintln!(
                 "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
                  Please delete {} and reconfigure.",
@@ -178,10 +190,24 @@ async fn main() -> Result<()> {
             );
             std::process::exit(1);
         }
-        Err(_) => {
+        Err(_) if cli_sqlite.is_none() => {
             state.connection_setup.set_first_run(true);
             state.modal.set_mode(InputMode::ConnectionSetup);
         }
+        Err(_) => {}
+    }
+
+    if let Some(target) = cli_sqlite.as_ref() {
+        let canonical_path = std::fs::canonicalize(target.path()).map_err(|error| {
+            CliSqliteTargetError::from_file_metadata_error(target.path(), &error)
+        })?;
+        let connection_id = connection_id_for_path(&canonical_path.to_string_lossy());
+        state.session.activate_cli_ephemeral_connection(
+            &connection_id,
+            &target.display_name(),
+            &target.dsn(),
+        );
+        state.modal.set_mode(InputMode::Normal);
     }
 
     let mut tui = TuiRunner::new()?;
@@ -496,6 +522,25 @@ async fn drain_and_process_terminal_events(
             services,
         )
         .await?;
+    }
+
+    Ok(())
+}
+
+fn resolve_cli_sqlite_target(input: &str) -> Result<CliSqliteTarget> {
+    let target = CliSqliteTarget::parse_cli_argument(input)?;
+    validate_cli_sqlite_file(target.path())?;
+    Ok(target)
+}
+
+fn validate_cli_sqlite_file(path: &str) -> Result<(), CliSqliteTargetError> {
+    let path = Path::new(path);
+    let display = path.display().to_string();
+    let metadata = std::fs::metadata(path)
+        .map_err(|error| CliSqliteTargetError::from_file_metadata_error(&display, &error))?;
+
+    if metadata.is_dir() {
+        return Err(CliSqliteTargetError::IsDirectory(display));
     }
 
     Ok(())

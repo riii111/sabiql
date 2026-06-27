@@ -45,7 +45,7 @@ toml = "0.8"
 unicode-casefold = "0.2"
 unicode-width = "0.2"
 urlencoding = "2"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v5"] }
 
 [package]
 name = "sabiql"
@@ -68,6 +68,7 @@ clap.workspace = true
 dotenvy.workspace = true
 self_update = { workspace = true, optional = true }
 sabiql-app.workspace = true
+sabiql-domain.workspace = true
 sabiql-infra.workspace = true
 sabiql-ui.workspace = true
 
