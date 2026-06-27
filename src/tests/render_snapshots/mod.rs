@@ -23,8 +23,8 @@ use sabiql_app::policy::write::write_guardrails::{
 use sabiql_app::ports::outbound::DdlGenerator;
 use sabiql_app::services::AppServices;
 use sabiql_domain::{
-    ColumnAttributes, CommandTag, ConnectionId, DatabaseType, FkAction, ForeignKey, Index,
-    IndexAttributes, IndexType, QuerySource, Table,
+    ColumnAttributes, CommandTag, DatabaseType, FkAction, ForeignKey, Index, IndexAttributes,
+    IndexType, QuerySource, Table,
 };
 
 mod confirm_dialogs;

@@ -1,15 +1,15 @@
 ---
-source: src/tests/render_snapshots/inspector.rs
+source: src/tests/render_snapshots/table_explorer.rs
 expression: output
 ---
-test_project | test_db | - | connected | app.db
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  public.posts                         ││Rows:    ~100                                                                                                             │
-│  public.comments                      ││Schema:  public                                                                                                           │
-│                                       ││Table:   users                                                                                                            │
-│                                       ││Kind:    Table                                                                                                            │
-│                                       ││Flags:   (none)                                                                                                           │
+test_project | app.db | - | connected | app.db                                                                                                                       
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
+│> main.users                           │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  main.settings [table+no-rowid]       ││(select a table)                                                                                                          │
+│  main.notes_fts [virtual/fts5]        ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project | test_db | - | connected | app.db
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  ^⇧D:Diagnostics  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  Tab/⇧Tab:InsTabs  ?:Help  F1:Palette  ,:Settings  q:Quit
+r:Reload  s:SQL  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ?:Help  F1:Palette  ,:Settings  q:Quit

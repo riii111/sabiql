@@ -39,7 +39,17 @@ impl Explorer {
         let content_width = explorer_content_width_from_inner_width(area.width);
 
         let table_names: Vec<String> = if has_cached_data {
-            state.tables().iter().map(|t| t.qualified_name()).collect()
+            state
+                .tables()
+                .iter()
+                .map(|summary| {
+                    let mut name = summary.qualified_name();
+                    if let Some(suffix) = summary.storage.explorer_suffix() {
+                        name.push_str(&suffix);
+                    }
+                    name
+                })
+                .collect()
         } else {
             Vec::new()
         };

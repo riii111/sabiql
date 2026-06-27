@@ -251,6 +251,25 @@ impl Inspector {
             InspectorInfoField::TableName => {
                 Line::from(vec![Self::info_label("Table:   "), Span::raw(&table.name)])
             }
+            InspectorInfoField::TableKind => Line::from(vec![
+                Self::info_label("Kind:    "),
+                Span::raw(table.storage.kind_detail()),
+            ]),
+            InspectorInfoField::TableFlags => {
+                let value = table
+                    .storage
+                    .flags_label()
+                    .map_or_else(|| Cow::Borrowed("(none)"), Cow::Owned);
+                let style = if table.storage.flags_label().is_some() {
+                    Style::default()
+                } else {
+                    Style::default().fg(theme.semantic.text.placeholder)
+                };
+                Line::from(vec![
+                    Self::info_label("Flags:   "),
+                    Span::styled(value, style),
+                ])
+            }
         }
     }
 
