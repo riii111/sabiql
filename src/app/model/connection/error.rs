@@ -10,6 +10,11 @@ pub enum ConnectionErrorKind {
     ConnectionLost,
     Timeout,
     SqliteVersionTooOld,
+    SqliteFileNotFound,
+    SqlitePathIsDirectory,
+    SqliteReadAccessDenied,
+    SqlitePathAccessDenied,
+    SqlitePathIo,
     #[default]
     Unknown,
 }
@@ -70,6 +75,11 @@ impl ConnectionErrorKind {
             Self::ConnectionLost => "Connection lost during operation",
             Self::Timeout => "Connection timed out",
             Self::SqliteVersionTooOld => "SQLite 3.37 or later required",
+            Self::SqliteFileNotFound => "SQLite database file not found",
+            Self::SqlitePathIsDirectory => "SQLite path is a directory",
+            Self::SqliteReadAccessDenied => "Cannot read SQLite database file",
+            Self::SqlitePathAccessDenied => "Cannot access SQLite database file",
+            Self::SqlitePathIo => "Cannot open SQLite database file",
             Self::Unknown => "Connection failed",
         }
     }
@@ -85,6 +95,13 @@ impl ConnectionErrorKind {
             Self::SqliteVersionTooOld => {
                 "Upgrade sqlite3, or open a database without virtual tables"
             }
+            Self::SqliteFileNotFound => {
+                "Check the file path — sabiql does not create new database files"
+            }
+            Self::SqlitePathIsDirectory => "Enter a path to a database file, not a folder",
+            Self::SqliteReadAccessDenied => "Check read permissions for the database file",
+            Self::SqlitePathAccessDenied => "Check file permissions for the database file",
+            Self::SqlitePathIo => "Check that the database file path is valid and accessible",
             Self::Unknown => "See details for more information",
         }
     }
@@ -129,7 +146,10 @@ impl ConnectionErrorInfo {
             {
                 ConnectionErrorKind::SqliteVersionTooOld
             }
-            DbOperationError::ConnectionFailed(_) => ConnectionErrorKind::classify(&raw_details),
+            DbOperationError::ConnectionFailed(details) => {
+                classify_sqlite_path_connection_error(details)
+                    .unwrap_or_else(|| ConnectionErrorKind::classify(&raw_details))
+            }
             _ => ConnectionErrorKind::Unknown,
         };
         Self::with_kind(kind, raw_details)
@@ -146,6 +166,29 @@ impl ConnectionErrorInfo {
     pub fn masked_details(&self) -> &str {
         &self.masked_details
     }
+}
+
+fn classify_sqlite_path_connection_error(message: &str) -> Option<ConnectionErrorKind> {
+    use crate::domain::SqlitePathError;
+    use crate::policy::sqlite_path::connection_error_kind;
+
+    let kind = if let Some(path) = message.strip_prefix("SQLite database file not found: ") {
+        connection_error_kind(&SqlitePathError::FileNotFound(path.to_string()))
+    } else if let Some(path) = message.strip_prefix("SQLite path is a directory, not a file: ") {
+        connection_error_kind(&SqlitePathError::IsDirectory(path.to_string()))
+    } else if let Some(details) = message.strip_prefix("Cannot read SQLite database file: ") {
+        connection_error_kind(&SqlitePathError::ReadAccessDenied(details.to_string()))
+    } else if let Some(details) = message.strip_prefix("Cannot access SQLite database file: ") {
+        connection_error_kind(&SqlitePathError::PathAccessDenied(details.to_string()))
+    } else if let Some(details) =
+        message.strip_prefix("Cannot read SQLite database file metadata: ")
+    {
+        connection_error_kind(&SqlitePathError::Io(details.to_string()))
+    } else {
+        return None;
+    };
+
+    Some(kind)
 }
 
 fn is_connection_lost_message(lower: &str) -> bool {
@@ -256,6 +299,11 @@ mod tests {
         #[case(ConnectionErrorKind::ConnectionLost)]
         #[case(ConnectionErrorKind::Timeout)]
         #[case(ConnectionErrorKind::SqliteVersionTooOld)]
+        #[case(ConnectionErrorKind::SqliteFileNotFound)]
+        #[case(ConnectionErrorKind::SqlitePathIsDirectory)]
+        #[case(ConnectionErrorKind::SqliteReadAccessDenied)]
+        #[case(ConnectionErrorKind::SqlitePathAccessDenied)]
+        #[case(ConnectionErrorKind::SqlitePathIo)]
         #[case(ConnectionErrorKind::Unknown)]
         fn has_non_empty_summary_and_hint(#[case] kind: ConnectionErrorKind) {
             assert!(!kind.summary().is_empty());
@@ -299,6 +347,17 @@ mod tests {
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::ConnectionLost);
+        }
+
+        #[test]
+        fn from_db_operation_error_classifies_sqlite_missing_file() {
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
+                    "SQLite database file not found: /tmp/missing.db".to_string(),
+                ));
+
+            assert_eq!(info.kind, ConnectionErrorKind::SqliteFileNotFound);
+            assert_eq!(info.summary(), "SQLite database file not found");
         }
 
         #[test]
