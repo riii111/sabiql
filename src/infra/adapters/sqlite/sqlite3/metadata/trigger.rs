@@ -219,6 +219,8 @@ fn parse_sqlite_trigger_header(
     }
 }
 
+// SQLite stores trigger DDL in sqlite_master without TEMP/TEMPORARY or IF NOT EXISTS.
+// TEMP prefix support is for direct SQL input only; metadata collection uses sqlite_master.
 pub(super) fn parse_sqlite_trigger(
     trigger_name: &str,
     sql: &str,
@@ -303,6 +305,7 @@ mod tests {
 
     #[test]
     fn parses_temp_trigger() {
+        // Direct SQL input hardening; sqlite_master stores CREATE TRIGGER without TEMP.
         let sql = "CREATE TEMP TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END";
         let trigger = parse_sqlite_trigger("users_audit", sql).unwrap();
 
