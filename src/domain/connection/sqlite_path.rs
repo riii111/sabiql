@@ -4,6 +4,8 @@ pub enum SqlitePathError {
     FileNotFound(String),
     #[error("SQLite path is a directory, not a file: {0}")]
     IsDirectory(String),
+    #[error("SQLite path is not a regular file: {0}")]
+    NotRegularFile(String),
     #[error("Cannot read SQLite database file: {0}")]
     ReadAccessDenied(String),
     #[error("Cannot access SQLite database file: {0}")]

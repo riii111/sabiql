@@ -200,7 +200,7 @@ pub mod connection_error {
         key_short: "r",
         key: "r",
         desc_short: "Retry",
-        description: "Retry service connection",
+        description: "Retry connection",
         bindings: &[ExecBinding {
             action: Action::RetryServiceConnection,
             combos: &[KeyCombo::plain(Key::Char('r'))],

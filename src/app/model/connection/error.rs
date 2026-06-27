@@ -12,6 +12,7 @@ pub enum ConnectionErrorKind {
     SqliteVersionTooOld,
     SqliteFileNotFound,
     SqlitePathIsDirectory,
+    SqlitePathNotRegularFile,
     SqliteReadAccessDenied,
     SqlitePathAccessDenied,
     SqlitePathIo,
@@ -77,6 +78,7 @@ impl ConnectionErrorKind {
             Self::SqliteVersionTooOld => "SQLite 3.37 or later required",
             Self::SqliteFileNotFound => "SQLite database file not found",
             Self::SqlitePathIsDirectory => "SQLite path is a directory",
+            Self::SqlitePathNotRegularFile => "SQLite path is not a regular file",
             Self::SqliteReadAccessDenied => "Cannot read SQLite database file",
             Self::SqlitePathAccessDenied => "Cannot access SQLite database file",
             Self::SqlitePathIo => "Cannot open SQLite database file",
@@ -99,6 +101,9 @@ impl ConnectionErrorKind {
                 "Check the file path — sabiql does not create new database files"
             }
             Self::SqlitePathIsDirectory => "Enter a path to a database file, not a folder",
+            Self::SqlitePathNotRegularFile => {
+                "Enter a path to a regular database file, not a pipe or special file"
+            }
             Self::SqliteReadAccessDenied => "Check read permissions for the database file",
             Self::SqlitePathAccessDenied => "Check file permissions for the database file",
             Self::SqlitePathIo => "Check that the database file path is valid and accessible",
@@ -176,6 +181,8 @@ fn classify_sqlite_path_connection_error(message: &str) -> Option<ConnectionErro
         connection_error_kind(&SqlitePathError::FileNotFound(path.to_string()))
     } else if let Some(path) = message.strip_prefix("SQLite path is a directory, not a file: ") {
         connection_error_kind(&SqlitePathError::IsDirectory(path.to_string()))
+    } else if let Some(path) = message.strip_prefix("SQLite path is not a regular file: ") {
+        connection_error_kind(&SqlitePathError::NotRegularFile(path.to_string()))
     } else if let Some(details) = message.strip_prefix("Cannot read SQLite database file: ") {
         connection_error_kind(&SqlitePathError::ReadAccessDenied(details.to_string()))
     } else if let Some(details) = message.strip_prefix("Cannot access SQLite database file: ") {
@@ -301,6 +308,7 @@ mod tests {
         #[case(ConnectionErrorKind::SqliteVersionTooOld)]
         #[case(ConnectionErrorKind::SqliteFileNotFound)]
         #[case(ConnectionErrorKind::SqlitePathIsDirectory)]
+        #[case(ConnectionErrorKind::SqlitePathNotRegularFile)]
         #[case(ConnectionErrorKind::SqliteReadAccessDenied)]
         #[case(ConnectionErrorKind::SqlitePathAccessDenied)]
         #[case(ConnectionErrorKind::SqlitePathIo)]

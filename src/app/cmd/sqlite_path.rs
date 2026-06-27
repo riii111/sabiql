@@ -19,6 +19,10 @@ pub fn validate_sqlite_database_path(path: &Path) -> Result<(), SqlitePathError>
         return Err(SqlitePathError::IsDirectory(display));
     }
 
+    if !metadata.is_file() {
+        return Err(SqlitePathError::NotRegularFile(display));
+    }
+
     match std::fs::File::open(path) {
         Ok(_) => Ok(()),
         Err(error) => Err(classify_sqlite_read_error(
@@ -68,6 +72,21 @@ mod tests {
         assert!(matches!(
             validate_sqlite_database_path(&path),
             Err(SqlitePathError::IsDirectory(_))
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_fifo_without_opening() {
+        use std::process::Command;
+
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("pipe.db");
+        Command::new("mkfifo").arg(&path).status().expect("mkfifo");
+
+        assert!(matches!(
+            validate_sqlite_database_path(&path),
+            Err(SqlitePathError::NotRegularFile(_))
         ));
     }
 }

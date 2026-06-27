@@ -6,6 +6,7 @@ pub fn connection_error_kind(error: &SqlitePathError) -> ConnectionErrorKind {
     match error {
         SqlitePathError::FileNotFound(_) => ConnectionErrorKind::SqliteFileNotFound,
         SqlitePathError::IsDirectory(_) => ConnectionErrorKind::SqlitePathIsDirectory,
+        SqlitePathError::NotRegularFile(_) => ConnectionErrorKind::SqlitePathNotRegularFile,
         SqlitePathError::ReadAccessDenied(_) => ConnectionErrorKind::SqliteReadAccessDenied,
         SqlitePathError::PathAccessDenied(_) => ConnectionErrorKind::SqlitePathAccessDenied,
         SqlitePathError::Io(_) => ConnectionErrorKind::SqlitePathIo,
