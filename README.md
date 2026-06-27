@@ -45,7 +45,8 @@ PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement w
 
 ### Query Analysis
 
-- **EXPLAIN / EXPLAIN ANALYZE** — Run your query, then switch tabs to instantly view its execution plan. Compare two plans side-by-side to pinpoint performance bottlenecks — no copy-paste, no external tools, all within the same modal. (PostgreSQL only)
+- **EXPLAIN / EXPLAIN ANALYZE** — PostgreSQL: run your query, then switch tabs to view its execution plan or compare two plans side-by-side.
+- **EXPLAIN QUERY PLAN** — SQLite: view query plans for single SELECT statements in the Plan tab.
 
 ### Navigation
 
@@ -83,7 +84,14 @@ curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
 sabiql
 ```
 
-On first run, enter your connection details. They are saved to your platform config directory:
+For SQLite, you can also pass a database file path or `sqlite://` DSN directly:
+
+```bash
+sabiql /path/to/app.db
+sabiql sqlite:///path/to/app.db
+```
+
+On first run without a startup argument, enter your connection details. They are saved to your platform config directory:
 
 - macOS: `~/Library/Application Support/sabiql/connections.toml`
 - Linux: `~/.config/sabiql/connections.toml`
@@ -101,7 +109,7 @@ Open Settings with `,` to switch themes, keymap presets, and the ER diagram brow
 Install the CLI for the database you want to open:
 
 - **PostgreSQL:** `psql` (PostgreSQL client)
-- **SQLite:** `sqlite3` (SQLite shell)
+- **SQLite:** `sqlite3` (SQLite shell). Use 3.37.0 or later for databases with FTS, RTree, or other virtual tables.
 
 Optional:
 
@@ -113,13 +121,14 @@ Android/Termux support is build-only, not full platform support. `cargo install 
 
 ## SQLite Limitations
 
-SQLite support covers browsing, editing, and ad-hoc SQL on regular database files. A few things are intentionally out of scope today:
+SQLite support covers browsing, editing, and ad-hoc SQL on regular database files. Compared with PostgreSQL:
 
-- **File paths only** — In-memory databases (`:memory:`) and URI filenames (`file:...`) are not supported.
-- **No EXPLAIN workflow** — Plan and compare tabs in the SQL modal are PostgreSQL-only.
+- **File paths only** — Use a regular database file path or a `sqlite://` DSN to that file. In-memory databases (`:memory:`) and SQLite URI filenames (`file:...`) are not supported.
+- **No new database files** — Opening a path that does not exist does not create a database.
+- **Main database only** — Attached and temporary databases are not browsed as separate namespaces.
+- **Query plans** — SQLite shows `EXPLAIN QUERY PLAN` in the Plan tab. Plan comparison and `EXPLAIN ANALYZE` are PostgreSQL-only.
 - **No ER diagrams** — Graphviz export requires PostgreSQL metadata.
 - **No JSON tree view** — Structured JSON editing is PostgreSQL-only.
-- **Virtual tables** — Databases with FTS, RTree, or other virtual tables require `sqlite3` 3.37.0 or later.
 
 ## Development
 
