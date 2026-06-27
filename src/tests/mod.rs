@@ -28,12 +28,11 @@ fn database_positional_is_recognized() {
     assert!(args.command.is_none());
 }
 
-mod cli_sqlite_startup {
+mod cli_sqlite {
     use std::fs;
 
+    use sabiql_app::cmd::cli_sqlite::resolve_cli_sqlite_database;
     use tempfile::tempdir;
-
-    use crate::resolve_cli_sqlite_target;
 
     #[test]
     fn resolves_existing_sqlite_file() {
@@ -41,10 +40,10 @@ mod cli_sqlite_startup {
         let path = dir.path().join("app.db");
         fs::write(&path, b"").unwrap();
 
-        let target = resolve_cli_sqlite_target(path.to_str().unwrap()).unwrap();
+        let database = resolve_cli_sqlite_database(path.to_str().unwrap()).unwrap();
 
-        assert_eq!(target.path(), path.to_str().unwrap());
-        assert_eq!(target.dsn(), format!("sqlite://{}", path.display()));
+        assert_eq!(database.path(), path.to_str().unwrap());
+        assert_eq!(database.dsn(), format!("sqlite://{}", path.display()));
     }
 
     #[test]
@@ -52,7 +51,7 @@ mod cli_sqlite_startup {
         let dir = tempdir().unwrap();
         let path = dir.path().join("missing.db");
 
-        let error = resolve_cli_sqlite_target(path.to_str().unwrap()).unwrap_err();
+        let error = resolve_cli_sqlite_database(path.to_str().unwrap()).unwrap_err();
 
         assert!(error.to_string().contains("not found"));
     }

@@ -148,14 +148,11 @@ mod tests {
         }
 
         #[test]
-        fn blocked_for_ephemeral_cli_connection() {
+        fn blocked_for_cli_ephemeral_connection() {
             let mut state = AppState::new("test".to_string());
-            state.session.activate_connection_with_dsn(
-                &ConnectionId::ephemeral_cli(),
-                "app.db",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
-            );
+            state
+                .session
+                .activate_cli_ephemeral_connection("app.db", "sqlite:///tmp/app.db");
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());

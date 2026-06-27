@@ -6,6 +6,7 @@ use crate::domain::{
 use crate::model::browse::query_execution::{PaginationState, QueryExecution};
 use crate::model::browse::result_history::ResultHistory;
 use crate::model::connection::cache::ConnectionCache;
+use crate::model::connection::origin::ConnectionOrigin;
 use crate::model::connection::state::ConnectionState;
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::db_capabilities::DbCapabilities;
@@ -16,6 +17,7 @@ struct ActiveConnection {
     id: ConnectionId,
     name: String,
     database_type: DatabaseType,
+    origin: ConnectionOrigin,
 }
 
 // # Invariants
@@ -146,8 +148,21 @@ impl BrowseSession {
             id: id.clone(),
             name: name.to_string(),
             database_type,
+            origin: ConnectionOrigin::Profile,
         });
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
+        self.dsn = Some(dsn.to_string());
+        self.read_only = false;
+    }
+
+    pub fn activate_cli_ephemeral_connection(&mut self, name: &str, dsn: &str) {
+        self.active_connection = Some(ActiveConnection {
+            id: ConnectionId::new(),
+            name: name.to_string(),
+            database_type: DatabaseType::SQLite,
+            origin: ConnectionOrigin::CliEphemeral,
+        });
+        self.active_db_capabilities = DbCapabilities::for_database_type(DatabaseType::SQLite);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
     }
@@ -164,6 +179,7 @@ impl BrowseSession {
             id: id.clone(),
             name: name.to_string(),
             database_type,
+            origin: ConnectionOrigin::Profile,
         });
         self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
     }
@@ -396,7 +412,7 @@ impl BrowseSession {
     pub fn is_ephemeral_connection(&self) -> bool {
         self.active_connection
             .as_ref()
-            .is_some_and(|connection| connection.id.is_ephemeral_cli())
+            .is_some_and(|connection| connection.origin.is_ephemeral())
     }
 
     pub fn can_reenter_connection_setup(&self) -> bool {
@@ -941,12 +957,7 @@ mod tests {
         #[test]
         fn is_ephemeral_connection_detects_cli_connection() {
             let mut session = BrowseSession::default();
-            session.activate_connection_with_dsn(
-                &ConnectionId::ephemeral_cli(),
-                "app.db",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
-            );
+            session.activate_cli_ephemeral_connection("app.db", "sqlite:///tmp/app.db");
 
             assert!(session.is_ephemeral_connection());
             assert!(!session.can_reenter_connection_setup());
