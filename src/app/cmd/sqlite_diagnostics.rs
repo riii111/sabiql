@@ -30,10 +30,11 @@ pub fn run(
                     Err(error) => Action::SqliteDiagnosticsCoreLoaded {
                         dsn,
                         run_id,
-                        snapshot: Box::new(crate::domain::SqliteDiagnosticsSnapshot {
-                            db_file: DiagnosticField::err(error.masked_details()),
-                            ..Default::default()
-                        }),
+                        snapshot: Box::new(
+                            crate::domain::SqliteDiagnosticsSnapshot::core_fetch_failed(
+                                DiagnosticField::err(error.masked_details()),
+                            ),
+                        ),
                     },
                 };
                 let _ = action_tx.send(action).await;

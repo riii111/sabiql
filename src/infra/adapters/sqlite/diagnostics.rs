@@ -47,7 +47,7 @@ impl SqliteDiagnosticsProvider for SqliteAdapter {
             query_only,
             busy_timeout,
             database_list,
-            quick_check: DiagnosticField::default(),
+            quick_check: DiagnosticField::Unavailable,
         })
     }
 
