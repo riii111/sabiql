@@ -727,7 +727,7 @@ mod tests {
                 .any(|description| description.contains("ER Diagram"))
         );
         assert!(
-            !descriptions
+            descriptions
                 .iter()
                 .any(|description| description.contains("EXPLAIN"))
         );
@@ -739,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_sql_help_origin_normalizes_unsupported_plan_tab() {
+    fn sqlite_sql_help_origin_includes_plan_tab() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -752,7 +752,7 @@ mod tests {
 
         let document = HelpDocument::new(HelpOrigin::from_state(&state), "");
 
-        assert_eq!(document.sections()[0].title(), "Current: SQL Editor");
+        assert_eq!(document.sections()[0].title(), "Current: SQL Editor Plan");
     }
 
     #[test]

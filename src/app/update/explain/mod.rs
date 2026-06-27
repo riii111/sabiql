@@ -122,9 +122,39 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_connection_sets_explain_unavailable_error_without_effects() {
+        fn sqlite_connection_emits_execute_explain_query_plan_effect() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    is_analyze: false,
+                    read_only: true,
+                    ..
+                } if query == "EXPLAIN QUERY PLAN SELECT 1"
+            ));
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+        }
+
+        #[test]
+        fn sqlite_non_select_sets_query_plan_error_on_plan_tab() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users".to_string());
             activate_sqlite_connection(&mut state);
 
             let effects = dispatch_explain(
@@ -138,9 +168,9 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(
                 state.explain.error.as_deref(),
-                Some("EXPLAIN is unavailable for this database")
+                Some("EXPLAIN QUERY PLAN supports SELECT statements only")
             );
-            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
         }
 
         #[test]
@@ -1037,7 +1067,7 @@ mod tests {
         }
 
         #[test]
-        fn next_tab_stays_on_sql_for_sqlite_connection() {
+        fn next_tab_cycles_to_plan_for_sqlite_connection() {
             let mut state = sql_modal_state();
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
@@ -1049,7 +1079,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
         }
 
         #[test]
@@ -1116,7 +1146,7 @@ mod tests {
         }
 
         #[test]
-        fn prev_tab_stays_on_sql_for_sqlite_connection() {
+        fn prev_tab_cycles_to_compare_for_sqlite_connection() {
             let mut state = sql_modal_state();
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
@@ -1128,7 +1158,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Compare);
         }
 
         #[test]

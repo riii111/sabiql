@@ -129,13 +129,6 @@ mod tests {
                 .sql_modal
                 .set_active_tab(crate::model::sql_editor::modal::SqlModalTab::Plan);
 
-            state.session.activate_connection_with_dsn(
-                &crate::domain::connection::ConnectionId::from_string("sqlite-test"),
-                "sqlite",
-                crate::domain::DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
-            );
-
             let result = handle_key_event(combo(Key::Char('i')), &state);
 
             assert!(matches!(result, Action::SqlModalEnterInsert));

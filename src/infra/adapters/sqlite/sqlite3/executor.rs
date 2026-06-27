@@ -643,6 +643,76 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn explain_query_plan_returns_readable_detail_lines() {
+            let (_dir, dsn) = make_sqlite_db(
+                "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+                 CREATE INDEX idx_users_name ON users(name);",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "EXPLAIN QUERY PLAN SELECT * FROM users WHERE name = 'alice'",
+                    true,
+                )
+                .await
+                .unwrap();
+
+            let plan_text = result
+                .rows()
+                .iter()
+                .filter_map(|row| row.first())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            assert!(
+                plan_text.contains("SEARCH users"),
+                "expected index search detail, got: {plan_text}"
+            );
+            assert!(
+                plan_text.contains("idx_users_name"),
+                "expected index name in plan, got: {plan_text}"
+            );
+        }
+
+        #[tokio::test]
+        async fn explain_query_plan_for_join_includes_both_scan_targets() {
+            let (_dir, dsn) = make_sqlite_db(
+                "CREATE TABLE users(id INTEGER PRIMARY KEY);
+                 CREATE TABLE orders(id INTEGER, user_id INTEGER);",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "EXPLAIN QUERY PLAN SELECT * FROM users u JOIN orders o ON u.id = o.user_id",
+                    true,
+                )
+                .await
+                .unwrap();
+
+            let plan_text = result
+                .rows()
+                .iter()
+                .filter_map(|row| row.first())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            assert!(
+                plan_text.contains("SCAN o"),
+                "expected orders scan: {plan_text}"
+            );
+            assert!(
+                plan_text.contains("SEARCH u"),
+                "expected users search: {plan_text}"
+            );
+        }
+
+        #[tokio::test]
         async fn create_trigger_with_multi_statement_body_preserves_definition() {
             let setup = r"
             CREATE TABLE agent_messages(
