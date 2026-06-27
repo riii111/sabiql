@@ -541,6 +541,7 @@ mod tests {
                 QueryDeps {
                     query_executor: Arc::new(MockQueryExecutor::new()),
                     query_history_store: Arc::new(NoopQueryHistoryStore),
+                    sqlite_diagnostics: Arc::new(NoopSqliteDiagnosticsProvider),
                 },
                 ErDeps {
                     er_exporter: Arc::new(NoopErExporter),

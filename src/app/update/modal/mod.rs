@@ -4,6 +4,7 @@ mod er_picker;
 mod help;
 mod query_history;
 mod settings;
+mod sqlite_diagnostics;
 
 use std::time::Instant;
 
@@ -15,6 +16,7 @@ pub fn dispatch_modal(state: &mut AppState, action: &Action, now: Instant) -> Di
     base::reduce_base_lifecycle(state, action, now)
         .or_else(|| settings::reduce_settings(state, action, now))
         .or_else(|| help::reduce_help(state, action, now))
+        .or_else(|| sqlite_diagnostics::reduce_sqlite_diagnostics(state, action, now))
         .or_else(|| confirm_dialog::reduce_confirm_dialog(state, action, now))
         .or_else(|| er_picker::reduce_er_picker(state, action, now))
         .or_else(|| query_history::reduce_query_history_picker(state, action, now))

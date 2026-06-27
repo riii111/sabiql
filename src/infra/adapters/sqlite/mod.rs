@@ -1,4 +1,5 @@
 mod adapter;
+mod diagnostics;
 mod dsn;
 mod path_validation;
 mod schema;

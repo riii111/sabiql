@@ -66,6 +66,14 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         if matches!(action, Action::RequestCsvExport) && !state.can_request_csv_export() {
             return Action::None;
         }
+        if matches!(action, Action::OpenModal(ModalKind::SqliteDiagnostics))
+            && !state
+                .session
+                .active_db_capabilities()
+                .supports_sqlite_diagnostics()
+        {
+            return Action::None;
+        }
         return action;
     }
     if combo.key == Key::Enter && combo.modifiers.is_empty() && state.connection_error.has_error() {
@@ -154,8 +162,16 @@ mod tests {
         KeyCombo::ctrl(k)
     }
 
+    fn combo_ctrl_shift(k: Key) -> KeyCombo {
+        KeyCombo::ctrl_shift(k)
+    }
+
     fn browse_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    fn sqlite_connected_state() -> AppState {
+        connected_state(DatabaseType::SQLite)
     }
 
     fn browse_state_with_preset(preset: KeymapPreset) -> AppState {
@@ -947,6 +963,77 @@ mod tests {
                 let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
 
                 assert!(matches!(result, Action::Select(SelectMotion::HalfPageDown)));
+            }
+
+            mod sqlite_connected {
+                use super::*;
+
+                #[test]
+                fn ctrl_d_result_half_page_down() {
+                    let mut state = sqlite_connected_state();
+                    state.ui.set_focused_pane(FocusedPane::Result);
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
+
+                    assert!(matches!(
+                        result,
+                        Action::Scroll {
+                            target: ScrollTarget::Result,
+                            direction: ScrollDirection::Down,
+                            amount: ScrollAmount::HalfPage
+                        }
+                    ));
+                }
+
+                #[test]
+                fn ctrl_d_inspector_half_page_down() {
+                    let mut state = sqlite_connected_state();
+                    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
+
+                    assert!(matches!(
+                        result,
+                        Action::Scroll {
+                            target: ScrollTarget::Inspector,
+                            direction: ScrollDirection::Down,
+                            amount: ScrollAmount::HalfPage
+                        }
+                    ));
+                }
+
+                #[test]
+                fn ctrl_d_explorer_half_page_down() {
+                    let state = sqlite_connected_state();
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
+
+                    assert!(matches!(result, Action::Select(SelectMotion::HalfPageDown)));
+                }
+
+                #[test]
+                fn ctrl_shift_d_opens_diagnostics() {
+                    let state = sqlite_connected_state();
+
+                    let result = handle_normal_mode(combo_ctrl_shift(Key::Char('d')), &state);
+
+                    assert!(matches!(
+                        result,
+                        Action::OpenModal(ModalKind::SqliteDiagnostics)
+                    ));
+                }
+
+                #[test]
+                fn normalized_ctrl_uppercase_d_opens_diagnostics() {
+                    let state = sqlite_connected_state();
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('D')), &state);
+
+                    assert!(matches!(
+                        result,
+                        Action::OpenModal(ModalKind::SqliteDiagnostics)
+                    ));
+                }
             }
 
             #[test]

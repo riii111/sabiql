@@ -1412,3 +1412,60 @@ pub const JSONB_EDIT_ROWS: &[ModeRow] = &[
     jsonb_edit::MOVE,
     jsonb_edit::HOME_END,
 ];
+
+pub mod sqlite_diagnostics {
+    use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
+
+    pub const ESC_CLOSE: ModeRow = ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close",
+        bindings: &[ExecBinding {
+            action: Action::CloseModal(ModalKind::SqliteDiagnostics),
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    };
+
+    pub const SCROLL: ModeRow = ModeRow {
+        key_short: "↑↓",
+        key: "↑ / ↓",
+        desc_short: "Scroll",
+        description: "Scroll diagnostics",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::SqliteDiagnostics,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Up)],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::SqliteDiagnostics,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Down)],
+            },
+        ],
+    };
+    pub const HELP: ModeRow = ModeRow {
+        key_short: "?",
+        key: "?",
+        desc_short: "Help",
+        description: "Toggle help",
+        bindings: &[ExecBinding {
+            action: Action::ToggleModal(ModalKind::Help),
+            combos: &[KeyCombo::plain(Key::Char('?'))],
+        }],
+    };
+}
+
+pub const SQLITE_DIAGNOSTICS_ROWS: &[ModeRow] = &[
+    sqlite_diagnostics::SCROLL,
+    sqlite_diagnostics::HELP,
+    sqlite_diagnostics::ESC_CLOSE,
+];

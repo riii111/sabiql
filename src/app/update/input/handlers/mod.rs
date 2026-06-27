@@ -68,6 +68,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
         InputMode::ConnectionError => connections::handle_connection_error_keys(combo),
         InputMode::ConfirmDialog => overlays::handle_confirm_dialog_keys(combo),
+        InputMode::SqliteDiagnostics => overlays::handle_sqlite_diagnostics_keys(combo),
         InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),

@@ -23,7 +23,7 @@ use crate::model::app_state::AppState;
 use crate::ports::outbound::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
-    Renderer, SettingsStore, SqlitePathValidator,
+    Renderer, SettingsStore, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -38,6 +38,7 @@ pub struct ConnectionDeps {
 pub struct QueryDeps {
     pub query_executor: Arc<dyn QueryExecutor>,
     pub query_history_store: Arc<dyn QueryHistoryStore>,
+    pub sqlite_diagnostics: Arc<dyn SqliteDiagnosticsProvider>,
 }
 
 pub struct ErDeps {
@@ -240,6 +241,16 @@ impl EffectRunner {
 
             e @ Effect::SaveSettings { .. } => {
                 cmd_settings::run(e, &self.action_tx, &self.settings.settings_store).await;
+                Ok(vec![])
+            }
+
+            e @ (Effect::FetchSqliteDiagnosticsCore { .. }
+            | Effect::FetchSqliteDiagnosticsQuickCheck { .. }) => {
+                crate::cmd::sqlite_diagnostics::run(
+                    e,
+                    &self.action_tx,
+                    &self.query.sqlite_diagnostics,
+                );
                 Ok(vec![])
             }
 

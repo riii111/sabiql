@@ -153,6 +153,18 @@ pub enum Effect {
         settings: AppSettings,
     },
 
+    FetchSqliteDiagnosticsCore {
+        dsn: String,
+        run_id: u64,
+        read_only: bool,
+    },
+
+    FetchSqliteDiagnosticsQuickCheck {
+        dsn: String,
+        run_id: u64,
+        read_only: bool,
+    },
+
     // Executes effects in order (each awaits before the next),
     // but spawned async tasks (e.g. FetchMetadata) may complete out of order.
     Sequence(Vec<Self>),

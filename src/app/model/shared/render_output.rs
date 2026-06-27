@@ -32,4 +32,6 @@ pub struct RenderOutput {
     pub confirm_preview_content_height: Option<u16>,
     pub confirm_preview_scroll: u16,
     pub explain_compare_viewport_height: Option<u16>,
+    pub sqlite_diagnostics_content_line_count: Option<usize>,
+    pub sqlite_diagnostics_viewport_height: Option<usize>,
 }
