@@ -6,6 +6,7 @@ enum LoadState {
     Idle,
     LoadingCore {
         run_id: u64,
+        pending_quick_check: Option<DiagnosticField>,
     },
     Loaded {
         run_id: u64,
@@ -60,7 +61,10 @@ impl SqliteDiagnosticsState {
     pub fn begin_fetch(&mut self) -> u64 {
         self.next_run_id = self.next_run_id.wrapping_add(1);
         let run_id = self.next_run_id;
-        self.load_state = LoadState::LoadingCore { run_id };
+        self.load_state = LoadState::LoadingCore {
+            run_id,
+            pending_quick_check: None,
+        };
         self.scroll_offset = 0;
         self.content_line_count = None;
         self.visible_rows = None;
@@ -84,35 +88,67 @@ impl SqliteDiagnosticsState {
     pub fn is_current_run(&self, run_id: u64) -> bool {
         match &self.load_state {
             LoadState::Idle => false,
-            LoadState::LoadingCore { run_id: current }
+            LoadState::LoadingCore {
+                run_id: current, ..
+            }
             | LoadState::Loaded {
                 run_id: current, ..
             } => *current == run_id,
         }
     }
 
-    pub fn set_core_loaded(&mut self, run_id: u64, snapshot: SqliteDiagnosticsSnapshot) {
-        if self.is_current_run(run_id) {
-            self.load_state = LoadState::Loaded {
-                run_id,
-                snapshot: Box::new(snapshot),
-                quick_check_pending: true,
-            };
+    pub fn set_core_loaded(&mut self, run_id: u64, mut snapshot: SqliteDiagnosticsSnapshot) {
+        if !matches!(
+            self.load_state,
+            LoadState::LoadingCore {
+                run_id: current, ..
+            } if current == run_id
+        ) {
+            return;
         }
+
+        let pending_quick_check = if let LoadState::LoadingCore {
+            pending_quick_check,
+            ..
+        } = &mut self.load_state
+        {
+            pending_quick_check.take()
+        } else {
+            None
+        };
+
+        let quick_check_pending = pending_quick_check.is_none();
+        if let Some(quick_check) = pending_quick_check {
+            snapshot.quick_check = quick_check;
+        }
+
+        self.load_state = LoadState::Loaded {
+            run_id,
+            snapshot: Box::new(snapshot),
+            quick_check_pending,
+        };
     }
 
     pub fn set_quick_check_loaded(&mut self, run_id: u64, quick_check: DiagnosticField) {
         if !self.is_current_run(run_id) {
             return;
         }
-        if let LoadState::Loaded {
-            snapshot,
-            quick_check_pending,
-            ..
-        } = &mut self.load_state
-        {
-            snapshot.quick_check = quick_check;
-            *quick_check_pending = false;
+        match &mut self.load_state {
+            LoadState::LoadingCore {
+                pending_quick_check,
+                ..
+            } => {
+                *pending_quick_check = Some(quick_check);
+            }
+            LoadState::Loaded {
+                snapshot,
+                quick_check_pending,
+                ..
+            } => {
+                snapshot.quick_check = quick_check;
+                *quick_check_pending = false;
+            }
+            LoadState::Idle => {}
         }
     }
 
@@ -276,6 +312,27 @@ mod tests {
         state.set_quick_check_loaded(run_id, DiagnosticField::ok("ok"));
 
         assert!(!state.is_quick_check_pending());
+    }
+
+    #[test]
+    fn quick_check_before_core_is_applied_when_core_arrives() {
+        let mut state = SqliteDiagnosticsState::default();
+        let run_id = state.begin_fetch();
+        state.set_quick_check_loaded(run_id, DiagnosticField::ok("ok"));
+
+        state.set_core_loaded(
+            run_id,
+            SqliteDiagnosticsSnapshot {
+                sqlite_version: DiagnosticField::ok("3.45.0"),
+                ..Default::default()
+            },
+        );
+
+        assert!(!state.is_quick_check_pending());
+        assert_eq!(
+            state.snapshot().unwrap().quick_check.value.as_deref(),
+            Some("ok")
+        );
     }
 
     #[test]

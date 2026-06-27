@@ -127,12 +127,8 @@ impl SqliteDiagnosticsProvider for NoopSqliteDiagnosticsProvider {
         Ok(SqliteDiagnosticsSnapshot::default())
     }
 
-    async fn fetch_quick_check(
-        &self,
-        _dsn: &str,
-        _read_only: bool,
-    ) -> Result<DiagnosticField, DbOperationError> {
-        Ok(DiagnosticField::default())
+    async fn fetch_quick_check(&self, _dsn: &str, _read_only: bool) -> DiagnosticField {
+        DiagnosticField::default()
     }
 }
 

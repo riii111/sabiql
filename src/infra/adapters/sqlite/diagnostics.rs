@@ -51,19 +51,15 @@ impl SqliteDiagnosticsProvider for SqliteAdapter {
         })
     }
 
-    async fn fetch_quick_check(
-        &self,
-        dsn: &str,
-        read_only: bool,
-    ) -> Result<DiagnosticField, DbOperationError> {
-        Ok(fetch_field(
+    async fn fetch_quick_check(&self, dsn: &str, read_only: bool) -> DiagnosticField {
+        fetch_field(
             self,
             dsn,
             read_only,
             "PRAGMA quick_check;",
             quick_check_field,
         )
-        .await)
+        .await
     }
 }
 
@@ -190,7 +186,7 @@ mod tests {
         let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let adapter = SqliteAdapter::new();
 
-        let quick_check = adapter.fetch_quick_check(&dsn, true).await.unwrap();
+        let quick_check = adapter.fetch_quick_check(&dsn, true).await;
 
         assert!(quick_check.is_ok());
         assert!(

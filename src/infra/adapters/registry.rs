@@ -499,16 +499,12 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
         }
     }
 
-    async fn fetch_quick_check(
-        &self,
-        dsn: &str,
-        read_only: bool,
-    ) -> Result<DiagnosticField, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => Err(DbOperationError::ConnectionFailed(
-                "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
-            )),
-            DatabaseType::SQLite => self.sqlite.fetch_quick_check(dsn, read_only).await,
+    async fn fetch_quick_check(&self, dsn: &str, read_only: bool) -> DiagnosticField {
+        match Self::db_type_from_dsn(dsn) {
+            Ok(DatabaseType::SQLite) => self.sqlite.fetch_quick_check(dsn, read_only).await,
+            Ok(DatabaseType::PostgreSQL) | Err(_) => DiagnosticField::err(
+                "SQLite diagnostics are unavailable for non-SQLite connections",
+            ),
         }
     }
 }

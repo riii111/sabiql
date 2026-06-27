@@ -47,10 +47,7 @@ pub fn run(
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
             tokio::spawn(async move {
-                let quick_check = match provider.fetch_quick_check(&dsn, read_only).await {
-                    Ok(field) => field,
-                    Err(error) => DiagnosticField::err(error.masked_details()),
-                };
+                let quick_check = provider.fetch_quick_check(&dsn, read_only).await;
                 let _ = action_tx
                     .send(Action::SqliteDiagnosticsQuickCheckLoaded {
                         dsn,
@@ -111,7 +108,7 @@ mod tests {
         let mut provider = MockSqliteDiagnosticsProvider::new();
         provider
             .expect_fetch_quick_check()
-            .returning(|_, _| Ok(DiagnosticField::ok("ok")));
+            .returning(|_, _| DiagnosticField::ok("ok"));
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
         run(

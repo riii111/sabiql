@@ -168,6 +168,52 @@ mod tests {
     }
 
     #[test]
+    fn quick_check_loaded_before_core_clears_pending_when_core_arrives() {
+        let mut state = AppState::new("test".to_string());
+        activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        let run_id = state.sqlite_diagnostics.begin_fetch();
+
+        reduce_sqlite_diagnostics(
+            &mut state,
+            &Action::SqliteDiagnosticsQuickCheckLoaded {
+                dsn: "sqlite:///tmp/app.db".to_string(),
+                run_id,
+                quick_check: DiagnosticField::ok("ok"),
+            },
+            Instant::now(),
+        )
+        .unwrap();
+
+        assert!(state.sqlite_diagnostics.is_loading());
+
+        reduce_sqlite_diagnostics(
+            &mut state,
+            &Action::SqliteDiagnosticsCoreLoaded {
+                dsn: "sqlite:///tmp/app.db".to_string(),
+                run_id,
+                snapshot: Box::new(SqliteDiagnosticsSnapshot {
+                    sqlite_version: DiagnosticField::ok("3.45.0"),
+                    ..Default::default()
+                }),
+            },
+            Instant::now(),
+        )
+        .unwrap();
+
+        assert!(!state.sqlite_diagnostics.is_quick_check_pending());
+        assert_eq!(
+            state
+                .sqlite_diagnostics
+                .snapshot()
+                .unwrap()
+                .quick_check
+                .value
+                .as_deref(),
+            Some("ok")
+        );
+    }
+
+    #[test]
     fn scroll_down_is_clamped_when_content_fits_viewport() {
         let mut state = AppState::new("test".to_string());
         activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");

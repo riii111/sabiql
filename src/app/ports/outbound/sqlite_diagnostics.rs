@@ -13,9 +13,5 @@ pub trait SqliteDiagnosticsProvider: Send + Sync {
         read_only: bool,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError>;
 
-    async fn fetch_quick_check(
-        &self,
-        dsn: &str,
-        read_only: bool,
-    ) -> Result<DiagnosticField, DbOperationError>;
+    async fn fetch_quick_check(&self, dsn: &str, read_only: bool) -> DiagnosticField;
 }
