@@ -109,20 +109,32 @@ mod tests {
             assert_eq!(target.path(), input);
         }
 
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        enum ExpectedRejection {
+            UnsupportedFormat,
+            Config,
+        }
+
         #[rstest]
-        #[case("")]
-        #[case("   ")]
-        #[case("sqlite://")]
-        #[case("postgres://localhost/db")]
-        #[case("service=mydb")]
-        #[case("/tmp/app")]
-        #[case(":memory:")]
-        #[case("file:/tmp/app.db")]
-        fn rejects_unsupported_targets(#[case] input: &str) {
-            assert!(matches!(
-                SqliteStartupTarget::from_cli_input(input),
-                Err(SqliteStartupError::UnsupportedFormat | SqliteStartupError::Config(_))
-            ));
+        #[case("", ExpectedRejection::UnsupportedFormat)]
+        #[case("   ", ExpectedRejection::UnsupportedFormat)]
+        #[case("sqlite://", ExpectedRejection::UnsupportedFormat)]
+        #[case("postgres://localhost/db", ExpectedRejection::UnsupportedFormat)]
+        #[case("service=mydb", ExpectedRejection::UnsupportedFormat)]
+        #[case("/tmp/app", ExpectedRejection::UnsupportedFormat)]
+        #[case(":memory:", ExpectedRejection::UnsupportedFormat)]
+        #[case("file:/tmp/app.db", ExpectedRejection::Config)]
+        fn rejects_unsupported_targets(#[case] input: &str, #[case] expected: ExpectedRejection) {
+            let result = SqliteStartupTarget::from_cli_input(input);
+
+            match expected {
+                ExpectedRejection::UnsupportedFormat => {
+                    assert!(matches!(result, Err(SqliteStartupError::UnsupportedFormat)));
+                }
+                ExpectedRejection::Config => {
+                    assert!(matches!(result, Err(SqliteStartupError::Config(_))));
+                }
+            }
         }
     }
 

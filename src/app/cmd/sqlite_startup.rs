@@ -43,39 +43,30 @@ mod tests {
 
     mod metadata_error {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn not_found() {
-            let error = metadata_error("/tmp/app.db", ErrorKind::NotFound, "No such file");
-
-            assert_eq!(
-                error,
-                SqliteStartupError::FileNotFound("/tmp/app.db".to_string())
-            );
-        }
-
-        #[test]
-        fn permission_denied() {
-            let error = metadata_error(
-                "/tmp/app.db",
-                ErrorKind::PermissionDenied,
-                "permission denied",
-            );
-
-            assert_eq!(
-                error,
-                SqliteStartupError::PathAccessDenied("/tmp/app.db: permission denied".to_string())
-            );
-        }
-
-        #[test]
-        fn other_io_error() {
-            let error = metadata_error("/tmp/app.db", ErrorKind::Other, "device offline");
-
-            assert_eq!(
-                error,
-                SqliteStartupError::Io("/tmp/app.db: device offline".to_string())
-            );
+        #[rstest]
+        #[case(
+            ErrorKind::NotFound,
+            "No such file",
+            SqliteStartupError::FileNotFound("/tmp/app.db".to_string())
+        )]
+        #[case(
+            ErrorKind::PermissionDenied,
+            "permission denied",
+            SqliteStartupError::PathAccessDenied("/tmp/app.db: permission denied".to_string())
+        )]
+        #[case(
+            ErrorKind::Other,
+            "device offline",
+            SqliteStartupError::Io("/tmp/app.db: device offline".to_string())
+        )]
+        fn maps_error_kind_to_startup_error(
+            #[case] kind: ErrorKind,
+            #[case] source: &str,
+            #[case] expected: SqliteStartupError,
+        ) {
+            assert_eq!(metadata_error("/tmp/app.db", kind, source), expected);
         }
     }
 

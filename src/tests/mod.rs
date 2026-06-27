@@ -17,6 +17,7 @@ fn no_subcommand_returns_none() {
 #[test]
 fn update_subcommand_is_recognized() {
     let args = Args::parse_from(["sabiql", "update"]);
+    assert!(args.database.is_none());
     assert!(matches!(args.command, Some(Command::Update)));
 }
 
@@ -25,13 +26,6 @@ fn database_positional_is_recognized() {
     let args = Args::parse_from(["sabiql", "/tmp/app.db"]);
     assert_eq!(args.database.as_deref(), Some("/tmp/app.db"));
     assert!(args.command.is_none());
-}
-
-#[test]
-fn database_positional_does_not_conflict_with_update_subcommand() {
-    let args = Args::parse_from(["sabiql", "update"]);
-    assert!(args.database.is_none());
-    assert!(matches!(args.command, Some(Command::Update)));
 }
 
 mod cli_sqlite_startup {
