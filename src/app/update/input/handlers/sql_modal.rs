@@ -1398,6 +1398,23 @@ mod tests {
         }
 
         #[rstest]
+        #[case(SqlModalTab::Plan)]
+        #[case(SqlModalTab::Compare)]
+        fn alt_e_is_noop_when_analyze_is_unsupported(#[case] tab: SqlModalTab) {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_alt(Key::Char('e')),
+                false,
+                &SqlModalStatus::Normal,
+                tab,
+                None,
+                KeymapPreset::Default,
+                false,
+            );
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[rstest]
         #[case(Key::Char('a'))]
         #[case(Key::Enter)]
         #[case(Key::Esc)]

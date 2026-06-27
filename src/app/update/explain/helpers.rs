@@ -44,12 +44,16 @@ pub(super) fn mark_explain_unsupported_analyze(state: &mut AppState) {
     show_explain_error_on_plan(state, explain_unsupported_analyze_message(database_type));
 }
 
-pub(super) fn finish_explain_unsupported_analyze(state: &mut AppState) {
+fn apply_explain_unsupported_analyze_state(state: &mut AppState) {
     if state.session.active_db_capabilities().supports_explain() {
         mark_explain_unsupported_analyze(state);
     } else {
         mark_explain_unavailable(state);
     }
+}
+
+pub(super) fn finish_explain_unsupported_analyze(state: &mut AppState) {
+    apply_explain_unsupported_analyze_state(state);
     if matches!(
         state.sql_modal.status(),
         SqlModalStatus::ConfirmingAnalyzeHigh { .. } | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
@@ -116,11 +120,7 @@ pub(super) fn reject_unsupported_explain_analyze(state: &mut AppState) -> bool {
         return false;
     }
 
-    if state.session.active_db_capabilities().supports_explain() {
-        mark_explain_unsupported_analyze(state);
-    } else {
-        mark_explain_unavailable(state);
-    }
+    apply_explain_unsupported_analyze_state(state);
     true
 }
 
