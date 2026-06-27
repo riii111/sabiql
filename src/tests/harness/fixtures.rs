@@ -1,6 +1,7 @@
 use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
+    IndexType, QueryResult, QuerySource, Table, TableStorage, TableSummary, Trigger, TriggerEvent,
+    TriggerTiming,
 };
 
 pub fn sample_metadata() -> DatabaseMetadata {
@@ -91,6 +92,7 @@ pub fn sample_table_detail() -> Table {
         row_count_estimate: Some(100),
         comment: Some("User accounts".to_string()),
         source_ddl: None,
+        storage: TableStorage::default(),
     }
 }
 

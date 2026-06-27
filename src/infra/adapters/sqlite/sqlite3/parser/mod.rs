@@ -1,5 +1,5 @@
 mod command_tag;
-mod lexer;
+pub(in crate::adapters::sqlite::sqlite3) mod lexer;
 mod output;
 
 pub(super) use command_tag::{

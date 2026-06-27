@@ -1,7 +1,8 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::ui_state::{scroll_max_offset, text_display_width};
+use crate::model::shared::ui_state::scroll_max_offset;
+use crate::policy::table_storage::max_explorer_table_label_width;
 use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
@@ -169,12 +170,7 @@ pub fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult 
             direction: ScrollDirection::Right,
             amount: ScrollAmount::Line,
         } => {
-            let max_name_width = state
-                .tables()
-                .iter()
-                .map(|t| text_display_width(&t.qualified_name()))
-                .max()
-                .unwrap_or(0);
+            let max_name_width = max_explorer_table_label_width(state.tables());
             let max_offset = scroll_max_offset(max_name_width, state.ui.explorer_content_width());
             if state.ui.explorer_horizontal_offset() < max_offset {
                 state
@@ -667,6 +663,8 @@ mod tests {
 
     mod horizontal_scroll {
         use super::*;
+        use crate::domain::TableStorage;
+        use crate::policy::table_storage::{explorer_table_label, explorer_table_label_width};
 
         #[rstest]
         #[case(&["abcdefghij"], 4, 32)]
@@ -677,8 +675,8 @@ mod tests {
             #[case] presses: usize,
         ) {
             let mut state = state_with_named_tables(names, content_width);
-            let expected = text_display_width(&state.tables()[0].qualified_name())
-                .saturating_sub(content_width);
+            let expected =
+                explorer_table_label_width(state.tables()[0]).saturating_sub(content_width);
 
             for _ in 0..presses {
                 dispatch_navigation(
@@ -700,7 +698,7 @@ mod tests {
         fn right_presses_past_end_do_not_increase_offset() {
             let mut state = state_with_named_tables(&["abcdefghij"], 4);
             state.ui.set_explorer_horizontal_offset(
-                text_display_width(&state.tables()[0].qualified_name())
+                explorer_table_label_width(state.tables()[0])
                     .saturating_sub(state.ui.explorer_content_width()),
             );
 
@@ -719,7 +717,7 @@ mod tests {
 
             assert_eq!(
                 state.ui.explorer_horizontal_offset(),
-                text_display_width(&state.tables()[0].qualified_name())
+                explorer_table_label_width(state.tables()[0])
                     .saturating_sub(state.ui.explorer_content_width())
             );
         }
@@ -728,7 +726,7 @@ mod tests {
         fn left_press_after_end_recovers_one_column() {
             let mut state = state_with_named_tables(&["abcdefghij"], 4);
             state.ui.set_explorer_horizontal_offset(
-                text_display_width(&state.tables()[0].qualified_name())
+                explorer_table_label_width(state.tables()[0])
                     .saturating_sub(state.ui.explorer_content_width()),
             );
 
@@ -745,9 +743,47 @@ mod tests {
 
             assert_eq!(
                 state.ui.explorer_horizontal_offset(),
-                text_display_width(&state.tables()[0].qualified_name())
+                explorer_table_label_width(state.tables()[0])
                     .saturating_sub(state.ui.explorer_content_width())
                     .saturating_sub(1)
+            );
+        }
+
+        #[test]
+        fn right_scroll_includes_storage_suffix_width() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.set_focused_pane(FocusedPane::Explorer);
+            state.ui.set_explorer_content_width(10);
+            let summary =
+                TableSummary::new("main".to_string(), "settings".to_string(), None, false)
+                    .with_storage(TableStorage {
+                        without_rowid: true,
+                        ..TableStorage::default()
+                    });
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: vec![summary],
+            })));
+
+            let expected = explorer_table_label_width(state.tables()[0]).saturating_sub(10);
+            for _ in 0..32 {
+                dispatch_navigation(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Explorer,
+                        direction: ScrollDirection::Right,
+                        amount: ScrollAmount::Line,
+                    },
+                    &AppServices::stub(),
+                    Instant::now(),
+                );
+            }
+
+            assert_eq!(state.ui.explorer_horizontal_offset(), expected);
+            assert_eq!(
+                explorer_table_label(state.tables()[0]),
+                "main.settings [table+no-rowid]"
             );
         }
     }

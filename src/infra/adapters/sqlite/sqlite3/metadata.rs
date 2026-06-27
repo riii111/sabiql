@@ -6,19 +6,28 @@ use serde::Deserialize;
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, Schema, Table, TableSignature, TableSummary, Trigger, UNRESOLVED_FK_COLUMN,
+    IndexType, Schema, Table, TableSignature, TableStorage, TableSummary, Trigger,
+    UNRESOLVED_FK_COLUMN,
 };
 
 use super::super::{SqliteAdapter, schema::MAIN_SCHEMA, sql};
 
+mod storage;
 mod trigger;
 
+use storage::{RawTableStorage, table_storage_from_legacy_sql, table_storage_from_pragma};
 use trigger::parse_sqlite_trigger;
 
 #[derive(Debug, Clone, Deserialize)]
 struct RawTable {
     name: String,
     sql: Option<String>,
+    #[serde(default)]
+    r#type: String,
+    #[serde(default)]
+    wr: i64,
+    #[serde(default)]
+    strict: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -105,6 +114,10 @@ impl TableDetailMode {
     const fn include_source_ddl(self) -> bool {
         matches!(self, Self::Full)
     }
+
+    const fn include_storage(self) -> bool {
+        !matches!(self, Self::Signature)
+    }
 }
 
 impl SqliteAdapter {
@@ -137,6 +150,38 @@ impl SqliteAdapter {
                 self.cli
                     .execute_json(path, sql::legacy_user_tables_query())
                     .await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn storage_for_raw_table(table: &RawTable) -> TableStorage {
+        if table.r#type.is_empty() {
+            return table_storage_from_legacy_sql(table.sql.as_deref());
+        }
+        table_storage_from_pragma(&table.r#type, table.wr, table.strict, table.sql.as_deref())
+    }
+
+    async fn table_storage(
+        &self,
+        path: &str,
+        table: &str,
+    ) -> Result<Option<TableStorage>, DbOperationError> {
+        let query = sql::table_storage_query(table);
+        match self
+            .cli
+            .execute_json::<Vec<RawTableStorage>>(path, &query)
+            .await
+        {
+            Ok(rows) => Ok(rows
+                .into_iter()
+                .next()
+                .map(RawTableStorage::into_table_storage)),
+            Err(DbOperationError::QueryFailed(message))
+                if sql::is_table_list_unavailable(&message) =>
+            {
+                let sql = self.table_definition(path, table).await;
+                Ok(Some(table_storage_from_legacy_sql(sql.as_deref())))
             }
             Err(error) => Err(error),
         }
@@ -564,6 +609,11 @@ impl SqliteAdapter {
             })
             .collect();
         let primary_key = (!primary_key.is_empty()).then_some(primary_key);
+        let storage = if mode.include_storage() {
+            self.table_storage(path, table).await?.unwrap_or_default()
+        } else {
+            TableStorage::default()
+        };
 
         Ok(Table {
             schema: MAIN_SCHEMA.to_string(),
@@ -590,6 +640,7 @@ impl SqliteAdapter {
             } else {
                 None
             },
+            storage,
         })
     }
 
@@ -601,7 +652,17 @@ impl SqliteAdapter {
         let detail = self
             .table_detail_with_mode(path, &table.name, TableDetailMode::Signature)
             .await?;
-        let mut parts = vec![format!("sql={}", table.sql.clone().unwrap_or_default())];
+        let storage = Self::storage_for_raw_table(table);
+        let mut parts = vec![
+            format!("sql={}", table.sql.clone().unwrap_or_default()),
+            format!("kind={:?}", storage.kind),
+            format!("strict={}", storage.is_strict),
+            format!("wr={}", storage.without_rowid),
+            format!(
+                "module={}",
+                storage.virtual_module.as_deref().unwrap_or_default()
+            ),
+        ];
         parts.extend(detail.columns.iter().map(|column| {
             format!(
                 "col={}:{}:{}:{}:{}:{}:{}",
@@ -678,12 +739,10 @@ impl MetadataProvider for SqliteAdapter {
         let mut metadata = DatabaseMetadata::new(Self::database_name(path));
         metadata.schemas = vec![Schema::new(MAIN_SCHEMA)];
         for table in &tables {
-            metadata.table_summaries.push(TableSummary::new(
-                MAIN_SCHEMA.to_string(),
-                table.name.clone(),
-                None,
-                false,
-            ));
+            metadata.table_summaries.push(
+                TableSummary::new(MAIN_SCHEMA.to_string(), table.name.clone(), None, false)
+                    .with_storage(Self::storage_for_raw_table(table)),
+            );
         }
         Ok(metadata)
     }
@@ -738,6 +797,21 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn legacy_list_row_uses_sql_for_storage() {
+        let table = RawTable {
+            name: "settings".to_string(),
+            sql: Some("CREATE TABLE settings(id INTEGER PRIMARY KEY) WITHOUT ROWID;".to_string()),
+            r#type: String::new(),
+            wr: 0,
+            strict: 0,
+        };
+
+        let storage = SqliteAdapter::storage_for_raw_table(&table);
+
+        assert!(storage.without_rowid);
+    }
 
     #[test]
     fn index_key_column_names_preserves_expression_and_unknown_key_columns() {
@@ -881,6 +955,94 @@ mod tests {
                 .collect();
 
             assert_eq!(table_names, vec!["notes", "notes_fts"]);
+        }
+
+        struct TableStorageMetadataFixture {
+            _dir: tempfile::TempDir,
+            storage_by_name: std::collections::HashMap<String, crate::domain::TableStorage>,
+        }
+
+        impl TableStorageMetadataFixture {
+            async fn new() -> Self {
+                let (dir, dsn) = make_sqlite_db(
+                    r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            CREATE TABLE strict_users(id INTEGER PRIMARY KEY, name TEXT);
+            CREATE TABLE settings(
+                key TEXT PRIMARY KEY,
+                value TEXT
+            ) WITHOUT ROWID;
+            CREATE TABLE typed_users(id INTEGER PRIMARY KEY, name TEXT) STRICT;
+            CREATE VIRTUAL TABLE notes_fts USING fts5(body);
+            ",
+                );
+                let adapter = SqliteAdapter::new();
+                let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+                let storage_by_name = metadata
+                    .table_summaries
+                    .iter()
+                    .map(|summary| (summary.name.clone(), summary.storage.clone()))
+                    .collect();
+
+                Self {
+                    _dir: dir,
+                    storage_by_name,
+                }
+            }
+
+            fn storage(&self, name: &str) -> &crate::domain::TableStorage {
+                &self.storage_by_name[name]
+            }
+        }
+
+        #[tokio::test]
+        async fn classifies_regular_table_storage() {
+            let fixture = TableStorageMetadataFixture::new().await;
+
+            assert_eq!(
+                fixture.storage("users").kind,
+                crate::domain::TableObjectKind::Table
+            );
+            assert!(!fixture.storage("users").is_strict);
+            assert!(!fixture.storage("users").without_rowid);
+        }
+
+        #[tokio::test]
+        async fn classifies_without_rowid_table_storage() {
+            let fixture = TableStorageMetadataFixture::new().await;
+
+            assert!(fixture.storage("settings").without_rowid);
+        }
+
+        #[tokio::test]
+        async fn does_not_infer_strict_from_table_name() {
+            let fixture = TableStorageMetadataFixture::new().await;
+
+            assert!(
+                !fixture.storage("strict_users").is_strict,
+                "table name containing 'strict' must not infer STRICT from DDL when pragma.strict is 0"
+            );
+        }
+
+        #[tokio::test]
+        async fn classifies_strict_table_storage() {
+            let fixture = TableStorageMetadataFixture::new().await;
+
+            assert!(fixture.storage("typed_users").is_strict);
+        }
+
+        #[tokio::test]
+        async fn classifies_virtual_table_storage() {
+            let fixture = TableStorageMetadataFixture::new().await;
+
+            assert_eq!(
+                fixture.storage("notes_fts").kind,
+                crate::domain::TableObjectKind::Virtual
+            );
+            assert_eq!(
+                fixture.storage("notes_fts").virtual_module.as_deref(),
+                Some("fts5")
+            );
         }
 
         #[tokio::test]
@@ -1186,6 +1348,7 @@ mod tests {
                     .source_ddl()
                     .is_some_and(|ddl| ddl.contains("WITHOUT ROWID"))
             );
+            assert!(without_rowid.storage.without_rowid);
             assert_eq!(
                 adapter.generate_ddl(DatabaseType::SQLite, &without_rowid),
                 without_rowid.source_ddl().unwrap()
@@ -1199,6 +1362,14 @@ mod tests {
                 virtual_table
                     .source_ddl()
                     .is_some_and(|ddl| ddl.starts_with("CREATE VIRTUAL TABLE"))
+            );
+            assert_eq!(
+                virtual_table.storage.kind,
+                crate::domain::TableObjectKind::Virtual
+            );
+            assert_eq!(
+                virtual_table.storage.virtual_module.as_deref(),
+                Some("fts5")
             );
         }
 

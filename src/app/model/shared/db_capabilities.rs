@@ -9,6 +9,8 @@ pub enum InspectorInfoField {
     RowCount,
     Schema,
     TableName,
+    TableKind,
+    TableFlags,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,6 +138,8 @@ impl DbCapabilities {
                 InspectorInfoField::RowCount,
                 InspectorInfoField::Schema,
                 InspectorInfoField::TableName,
+                InspectorInfoField::TableKind,
+                InspectorInfoField::TableFlags,
             ],
         )
     }
@@ -306,6 +310,8 @@ mod tests {
                     InspectorInfoField::RowCount,
                     InspectorInfoField::Schema,
                     InspectorInfoField::TableName,
+                    InspectorInfoField::TableKind,
+                    InspectorInfoField::TableFlags,
                 ]
             );
             assert_eq!(

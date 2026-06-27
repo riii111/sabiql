@@ -9,6 +9,7 @@ use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
+use crate::app::policy::table_storage::{explorer_table_label, max_explorer_table_label_width};
 use crate::domain::MetadataState;
 use crate::theme::ThemePalette;
 
@@ -39,15 +40,15 @@ impl Explorer {
         let content_width = explorer_content_width_from_inner_width(area.width);
 
         let table_names: Vec<String> = if has_cached_data {
-            state.tables().iter().map(|t| t.qualified_name()).collect()
+            state
+                .tables()
+                .into_iter()
+                .map(explorer_table_label)
+                .collect()
         } else {
             Vec::new()
         };
-        let max_name_width = table_names
-            .iter()
-            .map(|name| text_display_width(name))
-            .max()
-            .unwrap_or(0);
+        let max_name_width = max_explorer_table_label_width(state.tables());
         let max_offset = scroll_max_offset(max_name_width, content_width);
         let h_offset = state.ui.explorer_horizontal_offset().min(max_offset);
 

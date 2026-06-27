@@ -1,6 +1,7 @@
 use super::*;
 use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
+use sabiql_domain::{ConnectionId, DatabaseType, TableObjectKind, TableStorage};
 
 fn trim_line_endings(output: &str) -> String {
     output
@@ -403,6 +404,38 @@ fn inspector_ddl_tab_uses_source_ddl() {
         &mut state,
         &services,
     ));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_info_tab_for_sqlite_shows_table_storage_fields() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.schema = "main".to_string();
+    table.name = "notes_fts".to_string();
+    table.owner = None;
+    table.comment = None;
+    table.row_count_estimate = Some(42);
+    table.storage = TableStorage {
+        kind: TableObjectKind::Virtual,
+        is_strict: false,
+        without_rowid: false,
+        virtual_module: Some("fts5".to_string()),
+    };
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Info);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
     insta::assert_snapshot!(output);
 }

@@ -935,7 +935,6 @@ mod tests {
         Table {
             schema: schema.to_string(),
             name: name.to_string(),
-            owner: None,
             columns: columns
                 .iter()
                 .enumerate()
@@ -948,14 +947,7 @@ mod tests {
                     ordinal_position: (i + 1) as i32,
                 })
                 .collect(),
-            primary_key: None,
-            indexes: vec![],
-            foreign_keys: vec![],
-            rls: None,
-            triggers: vec![],
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
+            ..crate::test_support::table::minimal("", "")
         }
     }
 
@@ -963,16 +955,8 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "test".to_string(),
-            owner: None,
             columns: vec![col1, col2],
-            primary_key: None,
-            indexes: vec![],
-            foreign_keys: vec![],
-            rls: None,
-            triggers: vec![],
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
+            ..crate::test_support::table::minimal("", "")
         }
     }
 
@@ -1233,7 +1217,6 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
                         name: "user_name".to_string(),
@@ -1253,13 +1236,7 @@ mod tests {
                     },
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             };
 
             let candidates = e.column_candidates(Some(&table), "user");
@@ -1619,7 +1596,6 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
                         name: "id".to_string(),
@@ -1639,13 +1615,7 @@ mod tests {
                     },
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1703,7 +1673,6 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
                         name: "user_id".to_string(),
@@ -1731,13 +1700,7 @@ mod tests {
                     },
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1777,7 +1740,6 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "orders".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
                         name: "id".to_string(),
@@ -1817,12 +1779,7 @@ mod tests {
                     on_update: FkAction::NoAction,
                     reference_resolved: true,
                 }],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             }
         }
 
@@ -1876,7 +1833,6 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
                         name: "user_id".to_string(),
@@ -1895,14 +1851,7 @@ mod tests {
                         ordinal_position: 2,
                     },
                 ],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             };
 
             // "id" is contained in "user_id"
@@ -1918,7 +1867,6 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
                         name: "id".to_string(),
@@ -1937,14 +1885,7 @@ mod tests {
                         ordinal_position: 2,
                     },
                 ],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             };
 
             let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
@@ -1967,7 +1908,6 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
                         name: "name".to_string(),
@@ -1986,14 +1926,7 @@ mod tests {
                         ordinal_position: 2,
                     },
                 ],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             };
 
             let recent = vec!["email".to_string()];
@@ -2112,7 +2045,6 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![Column {
                     name: "id".to_string(),
                     data_type: "int".to_string(),
@@ -2121,14 +2053,7 @@ mod tests {
                     comment: None,
                     ordinal_position: 1,
                 }],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2213,16 +2138,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
-                columns: vec![],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2234,16 +2150,7 @@ mod tests {
             Table {
                 schema: schema.to_string(),
                 name: name.to_string(),
-                owner: None,
-                columns: vec![],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             }
         }
 
@@ -2280,7 +2187,6 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
                         name: "id".to_string(),
@@ -2308,13 +2214,7 @@ mod tests {
                     },
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             }
         }
 
@@ -2509,7 +2409,6 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
                 columns: vec![Column {
                     name: "and".to_string(), // Same as keyword AND
                     data_type: "text".to_string(),
@@ -2518,14 +2417,7 @@ mod tests {
                     comment: None,
                     ordinal_position: 1,
                 }],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             };
 
             let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);

@@ -91,7 +91,11 @@ pub(super) const TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED"
 
 pub(super) fn user_tables_query() -> &'static str {
     r"
-    SELECT tl.name, m.sql
+    SELECT tl.name,
+           tl.type,
+           tl.wr,
+           tl.strict,
+           m.sql
     FROM pragma_table_list() AS tl
     LEFT JOIN sqlite_master AS m
       ON m.type = 'table'
@@ -198,6 +202,22 @@ pub(super) fn table_xinfo_query(table: &str) -> String {
 
 pub(super) fn table_info_query(table: &str) -> String {
     format!("PRAGMA table_info({})", quote_ident(table))
+}
+
+pub(super) fn table_storage_query(table: &str) -> String {
+    format!(
+        r"
+        SELECT tl.type, tl.wr, tl.strict, m.sql
+        FROM pragma_table_list() AS tl
+        LEFT JOIN sqlite_master AS m
+          ON m.type = 'table'
+         AND m.name = tl.name
+        WHERE tl.schema = 'main'
+          AND tl.name = {}
+        LIMIT 1
+        ",
+        quote_literal(table)
+    )
 }
 
 pub(super) fn table_definition_query(table: &str) -> String {
@@ -386,16 +406,9 @@ mod tests {
         Table {
             schema: "main".to_string(),
             name: "test_table".to_string(),
-            owner: None,
             columns,
             primary_key,
-            foreign_keys: vec![],
-            indexes: vec![],
-            rls: None,
-            triggers: vec![],
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
+            ..crate::adapters::test_support::minimal_table("", "")
         }
     }
 
@@ -427,6 +440,9 @@ mod tests {
         assert!(user_tables_query().contains("pragma_table_list()"));
         assert!(user_tables_query().contains("tl.schema = 'main'"));
         assert!(user_tables_query().contains("tl.type IN ('table', 'virtual')"));
+        assert!(user_tables_query().contains("tl.type"));
+        assert!(user_tables_query().contains("tl.wr"));
+        assert!(user_tables_query().contains("tl.strict"));
         assert!(user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
     }
 

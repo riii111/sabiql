@@ -71,20 +71,7 @@ mod tests {
     }
 
     fn empty_table(schema: &str, name: &str) -> Box<crate::domain::Table> {
-        Box::new(crate::domain::Table {
-            schema: schema.to_string(),
-            name: name.to_string(),
-            owner: None,
-            columns: vec![],
-            primary_key: None,
-            indexes: vec![],
-            foreign_keys: vec![],
-            rls: None,
-            triggers: vec![],
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
-        })
+        Box::new(crate::test_support::table::minimal(schema, name))
     }
 
     mod freshness_guards {

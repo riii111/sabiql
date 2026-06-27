@@ -16,6 +16,7 @@ use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
     widths_fingerprint,
 };
+use crate::app::policy::table_storage::{inspector_flags_label, inspector_kind_label};
 use crate::app::services::AppServices;
 use crate::domain::{ForeignKey, Index, IndexType, Table};
 use crate::primitives::atoms::panel_block;
@@ -250,6 +251,25 @@ impl Inspector {
             ]),
             InspectorInfoField::TableName => {
                 Line::from(vec![Self::info_label("Table:   "), Span::raw(&table.name)])
+            }
+            InspectorInfoField::TableKind => Line::from(vec![
+                Self::info_label("Kind:    "),
+                Span::raw(inspector_kind_label(&table.storage)),
+            ]),
+            InspectorInfoField::TableFlags => {
+                let flags = inspector_flags_label(&table.storage);
+                let value = flags
+                    .as_ref()
+                    .map_or(Cow::Borrowed("(none)"), |label| Cow::Owned(label.clone()));
+                let style = if flags.is_some() {
+                    Style::default()
+                } else {
+                    Style::default().fg(theme.semantic.text.placeholder)
+                };
+                Line::from(vec![
+                    Self::info_label("Flags:   "),
+                    Span::styled(value, style),
+                ])
             }
         }
     }

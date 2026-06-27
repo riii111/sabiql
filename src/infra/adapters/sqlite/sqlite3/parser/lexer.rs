@@ -111,6 +111,100 @@ fn is_create_trigger_prefix(sql: &str) -> bool {
     second.eq_ignore_ascii_case("TRIGGER")
 }
 
+pub(in crate::adapters::sqlite::sqlite3) fn is_create_virtual_table_prefix(sql: &str) -> bool {
+    let Some((first, pos)) = next_keyword_from(sql, 0) else {
+        return false;
+    };
+    if !first.eq_ignore_ascii_case("CREATE") {
+        return false;
+    }
+    let Some((second, pos)) = next_keyword_from(sql, pos) else {
+        return false;
+    };
+    if !second.eq_ignore_ascii_case("VIRTUAL") {
+        return false;
+    }
+    let Some((third, _)) = next_keyword_from(sql, pos) else {
+        return false;
+    };
+    third.eq_ignore_ascii_case("TABLE")
+}
+
+pub(in crate::adapters::sqlite::sqlite3) fn virtual_table_module_name(sql: &str) -> Option<String> {
+    let mut offset = 0;
+    while let Some((keyword, end)) = next_keyword_from(sql, offset) {
+        if keyword.eq_ignore_ascii_case("USING") {
+            return module_name_at(sql, end);
+        }
+        offset = end;
+    }
+    None
+}
+
+fn module_name_at(sql: &str, start: usize) -> Option<String> {
+    let bytes = sql.as_bytes();
+    let mut i = start;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() {
+        return None;
+    }
+    match bytes[i] {
+        b'\'' | b'"' | b'`' => {
+            let quote = bytes[i];
+            i += 1;
+            let name_start = i;
+            while i < bytes.len() {
+                if bytes[i] == quote {
+                    if i + 1 < bytes.len() && bytes[i + 1] == quote {
+                        i += 2;
+                    } else {
+                        let name = sql[name_start..i].trim();
+                        return if name.is_empty() {
+                            None
+                        } else {
+                            Some(name.to_string())
+                        };
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            None
+        }
+        b'[' => {
+            i += 1;
+            let name_start = i;
+            while i < bytes.len() && bytes[i] != b']' {
+                i += 1;
+            }
+            if i >= bytes.len() {
+                return None;
+            }
+            let name = sql[name_start..i].trim();
+            if name.is_empty() {
+                None
+            } else {
+                Some(name.to_string())
+            }
+        }
+        b if b.is_ascii_alphabetic() || b == b'_' => {
+            let name_start = i;
+            while i < bytes.len() && is_ident_char(bytes[i]) {
+                i += 1;
+            }
+            let name = sql[name_start..i].trim();
+            if name.is_empty() {
+                None
+            } else {
+                Some(name.to_string())
+            }
+        }
+        _ => None,
+    }
+}
+
 fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
     let mut index = keyword_start;
     while index > 0 {
@@ -909,5 +1003,39 @@ END";
         for sql in ["SELECT 1", "PRAGMA table_info(users)"] {
             assert!(is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");
         }
+    }
+
+    #[test]
+    fn create_virtual_table_prefix_requires_keyword_sequence() {
+        assert!(is_create_virtual_table_prefix(
+            "CREATE VIRTUAL TABLE notes_fts USING fts5(body);"
+        ));
+        assert!(!is_create_virtual_table_prefix(
+            "CREATE TABLE docs(body TEXT DEFAULT 'create virtual table');"
+        ));
+    }
+
+    #[test]
+    fn virtual_table_module_name_skips_quoted_table_name() {
+        assert_eq!(
+            virtual_table_module_name(r#"CREATE VIRTUAL TABLE "using" USING fts5(body);"#),
+            Some("fts5".to_string())
+        );
+    }
+
+    #[test]
+    fn virtual_table_module_name_reads_double_quoted_module() {
+        assert_eq!(
+            virtual_table_module_name(r#"CREATE VIRTUAL TABLE notes USING "fts5"(body);"#),
+            Some("fts5".to_string())
+        );
+    }
+
+    #[test]
+    fn virtual_table_module_name_rejects_unclosed_bracket_module() {
+        assert_eq!(
+            virtual_table_module_name("CREATE VIRTUAL TABLE notes USING [fts5(body);"),
+            None
+        );
     }
 }

@@ -140,16 +140,9 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "test_table".to_string(),
-                owner: None,
                 columns: cols,
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
                 row_count_estimate: Some(0),
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             }));
             state
         }

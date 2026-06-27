@@ -2,6 +2,7 @@ use super::column::Column;
 use super::foreign_key::ForeignKey;
 use super::index::Index;
 use super::rls::RlsInfo;
+use super::table_storage::TableStorage;
 use super::trigger::Trigger;
 
 fn make_qualified_name(schema: &str, name: &str) -> String {
@@ -30,6 +31,7 @@ pub struct Table {
     pub row_count_estimate: Option<i64>,
     pub comment: Option<String>,
     pub source_ddl: Option<String>,
+    pub storage: TableStorage,
 }
 
 impl Table {
@@ -52,6 +54,7 @@ pub struct TableSummary {
     pub name: String,
     pub row_count_estimate: Option<i64>,
     pub has_rls: bool,
+    pub storage: TableStorage,
     // Pre-computed for efficient case-insensitive filtering
     qualified_name_lower: String,
 }
@@ -82,8 +85,15 @@ impl TableSummary {
             name,
             row_count_estimate,
             has_rls,
+            storage: TableStorage::default(),
             qualified_name_lower,
         }
+    }
+
+    #[must_use]
+    pub fn with_storage(mut self, storage: TableStorage) -> Self {
+        self.storage = storage;
+        self
     }
 
     pub fn qualified_name(&self) -> String {
@@ -117,6 +127,7 @@ mod tests {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
+            storage: TableStorage::default(),
         }
     }
 

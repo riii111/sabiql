@@ -160,16 +160,8 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
-                columns: vec![],
                 primary_key: Some(vec!["id".to_string()]),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             }
         }
 
@@ -275,16 +267,8 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "posts".to_string(),
-                owner: None,
-                columns: vec![],
                 primary_key: Some(vec!["id".to_string()]),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
+                ..crate::test_support::table::minimal("", "")
             }));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())

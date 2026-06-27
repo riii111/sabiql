@@ -178,22 +178,23 @@ mod tests {
 
     mod from_table {
         use super::*;
-        use crate::{FkAction, ForeignKey, Table};
+        use crate::{FkAction, ForeignKey, Table, TableStorage};
 
         fn make_table(name: &str, foreign_keys: Vec<ForeignKey>) -> Table {
             Table {
                 schema: "public".to_string(),
                 name: name.to_string(),
+                foreign_keys,
                 owner: None,
                 columns: Vec::new(),
                 primary_key: None,
-                foreign_keys,
                 indexes: Vec::new(),
                 rls: None,
                 triggers: Vec::new(),
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                storage: TableStorage::default(),
             }
         }
 

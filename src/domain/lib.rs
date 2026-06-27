@@ -14,6 +14,7 @@ pub mod rls;
 pub mod schema;
 pub mod sqlite_diagnostics;
 pub mod table;
+pub mod table_storage;
 pub mod trigger;
 pub mod write_result;
 
@@ -30,6 +31,7 @@ pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
 pub use schema::Schema;
 pub use sqlite_diagnostics::{DiagnosticField, SqliteDiagnosticsSnapshot};
 pub use table::{Table, TableSignature, TableSummary};
+pub use table_storage::{TableObjectKind, TableStorage};
 pub use trigger::{Trigger, TriggerEvent, TriggerTiming};
 pub use write_result::WriteExecutionResult;
 
