@@ -161,7 +161,7 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 primary_key: Some(vec!["id".to_string()]),
-                ..Table::minimal_for_test("", "")
+                ..crate::test_support::table::minimal("", "")
             }
         }
 
@@ -268,7 +268,7 @@ mod tests {
                 schema: "public".to_string(),
                 name: "posts".to_string(),
                 primary_key: Some(vec!["id".to_string()]),
-                ..Table::minimal_for_test("", "")
+                ..crate::test_support::table::minimal("", "")
             }));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())

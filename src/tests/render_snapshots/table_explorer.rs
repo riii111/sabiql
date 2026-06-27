@@ -105,6 +105,11 @@ fn sqlite_explorer_shows_table_storage_suffixes() {
                     virtual_module: Some("fts5".to_string()),
                     ..TableStorage::default()
                 }),
+            TableSummary::new("main".to_string(), "typed_users".to_string(), None, false)
+                .with_storage(TableStorage {
+                    is_strict: true,
+                    ..TableStorage::default()
+                }),
         ],
     };
     state.session.mark_connected(Arc::new(metadata));

@@ -71,7 +71,7 @@ mod tests {
     }
 
     fn empty_table(schema: &str, name: &str) -> Box<crate::domain::Table> {
-        Box::new(crate::domain::Table::minimal_for_test(schema, name))
+        Box::new(crate::test_support::table::minimal(schema, name))
     }
 
     mod freshness_guards {

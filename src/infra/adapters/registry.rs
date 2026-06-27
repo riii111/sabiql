@@ -286,7 +286,7 @@ mod tests {
                 ordinal_position: 1,
             }],
             primary_key: Some(vec!["id".to_string()]),
-            ..Table::minimal_for_test("", "")
+            ..crate::adapters::test_support::minimal_table("", "")
         }
     }
 

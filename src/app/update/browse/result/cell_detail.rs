@@ -224,7 +224,7 @@ mod tests {
                 },
             ],
             primary_key: Some(vec!["id".to_string()]),
-            ..Table::minimal_for_test("", "")
+            ..crate::test_support::table::minimal("", "")
         }));
         state.result_interaction.activate_cell(0, 1);
         state

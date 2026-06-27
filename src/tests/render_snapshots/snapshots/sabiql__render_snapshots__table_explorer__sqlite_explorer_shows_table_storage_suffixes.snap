@@ -7,7 +7,7 @@ test_project | app.db | - | connected | app.db
 │> main.users                           │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  main.settings [table+no-rowid]       ││(select a table)                                                                                                          │
 │  main.notes_fts [virtual/fts5]        ││                                                                                                                          │
-│                                       ││                                                                                                                          │
+│  main.typed_users [table+strict]      ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

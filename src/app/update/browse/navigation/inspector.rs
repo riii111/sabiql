@@ -142,7 +142,7 @@ mod tests {
                 name: "test_table".to_string(),
                 columns: cols,
                 row_count_estimate: Some(0),
-                ..Table::minimal_for_test("", "")
+                ..crate::test_support::table::minimal("", "")
             }));
             state
         }

@@ -421,7 +421,7 @@ fn inspector_info_tab_for_sqlite_shows_table_storage_fields() {
     table.row_count_estimate = Some(42);
     table.storage = TableStorage {
         kind: TableObjectKind::Virtual,
-        is_strict: true,
+        is_strict: false,
         without_rowid: false,
         virtual_module: Some("fts5".to_string()),
     };

@@ -75,21 +75,57 @@ fn strip_sql_comments(sql: &str) -> String {
     let mut out = String::with_capacity(sql.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
-            while i < bytes.len() && bytes[i] != b'\n' {
+        match bytes[i] {
+            b'\'' | b'"' | b'`' => {
+                let quote = bytes[i];
+                out.push(char::from(bytes[i]));
                 i += 1;
+                while i < bytes.len() {
+                    out.push(char::from(bytes[i]));
+                    if bytes[i] == quote {
+                        if i + 1 < bytes.len() && bytes[i + 1] == quote {
+                            i += 1;
+                            out.push(char::from(bytes[i]));
+                        } else {
+                            i += 1;
+                            break;
+                        }
+                    }
+                    i += 1;
+                }
             }
-        } else if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+            b'[' => {
+                out.push(char::from(bytes[i]));
                 i += 1;
+                while i < bytes.len() {
+                    out.push(char::from(bytes[i]));
+                    if bytes[i] == b']' {
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
             }
-            if i + 1 < bytes.len() {
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                out.push(' ');
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                out.push(' ');
                 i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                if i + 1 < bytes.len() {
+                    i += 2;
+                }
             }
-        } else {
-            out.push(char::from(bytes[i]));
-            i += 1;
+            byte => {
+                out.push(char::from(byte));
+                i += 1;
+            }
         }
     }
     out
@@ -223,6 +259,15 @@ mod tests {
         assert!(without_rowid.without_rowid);
         assert!(strict.is_strict);
         assert!(!strict.without_rowid);
+    }
+
+    #[test]
+    fn legacy_sql_does_not_treat_comment_markers_inside_string_literals_as_options() {
+        let storage = table_storage_from_legacy_sql(Some(
+            "CREATE TABLE docs(body TEXT DEFAULT '/* not strict */') STRICT;",
+        ));
+
+        assert!(storage.is_strict);
     }
 
     #[test]

@@ -600,7 +600,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..Table::minimal_for_test("", "")
+                ..crate::test_support::table::minimal("", "")
             }
         }
 

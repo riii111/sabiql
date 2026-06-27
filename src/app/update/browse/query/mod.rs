@@ -158,7 +158,7 @@ pub(super) mod tests {
                 function_name: "f".to_string(),
                 security_definer: false,
             }],
-            ..Table::minimal_for_test("", "")
+            ..crate::test_support::table::minimal("", "")
         }
     }
 

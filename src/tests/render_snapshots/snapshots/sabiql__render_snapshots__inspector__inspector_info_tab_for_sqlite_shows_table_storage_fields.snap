@@ -9,7 +9,7 @@ test_project | test_db | - | connected | app.db
 │  public.comments                      ││Schema:  main                                                                                                             │
 │                                       ││Table:   notes_fts                                                                                                        │
 │                                       ││Kind:    Virtual table (fts5)                                                                                             │
-│                                       ││Flags:   STRICT                                                                                                           │
+│                                       ││Flags:   (none)                                                                                                           │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

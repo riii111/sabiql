@@ -1,3 +1,23 @@
+use sabiql_domain::{Table, TableStorage};
+
+pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) -> Table {
+    Table {
+        schema: schema.into(),
+        name: name.into(),
+        owner: None,
+        columns: Vec::new(),
+        primary_key: None,
+        foreign_keys: Vec::new(),
+        indexes: Vec::new(),
+        rls: None,
+        triggers: Vec::new(),
+        row_count_estimate: None,
+        comment: None,
+        source_ddl: None,
+        storage: TableStorage::default(),
+    }
+}
+
 use std::process::Command;
 
 pub(super) fn make_sqlite_db(sql: &str) -> (tempfile::TempDir, String) {

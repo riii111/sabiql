@@ -98,7 +98,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..Table::minimal_for_test("", "")
+            ..crate::adapters::test_support::minimal_table("", "")
         }
     }
 

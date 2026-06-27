@@ -138,7 +138,7 @@ mod tests {
                     ordinal_position: 1,
                 }],
                 primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
-                ..Table::minimal_for_test("", "")
+                ..crate::test_support::table::minimal("", "")
             }));
             state
         }
