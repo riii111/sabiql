@@ -16,7 +16,7 @@ use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
     widths_fingerprint,
 };
-use crate::app::present::table_storage::{inspector_flags_label, inspector_kind_label};
+use crate::app::policy::table_storage::{inspector_flags_label, inspector_kind_label};
 use crate::app::services::AppServices;
 use crate::domain::{ForeignKey, Index, IndexType, Table};
 use crate::primitives::atoms::panel_block;

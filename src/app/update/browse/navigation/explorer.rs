@@ -2,7 +2,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::ui_state::scroll_max_offset;
-use crate::present::table_storage::max_explorer_table_label_width;
+use crate::policy::table_storage::max_explorer_table_label_width;
 use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
@@ -664,7 +664,7 @@ mod tests {
     mod horizontal_scroll {
         use super::*;
         use crate::domain::TableStorage;
-        use crate::present::table_storage::{explorer_table_label, explorer_table_label_width};
+        use crate::policy::table_storage::{explorer_table_label, explorer_table_label_width};
 
         #[rstest]
         #[case(&["abcdefghij"], 4, 32)]

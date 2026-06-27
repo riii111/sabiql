@@ -23,7 +23,7 @@ use crate::model::shared::settings::SettingsState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
-use crate::present::table_storage::max_explorer_table_label_width;
+use crate::policy::table_storage::max_explorer_table_label_width;
 
 pub struct AppState {
     pub should_quit: bool,

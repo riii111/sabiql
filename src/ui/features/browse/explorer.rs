@@ -9,7 +9,7 @@ use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
-use crate::app::present::table_storage::{explorer_table_label, max_explorer_table_label_width};
+use crate::app::policy::table_storage::{explorer_table_label, max_explorer_table_label_width};
 use crate::domain::MetadataState;
 use crate::theme::ThemePalette;
 
