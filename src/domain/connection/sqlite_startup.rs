@@ -49,22 +49,28 @@ impl SqliteStartupTarget {
 
 fn parse_cli_path(input: &str) -> Result<String, SqliteStartupError> {
     let trimmed = input.trim();
-    if let Some(path) = trimmed.strip_prefix("sqlite://") {
+    let path = if let Some(path) = trimmed.strip_prefix("sqlite://") {
         if path.is_empty() {
             return Err(SqliteStartupError::UnsupportedFormat);
         }
-        return Ok(path.to_string());
-    }
+        path
+    } else {
+        trimmed
+    };
 
-    if looks_like_non_sqlite_target(trimmed) {
+    validate_cli_path(path)
+}
+
+fn validate_cli_path(path: &str) -> Result<String, SqliteStartupError> {
+    if looks_like_non_sqlite_target(path) {
         return Err(SqliteStartupError::UnsupportedFormat);
     }
 
-    if !has_sqlite_file_extension(trimmed) {
+    if !has_sqlite_file_extension(path) {
         return Err(SqliteStartupError::UnsupportedFormat);
     }
 
-    Ok(trimmed.to_string())
+    Ok(path.to_string())
 }
 
 fn looks_like_non_sqlite_target(input: &str) -> bool {
@@ -124,6 +130,8 @@ mod tests {
         #[case("/tmp/app", ExpectedRejection::UnsupportedFormat)]
         #[case(":memory:", ExpectedRejection::UnsupportedFormat)]
         #[case("file:/tmp/app.db", ExpectedRejection::Config)]
+        #[case("sqlite:///tmp/app", ExpectedRejection::UnsupportedFormat)]
+        #[case("sqlite://:memory:", ExpectedRejection::UnsupportedFormat)]
         fn rejects_unsupported_targets(#[case] input: &str, #[case] expected: ExpectedRejection) {
             let result = SqliteStartupTarget::from_cli_input(input);
 

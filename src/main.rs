@@ -158,12 +158,10 @@ async fn main() -> Result<()> {
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
             load_service_entries(&mut state, Some(&*pg_service_entry_reader));
-            if let Some(target) = cli_sqlite.as_ref() {
-                activate_cli_sqlite_connection(&mut state, target);
-            } else if state.service_entries().is_empty() {
+            if cli_sqlite.is_none() && state.service_entries().is_empty() {
                 state.connection_setup.set_first_run(true);
                 state.modal.set_mode(InputMode::ConnectionSetup);
-            } else {
+            } else if cli_sqlite.is_none() {
                 state.modal.set_mode(InputMode::ConnectionSelector);
                 state.ui.set_connection_list_selection(Some(0));
             }
@@ -177,14 +175,12 @@ async fn main() -> Result<()> {
             state.set_connections(profiles);
             load_service_entries(&mut state, Some(&*pg_service_entry_reader));
 
-            if let Some(target) = cli_sqlite.as_ref() {
-                activate_cli_sqlite_connection(&mut state, target);
-            } else {
+            if cli_sqlite.is_none() {
                 state.modal.set_mode(InputMode::ConnectionSelector);
                 state.ui.set_connection_list_selection(Some(0));
             }
         }
-        Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
+        Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_sqlite.is_none() => {
             eprintln!(
                 "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
                  Please delete {} and reconfigure.",
@@ -194,14 +190,15 @@ async fn main() -> Result<()> {
             );
             std::process::exit(1);
         }
-        Err(_) => {
-            if let Some(target) = cli_sqlite.as_ref() {
-                activate_cli_sqlite_connection(&mut state, target);
-            } else {
-                state.connection_setup.set_first_run(true);
-                state.modal.set_mode(InputMode::ConnectionSetup);
-            }
+        Err(_) if cli_sqlite.is_none() => {
+            state.connection_setup.set_first_run(true);
+            state.modal.set_mode(InputMode::ConnectionSetup);
         }
+        Err(_) => {}
+    }
+
+    if let Some(target) = cli_sqlite.as_ref() {
+        activate_cli_sqlite_connection(&mut state, target);
     }
 
     let mut tui = TuiRunner::new()?;
