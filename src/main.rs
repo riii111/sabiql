@@ -37,6 +37,7 @@ use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
+use sabiql_domain::{ConnectionId, DatabaseType, SqliteStartupError, SqliteStartupTarget};
 use sabiql_infra::adapters::{
     ArboardClipboard, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter,
     NativeFolderOpener, PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
@@ -50,6 +51,9 @@ use sabiql_ui::tui::TuiRunner;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// SQLite database file (.db, .sqlite, .sqlite3) or sqlite:// DSN
+    database: Option<String>,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -86,6 +90,11 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
     }
+
+    let cli_sqlite = match args.database {
+        Some(database) => Some(resolve_cli_sqlite_target(&database)?),
+        None => None,
+    };
 
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
@@ -148,7 +157,9 @@ async fn main() -> Result<()> {
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
             load_service_entries(&mut state, Some(&*pg_service_entry_reader));
-            if state.service_entries().is_empty() {
+            if let Some(target) = cli_sqlite.as_ref() {
+                activate_cli_sqlite_connection(&mut state, target);
+            } else if state.service_entries().is_empty() {
                 state.connection_setup.set_first_run(true);
                 state.modal.set_mode(InputMode::ConnectionSetup);
             } else {
@@ -165,8 +176,12 @@ async fn main() -> Result<()> {
             state.set_connections(profiles);
             load_service_entries(&mut state, Some(&*pg_service_entry_reader));
 
-            state.modal.set_mode(InputMode::ConnectionSelector);
-            state.ui.set_connection_list_selection(Some(0));
+            if let Some(target) = cli_sqlite.as_ref() {
+                activate_cli_sqlite_connection(&mut state, target);
+            } else {
+                state.modal.set_mode(InputMode::ConnectionSelector);
+                state.ui.set_connection_list_selection(Some(0));
+            }
         }
         Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
             eprintln!(
@@ -179,8 +194,12 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
         Err(_) => {
-            state.connection_setup.set_first_run(true);
-            state.modal.set_mode(InputMode::ConnectionSetup);
+            if let Some(target) = cli_sqlite.as_ref() {
+                activate_cli_sqlite_connection(&mut state, target);
+            } else {
+                state.connection_setup.set_first_run(true);
+                state.modal.set_mode(InputMode::ConnectionSetup);
+            }
         }
     }
 
@@ -499,6 +518,26 @@ async fn drain_and_process_terminal_events(
     }
 
     Ok(())
+}
+
+fn resolve_cli_sqlite_target(database: &str) -> Result<SqliteStartupTarget> {
+    let target = SqliteStartupTarget::from_cli_input(database).map_err(cli_sqlite_error)?;
+    target.validate_file_on_disk().map_err(cli_sqlite_error)?;
+    Ok(target)
+}
+
+fn cli_sqlite_error(error: SqliteStartupError) -> color_eyre::Report {
+    color_eyre::eyre::eyre!("Error: {error}")
+}
+
+fn activate_cli_sqlite_connection(state: &mut AppState, target: &SqliteStartupTarget) {
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::ephemeral_cli(),
+        &target.display_name(),
+        DatabaseType::SQLite,
+        &target.dsn(),
+    );
+    state.modal.set_mode(InputMode::Normal);
 }
 
 fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntryReader>) {
