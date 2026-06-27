@@ -2,8 +2,65 @@ use std::time::Instant;
 
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
-use crate::model::sql_editor::modal::SqlModalTab;
+use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+use crate::policy::sql::statement_classifier;
 use crate::policy::write::sql_risk::split_statements_for_database;
+
+pub(super) fn explain_unsupported_query_message(database_type: DatabaseType) -> &'static str {
+    match database_type {
+        DatabaseType::SQLite => "EXPLAIN QUERY PLAN supports SELECT statements only",
+        DatabaseType::PostgreSQL => "EXPLAIN is unavailable for this statement",
+    }
+}
+
+pub(super) fn explain_unsupported_sqlite_query_message(content: &str) -> &'static str {
+    if statement_classifier::first_keyword(content.trim())
+        .is_some_and(|keyword| keyword.eq_ignore_ascii_case("EXPLAIN"))
+    {
+        "EXPLAIN QUERY PLAN is added automatically; enter a SELECT query only"
+    } else {
+        explain_unsupported_query_message(DatabaseType::SQLite)
+    }
+}
+
+pub(super) fn explain_unsupported_analyze_message(database_type: DatabaseType) -> &'static str {
+    match database_type {
+        DatabaseType::SQLite => "EXPLAIN ANALYZE is not supported for SQLite",
+        DatabaseType::PostgreSQL => "EXPLAIN ANALYZE is unavailable for this statement",
+    }
+}
+
+pub(super) fn mark_explain_unsupported_query(state: &mut AppState, content: &str) {
+    let database_type = state.session.active_database_type_or_default();
+    let message = match database_type {
+        DatabaseType::SQLite => explain_unsupported_sqlite_query_message(content),
+        DatabaseType::PostgreSQL => explain_unsupported_query_message(database_type),
+    };
+    show_explain_error_on_plan(state, message);
+}
+
+pub(super) fn mark_explain_unsupported_analyze(state: &mut AppState) {
+    let database_type = state.session.active_database_type_or_default();
+    show_explain_error_on_plan(state, explain_unsupported_analyze_message(database_type));
+}
+
+fn apply_explain_unsupported_analyze_state(state: &mut AppState) {
+    if state.session.active_db_capabilities().supports_explain() {
+        mark_explain_unsupported_analyze(state);
+    } else {
+        mark_explain_unavailable(state);
+    }
+}
+
+pub(super) fn finish_explain_unsupported_analyze(state: &mut AppState) {
+    apply_explain_unsupported_analyze_state(state);
+    if matches!(
+        state.sql_modal.status(),
+        SqlModalStatus::ConfirmingAnalyzeHigh { .. } | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
+    ) {
+        state.sql_modal.cancel_confirmation();
+    }
+}
 
 pub(super) fn is_multi_statement(database_type: DatabaseType, content: &str) -> bool {
     split_statements_for_database(database_type, content).len() > 1
@@ -52,6 +109,19 @@ pub(super) fn finish_explain_error(state: &mut AppState, error: impl Into<String
     state.sql_modal.enter_normal();
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.query.mark_idle();
+}
+
+pub(super) fn reject_unsupported_explain_analyze(state: &mut AppState) -> bool {
+    if state
+        .session
+        .active_db_capabilities()
+        .supports_explain_analyze()
+    {
+        return false;
+    }
+
+    apply_explain_unsupported_analyze_state(state);
+    true
 }
 
 pub(super) fn reject_unsupported_explain(state: &mut AppState) -> bool {

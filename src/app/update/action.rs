@@ -332,7 +332,7 @@ pub enum Action {
     CopyConnectionError,
     ConnectionErrorCopied,
     ReenterConnectionSetup,
-    RetryServiceConnection,
+    RetryConnection,
     RequestDeleteSelectedConnection,
     DeleteConnection(ConnectionId),
     ConnectionDeleted(ConnectionId),

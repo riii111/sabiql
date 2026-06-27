@@ -72,7 +72,7 @@ pub(super) fn reduce_connection_error(
             state.modal.replace_mode(InputMode::ConnectionSetup);
             DispatchResult::handled()
         }
-        Action::RetryServiceConnection => {
+        Action::RetryConnection => {
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 state.connection_error.clear();
                 let run_id = state.session.begin_connecting(&dsn);
@@ -139,6 +139,23 @@ mod tests {
                 "service",
                 DatabaseType::PostgreSQL,
                 "service=mydb",
+            );
+            state.modal.set_mode(InputMode::ConnectionError);
+
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::ConnectionError);
+        }
+
+        #[test]
+        fn blocked_for_cli_ephemeral_connection() {
+            use crate::cmd::cli_sqlite::connection_id_for_path;
+
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_cli_ephemeral_connection(
+                &connection_id_for_path("/tmp/app.db"),
+                "app.db",
+                "sqlite:///tmp/app.db",
             );
             state.modal.set_mode(InputMode::ConnectionError);
 

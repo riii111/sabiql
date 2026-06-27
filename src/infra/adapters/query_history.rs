@@ -139,6 +139,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn append_and_load_succeed_for_cli_sqlite_connection_id() {
+        use sabiql_app::cmd::cli_sqlite::connection_id_for_path;
+
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
+        let conn_id = connection_id_for_path("/tmp/app.db");
+
+        assert!(!conn_id.as_str().contains('/'));
+
+        store
+            .append("test", &conn_id, &make_entry("SELECT 1"))
+            .await
+            .unwrap();
+
+        let history_dir = tmp.path().join("history");
+        let path = history_dir.join(format!("{conn_id}.jsonl"));
+        assert!(path.is_file());
+
+        let entries = store.load("test", &conn_id).await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].query, "SELECT 1");
+    }
+
+    #[tokio::test]
     async fn append_creates_file_and_writes_entry() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
