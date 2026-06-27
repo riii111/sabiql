@@ -393,15 +393,19 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_explain_generation_is_unsupported() {
+    fn sqlite_explain_generation_uses_query_plan() {
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         assert_eq!(
             registry.build_explain_sql(DatabaseType::SQLite, "SELECT 1"),
-            None
+            Some("EXPLAIN QUERY PLAN SELECT 1".to_string())
         );
         assert_eq!(
             registry.build_explain_analyze_sql(DatabaseType::SQLite, "SELECT 1"),
+            None
+        );
+        assert_eq!(
+            registry.build_explain_sql(DatabaseType::SQLite, "DELETE FROM users"),
             None
         );
     }

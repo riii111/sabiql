@@ -26,6 +26,7 @@ pub fn handle_sql_modal_keys(
         active_tab,
         None,
         KeymapPreset::Default,
+        true,
     )
 }
 
@@ -36,6 +37,7 @@ pub fn handle_sql_modal_keys_with_prefix(
     active_tab: SqlModalTab,
     pending_prefix: Option<Prefix>,
     keymap_preset: KeymapPreset,
+    supports_explain_analyze: bool,
 ) -> Action {
     use crate::update::action::CursorMove;
 
@@ -99,7 +101,7 @@ pub fn handle_sql_modal_keys_with_prefix(
             }
 
             return match combo.key {
-                Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
+                Key::Char('e') if alt && supports_explain_analyze => Action::ExplainAnalyzeRequest,
                 _ => Action::None,
             };
         }
@@ -114,13 +116,13 @@ pub fn handle_sql_modal_keys_with_prefix(
             }
 
             return match combo.key {
-                Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
+                Key::Char('e') if alt && supports_explain_analyze => Action::ExplainAnalyzeRequest,
                 Key::Char('e') if plain => Action::CompareEditQuery,
                 _ => Action::None,
             };
         }
 
-        if alt && combo.key == Key::Char('e') {
+        if alt && combo.key == Key::Char('e') && supports_explain_analyze {
             return Action::ExplainAnalyzeRequest;
         }
         if sql_modal_normal_query_history(keymap_preset)
@@ -309,7 +311,11 @@ pub fn handle_sql_modal_keys_with_prefix(
     }
 
     if alt && combo.key == Key::Char('e') {
-        return Action::ExplainAnalyzeRequest;
+        return if supports_explain_analyze {
+            Action::ExplainAnalyzeRequest
+        } else {
+            Action::None
+        };
     }
 
     if completion_visible {
@@ -824,6 +830,7 @@ mod tests {
                 SqlModalTab::Sql,
                 Some(Prefix::G),
                 KeymapPreset::Default,
+                true,
             );
 
             assert_action(result, Expected::SqlModalMoveCursor(CursorMove::FirstLine));
@@ -838,6 +845,7 @@ mod tests {
                 SqlModalTab::Sql,
                 Some(Prefix::G),
                 KeymapPreset::Default,
+                true,
             );
 
             assert!(matches!(result, Action::CancelKeySequence));
@@ -852,6 +860,7 @@ mod tests {
                 SqlModalTab::Sql,
                 Some(Prefix::G),
                 KeymapPreset::Default,
+                true,
             );
 
             assert!(matches!(result, Action::CancelKeySequence));
@@ -866,6 +875,7 @@ mod tests {
                 SqlModalTab::Sql,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(
@@ -883,6 +893,7 @@ mod tests {
                 SqlModalTab::Sql,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(result, Action::None));
@@ -897,6 +908,7 @@ mod tests {
                 SqlModalTab::Plan,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(result, Action::ExplainRequest));
@@ -911,6 +923,7 @@ mod tests {
                 SqlModalTab::Plan,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(result, Action::None));
@@ -925,6 +938,7 @@ mod tests {
                 SqlModalTab::Sql,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(result, Action::None));
@@ -939,6 +953,7 @@ mod tests {
                 SqlModalTab::Sql,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(result, Action::None));
@@ -1365,6 +1380,38 @@ mod tests {
             );
 
             assert_action(result, Expected::ExplainAnalyzeRequest);
+        }
+
+        #[test]
+        fn editing_alt_e_is_noop_when_analyze_is_unsupported() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_alt(Key::Char('e')),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+                None,
+                KeymapPreset::Default,
+                false,
+            );
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[rstest]
+        #[case(SqlModalTab::Plan)]
+        #[case(SqlModalTab::Compare)]
+        fn alt_e_is_noop_when_analyze_is_unsupported(#[case] tab: SqlModalTab) {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_alt(Key::Char('e')),
+                false,
+                &SqlModalStatus::Normal,
+                tab,
+                None,
+                KeymapPreset::Default,
+                false,
+            );
+
+            assert!(matches!(result, Action::None));
         }
 
         #[rstest]

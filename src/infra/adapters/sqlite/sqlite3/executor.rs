@@ -643,6 +643,98 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn explain_query_plan_returns_readable_detail_lines() {
+            let (_dir, dsn) = make_sqlite_db(
+                "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+                 CREATE INDEX idx_users_name ON users(name);",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "EXPLAIN QUERY PLAN SELECT * FROM users WHERE name = 'alice'",
+                    true,
+                )
+                .await
+                .unwrap();
+
+            let plan_text = explain_plan_text_from_result(&result);
+
+            assert!(!plan_text.trim().is_empty(), "plan text must not be empty");
+            assert!(
+                plan_text.to_ascii_lowercase().contains("users"),
+                "expected users table in plan, got: {plan_text}"
+            );
+            assert!(
+                !explain_plan_operation_lines(&plan_text).is_empty(),
+                "expected at least one SCAN/SEARCH operation, got: {plan_text}"
+            );
+        }
+
+        #[tokio::test]
+        async fn explain_query_plan_for_join_includes_both_scan_targets() {
+            let (_dir, dsn) = make_sqlite_db(
+                "CREATE TABLE users(id INTEGER PRIMARY KEY);
+                 CREATE TABLE orders(id INTEGER, user_id INTEGER);",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "EXPLAIN QUERY PLAN SELECT * FROM users u JOIN orders o ON u.id = o.user_id",
+                    true,
+                )
+                .await
+                .unwrap();
+
+            let plan_text = explain_plan_text_from_result(&result);
+            let operation_lines = explain_plan_operation_lines(&plan_text);
+
+            assert!(
+                operation_lines.len() >= 2,
+                "expected multiple plan operations, got: {plan_text}"
+            );
+            assert!(
+                plan_mentions_table_or_alias(&plan_text, "users", 'u'),
+                "expected users side in plan, got: {plan_text}"
+            );
+            assert!(
+                plan_mentions_table_or_alias(&plan_text, "orders", 'o'),
+                "expected orders side in plan, got: {plan_text}"
+            );
+        }
+
+        fn explain_plan_text_from_result(result: &QueryResult) -> String {
+            result
+                .rows()
+                .iter()
+                .filter_map(|row| row.first())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+
+        fn explain_plan_operation_lines(plan_text: &str) -> Vec<&str> {
+            plan_text
+                .lines()
+                .filter(|line| {
+                    let upper = line.to_ascii_uppercase();
+                    upper.contains("SCAN") || upper.contains("SEARCH")
+                })
+                .collect()
+        }
+
+        fn plan_mentions_table_or_alias(plan_text: &str, table: &str, alias: char) -> bool {
+            let lower = plan_text.to_ascii_lowercase();
+            lower.contains(table)
+                || lower
+                    .split_whitespace()
+                    .any(|token| token == alias.to_string())
+        }
+
+        #[tokio::test]
         async fn create_trigger_with_multi_statement_body_preserves_definition() {
             let setup = r"
             CREATE TABLE agent_messages(
