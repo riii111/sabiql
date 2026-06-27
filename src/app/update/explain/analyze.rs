@@ -11,7 +11,7 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
-    begin_explain_running, is_multi_statement, mark_explain_unavailable,
+    begin_explain_running, finish_explain_unsupported_analyze, is_multi_statement,
     reject_unsupported_explain, show_explain_error_on_plan,
 };
 
@@ -73,7 +73,7 @@ pub(super) fn reduce_analyze(
                         .sql_dialect
                         .build_explain_analyze_sql(database_type, &content)
                     else {
-                        mark_explain_unavailable(state);
+                        finish_explain_unsupported_analyze(state);
                         return DispatchResult::handled();
                     };
                     let run_id = begin_explain_running(state, now);
@@ -112,7 +112,7 @@ pub(super) fn reduce_analyze(
                     .sql_dialect
                     .build_explain_analyze_sql(database_type, &query)
                 else {
-                    mark_explain_unavailable(state);
+                    finish_explain_unsupported_analyze(state);
                     return DispatchResult::handled();
                 };
                 let run_id = begin_explain_running(state, now);

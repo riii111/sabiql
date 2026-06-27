@@ -10,7 +10,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
     begin_explain_running, is_multi_statement, mark_explain_unavailable,
-    reject_unsupported_explain, show_explain_error_on_plan,
+    mark_explain_unsupported_query, reject_unsupported_explain, show_explain_error_on_plan,
 };
 
 pub(super) fn reduce_request(
@@ -40,12 +40,19 @@ pub(super) fn reduce_request(
                 return DispatchResult::handled();
             }
 
-            let Some(query) = services
+            let query = match services
                 .sql_dialect
                 .build_explain_sql(database_type, &content)
-            else {
-                mark_explain_unavailable(state);
-                return DispatchResult::handled();
+            {
+                Some(query) => query,
+                None if state.session.active_db_capabilities().supports_explain() => {
+                    mark_explain_unsupported_query(state);
+                    return DispatchResult::handled();
+                }
+                None => {
+                    mark_explain_unavailable(state);
+                    return DispatchResult::handled();
+                }
             };
             let run_id = begin_explain_running(state, now);
 

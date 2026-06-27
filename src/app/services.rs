@@ -67,7 +67,23 @@ impl AppServices {
             ) -> Option<String> {
                 match database_type {
                     DatabaseType::PostgreSQL => Some(format!("EXPLAIN {query}")),
-                    DatabaseType::SQLite => None,
+                    DatabaseType::SQLite => {
+                        use crate::policy::sql::statement_classifier::{self, StatementKind};
+                        let trimmed = query.trim();
+                        if statement_classifier::first_keyword(trimmed)
+                            .is_some_and(|keyword| keyword.eq_ignore_ascii_case("EXPLAIN"))
+                        {
+                            return None;
+                        }
+                        if matches!(
+                            statement_classifier::classify(trimmed),
+                            StatementKind::Select
+                        ) {
+                            Some(format!("EXPLAIN QUERY PLAN {trimmed}"))
+                        } else {
+                            None
+                        }
+                    }
                 }
             }
 
