@@ -229,18 +229,19 @@ pub(super) fn parse_sqlite_trigger(
     if !first.eq_ignore_ascii_case("CREATE") {
         return Err(sqlite_trigger_parse_error(sql, "expected CREATE"));
     }
-    let Some((second, pos)) = next_keyword_from(sql, pos) else {
+    let Some((second, mut pos)) = next_keyword_from(sql, pos) else {
         return Err(sqlite_trigger_parse_error(sql, "missing TRIGGER"));
     };
-    if !second.eq_ignore_ascii_case("TRIGGER") {
-        return Err(sqlite_trigger_parse_error(sql, "expected TRIGGER"));
-    }
-
-    let mut pos = pos;
-    if let Some((keyword, next)) = next_keyword_from(sql, pos)
-        && keyword.eq_ignore_ascii_case("TEMP")
-    {
+    if second.eq_ignore_ascii_case("TEMP") || second.eq_ignore_ascii_case("TEMPORARY") {
+        let Some((third, next)) = next_keyword_from(sql, pos) else {
+            return Err(sqlite_trigger_parse_error(sql, "missing TRIGGER"));
+        };
+        if !third.eq_ignore_ascii_case("TRIGGER") {
+            return Err(sqlite_trigger_parse_error(sql, "expected TRIGGER"));
+        }
         pos = next;
+    } else if !second.eq_ignore_ascii_case("TRIGGER") {
+        return Err(sqlite_trigger_parse_error(sql, "expected TRIGGER"));
     }
     pos = skip_optional_if_not_exists(sql, pos);
     pos = skip_object_reference(sql, pos);
@@ -298,5 +299,35 @@ mod tests {
 
         assert_eq!(trigger.timing, TriggerTiming::Before);
         assert_eq!(trigger.events, vec![TriggerEvent::Insert]);
+    }
+
+    #[test]
+    fn parses_temp_trigger() {
+        let sql = "CREATE TEMP TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END";
+        let trigger = parse_sqlite_trigger("users_audit", sql).unwrap();
+
+        assert_eq!(trigger.name, "users_audit");
+        assert_eq!(trigger.timing, TriggerTiming::After);
+        assert_eq!(trigger.events, vec![TriggerEvent::Insert]);
+    }
+
+    #[test]
+    fn parses_temporary_trigger() {
+        let sql = "CREATE TEMPORARY TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END";
+        let trigger = parse_sqlite_trigger("users_audit", sql).unwrap();
+
+        assert_eq!(trigger.name, "users_audit");
+        assert_eq!(trigger.timing, TriggerTiming::After);
+        assert_eq!(trigger.events, vec![TriggerEvent::Insert]);
+    }
+
+    #[test]
+    fn parses_temp_trigger_if_not_exists_with_quoted_name() {
+        let sql = r#"CREATE TEMP TRIGGER IF NOT EXISTS "user audit" AFTER UPDATE ON users BEGIN SELECT 1; END"#;
+        let trigger = parse_sqlite_trigger("user audit", sql).unwrap();
+
+        assert_eq!(trigger.name, "user audit");
+        assert_eq!(trigger.timing, TriggerTiming::After);
+        assert_eq!(trigger.events, vec![TriggerEvent::Update]);
     }
 }
