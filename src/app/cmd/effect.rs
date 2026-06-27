@@ -153,7 +153,13 @@ pub enum Effect {
         settings: AppSettings,
     },
 
-    FetchSqliteDiagnostics {
+    FetchSqliteDiagnosticsCore {
+        dsn: String,
+        run_id: u64,
+        read_only: bool,
+    },
+
+    FetchSqliteDiagnosticsQuickCheck {
         dsn: String,
         run_id: u64,
         read_only: bool,

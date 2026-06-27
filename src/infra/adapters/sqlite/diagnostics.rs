@@ -7,7 +7,7 @@ use super::SqliteAdapter;
 
 #[async_trait]
 impl SqliteDiagnosticsProvider for SqliteAdapter {
-    async fn fetch_diagnostics(
+    async fn fetch_diagnostics_core(
         &self,
         dsn: &str,
         read_only: bool,
@@ -38,14 +38,6 @@ impl SqliteDiagnosticsProvider for SqliteAdapter {
             database_list_field,
         )
         .await;
-        let quick_check = fetch_field(
-            self,
-            dsn,
-            read_only,
-            "PRAGMA quick_check;",
-            quick_check_field,
-        )
-        .await;
 
         Ok(SqliteDiagnosticsSnapshot {
             db_file,
@@ -55,8 +47,23 @@ impl SqliteDiagnosticsProvider for SqliteAdapter {
             query_only,
             busy_timeout,
             database_list,
-            quick_check,
+            quick_check: DiagnosticField::default(),
         })
+    }
+
+    async fn fetch_quick_check(
+        &self,
+        dsn: &str,
+        read_only: bool,
+    ) -> Result<DiagnosticField, DbOperationError> {
+        Ok(fetch_field(
+            self,
+            dsn,
+            read_only,
+            "PRAGMA quick_check;",
+            quick_check_field,
+        )
+        .await)
     }
 }
 
@@ -155,13 +162,18 @@ fn format_database_list_row(row: &[String]) -> String {
 mod tests {
     use super::*;
     use crate::adapters::test_support::make_sqlite_db;
+    use crate::domain::{QueryResult, QuerySource};
+
+    fn empty_query_result() -> QueryResult {
+        QueryResult::success(String::new(), vec![], vec![], 0, QuerySource::Adhoc)
+    }
 
     #[tokio::test]
-    async fn fetch_diagnostics_reports_core_pragmas_and_quick_check() {
+    async fn fetch_diagnostics_core_reports_pragmas_without_quick_check() {
         let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let adapter = SqliteAdapter::new();
 
-        let snapshot = adapter.fetch_diagnostics(&dsn, true).await.unwrap();
+        let snapshot = adapter.fetch_diagnostics_core(&dsn, true).await.unwrap();
 
         assert!(snapshot.db_file.is_ok());
         assert!(snapshot.sqlite_version.is_ok());
@@ -170,19 +182,51 @@ mod tests {
         assert!(snapshot.query_only.is_ok());
         assert!(snapshot.busy_timeout.is_ok());
         assert!(snapshot.database_list.is_ok());
-        assert!(snapshot.quick_check.is_ok());
-        assert!(snapshot.quick_check_is_ok().unwrap());
+        assert_eq!(snapshot.quick_check.value, None);
     }
 
     #[tokio::test]
-    async fn partial_failure_does_not_abort_snapshot() {
-        let (_dir, dsn) = make_sqlite_db("");
+    async fn fetch_quick_check_reports_integrity_summary() {
+        let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let adapter = SqliteAdapter::new();
 
-        let snapshot = adapter.fetch_diagnostics(&dsn, true).await.unwrap();
+        let quick_check = adapter.fetch_quick_check(&dsn, true).await.unwrap();
 
-        assert!(snapshot.db_file.is_ok());
-        assert!(snapshot.sqlite_version.is_ok());
+        assert!(quick_check.is_ok());
+        assert!(
+            quick_check
+                .value
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case("ok"))
+        );
+    }
+
+    #[test]
+    fn scalar_field_maps_query_failure_to_error() {
+        let field = scalar_field(Err(DbOperationError::QueryFailed("boom".to_string())));
+
+        assert!(field.error.is_some());
+    }
+
+    #[test]
+    fn scalar_field_maps_empty_rows_to_error() {
+        let field = scalar_field(Ok(empty_query_result()));
+
+        assert_eq!(field.error.as_deref(), Some("empty result"));
+    }
+
+    #[test]
+    fn quick_check_field_maps_empty_rows_to_error() {
+        let field = quick_check_field(Ok(empty_query_result()));
+
+        assert_eq!(field.error.as_deref(), Some("quick_check: empty result"));
+    }
+
+    #[test]
+    fn database_list_field_maps_empty_rows_to_error() {
+        let field = database_list_field(Ok(empty_query_result()));
+
+        assert_eq!(field.error.as_deref(), Some("database_list: empty result"));
     }
 
     #[test]

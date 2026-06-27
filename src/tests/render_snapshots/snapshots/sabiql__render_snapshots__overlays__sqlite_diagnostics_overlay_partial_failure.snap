@@ -18,13 +18,13 @@ test_project | test_db | - | connected | local
 │                        │                                                                                                                 │                        │
 │                        │SQLite version: 3.45.0                                                                                           │                        │
 │                        │                                                                                                                 │                        │
-│                        │Foreign keys: (failed: timeout)                                                                                  │                        │
+│                        │Effective foreign keys: (failed: timeout)                                                                        │                        │
 │                        │                                                                                                                 │                        │
 │                        │Journal mode: delete                                                                                             │                        │
 │                        │                                                                                                                 │                        │
-│                        │Query only: on                                                                                                   │                        │
+│                        │Effective query only: on                                                                                         │                        │
 │                        │                                                                                                                 │                        │
-│                        │Busy timeout (ms): 5000                                                                                          │                        │
+│                        │Effective busy timeout (ms): 5000                                                                                │                        │
 │                        │                                                                                                                 │                        │
 │                        │Attached databases: 0: main @ /tmp/app.db                                                                        │────────────────────────┘
 │                        │                                                                                                                 │────────────────────────┐
@@ -51,4 +51,4 @@ test_project | test_db | - | connected | local
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-↑↓:Scroll  Esc:Close
+↑↓:Scroll  ?:Help  Esc:Close

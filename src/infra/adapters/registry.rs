@@ -7,8 +7,8 @@ use crate::app::ports::outbound::{
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
-    DatabaseMetadata, QueryResult, QueryValue, SqliteDiagnosticsSnapshot, Table, TableSignature,
-    WriteExecutionResult,
+    DatabaseMetadata, DiagnosticField, QueryResult, QueryValue, SqliteDiagnosticsSnapshot, Table,
+    TableSignature, WriteExecutionResult,
 };
 use async_trait::async_trait;
 
@@ -486,7 +486,7 @@ mod tests {
 
 #[async_trait]
 impl SqliteDiagnosticsProvider for DbAdapterRegistry {
-    async fn fetch_diagnostics(
+    async fn fetch_diagnostics_core(
         &self,
         dsn: &str,
         read_only: bool,
@@ -495,7 +495,20 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
             DatabaseType::PostgreSQL => Err(DbOperationError::ConnectionFailed(
                 "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
             )),
-            DatabaseType::SQLite => self.sqlite.fetch_diagnostics(dsn, read_only).await,
+            DatabaseType::SQLite => self.sqlite.fetch_diagnostics_core(dsn, read_only).await,
+        }
+    }
+
+    async fn fetch_quick_check(
+        &self,
+        dsn: &str,
+        read_only: bool,
+    ) -> Result<DiagnosticField, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL => Err(DbOperationError::ConnectionFailed(
+                "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
+            )),
+            DatabaseType::SQLite => self.sqlite.fetch_quick_check(dsn, read_only).await,
         }
     }
 }
@@ -509,7 +522,7 @@ mod sqlite_diagnostics_registry {
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let result = registry
-            .fetch_diagnostics("postgres://localhost/db", true)
+            .fetch_diagnostics_core("postgres://localhost/db", true)
             .await;
 
         assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));

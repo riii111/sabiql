@@ -82,7 +82,11 @@ impl SqliteDiagnosticsOverlay {
             };
         };
 
-        let lines = build_render_lines(snapshot, theme);
+        let quick_check_override = state
+            .sqlite_diagnostics
+            .is_quick_check_pending()
+            .then_some("Running...");
+        let lines = build_render_lines(snapshot, theme, quick_check_override);
         let content_line_count = wrapped_content_line_count(&lines, viewport_width) as usize;
         let scroll = state
             .sqlite_diagnostics
@@ -106,6 +110,7 @@ impl SqliteDiagnosticsOverlay {
 pub fn build_render_lines(
     snapshot: &SqliteDiagnosticsSnapshot,
     theme: &ThemePalette,
+    quick_check_override: Option<&str>,
 ) -> Vec<Line<'static>> {
     let label_style = Style::default()
         .fg(theme.semantic.text.primary)
@@ -113,12 +118,23 @@ pub fn build_render_lines(
 
     let mut lines = vec![Line::raw("")];
     for row in display_rows(snapshot) {
+        let value = if row.kind == DiagnosticFieldKind::QuickCheck {
+            quick_check_override.unwrap_or(&row.value)
+        } else {
+            &row.value
+        };
+        let value_style =
+            if row.kind == DiagnosticFieldKind::QuickCheck && quick_check_override.is_some() {
+                Style::default().fg(theme.semantic.status.warning)
+            } else {
+                field_style(row.kind, snapshot, theme)
+            };
         append_field_lines(
             &mut lines,
             row.kind.label(),
-            &row.value,
+            value,
             label_style,
-            field_style(row.kind, snapshot, theme),
+            value_style,
         );
     }
     lines
@@ -229,7 +245,7 @@ mod tests {
             ..Default::default()
         };
         let theme = palette_for(ThemeId::Default);
-        let lines = build_render_lines(&snapshot, theme);
+        let lines = build_render_lines(&snapshot, theme, None);
 
         assert!(lines.iter().any(|line| {
             line.spans
@@ -252,7 +268,7 @@ mod tests {
             ..Default::default()
         };
         let theme = palette_for(ThemeId::Default);
-        let lines = build_render_lines(&snapshot, theme);
+        let lines = build_render_lines(&snapshot, theme, None);
         let logical_lines = lines.len();
         let wrapped_lines = wrapped_content_line_count(&lines, 24) as usize;
 

@@ -25,18 +25,26 @@ pub(super) fn reduce_sqlite_diagnostics(
             };
             let run_id = state.sqlite_diagnostics.begin_fetch();
             state.modal.set_mode(InputMode::SqliteDiagnostics);
-            DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnostics {
-                dsn,
-                run_id,
-                read_only: state.session.is_read_only(),
-            }])
+            let read_only = state.session.is_read_only();
+            DispatchResult::handled_with(vec![
+                Effect::FetchSqliteDiagnosticsCore {
+                    dsn: dsn.clone(),
+                    run_id,
+                    read_only,
+                },
+                Effect::FetchSqliteDiagnosticsQuickCheck {
+                    dsn,
+                    run_id,
+                    read_only,
+                },
+            ])
         }
         Action::CloseModal(ModalKind::SqliteDiagnostics) => {
             state.sqlite_diagnostics.clear();
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
-        Action::SqliteDiagnosticsLoaded {
+        Action::SqliteDiagnosticsCoreLoaded {
             dsn,
             run_id,
             snapshot,
@@ -47,7 +55,21 @@ pub(super) fn reduce_sqlite_diagnostics(
             }
             state
                 .sqlite_diagnostics
-                .set_loaded(*run_id, snapshot.as_ref().clone());
+                .set_core_loaded(*run_id, snapshot.as_ref().clone());
+            DispatchResult::handled()
+        }
+        Action::SqliteDiagnosticsQuickCheckLoaded {
+            dsn,
+            run_id,
+            quick_check,
+        } => {
+            if !state.session.dsn_matches(dsn) || !state.sqlite_diagnostics.is_current_run(*run_id)
+            {
+                return DispatchResult::handled();
+            }
+            state
+                .sqlite_diagnostics
+                .set_quick_check_loaded(*run_id, quick_check.clone());
             DispatchResult::handled()
         }
         Action::Scroll {
@@ -78,7 +100,7 @@ mod tests {
     use crate::update::test_support::activate_sqlite_connection;
 
     #[test]
-    fn open_starts_fetch_for_sqlite_connection() {
+    fn open_starts_split_fetch_for_sqlite_connection() {
         let mut state = AppState::new("test".to_string());
         activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
 
@@ -90,9 +112,14 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.input_mode(), InputMode::SqliteDiagnostics);
+        assert_eq!(effects.len(), 2);
         assert!(matches!(
-            effects.first(),
-            Some(Effect::FetchSqliteDiagnostics { .. })
+            effects[0],
+            Effect::FetchSqliteDiagnosticsCore { .. }
+        ));
+        assert!(matches!(
+            effects[1],
+            Effect::FetchSqliteDiagnosticsQuickCheck { .. }
         ));
     }
 
@@ -118,26 +145,26 @@ mod tests {
     }
 
     #[test]
-    fn loaded_snapshot_ignores_stale_run_id() {
+    fn quick_check_loaded_ignores_stale_run_id() {
         let mut state = AppState::new("test".to_string());
         activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
         let run_id = state.sqlite_diagnostics.begin_fetch();
+        state
+            .sqlite_diagnostics
+            .set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
 
         reduce_sqlite_diagnostics(
             &mut state,
-            &Action::SqliteDiagnosticsLoaded {
+            &Action::SqliteDiagnosticsQuickCheckLoaded {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: run_id + 1,
-                snapshot: Box::new(SqliteDiagnosticsSnapshot {
-                    sqlite_version: DiagnosticField::ok("9.9.9"),
-                    ..Default::default()
-                }),
+                quick_check: DiagnosticField::ok("ok"),
             },
             Instant::now(),
         )
         .unwrap();
 
-        assert!(state.sqlite_diagnostics.snapshot().is_none());
+        assert!(state.sqlite_diagnostics.is_quick_check_pending());
     }
 
     #[test]

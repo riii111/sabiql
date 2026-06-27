@@ -17,7 +17,9 @@ use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
-use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Table};
+use crate::domain::{
+    ConnectionId, DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table,
+};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
@@ -343,10 +345,15 @@ pub enum Action {
     RequestEditSelectedConnection,
 
     // SQLite diagnostics
-    SqliteDiagnosticsLoaded {
+    SqliteDiagnosticsCoreLoaded {
         dsn: String,
         run_id: u64,
         snapshot: Box<SqliteDiagnosticsSnapshot>,
+    },
+    SqliteDiagnosticsQuickCheckLoaded {
+        dsn: String,
+        run_id: u64,
+        quick_check: DiagnosticField,
     },
 
     // Settings

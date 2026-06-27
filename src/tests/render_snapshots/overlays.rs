@@ -898,3 +898,62 @@ fn sqlite_diagnostics_overlay_partial_failure() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn sqlite_diagnostics_overlay_quick_check_pending() {
+    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    let run_id = state.sqlite_diagnostics.begin_fetch();
+    state.sqlite_diagnostics.set_core_loaded(
+        run_id,
+        SqliteDiagnosticsSnapshot {
+            db_file: DiagnosticField::ok("/tmp/app.db"),
+            sqlite_version: DiagnosticField::ok("3.45.0"),
+            foreign_keys: DiagnosticField::ok("on"),
+            journal_mode: DiagnosticField::ok("wal"),
+            query_only: DiagnosticField::ok("off"),
+            busy_timeout: DiagnosticField::ok("5000"),
+            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
+            ..Default::default()
+        },
+    );
+    state.modal.set_mode(InputMode::SqliteDiagnostics);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sqlite_diagnostics_overlay_wrapped_scroll() {
+    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal_sized(50, 24);
+
+    let run_id = state.sqlite_diagnostics.begin_fetch();
+    state.sqlite_diagnostics.set_loaded(
+        run_id,
+        SqliteDiagnosticsSnapshot {
+            db_file: DiagnosticField::ok(
+                "/tmp/very/long/database/path/that/will/wrap/in/a/narrow/viewport/app.db",
+            ),
+            sqlite_version: DiagnosticField::ok("3.45.0"),
+            foreign_keys: DiagnosticField::ok("on"),
+            journal_mode: DiagnosticField::ok("wal"),
+            query_only: DiagnosticField::ok("off"),
+            busy_timeout: DiagnosticField::ok("5000"),
+            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
+            quick_check: DiagnosticField::ok("ok"),
+        },
+    );
+    state.sqlite_diagnostics.set_scroll_offset(8);
+    state.modal.set_mode(InputMode::SqliteDiagnostics);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}

@@ -201,4 +201,15 @@ mod tests {
             assert!(matches!(result, Action::None));
         }
     }
+
+    mod sqlite_diagnostics_keys {
+        use super::*;
+
+        #[test]
+        fn question_mark_toggles_help() {
+            let result = handle_sqlite_diagnostics_keys(combo(Key::Char('?')));
+
+            assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
+        }
+    }
 }

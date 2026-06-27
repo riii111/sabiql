@@ -1,15 +1,16 @@
-use crate::domain::SqliteDiagnosticsSnapshot;
+use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 enum LoadState {
     #[default]
     Idle,
-    Loading {
+    LoadingCore {
         run_id: u64,
     },
     Loaded {
         run_id: u64,
         snapshot: Box<SqliteDiagnosticsSnapshot>,
+        quick_check_pending: bool,
     },
 }
 
@@ -30,10 +31,10 @@ impl DiagnosticFieldKind {
         match self {
             Self::DbFile => "Database file",
             Self::SqliteVersion => "SQLite version",
-            Self::ForeignKeys => "Foreign keys",
+            Self::ForeignKeys => "Effective foreign keys",
             Self::JournalMode => "Journal mode",
-            Self::QueryOnly => "Query only",
-            Self::BusyTimeout => "Busy timeout (ms)",
+            Self::QueryOnly => "Effective query only",
+            Self::BusyTimeout => "Effective busy timeout (ms)",
             Self::DatabaseList => "Attached databases",
             Self::QuickCheck => "Quick check",
         }
@@ -59,7 +60,7 @@ impl SqliteDiagnosticsState {
     pub fn begin_fetch(&mut self) -> u64 {
         self.next_run_id = self.next_run_id.wrapping_add(1);
         let run_id = self.next_run_id;
-        self.load_state = LoadState::Loading { run_id };
+        self.load_state = LoadState::LoadingCore { run_id };
         self.scroll_offset = 0;
         self.content_line_count = None;
         self.visible_rows = None;
@@ -67,24 +68,60 @@ impl SqliteDiagnosticsState {
     }
 
     pub fn is_loading(&self) -> bool {
-        matches!(self.load_state, LoadState::Loading { .. })
+        matches!(self.load_state, LoadState::LoadingCore { .. })
+    }
+
+    pub fn is_quick_check_pending(&self) -> bool {
+        matches!(
+            self.load_state,
+            LoadState::Loaded {
+                quick_check_pending: true,
+                ..
+            }
+        )
     }
 
     pub fn is_current_run(&self, run_id: u64) -> bool {
         match &self.load_state {
             LoadState::Idle => false,
-            LoadState::Loading { run_id: current }
+            LoadState::LoadingCore { run_id: current }
             | LoadState::Loaded {
                 run_id: current, ..
             } => *current == run_id,
         }
     }
 
-    pub fn set_loaded(&mut self, run_id: u64, snapshot: SqliteDiagnosticsSnapshot) {
+    pub fn set_core_loaded(&mut self, run_id: u64, snapshot: SqliteDiagnosticsSnapshot) {
         if self.is_current_run(run_id) {
             self.load_state = LoadState::Loaded {
                 run_id,
                 snapshot: Box::new(snapshot),
+                quick_check_pending: true,
+            };
+        }
+    }
+
+    pub fn set_quick_check_loaded(&mut self, run_id: u64, quick_check: DiagnosticField) {
+        if !self.is_current_run(run_id) {
+            return;
+        }
+        if let LoadState::Loaded {
+            snapshot,
+            quick_check_pending,
+            ..
+        } = &mut self.load_state
+        {
+            snapshot.quick_check = quick_check;
+            *quick_check_pending = false;
+        }
+    }
+
+    pub fn set_loaded(&mut self, run_id: u64, snapshot: SqliteDiagnosticsSnapshot) {
+        if self.is_current_run(run_id) || matches!(self.load_state, LoadState::Idle) {
+            self.load_state = LoadState::Loaded {
+                run_id,
+                snapshot: Box::new(snapshot),
+                quick_check_pending: false,
             };
         }
     }
@@ -92,7 +129,7 @@ impl SqliteDiagnosticsState {
     pub fn snapshot(&self) -> Option<&SqliteDiagnosticsSnapshot> {
         match &self.load_state {
             LoadState::Loaded { snapshot, .. } => Some(snapshot),
-            LoadState::Idle | LoadState::Loading { .. } => None,
+            LoadState::Idle | LoadState::LoadingCore { .. } => None,
         }
     }
 
@@ -128,6 +165,10 @@ impl SqliteDiagnosticsState {
         self.content_line_count = Some(content_line_count);
         self.visible_rows = Some(visible_rows);
         self.scroll_offset = self.scroll_offset.min(self.max_scroll());
+    }
+
+    pub fn set_scroll_offset(&mut self, offset: usize) {
+        self.scroll_offset = offset;
     }
 }
 
@@ -209,6 +250,32 @@ mod tests {
             state.snapshot().unwrap().sqlite_version.value.as_deref(),
             Some("3.45.0")
         );
+    }
+
+    #[test]
+    fn core_loaded_marks_quick_check_pending() {
+        let mut state = SqliteDiagnosticsState::default();
+        let run_id = state.begin_fetch();
+        state.set_core_loaded(
+            run_id,
+            SqliteDiagnosticsSnapshot {
+                sqlite_version: DiagnosticField::ok("3.45.0"),
+                ..Default::default()
+            },
+        );
+
+        assert!(!state.is_loading());
+        assert!(state.is_quick_check_pending());
+    }
+
+    #[test]
+    fn quick_check_loaded_clears_pending_flag() {
+        let mut state = SqliteDiagnosticsState::default();
+        let run_id = state.begin_fetch();
+        state.set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
+        state.set_quick_check_loaded(run_id, DiagnosticField::ok("ok"));
+
+        assert!(!state.is_quick_check_pending());
     }
 
     #[test]

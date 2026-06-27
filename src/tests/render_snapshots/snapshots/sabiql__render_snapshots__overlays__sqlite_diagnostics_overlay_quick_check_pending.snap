@@ -14,21 +14,21 @@ test_project | test_db | - | connected | local
 │                                       ││                                                                                                                          │
 │                        ╭ SQLite Diagnostics ─────────────────────────────────────────────────────────────────────────────────────────────╮                        │
 │                        │                                                                                                                 │                        │
-│                        │Loading diagnostics...                                                                                           │                        │
+│                        │Database file: /tmp/app.db                                                                                       │                        │
 │                        │                                                                                                                 │                        │
+│                        │SQLite version: 3.45.0                                                                                           │                        │
 │                        │                                                                                                                 │                        │
+│                        │Effective foreign keys: on                                                                                       │                        │
 │                        │                                                                                                                 │                        │
+│                        │Journal mode: wal                                                                                                │                        │
 │                        │                                                                                                                 │                        │
+│                        │Effective query only: off                                                                                        │                        │
 │                        │                                                                                                                 │                        │
+│                        │Effective busy timeout (ms): 5000                                                                                │                        │
 │                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │────────────────────────┘
+│                        │Attached databases: 0: main @ /tmp/app.db                                                                        │────────────────────────┘
 │                        │                                                                                                                 │────────────────────────┐
-│                        │                                                                                                                 │                        │
+│                        │Quick check: Running...                                                                                          │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │

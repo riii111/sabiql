@@ -10,7 +10,9 @@ use crate::cmd::runner::{
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::query_history::QueryHistoryEntry;
-use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};
+use crate::domain::{
+    ConnectionId, DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource,
+};
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder,
@@ -117,12 +119,20 @@ impl SettingsStore for NoopSettingsStore {
 pub struct NoopSqliteDiagnosticsProvider;
 #[async_trait::async_trait]
 impl SqliteDiagnosticsProvider for NoopSqliteDiagnosticsProvider {
-    async fn fetch_diagnostics(
+    async fn fetch_diagnostics_core(
         &self,
         _dsn: &str,
         _read_only: bool,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
         Ok(SqliteDiagnosticsSnapshot::default())
+    }
+
+    async fn fetch_quick_check(
+        &self,
+        _dsn: &str,
+        _read_only: bool,
+    ) -> Result<DiagnosticField, DbOperationError> {
+        Ok(DiagnosticField::default())
     }
 }
 

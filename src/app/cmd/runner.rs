@@ -244,7 +244,8 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
-            e @ Effect::FetchSqliteDiagnostics { .. } => {
+            e @ (Effect::FetchSqliteDiagnosticsCore { .. }
+            | Effect::FetchSqliteDiagnosticsQuickCheck { .. }) => {
                 crate::cmd::sqlite_diagnostics::run(
                     e,
                     &self.action_tx,

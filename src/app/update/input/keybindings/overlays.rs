@@ -1452,7 +1452,20 @@ pub mod sqlite_diagnostics {
             },
         ],
     };
+    pub const HELP: ModeRow = ModeRow {
+        key_short: "?",
+        key: "?",
+        desc_short: "Help",
+        description: "Toggle help",
+        bindings: &[ExecBinding {
+            action: Action::ToggleModal(ModalKind::Help),
+            combos: &[KeyCombo::plain(Key::Char('?'))],
+        }],
+    };
 }
 
-pub const SQLITE_DIAGNOSTICS_ROWS: &[ModeRow] =
-    &[sqlite_diagnostics::SCROLL, sqlite_diagnostics::ESC_CLOSE];
+pub const SQLITE_DIAGNOSTICS_ROWS: &[ModeRow] = &[
+    sqlite_diagnostics::SCROLL,
+    sqlite_diagnostics::HELP,
+    sqlite_diagnostics::ESC_CLOSE,
+];
