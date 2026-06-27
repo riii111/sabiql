@@ -5,7 +5,6 @@ mod name;
 mod profile;
 mod service_entry;
 mod sqlite_path;
-mod sqlite_startup;
 mod ssl_mode;
 
 pub use config::{
@@ -20,5 +19,4 @@ pub use sqlite_path::{
     SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
     sqlite_path_from_dsn,
 };
-pub use sqlite_startup::{SqliteStartupError, SqliteStartupTarget};
 pub use ssl_mode::SslMode;

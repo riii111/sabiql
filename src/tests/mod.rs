@@ -37,9 +37,9 @@ fn database_positional_does_not_conflict_with_update_subcommand() {
 mod cli_sqlite_startup {
     use std::fs;
 
+    use sabiql_app::cmd::cli_sqlite::resolve_cli_sqlite_target;
+    use sabiql_infra::adapters::FsSqlitePathValidator;
     use tempfile::tempdir;
-
-    use crate::resolve_cli_sqlite_target;
 
     #[test]
     fn resolves_existing_sqlite_file() {
@@ -47,7 +47,8 @@ mod cli_sqlite_startup {
         let path = dir.path().join("app.db");
         fs::write(&path, b"").unwrap();
 
-        let target = resolve_cli_sqlite_target(path.to_str().unwrap()).unwrap();
+        let target =
+            resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap();
 
         assert_eq!(target.path(), path.to_str().unwrap());
         assert_eq!(target.dsn(), format!("sqlite://{}", path.display()));
@@ -58,7 +59,8 @@ mod cli_sqlite_startup {
         let dir = tempdir().unwrap();
         let path = dir.path().join("missing.db");
 
-        let error = resolve_cli_sqlite_target(path.to_str().unwrap()).unwrap_err();
+        let error =
+            resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap_err();
 
         assert!(error.to_string().contains("not found"));
     }

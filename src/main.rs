@@ -22,18 +22,17 @@ mod tests;
 mod render_snapshots;
 
 use sabiql_app::cmd::cache::TtlCache;
+use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
 use sabiql_app::cmd::runner::{
     ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
 };
-use sabiql_app::domain::{ConnectionId, DatabaseType, SqliteStartupError, SqliteStartupTarget};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError, SettingsStore,
-    SqlitePathValidator,
 };
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
@@ -93,7 +92,10 @@ async fn main() -> Result<()> {
     }
 
     let cli_sqlite = match args.database {
-        Some(database) => Some(resolve_cli_sqlite_target(&database)?),
+        Some(database) => Some(
+            resolve_cli_sqlite_target(&database, &FsSqlitePathValidator)
+                .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?,
+        ),
         None => None,
     };
 
@@ -520,29 +522,6 @@ async fn drain_and_process_terminal_events(
     }
 
     Ok(())
-}
-
-pub(crate) fn resolve_cli_sqlite_target(database: &str) -> Result<SqliteStartupTarget> {
-    let target = SqliteStartupTarget::from_cli_input(database)
-        .map_err(|error: SqliteStartupError| color_eyre::eyre::eyre!(error.to_string()))?;
-    let path = target
-        .path_for_validation()
-        .to_str()
-        .ok_or_else(|| color_eyre::eyre::eyre!("invalid SQLite path"))?;
-    FsSqlitePathValidator
-        .validate_database_path(path)
-        .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
-    Ok(target)
-}
-
-fn activate_cli_sqlite_connection(state: &mut AppState, target: &SqliteStartupTarget) {
-    state.session.activate_connection_with_dsn(
-        &ConnectionId::ephemeral_cli(),
-        &target.display_name(),
-        DatabaseType::SQLite,
-        &target.dsn(),
-    );
-    state.modal.set_mode(InputMode::Normal);
 }
 
 fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntryReader>) {

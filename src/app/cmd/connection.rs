@@ -536,9 +536,7 @@ mod tests {
                     dsn_builder: Arc::new(NoopDsnBuilder),
                     connection_store: Arc::new(mock_store),
                     pg_service_entry_reader: None,
-                    sqlite_path_validator: Arc::new(
-                        crate::cmd::test_support::TestFsSqlitePathValidator,
-                    ),
+                    sqlite_path_validator: Arc::new(TestFsSqlitePathValidator),
                 },
                 QueryDeps {
                     query_executor: Arc::new(MockQueryExecutor::new()),
