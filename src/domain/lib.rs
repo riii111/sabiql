@@ -33,5 +33,7 @@ pub use write_result::WriteExecutionResult;
 
 pub use connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
-    PostgresConnectionConfig, SqliteConnectionConfig, SslMode,
+    PostgresConnectionConfig, SqliteConnectionConfig, SqlitePathError, SqliteStartupError,
+    SqliteStartupTarget, SslMode, classify_sqlite_metadata_error, classify_sqlite_read_error,
+    sqlite_path_from_dsn,
 };
