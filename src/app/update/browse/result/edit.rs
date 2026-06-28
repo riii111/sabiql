@@ -1,9 +1,9 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::QueryValue;
 #[cfg(test)]
-use crate::domain::{Column, ColumnAttributes};
+use crate::domain::ColumnAttributes;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::write::write_update::build_pk_pairs;
@@ -149,6 +149,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
+    use crate::test_support::column::with_attributes;
     use crate::update::action::CursorMove;
     use rstest::rstest;
     use std::sync::Arc;
@@ -288,22 +289,18 @@ mod tests {
             let mut state = preview_state_with_selection();
             let mut table = minimal_users_table();
             table.columns = vec![
-                Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::PRIMARY_KEY,
-                    comment: None,
-                    ordinal_position: 1,
-                },
-                Column {
-                    name: "name".to_string(),
-                    data_type: "text".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                    comment: None,
-                    ordinal_position: 2,
-                },
+                with_attributes(
+                    "id".to_string(),
+                    "integer".to_string(),
+                    ColumnAttributes::PRIMARY_KEY,
+                    1,
+                ),
+                with_attributes(
+                    "name".to_string(),
+                    "text".to_string(),
+                    ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
+                    2,
+                ),
             ];
             state.session.set_table_detail_raw(Some(table));
 
@@ -365,7 +362,6 @@ mod tests {
     mod jsonb_dispatch {
         use super::*;
         use crate::domain::DatabaseType;
-        use crate::domain::column::Column;
         use crate::domain::connection::ConnectionId;
 
         fn state_with_jsonb_column() -> AppState {
@@ -378,22 +374,18 @@ mod tests {
             );
             let mut table = cell_edit_entry_guardrails::minimal_users_table();
             table.columns = vec![
-                Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
-                },
-                Column {
-                    name: "name".to_string(),
-                    data_type: "jsonb".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 2,
-                },
+                with_attributes(
+                    "id".to_string(),
+                    "integer".to_string(),
+                    ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                    1,
+                ),
+                with_attributes(
+                    "name".to_string(),
+                    "jsonb".to_string(),
+                    ColumnAttributes::NULLABLE,
+                    2,
+                ),
             ];
             state.session.set_table_detail_raw(Some(table));
             state

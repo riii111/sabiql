@@ -308,17 +308,7 @@ impl BrowseSession {
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn reset(&mut self, query: &mut QueryExecution) {
-        self.metadata = None;
-        self.table_detail = None;
-        self.selected_table_key = None;
-        self.selection_generation = 0;
-        self.connection_state = ConnectionState::default();
-        self.metadata_state = MetadataState::default();
-        self.metadata_run.clear_active();
-        self.table_detail_run.clear_active();
-        self.clear_connection();
-        self.read_only = false;
-        self.is_reloading = false;
+        *self = Self::default();
         query.pagination.reset();
         query.clear_current_result();
         query.restore_history(ResultHistory::default());

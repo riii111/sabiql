@@ -352,9 +352,9 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::column::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
     use crate::services::AppServices;
+    use crate::test_support::column::with_attributes;
     use std::sync::Arc;
 
     fn jsonb_table() -> Table {
@@ -362,22 +362,18 @@ mod tests {
             schema: "public".to_string(),
             name: "users".to_string(),
             columns: vec![
-                Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
-                },
-                Column {
-                    name: "settings".to_string(),
-                    data_type: "jsonb".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 2,
-                },
+                with_attributes(
+                    "id".to_string(),
+                    "integer".to_string(),
+                    ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                    1,
+                ),
+                with_attributes(
+                    "settings".to_string(),
+                    "jsonb".to_string(),
+                    ColumnAttributes::NULLABLE,
+                    2,
+                ),
             ],
             primary_key: Some(vec!["id".to_string()]),
             ..crate::test_support::table::minimal("", "")
@@ -635,22 +631,18 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             state.session.set_table_detail_raw(Some(Table {
                 columns: vec![
-                    Column {
-                        name: "id".to_string(),
-                        data_type: "integer".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        comment: None,
-                        ordinal_position: 1,
-                    },
-                    Column {
-                        name: "settings".to_string(),
-                        data_type: "jsonb".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
+                    with_attributes(
+                        "id".to_string(),
+                        "integer".to_string(),
+                        ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                        1,
+                    ),
+                    with_attributes(
+                        "settings".to_string(),
+                        "jsonb".to_string(),
+                        ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
+                        2,
+                    ),
                 ],
                 ..jsonb_table()
             }));
@@ -671,22 +663,18 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             state.session.set_table_detail_raw(Some(Table {
                 columns: vec![
-                    Column {
-                        name: "id".to_string(),
-                        data_type: "integer".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        comment: None,
-                        ordinal_position: 1,
-                    },
-                    Column {
-                        name: "settings".to_string(),
-                        data_type: "jsonb".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
+                    with_attributes(
+                        "id".to_string(),
+                        "integer".to_string(),
+                        ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                        1,
+                    ),
+                    with_attributes(
+                        "settings".to_string(),
+                        "jsonb".to_string(),
+                        ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
+                        2,
+                    ),
                 ],
                 ..jsonb_table()
             }));

@@ -95,7 +95,8 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, QueryResult, QuerySource, Table};
+    use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::test_support::column::with_attributes;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -129,14 +130,12 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                columns: vec![Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
-                }],
+                columns: vec![with_attributes(
+                    "id".to_string(),
+                    "integer".to_string(),
+                    ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                    1,
+                )],
                 primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
                 ..crate::test_support::table::minimal("", "")
             }));
