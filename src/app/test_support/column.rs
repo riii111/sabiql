@@ -17,14 +17,11 @@ pub fn test_nullable_column(
     data_type: impl Into<String>,
     ordinal_position: i32,
 ) -> Column {
-    Column {
-        name: name.into(),
-        data_type: data_type.into(),
-        attributes: ColumnAttributes::NULLABLE,
-        ordinal_position,
-        default: None,
-        comment: None,
-    }
+    let mut column = default_column();
+    column.name = name.into();
+    column.data_type = data_type.into();
+    column.ordinal_position = ordinal_position;
+    column
 }
 
 #[must_use]

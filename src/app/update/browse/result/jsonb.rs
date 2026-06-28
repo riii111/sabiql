@@ -375,6 +375,17 @@ mod tests {
         }
     }
 
+    fn read_only_jsonb_table() -> Table {
+        let mut table = jsonb_table();
+        table.columns[1] = column_fixture(|c| {
+            c.name = "settings".into();
+            c.data_type = "jsonb".into();
+            c.ordinal_position = 2;
+            c.attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
+        });
+        table
+    }
+
     fn state_with_jsonb_cell() -> AppState {
         state_with_jsonb_value(r#"{"theme":"dark","count":5}"#)
     }
@@ -624,24 +635,9 @@ mod tests {
         #[test]
         fn enter_edit_blocks_read_only_column() {
             let mut state = state_with_jsonb_cell();
-            state.session.set_table_detail_raw(Some({
-                let mut table = jsonb_table();
-                table.columns = vec![
-                    column_fixture(|c| {
-                        c.name = "id".into();
-                        c.data_type = "integer".into();
-                        c.ordinal_position = 1;
-                        c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
-                    }),
-                    column_fixture(|c| {
-                        c.name = "settings".into();
-                        c.data_type = "jsonb".into();
-                        c.ordinal_position = 2;
-                        c.attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
-                    }),
-                ];
-                table
-            }));
+            state
+                .session
+                .set_table_detail_raw(Some(read_only_jsonb_table()));
             open_detail(&mut state);
 
             reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
@@ -657,24 +653,9 @@ mod tests {
         #[test]
         fn append_insert_blocks_read_only_column() {
             let mut state = state_with_jsonb_cell();
-            state.session.set_table_detail_raw(Some({
-                let mut table = jsonb_table();
-                table.columns = vec![
-                    column_fixture(|c| {
-                        c.name = "id".into();
-                        c.data_type = "integer".into();
-                        c.ordinal_position = 1;
-                        c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
-                    }),
-                    column_fixture(|c| {
-                        c.name = "settings".into();
-                        c.data_type = "jsonb".into();
-                        c.ordinal_position = 2;
-                        c.attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
-                    }),
-                ];
-                table
-            }));
+            state
+                .session
+                .set_table_detail_raw(Some(read_only_jsonb_table()));
             open_detail(&mut state);
 
             reduce_jsonb(&mut state, &Action::JsonbAppendInsert, Instant::now());
