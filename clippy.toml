@@ -2,6 +2,7 @@ msrv = "1.96"
 allow-dbg-in-tests = true
 too-many-arguments-threshold = 8
 absolute-paths-max-segments = 5
+# Allow std and third-party crate roots; keep workspace-internal paths linted.
 absolute-paths-allowed-crates = [
     "alloc",
     "arboard",
