@@ -10,9 +10,6 @@ repository.workspace = true
 [lib]
 path = "lib.rs"
 
-[features]
-test-support = []
-
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true

@@ -1,7 +1,26 @@
 use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
+    IndexType, QueryResult, QuerySource, Table, TableStorage, TableSummary, Trigger, TriggerEvent,
+    TriggerTiming,
 };
+
+fn minimal_table(schema: &str, name: &str) -> Table {
+    Table {
+        schema: schema.to_string(),
+        name: name.to_string(),
+        owner: None,
+        columns: Vec::new(),
+        primary_key: None,
+        foreign_keys: Vec::new(),
+        indexes: Vec::new(),
+        rls: None,
+        triggers: Vec::new(),
+        row_count_estimate: None,
+        comment: None,
+        source_ddl: None,
+        storage: TableStorage::regular_table(),
+    }
+}
 
 pub fn sample_metadata() -> DatabaseMetadata {
     DatabaseMetadata {
@@ -21,7 +40,7 @@ pub fn sample_metadata() -> DatabaseMetadata {
 }
 
 pub fn sample_table_detail() -> Table {
-    let mut table = Table::minimal_for_test("public", "users");
+    let mut table = minimal_table("public", "users");
     table.owner = Some("postgres".to_string());
     table.columns = vec![
         Column {
