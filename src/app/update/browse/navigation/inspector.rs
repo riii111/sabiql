@@ -131,7 +131,7 @@ mod tests {
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
                     attributes: ColumnAttributes::empty(),
-                    ..test_column(format!("col_{i}"), "text".to_string(), i as i32)
+                    ..test_column(format!("col_{i}"), "text", i as i32)
                 })
                 .collect();
             state.session.set_table_detail_raw(Some(Table {

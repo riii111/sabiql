@@ -292,11 +292,11 @@ mod tests {
             table.columns = vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY,
-                    ..test_column("id".to_string(), "integer".to_string(), 1)
+                    ..test_column("id", "integer", 1)
                 },
                 Column {
                     attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                    ..test_column("name".to_string(), "text".to_string(), 2)
+                    ..test_column("name", "text", 2)
                 },
             ];
             state.session.set_table_detail_raw(Some(table));
@@ -373,9 +373,9 @@ mod tests {
             table.columns = vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_column("id".to_string(), "integer".to_string(), 1)
+                    ..test_column("id", "integer", 1)
                 },
-                test_column("name".to_string(), "jsonb".to_string(), 2),
+                test_column("name", "jsonb", 2),
             ];
             state.session.set_table_detail_raw(Some(table));
             state

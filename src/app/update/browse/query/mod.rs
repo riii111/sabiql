@@ -130,9 +130,9 @@ pub(super) mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_column("id".to_string(), "int".to_string(), 1)
+                    ..test_column("id", "int", 1)
                 },
-                test_column("name".to_string(), "text".to_string(), 2),
+                test_column("name", "text", 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
             indexes: vec![Index {
@@ -155,9 +155,7 @@ pub(super) mod tests {
 
     pub fn jsonb_table_detail() -> Table {
         let mut detail = users_table_detail();
-        detail
-            .columns
-            .push(test_column("metadata".to_string(), "jsonb".to_string(), 3));
+        detail.columns.push(test_column("metadata", "jsonb", 3));
         detail
     }
 

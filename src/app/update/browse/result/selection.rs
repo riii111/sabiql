@@ -133,7 +133,7 @@ mod tests {
                 name: "users".to_string(),
                 columns: vec![Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_column("id".to_string(), "integer".to_string(), 1)
+                    ..test_column("id", "integer", 1)
                 }],
                 primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
                 ..crate::test_support::table::minimal("", "")

@@ -453,7 +453,7 @@ mod tests {
                 name: "users".to_string(),
                 columns: vec![Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_column("id".to_string(), "integer".to_string(), 1)
+                    ..test_column("id", "integer", 1)
                 }],
                 primary_key: Some(vec!["id".to_string()]),
                 row_count_estimate: Some(0),

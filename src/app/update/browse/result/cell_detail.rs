@@ -209,9 +209,9 @@ mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY,
-                    ..test_column("id".to_string(), "integer".to_string(), 1)
+                    ..test_column("id", "integer", 1)
                 },
-                test_column("body".to_string(), data_type.to_string(), 2),
+                test_column("body", data_type.to_string(), 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
             ..crate::test_support::table::minimal("", "")
