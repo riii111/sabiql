@@ -111,7 +111,6 @@ mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
     use crate::model::shared::db_capabilities::DbCapabilities;
-    use crate::test_support::column::test_nullable_column;
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -131,7 +130,11 @@ mod tests {
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
                     attributes: ColumnAttributes::empty(),
-                    ..test_nullable_column(format!("col_{i}"), "text", i as i32)
+                    ..sabiql_test_support::column::test_nullable_column(
+                        format!("col_{i}"),
+                        "text",
+                        i as i32,
+                    )
                 })
                 .collect();
             state.session.set_table_detail_raw(Some(Table {
@@ -139,7 +142,7 @@ mod tests {
                 name: "test_table".to_string(),
                 columns: cols,
                 row_count_estimate: Some(0),
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             }));
             state
         }

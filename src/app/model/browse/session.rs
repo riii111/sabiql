@@ -464,7 +464,7 @@ mod tests {
             schema: "public".to_string(),
             name: "users".to_string(),
             row_count_estimate: Some(100),
-            ..crate::test_support::table::minimal("", "")
+            ..sabiql_test_support::table::minimal("", "")
         }
     }
 

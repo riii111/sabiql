@@ -229,7 +229,7 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_support::*;
+    use crate::cmd::test_fixtures;
     use crate::domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
         SqliteConnectionConfig, SqlitePathError, SslMode,
@@ -286,7 +286,7 @@ mod tests {
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner_with_dsn(
+            let runner = test_fixtures::make_runner_with_dsn(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
@@ -337,7 +337,7 @@ mod tests {
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner_with_dsn(
+            let runner = test_fixtures::make_runner_with_dsn(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
@@ -393,7 +393,7 @@ mod tests {
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
@@ -437,7 +437,7 @@ mod tests {
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
@@ -490,7 +490,7 @@ mod tests {
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(mock_store),
@@ -533,27 +533,27 @@ mod tests {
             let runner = EffectRunner::new(
                 Arc::new(MockMetadataProvider::new()),
                 ConnectionDeps {
-                    dsn_builder: Arc::new(NoopDsnBuilder),
+                    dsn_builder: Arc::new(test_fixtures::NoopDsnBuilder),
                     connection_store: Arc::new(mock_store),
                     pg_service_entry_reader: None,
-                    sqlite_path_validator: Arc::new(TestFsSqlitePathValidator),
+                    sqlite_path_validator: Arc::new(test_fixtures::TestFsSqlitePathValidator),
                 },
                 QueryDeps {
                     query_executor: Arc::new(MockQueryExecutor::new()),
-                    query_history_store: Arc::new(NoopQueryHistoryStore),
-                    sqlite_diagnostics: Arc::new(NoopSqliteDiagnosticsProvider),
+                    query_history_store: Arc::new(test_fixtures::NoopQueryHistoryStore),
+                    sqlite_diagnostics: Arc::new(test_fixtures::NoopSqliteDiagnosticsProvider),
                 },
                 ErDeps {
-                    er_exporter: Arc::new(NoopErExporter),
-                    config_writer: Arc::new(NoopConfigWriter),
-                    er_log_writer: Arc::new(NoopErLogWriter),
+                    er_exporter: Arc::new(test_fixtures::NoopErExporter),
+                    config_writer: Arc::new(test_fixtures::NoopConfigWriter),
+                    er_log_writer: Arc::new(test_fixtures::NoopErLogWriter),
                 },
                 UtilityDeps {
-                    clipboard: Arc::new(NoopClipboardWriter),
-                    folder_opener: Arc::new(NoopFolderOpener),
+                    clipboard: Arc::new(test_fixtures::NoopClipboardWriter),
+                    folder_opener: Arc::new(test_fixtures::NoopFolderOpener),
                 },
                 SettingsDeps {
-                    settings_store: Arc::new(NoopSettingsStore),
+                    settings_store: Arc::new(test_fixtures::NoopSettingsStore),
                 },
                 cache,
                 tx,
@@ -606,7 +606,7 @@ mod tests {
         }
 
         fn make_runner_with_dsn_builder(action_tx: mpsc::Sender<Action>) -> EffectRunner {
-            make_runner_with_dsn(
+            test_fixtures::make_runner_with_dsn(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),

@@ -182,7 +182,6 @@ mod tests {
     use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
-    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
@@ -209,12 +208,12 @@ mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY,
-                    ..test_nullable_column("id", "integer", 1)
+                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
                 },
-                test_nullable_column("body", data_type.to_string(), 2),
+                sabiql_test_support::column::test_nullable_column("body", data_type.to_string(), 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
-            ..crate::test_support::table::minimal("", "")
+            ..sabiql_test_support::table::minimal("", "")
         }));
         state.result_interaction.activate_cell(0, 1);
         state

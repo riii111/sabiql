@@ -7,6 +7,7 @@ use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
 };
 use crate::model::connection::state::ConnectionState;
+use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, InputTarget, ModalKind,
@@ -190,7 +191,7 @@ pub fn reduce_connection_setup(
                 state.confirm_dialog.open(
                     "Confirm",
                     "No connection configured.\nAre you sure you want to quit?",
-                    crate::model::shared::confirm_dialog::ConfirmIntent::QuitNoConnection,
+                    ConfirmIntent::QuitNoConnection,
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
                 DispatchResult::handled()
@@ -238,10 +239,7 @@ mod tests {
     use crate::domain::connection::{ConnectionProfile, SslMode};
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::er_state::ErStatus;
-    use crate::update::test_support::{
-        activate_postgres_connection, assert_connection_save_fetch_effects,
-    };
-
+    use crate::update::test_fixtures;
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
         reduce_connection_setup(state, action, now).into_effects()
     }
@@ -536,7 +534,7 @@ mod tests {
         #[test]
         fn save_completed_clears_previous_browse_state() {
             let mut state = AppState::new("test".to_string());
-            activate_postgres_connection(&mut state, "postgres://localhost/old");
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/old");
             state.session.mark_connected(Arc::new({
                 let mut metadata = DatabaseMetadata::new("old_db".to_string());
                 metadata.table_summaries = vec![TableSummary::new(
@@ -575,7 +573,7 @@ mod tests {
             assert!(state.session.selected_table_key().is_none());
             assert!(state.session.connection_state().is_connecting());
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
-            assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
+            test_fixtures::assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
         }
 
         #[test]
@@ -653,7 +651,7 @@ mod tests {
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
-            assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
+            test_fixtures::assert_connection_save_fetch_effects(&effects, DatabaseType::SQLite);
             assert_eq!(state.session.dsn(), Some("sqlite:///tmp/app.db"));
             assert_eq!(
                 state.session.active_database_type(),
@@ -722,7 +720,7 @@ mod tests {
         #[test]
         fn is_first_run_false_when_already_connected() {
             let mut state = AppState::new("test".to_string());
-            activate_postgres_connection(&mut state, "postgres://localhost/db");
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/db");
 
             reduce(
                 &mut state,

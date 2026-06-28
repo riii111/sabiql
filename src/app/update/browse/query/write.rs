@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
+use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::preview_cell_text::{
@@ -236,7 +237,7 @@ pub fn reduce_write(
             state.confirm_dialog.open(
                 title,
                 build_write_preview_fallback_message(preview),
-                crate::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+                ConfirmIntent::ExecuteWrite {
                     sql: preview.sql.clone(),
                     blocked: preview.guardrail.blocked,
                 },
@@ -391,6 +392,7 @@ pub fn reduce_write(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::update::test_fixtures;
 
     use crate::domain::connection::ConnectionId;
     use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource};
@@ -403,7 +405,6 @@ mod tests {
     use crate::ports::outbound::DbOperationError;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
-    use crate::update::test_support::activate_postgres_connection;
     use rstest::rstest;
     use std::sync::Arc;
 
@@ -430,7 +431,7 @@ mod tests {
 
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            activate_postgres_connection(&mut state, "postgres://localhost/test");
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.query.set_current_result(editable_preview_result());
             state
                 .session
@@ -699,7 +700,7 @@ mod tests {
 
         fn editable_state_with_jsonb() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            activate_postgres_connection(&mut state, "postgres://localhost/test");
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
                 .query
                 .set_current_result(editable_preview_result_with_jsonb());
@@ -898,10 +899,7 @@ mod tests {
                 Some(expected_sql.as_str())
             );
             match state.confirm_dialog.intent() {
-                Some(crate::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
-                    sql,
-                    blocked,
-                }) => {
+                Some(ConfirmIntent::ExecuteWrite { sql, blocked }) => {
                     assert_eq!(sql, &expected_sql);
                     assert!(!blocked);
                 }

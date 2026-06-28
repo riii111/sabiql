@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
 use crate::update::connection::helpers::reset_active_connection_state;
@@ -42,7 +43,7 @@ pub(super) fn reduce_connection_selector(
                 state.confirm_dialog.open(
                     "Delete Connection",
                     message,
-                    crate::model::shared::confirm_dialog::ConfirmIntent::DeleteConnection(id),
+                    ConfirmIntent::DeleteConnection(id),
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
             }
@@ -104,8 +105,9 @@ pub(super) fn reduce_connection_selector(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::{ConnectionProfile, SslMode};
+    use crate::domain::connection::{ConnectionProfile, DatabaseType, SslMode};
     use crate::model::connection::list::build_connection_list;
+    use crate::model::shared::ui_state::ResultNavMode;
 
     fn create_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile::new_postgres(
@@ -192,7 +194,7 @@ mod tests {
             state.session.activate_connection_with_dsn(
                 &profile_id,
                 "Production",
-                crate::domain::DatabaseType::PostgreSQL,
+                DatabaseType::PostgreSQL,
                 "postgres://localhost/db",
             );
 
@@ -306,7 +308,7 @@ mod tests {
             state.session.activate_connection_with_dsn(
                 &profile_id,
                 "Production",
-                crate::domain::DatabaseType::PostgreSQL,
+                DatabaseType::PostgreSQL,
                 "postgres://localhost/db",
             );
             state
@@ -333,7 +335,7 @@ mod tests {
             state.session.activate_connection_with_dsn(
                 &profile_id,
                 "Production",
-                crate::domain::DatabaseType::PostgreSQL,
+                DatabaseType::PostgreSQL,
                 "postgres://localhost/db",
             );
             state
@@ -361,7 +363,7 @@ mod tests {
             assert_eq!(state.query.pagination.current_page(), 0);
             assert_eq!(
                 state.result_interaction.selection().mode(),
-                crate::model::shared::ui_state::ResultNavMode::Scroll
+                ResultNavMode::Scroll
             );
             assert_eq!(state.result_interaction.scroll_offset(), 0);
             assert_eq!(state.result_interaction.horizontal_offset(), 0);

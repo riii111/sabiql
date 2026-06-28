@@ -73,6 +73,7 @@ mod tests {
     use crate::model::connection::state::ConnectionState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::inspector_tab::InspectorTab;
+    use crate::model::shared::ui_state::ResultNavMode;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         reduce_connection_lifecycle(
@@ -356,7 +357,7 @@ mod tests {
 
         assert_eq!(
             state.result_interaction.selection().mode(),
-            crate::model::shared::ui_state::ResultNavMode::Scroll
+            ResultNavMode::Scroll
         );
     }
 
@@ -403,7 +404,7 @@ mod tests {
 
         assert_eq!(
             state.result_interaction.selection().mode(),
-            crate::model::shared::ui_state::ResultNavMode::Scroll
+            ResultNavMode::Scroll
         );
     }
 

@@ -13,6 +13,8 @@ use crate::domain::connection::{ConnectionId, ConnectionProfile};
 #[cfg(test)]
 use super::app_config_file::CONFIG_FILE_NAME;
 #[cfg(test)]
+use crate::domain::connection::{ConnectionConfig, DatabaseType, PostgresConnectionConfig};
+#[cfg(test)]
 use std::path::Path;
 
 pub struct TomlConnectionStore {
@@ -237,10 +239,7 @@ ssl_mode = "prefer"
             let profiles = store.load_all().unwrap();
 
             assert_eq!(profiles.len(), 1);
-            assert_eq!(
-                profiles[0].database_type(),
-                crate::domain::DatabaseType::PostgreSQL
-            );
+            assert_eq!(profiles[0].database_type(), DatabaseType::PostgreSQL);
             assert_eq!(profiles[0].postgres_config().unwrap().database, "testdb");
             assert!(
                 fs::read_to_string(&config_path)
@@ -291,16 +290,14 @@ ssl_mode = "prefer"
             let mut profile = make_test_profile("Production");
             store.save(&profile).unwrap();
 
-            profile.config = crate::domain::ConnectionConfig::PostgreSQL(
-                crate::domain::PostgresConnectionConfig::new(
-                    "newhost",
-                    5432,
-                    "testdb",
-                    "testuser",
-                    "testpass",
-                    SslMode::Prefer,
-                ),
-            );
+            profile.config = ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                "newhost",
+                5432,
+                "testdb",
+                "testuser",
+                "testpass",
+                SslMode::Prefer,
+            ));
             let result = store.save(&profile);
 
             assert!(result.is_ok());
@@ -427,7 +424,7 @@ ssl_mode = "prefer"
             store.save(&profile).unwrap();
             let loaded = store.load().unwrap().unwrap();
 
-            assert_eq!(loaded.database_type(), crate::domain::DatabaseType::SQLite);
+            assert_eq!(loaded.database_type(), DatabaseType::SQLite);
             assert_eq!(loaded.sqlite_config().unwrap().path(), "/tmp/app.db");
         }
 
@@ -545,16 +542,14 @@ ssl_mode = "prefer"
             store.save(&profile1).unwrap();
             store.save(&profile2).unwrap();
 
-            profile2.config = crate::domain::ConnectionConfig::PostgreSQL(
-                crate::domain::PostgresConnectionConfig::new(
-                    "updated-host",
-                    5432,
-                    "testdb",
-                    "testuser",
-                    "testpass",
-                    SslMode::Prefer,
-                ),
-            );
+            profile2.config = ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                "updated-host",
+                5432,
+                "testdb",
+                "testuser",
+                "testpass",
+                SslMode::Prefer,
+            ));
             store.save(&profile2).unwrap();
 
             let all = store.load_all().unwrap();

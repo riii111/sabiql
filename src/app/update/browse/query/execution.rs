@@ -849,7 +849,7 @@ mod tests {
         #[test]
         fn no_command_tag_emits_no_effects() {
             let mut state = state_with_table("public", "users");
-            let result = Arc::new(crate::domain::QueryResult::success(
+            let result = Arc::new(QueryResult::success(
                 "SELECT 1".to_string(),
                 vec!["?column?".to_string()],
                 vec![vec!["1".to_string()]],
@@ -868,6 +868,7 @@ mod tests {
     mod adhoc_refresh_integration {
         use super::*;
         use crate::domain::{CommandTag, DatabaseMetadata, TableSummary};
+        use crate::model::sql_editor::modal::SqlModalStatus;
         use crate::update::browse::metadata::dispatch_metadata;
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
@@ -999,10 +1000,7 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::ExecutePreview { .. }))
             );
-            assert_eq!(
-                *state.sql_modal.status(),
-                crate::model::sql_editor::modal::SqlModalStatus::Success
-            );
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Success);
         }
 
         #[test]

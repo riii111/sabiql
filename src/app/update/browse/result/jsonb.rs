@@ -13,7 +13,9 @@ use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jso
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::{editable_preview_base, ensure_column_writable, find_text_matches};
+use crate::update::helpers::{
+    EditGuardrailError, editable_preview_base, ensure_column_writable, find_text_matches,
+};
 use std::time::Instant;
 
 pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
@@ -290,9 +292,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
     }
 }
 
-fn ensure_jsonb_column_writable(
-    state: &AppState,
-) -> Result<(), crate::update::helpers::EditGuardrailError> {
+fn ensure_jsonb_column_writable(state: &AppState) -> Result<(), EditGuardrailError> {
     let (_, pk_cols) = editable_preview_base(state)?;
     ensure_column_writable(state, state.jsonb_detail.column_name(), pk_cols)
 }
@@ -355,7 +355,6 @@ mod tests {
     pub use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
     use crate::services::AppServices;
-    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
 
     fn jsonb_table() -> Table {
@@ -365,12 +364,12 @@ mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "integer", 1)
+                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
                 },
-                test_nullable_column("settings", "jsonb", 2),
+                sabiql_test_support::column::test_nullable_column("settings", "jsonb", 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
-            ..crate::test_support::table::minimal("", "")
+            ..sabiql_test_support::table::minimal("", "")
         }
     }
 
@@ -398,7 +397,7 @@ mod tests {
     fn open_detail(state: &mut AppState) {
         reduce_jsonb(
             state,
-            &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+            &Action::OpenModal(ModalKind::JsonbDetail),
             Instant::now(),
         );
     }
@@ -491,7 +490,7 @@ mod tests {
 
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
@@ -513,7 +512,7 @@ mod tests {
 
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
@@ -527,7 +526,7 @@ mod tests {
 
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
@@ -543,14 +542,14 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
             assert!(state.jsonb_detail.is_active());
 
             reduce_jsonb(
                 &mut state,
-                &Action::CloseModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::CloseModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
@@ -627,11 +626,11 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "integer", 1)
+                        ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
                     },
                     Column {
                         attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..test_nullable_column("settings", "jsonb", 2)
+                        ..sabiql_test_support::column::test_nullable_column("settings", "jsonb", 2)
                     },
                 ],
                 ..jsonb_table()
@@ -655,11 +654,11 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "integer", 1)
+                        ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
                     },
                     Column {
                         attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..test_nullable_column("settings", "jsonb", 2)
+                        ..sabiql_test_support::column::test_nullable_column("settings", "jsonb", 2)
                     },
                 ],
                 ..jsonb_table()
@@ -826,7 +825,7 @@ mod tests {
 
             reduce_jsonb(
                 &mut state,
-                &Action::CloseModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::CloseModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
@@ -844,7 +843,7 @@ mod tests {
 
             reduce_jsonb(
                 &mut state,
-                &Action::CloseModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::CloseModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 
@@ -862,7 +861,7 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             reduce_jsonb(
                 &mut state,
-                &Action::OpenModal(crate::update::action::ModalKind::JsonbDetail),
+                &Action::OpenModal(ModalKind::JsonbDetail),
                 Instant::now(),
             );
 

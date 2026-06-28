@@ -1,6 +1,9 @@
+use std::process::Command;
+
 use sabiql_domain::{Table, TableKindInfo};
 
-pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) -> Table {
+#[must_use]
+pub fn minimal_table(schema: impl Into<String>, name: impl Into<String>) -> Table {
     Table {
         schema: schema.into(),
         name: name.into(),
@@ -18,9 +21,8 @@ pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) 
     }
 }
 
-use std::process::Command;
-
-pub(super) fn make_sqlite_db(sql: &str) -> (tempfile::TempDir, String) {
+#[must_use]
+pub fn make_sqlite_db(sql: &str) -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("app.db");
     let output = Command::new("sqlite3")

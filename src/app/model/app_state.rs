@@ -11,7 +11,7 @@ use crate::model::browse::result_interaction::ResultInteraction;
 use crate::model::browse::session::BrowseSession;
 use crate::model::connection::cache::ConnectionCacheStore;
 use crate::model::connection::error_state::ConnectionErrorState;
-use crate::model::connection::list::ConnectionListItem;
+use crate::model::connection::list::{self, ConnectionListItem};
 use crate::model::connection::setup::ConnectionSetupState;
 use crate::model::shared::confirm_dialog::ConfirmDialogState;
 use crate::model::shared::flash_timer::FlashTimerStore;
@@ -20,14 +20,16 @@ use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
 use crate::model::shared::render_output::RenderOutput;
 use crate::model::shared::settings::SettingsState;
+use crate::model::shared::text_input::TextInputState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
+use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
 use crate::policy::table_kind::max_explorer_table_label_width;
 
 pub struct AppState {
     pub should_quit: bool,
-    pub command_line_input: crate::model::shared::text_input::TextInputState,
+    pub command_line_input: TextInputState,
     pub command_line_visible_width: usize,
 
     pub render_dirty: bool,
@@ -47,7 +49,7 @@ pub struct AppState {
     pub jsonb_detail: JsonbDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub settings: SettingsState,
-    pub sqlite_diagnostics: crate::model::sqlite::diagnostics::SqliteDiagnosticsState,
+    pub sqlite_diagnostics: SqliteDiagnosticsState,
     pub explain: ExplainContext,
     pub modal: ModalState,
     pub flash_timers: FlashTimerStore,
@@ -61,7 +63,7 @@ impl AppState {
     pub fn new(project_name: String) -> Self {
         Self {
             should_quit: false,
-            command_line_input: crate::model::shared::text_input::TextInputState::default(),
+            command_line_input: TextInputState::default(),
             command_line_visible_width: 70,
             render_dirty: true,
             session: BrowseSession::default(),
@@ -79,8 +81,7 @@ impl AppState {
             jsonb_detail: JsonbDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             settings: SettingsState::default(),
-            sqlite_diagnostics: crate::model::sqlite::diagnostics::SqliteDiagnosticsState::default(
-            ),
+            sqlite_diagnostics: SqliteDiagnosticsState::default(),
             explain: ExplainContext::default(),
             modal: ModalState::default(),
             flash_timers: FlashTimerStore::default(),
@@ -275,10 +276,8 @@ impl AppState {
     }
 
     fn rebuild_connection_list(&mut self) {
-        self.connection_list_items = crate::model::connection::list::build_connection_list(
-            self.connections.len(),
-            self.service_entries.len(),
-        );
+        self.connection_list_items =
+            list::build_connection_list(self.connections.len(), self.service_entries.len());
     }
 
     pub fn toggle_focus(&mut self) -> bool {
@@ -302,9 +301,12 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, QuerySource, Table};
+    use crate::domain::{
+        ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource, Table,
+    };
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
+    use crate::model::sql_editor::modal::FailedPrefetchEntry;
     use crate::update::action::Action;
     use crate::update::dispatch_metadata;
     use rstest::rstest;
@@ -321,8 +323,8 @@ mod tests {
         );
     }
 
-    fn make_query_result(source: QuerySource) -> Arc<crate::domain::QueryResult> {
-        Arc::new(crate::domain::QueryResult::success(
+    fn make_query_result(source: QuerySource) -> Arc<QueryResult> {
+        Arc::new(QueryResult::success(
             "SELECT 1".to_string(),
             vec!["col".to_string()],
             vec![vec!["val".to_string()]],
@@ -341,7 +343,7 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            ..crate::test_support::table::minimal("", "")
+            ..sabiql_test_support::table::minimal("", "")
         }
     }
 
@@ -578,7 +580,7 @@ mod tests {
 
             state.sql_modal.record_prefetch_failure(
                 "public.users".to_string(),
-                crate::model::sql_editor::modal::FailedPrefetchEntry {
+                FailedPrefetchEntry {
                     failed_at: now,
                     error: "connection timeout".to_string(),
                     retry_count: 0,
@@ -614,7 +616,7 @@ mod tests {
                 .mark_prefetching("public.orders".to_string());
             state.sql_modal.record_prefetch_failure(
                 "public.failed".to_string(),
-                crate::model::sql_editor::modal::FailedPrefetchEntry {
+                FailedPrefetchEntry {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: 0,
@@ -792,8 +794,8 @@ mod tests {
             .unwrap()
         }
 
-        fn make_service(name: &str) -> crate::domain::connection::ServiceEntry {
-            crate::domain::connection::ServiceEntry {
+        fn make_service(name: &str) -> ServiceEntry {
+            ServiceEntry {
                 service_name: name.to_string(),
                 host: None,
                 dbname: None,

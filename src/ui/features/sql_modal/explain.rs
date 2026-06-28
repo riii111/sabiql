@@ -12,7 +12,7 @@ use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::update::input::keybindings::sql_modal_plan_explain;
-use crate::primitives::atoms::text_cursor_spans;
+use crate::primitives::atoms::{apply_yank_flash, text_cursor_spans};
 use crate::theme::ThemePalette;
 
 pub fn render(
@@ -106,11 +106,7 @@ pub fn render(
 
         let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
         let content_start = 3; // skip header, query snippet, empty line
-        crate::primitives::atoms::apply_yank_flash(
-            &mut lines[content_start..],
-            flash_active,
-            theme,
-        );
+        apply_yank_flash(&mut lines[content_start..], flash_active, theme);
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         area.height

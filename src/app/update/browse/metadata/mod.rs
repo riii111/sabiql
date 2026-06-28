@@ -52,7 +52,7 @@ pub fn dispatch_metadata(state: &mut AppState, action: &Action, now: Instant) ->
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{ConnectionId, DatabaseType, Table};
     use crate::model::app_state::AppState;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
     use crate::update::action::Action;
@@ -70,8 +70,8 @@ mod tests {
         state
     }
 
-    fn empty_table(schema: &str, name: &str) -> Box<crate::domain::Table> {
-        Box::new(crate::test_support::table::minimal(schema, name))
+    fn empty_table(schema: &str, name: &str) -> Box<Table> {
+        Box::new(sabiql_test_support::table::minimal(schema, name))
     }
 
     mod freshness_guards {

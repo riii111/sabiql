@@ -82,7 +82,7 @@ mod tests {
     use super::*;
     use crate::model::shared::key_sequence::Prefix;
     use crate::update::input::keybindings::{Key, KeyCombo};
-    use crate::update::input::vim::{VimSurfaceContext, action_for_key};
+    use crate::update::input::vim::{VimSurfaceContext, action_for_input, action_for_key};
     use rstest::rstest;
 
     fn combo(key: Key) -> KeyCombo {
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn gg_moves_to_first_line() {
-        let action = crate::update::input::vim::action_for_input(
+        let action = action_for_input(
             &combo(Key::Char('g')),
             Some(Prefix::G),
             VimSurfaceContext::SqlModal(SqlModalVimContext::QueryNormal),

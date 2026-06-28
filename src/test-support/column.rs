@@ -1,4 +1,4 @@
-use crate::domain::{Column, ColumnAttributes};
+use sabiql_domain::{Column, ColumnAttributes};
 
 #[must_use]
 pub fn test_nullable_column(

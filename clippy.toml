@@ -1,8 +1,7 @@
 msrv = "1.96"
 allow-dbg-in-tests = true
 too-many-arguments-threshold = 8
-absolute-paths-max-segments = 5
-# Allow std and third-party crate roots; keep workspace-internal paths linted.
+# Allow std and third-party crate roots; update this list when adding dependencies.
 absolute-paths-allowed-crates = [
     "alloc",
     "arboard",
@@ -21,6 +20,7 @@ absolute-paths-allowed-crates = [
     "nucleo_matcher",
     "ratatui",
     "rstest",
+    "sabiql_test_support",
     "self_update",
     "serde",
     "serde_json",

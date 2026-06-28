@@ -1,4 +1,4 @@
-use crate::update::action::Action;
+use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, KeyCombo, Modifiers};
 use crate::update::input::keymap;
 
@@ -9,7 +9,7 @@ pub fn handle_help_keys(combo: KeyCombo) -> Action {
 
     match (combo.key, combo.modifiers) {
         (keybindings::Key::Char(ch), Modifiers::NONE | Modifiers::SHIFT) => Action::TextInput {
-            target: crate::update::action::InputTarget::HelpFilter,
+            target: InputTarget::HelpFilter,
             ch,
         },
         _ => Action::None,

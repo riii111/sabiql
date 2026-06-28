@@ -36,8 +36,7 @@ mod tests {
     use crate::update::action::{
         InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
-
-    use crate::update::test_support::activate_postgres_connection;
+    use crate::update::test_fixtures;
     use std::time::Instant;
 
     fn create_test_state() -> AppState {
@@ -179,6 +178,7 @@ mod tests {
     mod settings {
         use super::*;
         use crate::model::shared::theme_id::ThemeId;
+        use crate::ports::outbound::SettingsStoreError;
 
         mod theme_selection {
             use super::*;
@@ -370,9 +370,9 @@ mod tests {
 
             let effects = super::dispatch_modal(
                 &mut state,
-                &Action::SettingsSaveFailed(crate::ports::outbound::SettingsStoreError::Io(
-                    std::sync::Arc::new(std::io::Error::other("disk full")),
-                )),
+                &Action::SettingsSaveFailed(SettingsStoreError::Io(std::sync::Arc::new(
+                    std::io::Error::other("disk full"),
+                ))),
                 Instant::now(),
             )
             .unwrap();
@@ -398,7 +398,7 @@ mod tests {
         fn csv_state_with_current_run() -> (AppState, u64) {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::Normal);
-            activate_postgres_connection(&mut state, CSV_TEST_DSN);
+            test_fixtures::activate_postgres_connection(&mut state, CSV_TEST_DSN);
             let run_id = state.query.begin_running(Instant::now());
             (state, run_id)
         }
@@ -471,6 +471,9 @@ mod tests {
 
         mod confirm {
             use super::*;
+            use crate::policy::write::write_guardrails::{
+                GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+            };
 
             #[test]
             fn quit_no_connection_sets_should_quit() {
@@ -517,7 +520,10 @@ mod tests {
             fn execute_write_sets_running_state_and_returns_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::CellEdit);
-                activate_postgres_connection(&mut state, "postgres://localhost/test");
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -595,24 +601,22 @@ mod tests {
             fn execute_write_blocked_confirm_clears_preview_state() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.result_interaction.set_write_preview(
-                    crate::policy::write::write_guardrails::WritePreview {
-                        operation: crate::policy::write::write_guardrails::WriteOperation::Update,
-                        sql: "UPDATE t SET x=1".to_string(),
-                        target_summary: crate::policy::write::write_guardrails::TargetSummary {
-                            schema: "public".to_string(),
-                            table: "t".to_string(),
-                            key_values: vec![],
-                        },
-                        diff: vec![],
-                        guardrail: crate::policy::write::write_guardrails::GuardrailDecision {
-                            risk_level: crate::policy::write::write_guardrails::RiskLevel::High,
-                            blocked: true,
-                            reason: Some("too risky".to_string()),
-                            target_summary: None,
-                        },
+                state.result_interaction.set_write_preview(WritePreview {
+                    operation: WriteOperation::Update,
+                    sql: "UPDATE t SET x=1".to_string(),
+                    target_summary: TargetSummary {
+                        schema: "public".to_string(),
+                        table: "t".to_string(),
+                        key_values: vec![],
                     },
-                );
+                    diff: vec![],
+                    guardrail: GuardrailDecision {
+                        risk_level: RiskLevel::High,
+                        blocked: true,
+                        reason: Some("too risky".to_string()),
+                        target_summary: None,
+                    },
+                });
                 state.query.set_delete_refresh_target(0, None, 1);
                 state.confirm_dialog.open(
                     "",
@@ -1290,6 +1294,8 @@ mod tests {
 
         mod confirm_selection {
             use super::*;
+            use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+            use crate::model::sql_editor::modal::SqlModalStatus;
 
             #[test]
             fn confirm_sets_cursor_to_char_count_not_byte_len() {
@@ -1332,10 +1338,7 @@ mod tests {
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
                 assert_eq!(state.sql_modal.editor.content(), "SELECT * FROM users");
-                assert!(matches!(
-                    state.sql_modal.status(),
-                    crate::model::sql_editor::modal::SqlModalStatus::Normal
-                ));
+                assert!(matches!(state.sql_modal.status(), SqlModalStatus::Normal));
                 assert!(effects.is_empty());
             }
 
@@ -1344,16 +1347,13 @@ mod tests {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::SqlModal);
                 state.sql_modal.editor.set_content("old query".to_string());
-                state
-                    .sql_modal
-                    .set_status_for_test(crate::model::sql_editor::modal::SqlModalStatus::Editing);
+                state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
                 state.sql_modal.completion_mut_for_test().visible = true;
-                state.sql_modal.completion_mut_for_test().candidates =
-                    vec![crate::model::sql_editor::completion::CompletionCandidate {
-                        text: "stale".to_string(),
-                        kind: crate::model::sql_editor::completion::CompletionKind::Keyword,
-                        score: 1,
-                    }];
+                state.sql_modal.completion_mut_for_test().candidates = vec![CompletionCandidate {
+                    text: "stale".to_string(),
+                    kind: CompletionKind::Keyword,
+                    score: 1,
+                }];
                 state.sql_modal.completion_mut_for_test().selected_index = 3;
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
@@ -1369,10 +1369,7 @@ mod tests {
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
                 assert_eq!(state.sql_modal.editor.content(), "new query");
-                assert!(matches!(
-                    state.sql_modal.status(),
-                    crate::model::sql_editor::modal::SqlModalStatus::Normal
-                ));
+                assert!(matches!(state.sql_modal.status(), SqlModalStatus::Normal));
                 assert!(!state.sql_modal.completion().visible);
                 assert!(state.sql_modal.completion().candidates.is_empty());
                 assert_eq!(state.sql_modal.completion().selected_index, 0);

@@ -269,7 +269,6 @@ impl SqlDialect for DbAdapterRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::test_support::make_sqlite_db;
     use crate::domain::connection::SslMode;
     use crate::domain::{Column, ColumnAttributes, QueryValue};
 
@@ -286,7 +285,7 @@ mod tests {
                 ordinal_position: 1,
             }],
             primary_key: Some(vec!["id".to_string()]),
-            ..crate::adapters::test_support::minimal_table("", "")
+            ..sabiql_test_support::infra::minimal_table("", "")
         }
     }
 
@@ -416,7 +415,9 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_metadata_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
+        );
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let metadata = registry.fetch_metadata(&dsn).await.unwrap();
@@ -426,7 +427,9 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_table_signatures_are_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
+        );
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let signatures = registry.fetch_table_signatures(&dsn).await.unwrap();
@@ -436,7 +439,9 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_table_detail_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
+        );
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let detail = registry
@@ -450,7 +455,9 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_query_execution_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
+        );
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let result = registry
@@ -464,7 +471,9 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_columns_request_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
+        );
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let detail = registry

@@ -12,9 +12,6 @@ pub mod query_history;
 pub mod registry;
 pub mod settings_store;
 pub mod sqlite;
-#[cfg(test)]
-pub(crate) mod test_support;
-
 pub use clipboard::ArboardClipboard;
 pub use config_writer::FileConfigWriter;
 pub use connection_store::TomlConnectionStore;
