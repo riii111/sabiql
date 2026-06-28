@@ -1,7 +1,7 @@
 use crate::domain::{Column, ColumnAttributes};
 
 #[must_use]
-pub fn test_column(
+pub fn test_nullable_column(
     name: impl Into<String>,
     data_type: impl Into<String>,
     ordinal_position: i32,

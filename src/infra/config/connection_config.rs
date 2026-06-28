@@ -132,13 +132,18 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
             DatabaseType::SQLite => Self::with_id_and_config(
                 id,
                 name.as_str().to_string(),
-                ConnectionConfig::SQLite(SqliteConnectionConfig::new(match &entry.path {
-                    Some(path) => path.clone(),
-                    None => String::new(),
-                })?),
+                ConnectionConfig::SQLite(SqliteConnectionConfig::new(required_sqlite_path(
+                    entry.path.as_ref(),
+                )?)?),
             ),
         }
     }
+}
+
+fn required_sqlite_path(value: Option<&String>) -> Result<String, ConnectionProfileError> {
+    value
+        .cloned()
+        .ok_or(ConnectionProfileError::EmptySqlitePath)
 }
 
 fn required_postgres_field(
@@ -217,6 +222,29 @@ mod tests {
         let profile = ConnectionProfile::try_from(&entry).unwrap();
 
         assert_eq!(profile.database_type(), DatabaseType::PostgreSQL);
+    }
+
+    #[test]
+    fn sqlite_entry_rejects_missing_path() {
+        let entry = ConnectionConfigEntry {
+            id: "sqlite-id".to_string(),
+            name: "Local".to_string(),
+            db_type: DatabaseType::SQLite,
+            host: None,
+            port: None,
+            database: None,
+            username: None,
+            password: None,
+            ssl_mode: None,
+            path: None,
+        };
+
+        let result = ConnectionProfile::try_from(&entry);
+
+        assert!(matches!(
+            result,
+            Err(ConnectionProfileError::EmptySqlitePath)
+        ));
     }
 
     #[test]

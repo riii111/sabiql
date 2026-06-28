@@ -97,7 +97,7 @@ mod tests {
     use super::*;
     use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
-    use crate::test_support::column::test_column;
+    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -133,7 +133,7 @@ mod tests {
                 name: "users".to_string(),
                 columns: vec![Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_column("id", "integer", 1)
+                    ..test_nullable_column("id", "integer", 1)
                 }],
                 primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
                 ..crate::test_support::table::minimal("", "")

@@ -138,7 +138,7 @@ mod tests {
     use crate::domain::Column;
     use crate::domain::Table;
     use crate::ports::outbound::ddl_generator::DdlGenerator;
-    use crate::test_support::column::test_column;
+    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
 
     mod cell_yank {
@@ -453,7 +453,7 @@ mod tests {
                 name: "users".to_string(),
                 columns: vec![Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_column("id", "integer", 1)
+                    ..test_nullable_column("id", "integer", 1)
                 }],
                 primary_key: Some(vec!["id".to_string()]),
                 row_count_estimate: Some(0),

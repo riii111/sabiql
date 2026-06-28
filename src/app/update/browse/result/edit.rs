@@ -150,7 +150,7 @@ mod tests {
     use super::*;
     pub use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
-    use crate::test_support::column::test_column;
+    use crate::test_support::column::test_nullable_column;
     use crate::update::action::CursorMove;
     use rstest::rstest;
     use std::sync::Arc;
@@ -292,11 +292,11 @@ mod tests {
             table.columns = vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY,
-                    ..test_column("id", "integer", 1)
+                    ..test_nullable_column("id", "integer", 1)
                 },
                 Column {
                     attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                    ..test_column("name", "text", 2)
+                    ..test_nullable_column("name", "text", 2)
                 },
             ];
             state.session.set_table_detail_raw(Some(table));
@@ -373,9 +373,9 @@ mod tests {
             table.columns = vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_column("id", "integer", 1)
+                    ..test_nullable_column("id", "integer", 1)
                 },
-                test_column("name", "jsonb", 2),
+                test_nullable_column("name", "jsonb", 2),
             ];
             state.session.set_table_detail_raw(Some(table));
             state

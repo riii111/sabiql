@@ -355,7 +355,7 @@ mod tests {
     pub use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
     use crate::services::AppServices;
-    use crate::test_support::column::test_column;
+    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
 
     fn jsonb_table() -> Table {
@@ -365,9 +365,9 @@ mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_column("id", "integer", 1)
+                    ..test_nullable_column("id", "integer", 1)
                 },
-                test_column("settings", "jsonb", 2),
+                test_nullable_column("settings", "jsonb", 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
             ..crate::test_support::table::minimal("", "")
@@ -627,11 +627,11 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_column("id", "integer", 1)
+                        ..test_nullable_column("id", "integer", 1)
                     },
                     Column {
                         attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..test_column("settings", "jsonb", 2)
+                        ..test_nullable_column("settings", "jsonb", 2)
                     },
                 ],
                 ..jsonb_table()
@@ -655,11 +655,11 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_column("id", "integer", 1)
+                        ..test_nullable_column("id", "integer", 1)
                     },
                     Column {
                         attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..test_column("settings", "jsonb", 2)
+                        ..test_nullable_column("settings", "jsonb", 2)
                     },
                 ],
                 ..jsonb_table()

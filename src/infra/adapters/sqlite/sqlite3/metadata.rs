@@ -272,15 +272,9 @@ impl SqliteAdapter {
         path: &str,
         table: &str,
     ) -> Vec<String> {
-        #[allow(
-            clippy::manual_unwrap_or_default,
-            reason = "match kept for Err comment; no logging framework yet"
-        )]
-        match self.primary_key_columns(path, table).await {
-            Ok(columns) => columns,
-            // No logging framework yet; silently degrade to unordered preview.
-            Err(_) => Vec::new(),
-        }
+        self.primary_key_columns(path, table)
+            .await
+            .unwrap_or_default()
     }
 
     async fn indexes(&self, path: &str, table: &str) -> Result<Vec<Index>, DbOperationError> {
