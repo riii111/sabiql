@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::connection::list;
+use crate::app::model::connection::list as connection_list;
 use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
@@ -349,7 +349,7 @@ impl Footer {
             }
             InputMode::ConnectionSelector => {
                 use connection_selector as cs;
-                let is_service_selected = list::is_service_selected(
+                let is_service_selected = connection_list::is_service_selected(
                     state.connection_list_items(),
                     state.ui.connection_list_selected(),
                 );
