@@ -65,7 +65,7 @@ impl Table {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
-            storage: TableStorage::default(),
+            storage: TableStorage::regular_table(),
         }
     }
 }
@@ -107,7 +107,7 @@ impl TableSummary {
             name,
             row_count_estimate,
             has_rls,
-            storage: TableStorage::default(),
+            storage: TableStorage::regular_table(),
             qualified_name_lower,
         }
     }
@@ -149,7 +149,7 @@ mod tests {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
-            storage: TableStorage::default(),
+            storage: TableStorage::regular_table(),
         }
     }
 

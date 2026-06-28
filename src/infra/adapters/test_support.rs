@@ -14,7 +14,7 @@ pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) 
         row_count_estimate: None,
         comment: None,
         source_ddl: None,
-        storage: TableStorage::default(),
+        storage: TableStorage::regular_table(),
     }
 }
 
