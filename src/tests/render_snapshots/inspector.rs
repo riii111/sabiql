@@ -1,7 +1,7 @@
 use super::*;
 use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
-use sabiql_domain::{ConnectionId, DatabaseType, TableObjectKind, TableStorage};
+use sabiql_domain::{ConnectionId, DatabaseType, TableKind, TableKindInfo};
 
 fn trim_line_endings(output: &str) -> String {
     output
@@ -409,7 +409,7 @@ fn inspector_ddl_tab_uses_source_ddl() {
 }
 
 #[test]
-fn inspector_info_tab_for_sqlite_shows_table_storage_fields() {
+fn inspector_info_tab_for_sqlite_shows_table_kind_fields() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
 
@@ -419,8 +419,8 @@ fn inspector_info_tab_for_sqlite_shows_table_storage_fields() {
     table.owner = None;
     table.comment = None;
     table.row_count_estimate = Some(42);
-    table.storage = TableStorage {
-        kind: TableObjectKind::Virtual,
+    table.kind_info = TableKindInfo {
+        kind: TableKind::Virtual,
         is_strict: false,
         without_rowid: false,
         virtual_module: Some("fts5".to_string()),

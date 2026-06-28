@@ -178,7 +178,7 @@ mod tests {
 
     mod from_table {
         use super::*;
-        use crate::{FkAction, ForeignKey, Table, TableStorage};
+        use crate::{FkAction, ForeignKey, Table, TableKindInfo};
 
         fn make_table(name: &str, foreign_keys: Vec<ForeignKey>) -> Table {
             Table {
@@ -194,7 +194,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
-                storage: TableStorage::default(),
+                kind_info: TableKindInfo::default(),
             }
         }
 

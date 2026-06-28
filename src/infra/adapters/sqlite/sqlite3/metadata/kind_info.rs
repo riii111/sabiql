@@ -1,8 +1,8 @@
 use super::super::parser::lexer::{is_create_virtual_table_prefix, virtual_table_module_name};
-use crate::domain::{TableObjectKind, TableStorage};
+use crate::domain::{TableKind, TableKindInfo};
 
 #[derive(Debug, Clone, serde::Deserialize)]
-pub(super) struct RawTableStorage {
+pub(super) struct RawTableKindInfo {
     #[serde(rename = "type", default)]
     r#type: String,
     #[serde(default)]
@@ -12,52 +12,52 @@ pub(super) struct RawTableStorage {
     sql: Option<String>,
 }
 
-impl RawTableStorage {
-    pub(super) fn into_table_storage(self) -> TableStorage {
-        table_storage_from_pragma(&self.r#type, self.wr, self.strict, self.sql.as_deref())
+impl RawTableKindInfo {
+    pub(super) fn into_table_kind_info(self) -> TableKindInfo {
+        table_kind_info_from_pragma(&self.r#type, self.wr, self.strict, self.sql.as_deref())
     }
 }
 
-pub(super) fn table_storage_from_pragma(
+pub(super) fn table_kind_info_from_pragma(
     table_type: &str,
     without_rowid: i64,
     strict: i64,
     sql: Option<&str>,
-) -> TableStorage {
-    let mut storage = TableStorage {
+) -> TableKindInfo {
+    let mut kind_info = TableKindInfo {
         kind: if table_type == "virtual" {
-            TableObjectKind::Virtual
+            TableKind::Virtual
         } else {
-            TableObjectKind::Table
+            TableKind::Table
         },
         is_strict: strict != 0,
         without_rowid: without_rowid != 0,
         virtual_module: None,
     };
-    if storage.kind == TableObjectKind::Virtual {
-        storage.virtual_module = sql.and_then(virtual_table_module_name);
+    if kind_info.kind == TableKind::Virtual {
+        kind_info.virtual_module = sql.and_then(virtual_table_module_name);
     }
-    storage
+    kind_info
 }
 
-pub(super) fn table_storage_from_legacy_sql(sql: Option<&str>) -> TableStorage {
-    let mut storage = TableStorage::default();
-    enrich_kind_from_legacy_sql(&mut storage, sql);
+pub(super) fn table_kind_info_from_legacy_sql(sql: Option<&str>) -> TableKindInfo {
+    let mut kind_info = TableKindInfo::default();
+    enrich_kind_from_legacy_sql(&mut kind_info, sql);
     if let Some(sql) = sql {
         let (is_strict, without_rowid) = parse_table_tail_options(sql);
-        storage.is_strict = is_strict;
-        storage.without_rowid = without_rowid;
+        kind_info.is_strict = is_strict;
+        kind_info.without_rowid = without_rowid;
     }
-    storage
+    kind_info
 }
 
-fn enrich_kind_from_legacy_sql(storage: &mut TableStorage, sql: Option<&str>) {
+fn enrich_kind_from_legacy_sql(kind_info: &mut TableKindInfo, sql: Option<&str>) {
     let Some(sql) = sql else {
         return;
     };
     if is_create_virtual_table_prefix(sql) {
-        storage.kind = TableObjectKind::Virtual;
-        storage.virtual_module = virtual_table_module_name(sql);
+        kind_info.kind = TableKind::Virtual;
+        kind_info.virtual_module = virtual_table_module_name(sql);
     }
 }
 
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn table_name_containing_strict_does_not_mark_strict_when_pragma_is_zero() {
-        let storage = table_storage_from_pragma(
+        let storage = table_kind_info_from_pragma(
             "table",
             0,
             0,
@@ -217,30 +217,30 @@ mod tests {
 
     #[test]
     fn default_literal_does_not_mark_virtual_when_pragma_type_is_table() {
-        let storage = table_storage_from_pragma(
+        let storage = table_kind_info_from_pragma(
             "table",
             0,
             0,
             Some("CREATE TABLE docs(body TEXT DEFAULT 'create virtual table');"),
         );
 
-        assert_eq!(storage.kind, TableObjectKind::Table);
+        assert_eq!(storage.kind, TableKind::Table);
         assert!(storage.virtual_module.is_none());
     }
 
     #[test]
     fn legacy_sql_parses_without_rowid_from_table_tail() {
-        let storage = table_storage_from_legacy_sql(Some(
+        let storage = table_kind_info_from_legacy_sql(Some(
             "CREATE TABLE settings(key TEXT PRIMARY KEY) WITHOUT ROWID;",
         ));
 
         assert!(storage.without_rowid);
-        assert_eq!(storage.kind, TableObjectKind::Table);
+        assert_eq!(storage.kind, TableKind::Table);
     }
 
     #[test]
     fn legacy_sql_parses_strict_from_table_tail_only() {
-        let storage = table_storage_from_legacy_sql(Some(
+        let storage = table_kind_info_from_legacy_sql(Some(
             "CREATE TABLE users(id INTEGER PRIMARY KEY) STRICT;",
         ));
 
@@ -249,10 +249,10 @@ mod tests {
 
     #[test]
     fn legacy_sql_ignores_sql_comments_in_table_tail_options() {
-        let without_rowid = table_storage_from_legacy_sql(Some(
+        let without_rowid = table_kind_info_from_legacy_sql(Some(
             "CREATE TABLE settings(key TEXT PRIMARY KEY) WITHOUT /* c */ ROWID;",
         ));
-        let strict = table_storage_from_legacy_sql(Some(
+        let strict = table_kind_info_from_legacy_sql(Some(
             "CREATE TABLE users(id INTEGER PRIMARY KEY) ) /* WITHOUT ROWID */ STRICT;",
         ));
 
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn legacy_sql_does_not_treat_comment_markers_inside_string_literals_as_options() {
-        let storage = table_storage_from_legacy_sql(Some(
+        let storage = table_kind_info_from_legacy_sql(Some(
             "CREATE TABLE docs(body TEXT DEFAULT '/* not strict */') STRICT;",
         ));
 
@@ -272,10 +272,10 @@ mod tests {
 
     #[test]
     fn legacy_sql_parses_comma_separated_table_options() {
-        let strict_first = table_storage_from_legacy_sql(Some(
+        let strict_first = table_kind_info_from_legacy_sql(Some(
             "CREATE TABLE users(id INTEGER PRIMARY KEY) STRICT, WITHOUT ROWID;",
         ));
-        let without_rowid_first = table_storage_from_legacy_sql(Some(
+        let without_rowid_first = table_kind_info_from_legacy_sql(Some(
             "CREATE TABLE users(id INTEGER PRIMARY KEY) WITHOUT ROWID, STRICT;",
         ));
 
@@ -287,14 +287,14 @@ mod tests {
 
     #[test]
     fn pragma_fields_mark_strict_virtual_table() {
-        let storage = table_storage_from_pragma(
+        let storage = table_kind_info_from_pragma(
             "virtual",
             0,
             0,
             Some("CREATE VIRTUAL TABLE notes_fts USING fts5(body);"),
         );
 
-        assert_eq!(storage.kind, TableObjectKind::Virtual);
+        assert_eq!(storage.kind, TableKind::Virtual);
         assert_eq!(storage.virtual_module.as_deref(), Some("fts5"));
     }
 }

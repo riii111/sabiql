@@ -1,4 +1,4 @@
-use sabiql_domain::{Table, TableStorage};
+use sabiql_domain::{Table, TableKindInfo};
 
 pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) -> Table {
     Table {
@@ -14,7 +14,7 @@ pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) 
         row_count_estimate: None,
         comment: None,
         source_ddl: None,
-        storage: TableStorage::default(),
+        kind_info: TableKindInfo::default(),
     }
 }
 

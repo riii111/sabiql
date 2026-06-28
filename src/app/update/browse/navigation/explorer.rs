@@ -2,7 +2,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::ui_state::scroll_max_offset;
-use crate::policy::table_storage::max_explorer_table_label_width;
+use crate::policy::table_kind::max_explorer_table_label_width;
 use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
@@ -663,8 +663,8 @@ mod tests {
 
     mod horizontal_scroll {
         use super::*;
-        use crate::domain::TableStorage;
-        use crate::policy::table_storage::{explorer_table_label, explorer_table_label_width};
+        use crate::domain::TableKindInfo;
+        use crate::policy::table_kind::{explorer_table_label, explorer_table_label_width};
 
         #[rstest]
         #[case(&["abcdefghij"], 4, 32)]
@@ -756,9 +756,9 @@ mod tests {
             state.ui.set_explorer_content_width(10);
             let summary =
                 TableSummary::new("main".to_string(), "settings".to_string(), None, false)
-                    .with_storage(TableStorage {
+                    .with_kind_info(TableKindInfo {
                         without_rowid: true,
-                        ..TableStorage::default()
+                        ..TableKindInfo::default()
                     });
             state.session.set_metadata(Some(Arc::new({
                 let mut metadata = DatabaseMetadata::new("test".to_string());

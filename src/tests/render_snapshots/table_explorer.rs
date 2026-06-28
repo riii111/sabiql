@@ -2,8 +2,7 @@ use super::*;
 use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
 use sabiql_app::model::shared::ui_state::FocusMode;
 use sabiql_domain::{
-    ConnectionId, DatabaseMetadata, DatabaseType, Schema, TableObjectKind, TableStorage,
-    TableSummary,
+    ConnectionId, DatabaseMetadata, DatabaseType, Schema, TableKind, TableKindInfo, TableSummary,
 };
 use std::sync::Arc;
 
@@ -81,7 +80,7 @@ fn empty_query_result() {
 }
 
 #[test]
-fn sqlite_explorer_shows_table_storage_suffixes() {
+fn sqlite_explorer_shows_table_kind_suffixes() {
     let mut state = create_test_state();
     state.session.activate_connection_with_dsn(
         &ConnectionId::from_string("sqlite-test"),
@@ -95,20 +94,20 @@ fn sqlite_explorer_shows_table_storage_suffixes() {
         metadata.table_summaries = vec![
             TableSummary::new("main".to_string(), "users".to_string(), None, false),
             TableSummary::new("main".to_string(), "settings".to_string(), None, false)
-                .with_storage(TableStorage {
+                .with_kind_info(TableKindInfo {
                     without_rowid: true,
-                    ..TableStorage::default()
+                    ..TableKindInfo::default()
                 }),
             TableSummary::new("main".to_string(), "notes_fts".to_string(), None, false)
-                .with_storage(TableStorage {
-                    kind: TableObjectKind::Virtual,
+                .with_kind_info(TableKindInfo {
+                    kind: TableKind::Virtual,
                     virtual_module: Some("fts5".to_string()),
-                    ..TableStorage::default()
+                    ..TableKindInfo::default()
                 }),
             TableSummary::new("main".to_string(), "typed_users".to_string(), None, false)
-                .with_storage(TableStorage {
+                .with_kind_info(TableKindInfo {
                     is_strict: true,
-                    ..TableStorage::default()
+                    ..TableKindInfo::default()
                 }),
         ];
         metadata

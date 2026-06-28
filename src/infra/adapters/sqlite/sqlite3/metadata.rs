@@ -6,16 +6,16 @@ use serde::Deserialize;
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, Schema, Table, TableSignature, TableStorage, TableSummary, Trigger,
+    IndexType, Schema, Table, TableKindInfo, TableSignature, TableSummary, Trigger,
     UNRESOLVED_FK_COLUMN,
 };
 
 use super::super::{SqliteAdapter, schema::MAIN_SCHEMA, sql};
 
-mod storage;
+mod kind_info;
 mod trigger;
 
-use storage::{RawTableStorage, table_storage_from_legacy_sql, table_storage_from_pragma};
+use kind_info::{RawTableKindInfo, table_kind_info_from_legacy_sql, table_kind_info_from_pragma};
 use trigger::parse_sqlite_trigger;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -115,7 +115,7 @@ impl TableDetailMode {
         matches!(self, Self::Full)
     }
 
-    const fn include_storage(self) -> bool {
+    const fn include_kind_info(self) -> bool {
         !matches!(self, Self::Signature)
     }
 }
@@ -155,33 +155,33 @@ impl SqliteAdapter {
         }
     }
 
-    fn storage_for_raw_table(table: &RawTable) -> TableStorage {
+    fn kind_info_for_raw_table(table: &RawTable) -> TableKindInfo {
         if table.r#type.is_empty() {
-            return table_storage_from_legacy_sql(table.sql.as_deref());
+            return table_kind_info_from_legacy_sql(table.sql.as_deref());
         }
-        table_storage_from_pragma(&table.r#type, table.wr, table.strict, table.sql.as_deref())
+        table_kind_info_from_pragma(&table.r#type, table.wr, table.strict, table.sql.as_deref())
     }
 
-    async fn table_storage(
+    async fn table_kind_info(
         &self,
         path: &str,
         table: &str,
-    ) -> Result<Option<TableStorage>, DbOperationError> {
-        let query = sql::table_storage_query(table);
+    ) -> Result<Option<TableKindInfo>, DbOperationError> {
+        let query = sql::table_kind_info_query(table);
         match self
             .cli
-            .execute_json::<Vec<RawTableStorage>>(path, &query)
+            .execute_json::<Vec<RawTableKindInfo>>(path, &query)
             .await
         {
             Ok(rows) => Ok(rows
                 .into_iter()
                 .next()
-                .map(RawTableStorage::into_table_storage)),
+                .map(RawTableKindInfo::into_table_kind_info)),
             Err(DbOperationError::QueryFailed(message))
                 if sql::is_table_list_unavailable(&message) =>
             {
                 let sql = self.table_definition(path, table).await;
-                Ok(Some(table_storage_from_legacy_sql(sql.as_deref())))
+                Ok(Some(table_kind_info_from_legacy_sql(sql.as_deref())))
             }
             Err(error) => Err(error),
         }
@@ -609,10 +609,10 @@ impl SqliteAdapter {
             })
             .collect();
         let primary_key = (!primary_key.is_empty()).then_some(primary_key);
-        let storage = if mode.include_storage() {
-            self.table_storage(path, table).await?.unwrap_or_default()
+        let kind_info = if mode.include_kind_info() {
+            self.table_kind_info(path, table).await?.unwrap_or_default()
         } else {
-            TableStorage::default()
+            TableKindInfo::default()
         };
 
         Ok(Table {
@@ -640,7 +640,7 @@ impl SqliteAdapter {
             } else {
                 None
             },
-            storage,
+            kind_info,
         })
     }
 
@@ -652,15 +652,15 @@ impl SqliteAdapter {
         let detail = self
             .table_detail_with_mode(path, &table.name, TableDetailMode::Signature)
             .await?;
-        let storage = Self::storage_for_raw_table(table);
+        let kind_info = Self::kind_info_for_raw_table(table);
         let mut parts = vec![
             format!("sql={}", table.sql.clone().unwrap_or_default()),
-            format!("kind={:?}", storage.kind),
-            format!("strict={}", storage.is_strict),
-            format!("wr={}", storage.without_rowid),
+            format!("kind={:?}", kind_info.kind),
+            format!("strict={}", kind_info.is_strict),
+            format!("wr={}", kind_info.without_rowid),
             format!(
                 "module={}",
-                storage.virtual_module.as_deref().unwrap_or_default()
+                kind_info.virtual_module.as_deref().unwrap_or_default()
             ),
         ];
         parts.extend(detail.columns.iter().map(|column| {
@@ -741,7 +741,7 @@ impl MetadataProvider for SqliteAdapter {
         for table in &tables {
             metadata.table_summaries.push(
                 TableSummary::new(MAIN_SCHEMA.to_string(), table.name.clone(), None, false)
-                    .with_storage(Self::storage_for_raw_table(table)),
+                    .with_kind_info(Self::kind_info_for_raw_table(table)),
             );
         }
         Ok(metadata)
@@ -808,9 +808,9 @@ mod tests {
             strict: 0,
         };
 
-        let storage = SqliteAdapter::storage_for_raw_table(&table);
+        let kind_info = SqliteAdapter::kind_info_for_raw_table(&table);
 
-        assert!(storage.without_rowid);
+        assert!(kind_info.without_rowid);
     }
 
     #[test]
@@ -957,12 +957,12 @@ mod tests {
             assert_eq!(table_names, vec!["notes", "notes_fts"]);
         }
 
-        struct TableStorageMetadataFixture {
+        struct TableKindInfoMetadataFixture {
             _dir: tempfile::TempDir,
-            storage_by_name: std::collections::HashMap<String, crate::domain::TableStorage>,
+            kind_info_by_name: std::collections::HashMap<String, crate::domain::TableKindInfo>,
         }
 
-        impl TableStorageMetadataFixture {
+        impl TableKindInfoMetadataFixture {
             async fn new() -> Self {
                 let (dir, dsn) = make_sqlite_db(
                     r"
@@ -978,69 +978,69 @@ mod tests {
                 );
                 let adapter = SqliteAdapter::new();
                 let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
-                let storage_by_name = metadata
+                let kind_info_by_name = metadata
                     .table_summaries
                     .iter()
-                    .map(|summary| (summary.name.clone(), summary.storage.clone()))
+                    .map(|summary| (summary.name.clone(), summary.kind_info.clone()))
                     .collect();
 
                 Self {
                     _dir: dir,
-                    storage_by_name,
+                    kind_info_by_name,
                 }
             }
 
-            fn storage(&self, name: &str) -> &crate::domain::TableStorage {
-                &self.storage_by_name[name]
+            fn kind_info(&self, name: &str) -> &crate::domain::TableKindInfo {
+                &self.kind_info_by_name[name]
             }
         }
 
         #[tokio::test]
-        async fn classifies_regular_table_storage() {
-            let fixture = TableStorageMetadataFixture::new().await;
+        async fn classifies_regular_table_kind() {
+            let fixture = TableKindInfoMetadataFixture::new().await;
 
             assert_eq!(
-                fixture.storage("users").kind,
-                crate::domain::TableObjectKind::Table
+                fixture.kind_info("users").kind,
+                crate::domain::TableKind::Table
             );
-            assert!(!fixture.storage("users").is_strict);
-            assert!(!fixture.storage("users").without_rowid);
+            assert!(!fixture.kind_info("users").is_strict);
+            assert!(!fixture.kind_info("users").without_rowid);
         }
 
         #[tokio::test]
-        async fn classifies_without_rowid_table_storage() {
-            let fixture = TableStorageMetadataFixture::new().await;
+        async fn classifies_without_rowid_table_kind() {
+            let fixture = TableKindInfoMetadataFixture::new().await;
 
-            assert!(fixture.storage("settings").without_rowid);
+            assert!(fixture.kind_info("settings").without_rowid);
         }
 
         #[tokio::test]
         async fn does_not_infer_strict_from_table_name() {
-            let fixture = TableStorageMetadataFixture::new().await;
+            let fixture = TableKindInfoMetadataFixture::new().await;
 
             assert!(
-                !fixture.storage("strict_users").is_strict,
+                !fixture.kind_info("strict_users").is_strict,
                 "table name containing 'strict' must not infer STRICT from DDL when pragma.strict is 0"
             );
         }
 
         #[tokio::test]
-        async fn classifies_strict_table_storage() {
-            let fixture = TableStorageMetadataFixture::new().await;
+        async fn classifies_strict_table_kind() {
+            let fixture = TableKindInfoMetadataFixture::new().await;
 
-            assert!(fixture.storage("typed_users").is_strict);
+            assert!(fixture.kind_info("typed_users").is_strict);
         }
 
         #[tokio::test]
-        async fn classifies_virtual_table_storage() {
-            let fixture = TableStorageMetadataFixture::new().await;
+        async fn classifies_virtual_table_kind() {
+            let fixture = TableKindInfoMetadataFixture::new().await;
 
             assert_eq!(
-                fixture.storage("notes_fts").kind,
-                crate::domain::TableObjectKind::Virtual
+                fixture.kind_info("notes_fts").kind,
+                crate::domain::TableKind::Virtual
             );
             assert_eq!(
-                fixture.storage("notes_fts").virtual_module.as_deref(),
+                fixture.kind_info("notes_fts").virtual_module.as_deref(),
                 Some("fts5")
             );
         }
@@ -1348,7 +1348,7 @@ mod tests {
                     .source_ddl()
                     .is_some_and(|ddl| ddl.contains("WITHOUT ROWID"))
             );
-            assert!(without_rowid.storage.without_rowid);
+            assert!(without_rowid.kind_info.without_rowid);
             assert_eq!(
                 adapter.generate_ddl(DatabaseType::SQLite, &without_rowid),
                 without_rowid.source_ddl().unwrap()
@@ -1364,11 +1364,11 @@ mod tests {
                     .is_some_and(|ddl| ddl.starts_with("CREATE VIRTUAL TABLE"))
             );
             assert_eq!(
-                virtual_table.storage.kind,
-                crate::domain::TableObjectKind::Virtual
+                virtual_table.kind_info.kind,
+                crate::domain::TableKind::Virtual
             );
             assert_eq!(
-                virtual_table.storage.virtual_module.as_deref(),
+                virtual_table.kind_info.virtual_module.as_deref(),
                 Some("fts5")
             );
         }
