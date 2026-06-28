@@ -352,38 +352,48 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::domain::{Column, QueryResult, QuerySource, Table};
     use crate::services::AppServices;
     use crate::test_support::column::{column_fixture, test_nullable_column};
     use std::sync::Arc;
 
-    fn jsonb_table() -> Table {
+    fn jsonb_id_column() -> Column {
+        column_fixture(|c| {
+            c.name = "id".into();
+            c.data_type = "integer".into();
+            c.ordinal_position = 1;
+            c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+        })
+    }
+
+    fn read_only_jsonb_settings_column() -> Column {
+        column_fixture(|c| {
+            c.name = "settings".into();
+            c.data_type = "jsonb".into();
+            c.ordinal_position = 2;
+            c.attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
+        })
+    }
+
+    fn users_jsonb_table(columns: Vec<Column>) -> Table {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            columns: vec![
-                column_fixture(|c| {
-                    c.name = "id".into();
-                    c.data_type = "integer".into();
-                    c.ordinal_position = 1;
-                    c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
-                }),
-                test_nullable_column("settings", "jsonb", 2),
-            ],
+            columns,
             primary_key: Some(vec!["id".to_string()]),
             ..crate::test_support::table::minimal("", "")
         }
     }
 
+    fn jsonb_table() -> Table {
+        users_jsonb_table(vec![
+            jsonb_id_column(),
+            test_nullable_column("settings", "jsonb", 2),
+        ])
+    }
+
     fn read_only_jsonb_table() -> Table {
-        let mut table = jsonb_table();
-        table.columns[1] = column_fixture(|c| {
-            c.name = "settings".into();
-            c.data_type = "jsonb".into();
-            c.ordinal_position = 2;
-            c.attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
-        });
-        table
+        users_jsonb_table(vec![jsonb_id_column(), read_only_jsonb_settings_column()])
     }
 
     fn state_with_jsonb_cell() -> AppState {
