@@ -111,7 +111,7 @@ mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
     use crate::model::shared::db_capabilities::DbCapabilities;
-    use crate::test_support::column::with_attributes;
+    use crate::test_support::column::test_column;
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -129,13 +129,9 @@ mod tests {
                 "postgres://test",
             );
             let cols: Vec<Column> = (0..columns)
-                .map(|i| {
-                    with_attributes(
-                        format!("col_{i}"),
-                        "text".to_string(),
-                        ColumnAttributes::empty(),
-                        i as i32,
-                    )
+                .map(|i| Column {
+                    attributes: ColumnAttributes::empty(),
+                    ..test_column(format!("col_{i}"), "text".to_string(), i as i32)
                 })
                 .collect();
             state.session.set_table_detail_raw(Some(Table {

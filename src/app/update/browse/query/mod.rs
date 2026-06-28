@@ -53,7 +53,8 @@ pub(super) fn preview_effect_for_current_table(
 
 #[cfg(test)]
 pub(super) mod tests {
-    use crate::test_support::column::with_attributes;
+    use crate::domain::Column;
+    use crate::test_support::column::test_column;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -127,18 +128,11 @@ pub(super) mod tests {
             schema: "public".to_string(),
             name: "users".to_string(),
             columns: vec![
-                with_attributes(
-                    "id".to_string(),
-                    "int".to_string(),
-                    ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    1,
-                ),
-                with_attributes(
-                    "name".to_string(),
-                    "text".to_string(),
-                    ColumnAttributes::NULLABLE,
-                    2,
-                ),
+                Column {
+                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                    ..test_column("id".to_string(), "int".to_string(), 1)
+                },
+                test_column("name".to_string(), "text".to_string(), 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
             indexes: vec![Index {
@@ -161,12 +155,9 @@ pub(super) mod tests {
 
     pub fn jsonb_table_detail() -> Table {
         let mut detail = users_table_detail();
-        detail.columns.push(with_attributes(
-            "metadata".to_string(),
-            "jsonb".to_string(),
-            ColumnAttributes::NULLABLE,
-            3,
-        ));
+        detail
+            .columns
+            .push(test_column("metadata".to_string(), "jsonb".to_string(), 3));
         detail
     }
 

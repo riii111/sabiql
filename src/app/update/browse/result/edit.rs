@@ -148,8 +148,9 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
-    use crate::test_support::column::with_attributes;
+    use crate::test_support::column::test_column;
     use crate::update::action::CursorMove;
     use rstest::rstest;
     use std::sync::Arc;
@@ -289,18 +290,14 @@ mod tests {
             let mut state = preview_state_with_selection();
             let mut table = minimal_users_table();
             table.columns = vec![
-                with_attributes(
-                    "id".to_string(),
-                    "integer".to_string(),
-                    ColumnAttributes::PRIMARY_KEY,
-                    1,
-                ),
-                with_attributes(
-                    "name".to_string(),
-                    "text".to_string(),
-                    ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                    2,
-                ),
+                Column {
+                    attributes: ColumnAttributes::PRIMARY_KEY,
+                    ..test_column("id".to_string(), "integer".to_string(), 1)
+                },
+                Column {
+                    attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
+                    ..test_column("name".to_string(), "text".to_string(), 2)
+                },
             ];
             state.session.set_table_detail_raw(Some(table));
 
@@ -374,18 +371,11 @@ mod tests {
             );
             let mut table = cell_edit_entry_guardrails::minimal_users_table();
             table.columns = vec![
-                with_attributes(
-                    "id".to_string(),
-                    "integer".to_string(),
-                    ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    1,
-                ),
-                with_attributes(
-                    "name".to_string(),
-                    "jsonb".to_string(),
-                    ColumnAttributes::NULLABLE,
-                    2,
-                ),
+                Column {
+                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                    ..test_column("id".to_string(), "integer".to_string(), 1)
+                },
+                test_column("name".to_string(), "jsonb".to_string(), 2),
             ];
             state.session.set_table_detail_raw(Some(table));
             state

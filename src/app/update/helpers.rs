@@ -436,7 +436,8 @@ pub fn validate_all(state: &mut ConnectionSetupState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::column::with_attributes;
+    use crate::domain::Column;
+    use crate::test_support::column::test_column;
     use std::sync::Arc;
 
     use crate::domain::connection::ConnectionId;
@@ -667,18 +668,11 @@ mod tests {
                 schema: "main".to_string(),
                 name: "users".to_string(),
                 columns: vec![
-                    with_attributes(
-                        "id".to_string(),
-                        "INTEGER".to_string(),
-                        ColumnAttributes::PRIMARY_KEY,
-                        1,
-                    ),
-                    with_attributes(
-                        "name".to_string(),
-                        "TEXT".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        2,
-                    ),
+                    Column {
+                        attributes: ColumnAttributes::PRIMARY_KEY,
+                        ..test_column("id".to_string(), "INTEGER".to_string(), 1)
+                    },
+                    test_column("name".to_string(), "TEXT".to_string(), 2),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 ..crate::test_support::table::minimal("", "")

@@ -179,9 +179,10 @@ fn update_search_matches(state: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
-    use crate::test_support::column::with_attributes;
+    use crate::test_support::column::test_column;
     use std::sync::Arc;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
@@ -206,18 +207,11 @@ mod tests {
             schema: "public".to_string(),
             name: "notes".to_string(),
             columns: vec![
-                with_attributes(
-                    "id".to_string(),
-                    "integer".to_string(),
-                    ColumnAttributes::PRIMARY_KEY,
-                    1,
-                ),
-                with_attributes(
-                    "body".to_string(),
-                    data_type.to_string(),
-                    ColumnAttributes::NULLABLE,
-                    2,
-                ),
+                Column {
+                    attributes: ColumnAttributes::PRIMARY_KEY,
+                    ..test_column("id".to_string(), "integer".to_string(), 1)
+                },
+                test_column("body".to_string(), data_type.to_string(), 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
             ..crate::test_support::table::minimal("", "")

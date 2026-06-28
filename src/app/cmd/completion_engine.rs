@@ -925,8 +925,9 @@ impl CompletionEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, Table};
-    use crate::test_support::column::with_attributes;
+    pub use crate::domain::Column;
+    use crate::domain::Table;
+    use crate::test_support::column::test_column;
 
     fn engine() -> CompletionEngine {
         CompletionEngine::new()
@@ -939,14 +940,7 @@ mod tests {
             columns: columns
                 .iter()
                 .enumerate()
-                .map(|(i, col)| {
-                    with_attributes(
-                        (*col).to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        (i + 1) as i32,
-                    )
-                })
+                .map(|(i, col)| test_column((*col).to_string(), "text".to_string(), (i + 1) as i32))
                 .collect(),
             ..crate::test_support::table::minimal("", "")
         }
@@ -1219,18 +1213,11 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    with_attributes(
-                        "user_name".to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        1,
-                    ),
-                    with_attributes(
-                        "user_id".to_string(),
-                        "int".to_string(),
-                        ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        2,
-                    ),
+                    test_column("user_name".to_string(), "text".to_string(), 1),
+                    Column {
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                        ..test_column("user_id".to_string(), "int".to_string(), 2)
+                    },
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
                 ..crate::test_support::table::minimal("", "")
@@ -1353,18 +1340,11 @@ mod tests {
         fn pk_column_returns_higher_score() {
             let e = engine();
             let table = table_with_two_columns(
-                with_attributes(
-                    "name".to_string(),
-                    "text".to_string(),
-                    ColumnAttributes::NULLABLE,
-                    1,
-                ),
-                with_attributes(
-                    "id".to_string(),
-                    "int".to_string(),
-                    ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    2,
-                ),
+                test_column("name".to_string(), "text".to_string(), 1),
+                Column {
+                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                    ..test_column("id".to_string(), "int".to_string(), 2)
+                },
             );
 
             let candidates = e.column_candidates(Some(&table), "");
@@ -1377,18 +1357,11 @@ mod tests {
         fn not_null_column_returns_higher_score() {
             let e = engine();
             let table = table_with_two_columns(
-                with_attributes(
-                    "optional_field".to_string(),
-                    "text".to_string(),
-                    ColumnAttributes::NULLABLE,
-                    1,
-                ),
-                with_attributes(
-                    "required_field".to_string(),
-                    "text".to_string(),
-                    ColumnAttributes::empty(),
-                    2,
-                ),
+                test_column("optional_field".to_string(), "text".to_string(), 1),
+                Column {
+                    attributes: ColumnAttributes::empty(),
+                    ..test_column("required_field".to_string(), "text".to_string(), 2)
+                },
             );
 
             let candidates = e.column_candidates(Some(&table), "");
@@ -1586,18 +1559,11 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 columns: vec![
-                    with_attributes(
-                        "id".to_string(),
-                        "int".to_string(),
-                        ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        1,
-                    ),
-                    with_attributes(
-                        "name".to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        2,
-                    ),
+                    Column {
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                        ..test_column("id".to_string(), "int".to_string(), 1)
+                    },
+                    test_column("name".to_string(), "text".to_string(), 2),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 ..crate::test_support::table::minimal("", "")
@@ -1659,24 +1625,12 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 columns: vec![
-                    with_attributes(
-                        "user_id".to_string(),
-                        "int".to_string(),
-                        ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        1,
-                    ),
-                    with_attributes(
-                        "username".to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        2,
-                    ),
-                    with_attributes(
-                        "email".to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        3,
-                    ),
+                    Column {
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                        ..test_column("user_id".to_string(), "int".to_string(), 1)
+                    },
+                    test_column("username".to_string(), "text".to_string(), 2),
+                    test_column("email".to_string(), "text".to_string(), 3),
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
                 ..crate::test_support::table::minimal("", "")
@@ -1720,24 +1674,15 @@ mod tests {
                 schema: "public".to_string(),
                 name: "orders".to_string(),
                 columns: vec![
-                    with_attributes(
-                        "id".to_string(),
-                        "int".to_string(),
-                        ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        1,
-                    ),
-                    with_attributes(
-                        "user_id".to_string(),
-                        "int".to_string(),
-                        ColumnAttributes::empty(),
-                        2,
-                    ),
-                    with_attributes(
-                        "status".to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        3,
-                    ),
+                    Column {
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                        ..test_column("id".to_string(), "int".to_string(), 1)
+                    },
+                    Column {
+                        attributes: ColumnAttributes::empty(),
+                        ..test_column("user_id".to_string(), "int".to_string(), 2)
+                    },
+                    test_column("status".to_string(), "text".to_string(), 3),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 foreign_keys: vec![ForeignKey {
@@ -1807,18 +1752,8 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    with_attributes(
-                        "user_id".to_string(),
-                        "int".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        1,
-                    ),
-                    with_attributes(
-                        "created_at".to_string(),
-                        "timestamp".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        2,
-                    ),
+                    test_column("user_id".to_string(), "int".to_string(), 1),
+                    test_column("created_at".to_string(), "timestamp".to_string(), 2),
                 ],
                 ..crate::test_support::table::minimal("", "")
             };
@@ -1837,18 +1772,8 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    with_attributes(
-                        "id".to_string(),
-                        "int".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        1,
-                    ),
-                    with_attributes(
-                        "user_id".to_string(),
-                        "int".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        2,
-                    ),
+                    test_column("id".to_string(), "int".to_string(), 1),
+                    test_column("user_id".to_string(), "int".to_string(), 2),
                 ],
                 ..crate::test_support::table::minimal("", "")
             };
@@ -1874,18 +1799,8 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    with_attributes(
-                        "name".to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        1,
-                    ),
-                    with_attributes(
-                        "email".to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        2,
-                    ),
+                    test_column("name".to_string(), "text".to_string(), 1),
+                    test_column("email".to_string(), "text".to_string(), 2),
                 ],
                 ..crate::test_support::table::minimal("", "")
             };
@@ -2006,12 +1921,10 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                columns: vec![with_attributes(
-                    "id".to_string(),
-                    "int".to_string(),
-                    ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    1,
-                )],
+                columns: vec![Column {
+                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                    ..test_column("id".to_string(), "int".to_string(), 1)
+                }],
                 ..crate::test_support::table::minimal("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
@@ -2147,24 +2060,15 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 columns: vec![
-                    with_attributes(
-                        "id".to_string(),
-                        "int".to_string(),
-                        ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        1,
-                    ),
-                    with_attributes(
-                        "name".to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::NULLABLE,
-                        2,
-                    ),
-                    with_attributes(
-                        "email".to_string(),
-                        "text".to_string(),
-                        ColumnAttributes::UNIQUE,
-                        3,
-                    ),
+                    Column {
+                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+                        ..test_column("id".to_string(), "int".to_string(), 1)
+                    },
+                    test_column("name".to_string(), "text".to_string(), 2),
+                    Column {
+                        attributes: ColumnAttributes::UNIQUE,
+                        ..test_column("email".to_string(), "text".to_string(), 3)
+                    },
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 ..crate::test_support::table::minimal("", "")
@@ -2362,12 +2266,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                columns: vec![with_attributes(
-                    "and".to_string(),
-                    "text".to_string(),
-                    ColumnAttributes::NULLABLE,
-                    1,
-                )],
+                columns: vec![test_column("and".to_string(), "text".to_string(), 1)],
                 ..crate::test_support::table::minimal("", "")
             };
 
