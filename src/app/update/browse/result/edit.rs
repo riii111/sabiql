@@ -149,7 +149,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
-    use crate::test_support::column::column_fixture;
+    use crate::test_support::column::{column_fixture, test_nullable_column};
     use crate::update::action::CursorMove;
     use rstest::rstest;
     use std::sync::Arc;
@@ -380,11 +380,7 @@ mod tests {
                     c.ordinal_position = 1;
                     c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
                 }),
-                column_fixture(|c| {
-                    c.name = "name".into();
-                    c.data_type = "jsonb".into();
-                    c.ordinal_position = 2;
-                }),
+                test_nullable_column("name", "jsonb", 2),
             ];
             state.session.set_table_detail_raw(Some(table));
             state

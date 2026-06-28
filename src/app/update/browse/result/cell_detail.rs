@@ -180,9 +180,8 @@ fn update_search_matches(state: &mut AppState) {
 mod tests {
     use super::*;
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource};
-    use crate::test_support::column::column_fixture;
-    use crate::test_support::table::table_fixture;
+    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
+    use crate::test_support::column::{column_fixture, test_nullable_column};
     use std::sync::Arc;
 
     fn state_with_cell(data_type: &str, cell_value: &str) -> AppState {
@@ -203,24 +202,21 @@ mod tests {
                 QuerySource::Preview,
             )));
         state.query.pagination.reset_for_table("public", "notes");
-        state.session.set_table_detail_raw(Some(table_fixture(|t| {
-            t.schema = "public".to_string();
-            t.name = "notes".to_string();
-            t.columns = vec![
+        state.session.set_table_detail_raw(Some(Table {
+            schema: "public".to_string(),
+            name: "notes".to_string(),
+            columns: vec![
                 column_fixture(|c| {
                     c.name = "id".into();
                     c.data_type = "integer".into();
                     c.ordinal_position = 1;
                     c.attributes = ColumnAttributes::PRIMARY_KEY;
                 }),
-                column_fixture(|c| {
-                    c.name = "body".into();
-                    c.data_type = data_type.to_string();
-                    c.ordinal_position = 2;
-                }),
-            ];
-            t.primary_key = Some(vec!["id".to_string()]);
-        })));
+                test_nullable_column("body", data_type, 2),
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            ..crate::test_support::table::minimal("", "")
+        }));
         state.result_interaction.activate_cell(0, 1);
         state
     }

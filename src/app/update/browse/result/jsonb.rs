@@ -354,29 +354,25 @@ mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource, Table};
     use crate::services::AppServices;
-    use crate::test_support::column::column_fixture;
-    use crate::test_support::table::table_fixture;
+    use crate::test_support::column::{column_fixture, test_nullable_column};
     use std::sync::Arc;
 
     fn jsonb_table() -> Table {
-        table_fixture(|t| {
-            t.schema = "public".to_string();
-            t.name = "users".to_string();
-            t.columns = vec![
+        Table {
+            schema: "public".to_string(),
+            name: "users".to_string(),
+            columns: vec![
                 column_fixture(|c| {
                     c.name = "id".into();
                     c.data_type = "integer".into();
                     c.ordinal_position = 1;
                     c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
                 }),
-                column_fixture(|c| {
-                    c.name = "settings".into();
-                    c.data_type = "jsonb".into();
-                    c.ordinal_position = 2;
-                }),
-            ];
-            t.primary_key = Some(vec!["id".to_string()]);
-        })
+                test_nullable_column("settings", "jsonb", 2),
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            ..crate::test_support::table::minimal("", "")
+        }
     }
 
     fn state_with_jsonb_cell() -> AppState {

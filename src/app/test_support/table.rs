@@ -17,10 +17,3 @@ pub fn minimal(schema: impl Into<String>, name: impl Into<String>) -> Table {
         kind_info: TableKindInfo::default(),
     }
 }
-
-#[must_use]
-pub fn table_fixture(configure: impl FnOnce(&mut Table)) -> Table {
-    let mut table = minimal("", "");
-    configure(&mut table);
-    table
-}

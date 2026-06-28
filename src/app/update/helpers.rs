@@ -436,12 +436,11 @@ pub fn validate_all(state: &mut ConnectionSetupState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::column::column_fixture;
-    use crate::test_support::table::table_fixture;
+    use crate::test_support::column::{column_fixture, test_nullable_column};
     use std::sync::Arc;
 
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{ColumnAttributes, DatabaseType, QuerySource};
+    use crate::domain::{ColumnAttributes, DatabaseType, QuerySource, Table};
     use rstest::rstest;
 
     mod validate_field_name {
@@ -664,24 +663,21 @@ mod tests {
                     10,
                     QuerySource::Preview,
                 )));
-            state.session.set_table_detail_raw(Some(table_fixture(|t| {
-                t.schema = "main".to_string();
-                t.name = "users".to_string();
-                t.columns = vec![
+            state.session.set_table_detail_raw(Some(Table {
+                schema: "main".to_string(),
+                name: "users".to_string(),
+                columns: vec![
                     column_fixture(|c| {
                         c.name = "id".into();
                         c.data_type = "INTEGER".into();
                         c.ordinal_position = 1;
                         c.attributes = ColumnAttributes::PRIMARY_KEY;
                     }),
-                    column_fixture(|c| {
-                        c.name = "name".into();
-                        c.data_type = "TEXT".into();
-                        c.ordinal_position = 2;
-                    }),
-                ];
-                t.primary_key = Some(vec!["id".to_string()]);
-            })));
+                    test_nullable_column("name", "TEXT", 2),
+                ],
+                primary_key: Some(vec!["id".to_string()]),
+                ..crate::test_support::table::minimal("", "")
+            }));
             state.query.pagination.reset_for_table("main", "users");
             state.result_interaction.stage_row(0);
             state

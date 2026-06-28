@@ -109,10 +109,9 @@ pub fn reduce_inspector(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType};
+    use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
     use crate::model::shared::db_capabilities::DbCapabilities;
     use crate::test_support::column::column_fixture;
-    use crate::test_support::table::table_fixture;
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -139,12 +138,13 @@ mod tests {
                     })
                 })
                 .collect();
-            state.session.set_table_detail_raw(Some(table_fixture(|t| {
-                t.schema = "public".to_string();
-                t.name = "test_table".to_string();
-                t.columns = cols;
-                t.row_count_estimate = Some(0);
-            })));
+            state.session.set_table_detail_raw(Some(Table {
+                schema: "public".to_string(),
+                name: "test_table".to_string(),
+                columns: cols,
+                row_count_estimate: Some(0),
+                ..crate::test_support::table::minimal("", "")
+            }));
             state
         }
 
