@@ -299,7 +299,14 @@ impl PostgresAdapter {
                 Ok(RlsPolicy {
                     name: p.name,
                     permissive: p.permissive,
-                    roles: p.roles.unwrap_or_default(),
+                    #[allow(
+                        clippy::manual_unwrap_or_default,
+                        reason = "explicit None => empty roles for external JSON mapping"
+                    )]
+                    roles: match p.roles {
+                        Some(roles) => roles,
+                        None => Vec::new(),
+                    },
                     cmd,
                     qual: p.qual,
                     with_check: p.with_check,

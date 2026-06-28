@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RuntimeState {
     pub(crate) project_name: String,
     pub(crate) service_file_path: Option<PathBuf>,
@@ -36,12 +36,5 @@ mod tests {
         let state = RuntimeState::new("my_project".to_string());
 
         assert_eq!(state.project_name(), "my_project");
-    }
-
-    #[test]
-    fn default_creates_empty_runtime_state() {
-        let state = RuntimeState::default();
-
-        assert!(state.project_name().is_empty());
     }
 }

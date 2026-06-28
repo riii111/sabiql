@@ -323,10 +323,15 @@ impl QueryExecutor for SqliteAdapter {
         Self::validate_main_schema(schema)?;
         let path = Self::path_from_dsn(dsn)?;
         let order_columns = self.preview_order_columns(path, table).await;
-        let columns = self
-            .preview_visible_column_names(path, table)
-            .await
-            .unwrap_or_default();
+        #[allow(
+            clippy::manual_unwrap_or_default,
+            reason = "match kept for Err comment; no logging framework yet"
+        )]
+        let columns = match self.preview_visible_column_names(path, table).await {
+            Ok(columns) => columns,
+            // No logging framework yet; preview falls back to an empty column list.
+            Err(_) => Vec::new(),
+        };
         let query = sql::build_preview_query(table, &columns, &order_columns, limit, offset);
         self.execute_quoted_query(path, &query, QuerySource::Preview, read_only)
             .await

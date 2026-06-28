@@ -188,15 +188,6 @@ fn is_connection_lost_message(lower: &str) -> bool {
         || lower.contains("broken pipe")
 }
 
-impl Default for ConnectionErrorInfo {
-    fn default() -> Self {
-        Self {
-            kind: ConnectionErrorKind::Unknown,
-            masked_details: String::new(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
