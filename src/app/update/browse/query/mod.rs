@@ -53,8 +53,8 @@ pub(super) fn preview_effect_for_current_table(
 
 #[cfg(test)]
 pub(super) mod tests {
-    use crate::domain::Column;
-    use crate::test_support::column::test_nullable_column;
+    use crate::test_support::column::column_fixture;
+    use crate::test_support::table::table_fixture;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -124,40 +124,47 @@ pub(super) mod tests {
     }
 
     pub fn users_table_detail() -> Table {
-        Table {
-            schema: "public".to_string(),
-            name: "users".to_string(),
-            columns: vec![
-                Column {
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "int", 1)
-                },
-                test_nullable_column("name", "text", 2),
-            ],
-            primary_key: Some(vec!["id".to_string()]),
-            indexes: vec![Index {
+        table_fixture(|t| {
+            t.schema = "public".to_string();
+            t.name = "users".to_string();
+            t.columns = vec![
+                column_fixture(|c| {
+                    c.name = "id".into();
+                    c.data_type = "int".into();
+                    c.ordinal_position = 1;
+                    c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                }),
+                column_fixture(|c| {
+                    c.name = "name".into();
+                    c.data_type = "text".into();
+                    c.ordinal_position = 2;
+                }),
+            ];
+            t.primary_key = Some(vec!["id".to_string()]);
+            t.indexes = vec![Index {
                 name: "users_pkey".to_string(),
                 columns: vec!["id".to_string()],
                 attributes: IndexAttributes::UNIQUE | IndexAttributes::PRIMARY,
                 index_type: IndexType::BTree,
                 definition: None,
-            }],
-            triggers: vec![Trigger {
+            }];
+            t.triggers = vec![Trigger {
                 name: "trg".to_string(),
                 timing: TriggerTiming::After,
                 events: vec![TriggerEvent::Update],
                 function_name: "f".to_string(),
                 security_definer: false,
-            }],
-            ..crate::test_support::table::minimal("", "")
-        }
+            }];
+        })
     }
 
     pub fn jsonb_table_detail() -> Table {
         let mut detail = users_table_detail();
-        detail
-            .columns
-            .push(test_nullable_column("metadata", "jsonb", 3));
+        detail.columns.push(column_fixture(|c| {
+            c.name = "metadata".into();
+            c.data_type = "jsonb".into();
+            c.ordinal_position = 3;
+        }));
         detail
     }
 

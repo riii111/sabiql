@@ -109,9 +109,10 @@ pub fn reduce_inspector(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
+    use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType};
     use crate::model::shared::db_capabilities::DbCapabilities;
-    use crate::test_support::column::test_nullable_column;
+    use crate::test_support::column::column_fixture;
+    use crate::test_support::table::table_fixture;
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -129,18 +130,21 @@ mod tests {
                 "postgres://test",
             );
             let cols: Vec<Column> = (0..columns)
-                .map(|i| Column {
-                    attributes: ColumnAttributes::empty(),
-                    ..test_nullable_column(format!("col_{i}"), "text", i as i32)
+                .map(|i| {
+                    column_fixture(|c| {
+                        c.name = format!("col_{i}");
+                        c.data_type = "text".into();
+                        c.ordinal_position = i as i32;
+                        c.attributes = ColumnAttributes::empty();
+                    })
                 })
                 .collect();
-            state.session.set_table_detail_raw(Some(Table {
-                schema: "public".to_string(),
-                name: "test_table".to_string(),
-                columns: cols,
-                row_count_estimate: Some(0),
-                ..crate::test_support::table::minimal("", "")
-            }));
+            state.session.set_table_detail_raw(Some(table_fixture(|t| {
+                t.schema = "public".to_string();
+                t.name = "test_table".to_string();
+                t.columns = cols;
+                t.row_count_estimate = Some(0);
+            })));
             state
         }
 
