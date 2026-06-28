@@ -47,13 +47,13 @@ pub(super) fn reduce_confirm_dialog(
                     sql,
                     blocked: false,
                 }) => {
-                    if let Some(dsn) = &state.session.dsn {
+                    if let Some(dsn) = state.session.dsn().map(String::from) {
                         let run_id = state.query.begin_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecuteWrite {
-                            dsn: dsn.clone(),
+                            dsn,
                             run_id,
                             query: sql,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         state.result_interaction.clear_write_preview();
@@ -65,17 +65,17 @@ pub(super) fn reduce_confirm_dialog(
                     }
                 }
                 Some(ConfirmIntent::DisableReadOnly) => {
-                    state.session.read_only = false;
+                    state.session.disable_read_only();
                     DispatchResult::handled()
                 }
-                Some(ConfirmIntent::CsvExport {
+                Some(ConfirmIntent::CsvExportRerunnable {
                     dsn,
                     run_id,
                     export_query,
                     file_name,
                     row_count,
                 }) => {
-                    if state.session.dsn.as_ref() == Some(&dsn)
+                    if state.session.dsn() == Some(dsn.as_str())
                         && state.query.is_current_run(run_id)
                     {
                         DispatchResult::handled_with(vec![Effect::ExportCsv {
@@ -84,7 +84,29 @@ pub(super) fn reduce_confirm_dialog(
                             query: export_query,
                             file_name,
                             row_count,
-                            read_only: state.session.read_only,
+                            read_only: state.session.is_read_only(),
+                        }])
+                    } else {
+                        DispatchResult::handled()
+                    }
+                }
+                Some(ConfirmIntent::CsvExportCached {
+                    dsn,
+                    run_id,
+                    file_name,
+                    row_count,
+                    snapshot,
+                }) => {
+                    if state.session.dsn() == Some(dsn.as_str())
+                        && state.query.is_current_run(run_id)
+                    {
+                        DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
+                            dsn,
+                            run_id,
+                            file_name,
+                            columns: snapshot.columns,
+                            values: snapshot.values,
+                            row_count,
                         }])
                     } else {
                         DispatchResult::handled()
@@ -95,13 +117,25 @@ pub(super) fn reduce_confirm_dialog(
         }
         Action::ConfirmDialogCancel => {
             let intent = state.confirm_dialog.take_intent();
+            let canceling_current_csv_export = match &intent {
+                Some(
+                    ConfirmIntent::CsvExportRerunnable { dsn, run_id, .. }
+                    | ConfirmIntent::CsvExportCached { dsn, run_id, .. },
+                ) => {
+                    state.session.dsn() == Some(dsn.as_str()) && state.query.is_current_run(*run_id)
+                }
+                _ => false,
+            };
             state.result_interaction.clear_write_preview();
             state.query.clear_delete_refresh_target();
+            if canceling_current_csv_export {
+                state.query.mark_idle();
+            }
 
             if matches!(intent, Some(ConfirmIntent::QuitNoConnection)) {
                 state.connection_setup.reset();
-                if !state.connections().is_empty() || state.session.dsn.is_some() {
-                    state.connection_setup.is_first_run = false;
+                if !state.connections().is_empty() || state.session.dsn().is_some() {
+                    state.connection_setup.set_first_run(false);
                 }
                 state.modal.pop_mode_override(InputMode::ConnectionSetup);
                 DispatchResult::handled()

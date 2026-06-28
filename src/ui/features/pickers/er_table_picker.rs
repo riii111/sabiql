@@ -20,7 +20,7 @@ impl ErTablePicker {
         state: &AppState,
         theme: &ThemePalette,
     ) -> PickerRenderMetrics {
-        let selected_count = state.ui.er_selected_tables.len();
+        let selected_count = state.ui.er_selected_tables().len();
         let total_count = state.tables().len();
         let filtered_count = state.er_filtered_tables().len();
 
@@ -37,7 +37,7 @@ impl ErTablePicker {
                 theme.semantic.text.muted,
             )
         } else if selected_count == 1 {
-            let name = state.ui.er_selected_tables.iter().next().unwrap().clone();
+            let name = state.ui.er_selected_tables().iter().next().unwrap().clone();
             (
                 "Partial ER".to_string(),
                 name,
@@ -54,7 +54,7 @@ impl ErTablePicker {
         let output_label = if selected_count == 0 {
             "—".to_string()
         } else {
-            let selected_vec: Vec<String> = state.ui.er_selected_tables.iter().cloned().collect();
+            let selected_vec: Vec<String> = state.ui.er_selected_tables().iter().cloned().collect();
             er_output_filename(&selected_vec, total_count)
         };
         let select_all_hint =
@@ -87,7 +87,7 @@ impl ErTablePicker {
         let visible_width = render_filter_input_line(
             frame,
             filter_area,
-            state.ui.er_picker.filter_input(),
+            state.ui.er_picker().filter_input(),
             None,
             theme,
         );
@@ -124,7 +124,7 @@ impl ErTablePicker {
             .iter()
             .map(|t| {
                 let qn = t.qualified_name();
-                let is_selected = state.ui.er_selected_tables.contains(&qn);
+                let is_selected = state.ui.er_selected_tables().contains(&qn);
                 let mark = if is_selected { "✔ " } else { "  " };
                 let style = if is_selected {
                     Style::default().fg(theme.semantic.surface.focus_border)
@@ -140,13 +140,13 @@ impl ErTablePicker {
             .highlight_symbol("▸ ");
 
         let selected = if filtered_count > 0 {
-            Some(state.ui.er_picker.selected())
+            Some(state.ui.er_picker().selected())
         } else {
             None
         };
         let mut list_state = ListState::default()
             .with_selected(selected)
-            .with_offset(state.ui.er_picker.scroll_offset());
+            .with_offset(state.ui.er_picker().scroll_offset());
         frame.render_stateful_widget(list, list_area, &mut list_state);
         PickerRenderMetrics {
             pane_height: list_area.height,

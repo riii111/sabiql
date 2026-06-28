@@ -14,28 +14,35 @@ impl PostgresAdapter {
             .map(|s| s.split('?').next().unwrap_or(s))
             .filter(|s| !s.is_empty() && !s.contains('='))
         {
-            return db.to_string();
+            return decode_database_name(db);
         }
         const DBNAME_KEY: &str = "dbname=";
         if let Some(start) = dsn.find(DBNAME_KEY) {
             let rest = &dsn[start + DBNAME_KEY.len()..];
             let end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
-            return rest[..end].to_string();
+            return decode_database_name(&rest[..end]);
         }
         "unknown".to_string()
     }
 }
 
+fn decode_database_name(name: &str) -> String {
+    urlencoding::decode(name).map_or_else(|_| name.to_string(), std::borrow::Cow::into_owned)
+}
+
 impl DsnBuilder for PostgresAdapter {
     fn build_dsn(&self, profile: &ConnectionProfile) -> String {
+        let config = profile
+            .postgres_config()
+            .expect("PostgresAdapter requires a PostgreSQL profile");
         format!(
             "postgres://{}:{}@{}:{}/{}?sslmode={}",
-            urlencoding::encode(&profile.username),
-            urlencoding::encode(&profile.password),
-            &profile.host,
-            profile.port,
-            urlencoding::encode(&profile.database),
-            profile.ssl_mode
+            urlencoding::encode(&config.username),
+            urlencoding::encode(&config.password),
+            &config.host,
+            config.port,
+            urlencoding::encode(&config.database),
+            config.ssl_mode
         )
     }
 }
@@ -46,7 +53,7 @@ mod tests {
     use crate::domain::connection::SslMode;
 
     fn make_test_profile() -> ConnectionProfile {
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             "Test Connection",
             "localhost",
             5432,
@@ -78,7 +85,7 @@ mod tests {
         #[test]
         fn encodes_special_chars_in_credentials() {
             let adapter = PostgresAdapter::new();
-            let profile = ConnectionProfile::new(
+            let profile = ConnectionProfile::new_postgres(
                 "Test",
                 "localhost",
                 5432,
@@ -108,6 +115,22 @@ mod tests {
         )]
         fn uri_path_returns_dbname(#[case] dsn: &str, #[case] expected: &str) {
             assert_eq!(PostgresAdapter::extract_database_name(dsn), expected);
+        }
+
+        #[test]
+        fn uri_path_decodes_percent_encoded_dbname() {
+            assert_eq!(
+                PostgresAdapter::extract_database_name("postgres://localhost/my%2Fdb"),
+                "my/db"
+            );
+        }
+
+        #[test]
+        fn key_value_decodes_percent_encoded_dbname() {
+            assert_eq!(
+                PostgresAdapter::extract_database_name("host=localhost dbname=my%2Fdb"),
+                "my/db"
+            );
         }
 
         #[test]
@@ -155,10 +178,19 @@ mod tests {
         #[test]
         fn roundtrip_build_then_extract_returns_original_dbname() {
             let adapter = PostgresAdapter::new();
-            let profile = super::make_test_profile();
+            let profile = ConnectionProfile::new_postgres(
+                "Test",
+                "localhost",
+                5432,
+                "my/db",
+                "testuser",
+                "testpass",
+                SslMode::Prefer,
+            )
+            .unwrap();
             let dsn = adapter.build_dsn(&profile);
 
-            assert_eq!(PostgresAdapter::extract_database_name(&dsn), "testdb");
+            assert_eq!(PostgresAdapter::extract_database_name(&dsn), "my/db");
         }
     }
 }

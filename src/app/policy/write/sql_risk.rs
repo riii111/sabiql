@@ -1,8 +1,10 @@
 use super::write_guardrails::{self, RiskLevel};
+use crate::domain::DatabaseType;
 use crate::policy::sql::statement_classifier::{
-    StatementKind, advance_single_quote, classify, drop_subtype, extract_target_name,
-    first_keyword, skip_block_comment, skip_dollar_quoted_string, skip_double_quoted_identifier,
-    skip_line_comment,
+    StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
+    extract_target_name, first_keyword, skip_block_comment, skip_dollar_quoted_string,
+    skip_double_quoted_identifier, skip_line_comment, skip_sqlite_quoted_identifier,
+    statement_after_leading_ctes,
 };
 
 // Why the statement cannot be confirmed via typed target name.
@@ -33,6 +35,7 @@ pub enum ConfirmationType {
 pub struct SqlRiskDecision {
     pub risk_level: RiskLevel,
     pub confirmation: ConfirmationType,
+    pub read_only_allowed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +49,191 @@ pub enum MultiStatementDecision {
     },
 }
 
+fn contains_cli_meta_command(database_type: DatabaseType, sql: &str) -> bool {
+    let chars: Vec<(usize, char)> = sql.char_indices().collect();
+    let mut i = 0;
+    let mut in_string = false;
+    let mut line_leading = true;
+
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+
+        if in_string {
+            if let Some(next_i) = advance_single_quote(&chars, i, ch, &mut in_string) {
+                i = next_i;
+                continue;
+            }
+            if ch == '\n' {
+                line_leading = true;
+            }
+            i += 1;
+            continue;
+        }
+
+        if ch == '\n' {
+            line_leading = true;
+            i += 1;
+            continue;
+        }
+        if line_leading && ch.is_whitespace() {
+            i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_line_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = advance_single_quote(&chars, i, ch, &mut in_string) {
+            line_leading = false;
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_double_quoted_identifier(&chars, i, ch) {
+            line_leading = false;
+            i = next_i;
+            continue;
+        }
+        if database_type == DatabaseType::SQLite
+            && let Some(next_i) = skip_sqlite_quoted_identifier(&chars, i, ch)
+        {
+            line_leading = false;
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_dollar_quoted_string(sql, &chars, i, byte_pos, ch) {
+            line_leading = false;
+            i = next_i;
+            continue;
+        }
+
+        if line_leading && matches!(ch, '.' | '\\') {
+            return true;
+        }
+
+        line_leading = false;
+        i += 1;
+    }
+
+    false
+}
+
 pub fn split_statements(sql: &str) -> Vec<String> {
+    split_statements_for_database(DatabaseType::PostgreSQL, sql)
+}
+
+fn is_sqlite_create_trigger_prefix(sql: &str) -> bool {
+    let trimmed = sql.trim_start();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+
+    let Some((first, second_start)) = next_keyword_from(trimmed, &chars, 0) else {
+        return false;
+    };
+    if first != "CREATE" {
+        return false;
+    }
+    let Some((second, third_start)) = next_keyword_from(trimmed, &chars, second_start) else {
+        return false;
+    };
+    match second.as_str() {
+        "TRIGGER" => true,
+        "TEMP" | "TEMPORARY" => next_keyword_from(trimmed, &chars, third_start)
+            .is_some_and(|(third, _)| third == "TRIGGER"),
+        _ => false,
+    }
+}
+
+fn next_keyword_from(sql: &str, chars: &[(usize, char)], mut i: usize) -> Option<(String, usize)> {
+    let mut in_string = false;
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+        if let Some(next_i) = skip_line_comment(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = advance_single_quote(chars, i, ch, &mut in_string) {
+            i = next_i;
+            continue;
+        }
+        if in_string {
+            i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_double_quoted_identifier(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_sqlite_quoted_identifier(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_dollar_quoted_string(sql, chars, i, byte_pos, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(keyword) = keyword_starting_at(sql, chars, i) {
+            return Some(keyword);
+        }
+        i += 1;
+    }
+    None
+}
+
+fn keyword_starting_at(sql: &str, chars: &[(usize, char)], i: usize) -> Option<(String, usize)> {
+    let (byte_pos, ch) = chars[i];
+    if !ch.is_ascii_alphabetic() {
+        return None;
+    }
+    let start = byte_pos;
+    let mut j = i;
+    while j < chars.len() {
+        let (_, c) = chars[j];
+        if c.is_ascii_alphanumeric() || c == '_' {
+            j += 1;
+        } else {
+            break;
+        }
+    }
+    Some((
+        sql[start..chars.get(j).map_or(sql.len(), |(p, _)| *p)].to_ascii_uppercase(),
+        j,
+    ))
+}
+
+fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
+    let mut index = keyword_start;
+    while index > 0 {
+        index -= 1;
+        match sql.as_bytes()[index] {
+            byte if byte.is_ascii_whitespace() => {}
+            b'.' => return true,
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn is_sqlite_trigger_body_end(
+    keyword: &str,
+    in_trigger_body: bool,
+    trigger_body_stmt_start: bool,
+    sql: &str,
+    keyword_start: usize,
+) -> bool {
+    in_trigger_body
+        && trigger_body_stmt_start
+        && keyword == "END"
+        && !is_dotted_identifier_suffix(sql, keyword_start)
+}
+
+pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> Vec<String> {
     // Use sql's own char_indices so byte offsets remain valid for slicing sql.
     // to_lowercase() can change byte lengths (e.g. İ → i̇), which would corrupt offsets.
     let chars: Vec<(usize, char)> = sql.char_indices().collect();
@@ -55,6 +242,10 @@ pub fn split_statements(sql: &str) -> Vec<String> {
     let mut i = 0;
     let mut depth: i32 = 0;
     let mut in_string = false;
+    let mut in_trigger_body = false;
+    let mut trigger_body_stmt_start = false;
+    let mut is_trigger_stmt =
+        database_type == DatabaseType::SQLite && is_sqlite_create_trigger_prefix(&sql[start..]);
 
     while i < chars.len() {
         let (byte_pos, ch) = chars[i];
@@ -79,8 +270,38 @@ pub fn split_statements(sql: &str) -> Vec<String> {
             i = next_i;
             continue;
         }
+        if database_type == DatabaseType::SQLite
+            && let Some(next_i) = skip_sqlite_quoted_identifier(&chars, i, ch)
+        {
+            i = next_i;
+            continue;
+        }
         if let Some(next_i) = skip_dollar_quoted_string(sql, &chars, i, byte_pos, ch) {
             i = next_i;
+            continue;
+        }
+
+        if is_trigger_stmt && let Some((keyword, kw_end)) = keyword_starting_at(sql, &chars, i) {
+            if keyword == "BEGIN" {
+                if in_trigger_body {
+                    trigger_body_stmt_start = false;
+                } else {
+                    in_trigger_body = true;
+                    trigger_body_stmt_start = true;
+                }
+            } else if is_sqlite_trigger_body_end(
+                &keyword,
+                in_trigger_body,
+                trigger_body_stmt_start,
+                sql,
+                byte_pos,
+            ) {
+                in_trigger_body = false;
+                trigger_body_stmt_start = false;
+            } else if in_trigger_body {
+                trigger_body_stmt_start = false;
+            }
+            i = kw_end;
             continue;
         }
 
@@ -91,11 +312,19 @@ pub fn split_statements(sql: &str) -> Vec<String> {
         }
 
         if depth == 0 && ch == ';' {
-            let fragment = sql[start..byte_pos].trim();
-            if !fragment.is_empty() {
-                statements.push(fragment.to_string());
+            if database_type == DatabaseType::SQLite && in_trigger_body {
+                trigger_body_stmt_start = true;
+            } else {
+                let fragment = sql[start..byte_pos].trim();
+                if !fragment.is_empty() {
+                    statements.push(fragment.to_string());
+                }
+                start = byte_pos + 1;
+                in_trigger_body = false;
+                trigger_body_stmt_start = false;
+                is_trigger_stmt = database_type == DatabaseType::SQLite
+                    && is_sqlite_create_trigger_prefix(&sql[start..]);
             }
-            start = byte_pos + 1;
         }
 
         i += 1;
@@ -141,6 +370,7 @@ fn low_immediate() -> SqlRiskDecision {
     SqlRiskDecision {
         risk_level: RiskLevel::Low,
         confirmation: ConfirmationType::Immediate,
+        read_only_allowed: true,
     }
 }
 
@@ -154,15 +384,32 @@ fn high_acknowledge(kind: &StatementKind) -> SqlRiskDecision {
             reason: AcknowledgeReason::TargetNameUnavailable,
             label: write_guardrails::evaluate_sql_risk(kind).label.to_string(),
         },
+        read_only_allowed: false,
     }
 }
 
 pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
+    evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, kind, sql)
+}
+
+pub fn evaluate_sql_risk_for_database(
+    database_type: DatabaseType,
+    kind: &StatementKind,
+    sql: &str,
+) -> SqlRiskDecision {
+    if database_type == DatabaseType::SQLite
+        && let Some(decision) = evaluate_sqlite_specific_risk(sql)
+    {
+        return decision;
+    }
+
     match kind {
-        StatementKind::Select
-        | StatementKind::Transaction
-        | StatementKind::Insert
-        | StatementKind::Create => low_immediate(),
+        StatementKind::Select | StatementKind::Transaction => low_immediate(),
+        StatementKind::Insert | StatementKind::Create => SqlRiskDecision {
+            risk_level: RiskLevel::Low,
+            confirmation: ConfirmationType::Immediate,
+            read_only_allowed: false,
+        },
         StatementKind::Unsupported | StatementKind::Other => {
             // Empty / comment-only input has nothing to execute; gating it
             // would show a confirm dialog for a no-op.
@@ -173,8 +420,10 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
                 risk_level: RiskLevel::Low,
                 confirmation: ConfirmationType::Acknowledge {
                     reason: AcknowledgeReason::UnknownRisk,
-                    label: first_keyword(sql).unwrap_or_else(|| "SQL".to_string()),
+                    label: first_keyword(statement_after_leading_ctes(sql))
+                        .unwrap_or_else(|| "SQL".to_string()),
                 },
+                read_only_allowed: false,
             }
         }
         StatementKind::Update { has_where: true }
@@ -182,6 +431,7 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
         | StatementKind::Alter => SqlRiskDecision {
             risk_level: RiskLevel::Medium,
             confirmation: ConfirmationType::Immediate,
+            read_only_allowed: false,
         },
         StatementKind::Drop => {
             if matches!(drop_subtype(sql).as_deref(), Some("table" | "database")) {
@@ -189,11 +439,16 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
                     Some(name) => SqlRiskDecision {
                         risk_level: RiskLevel::High,
                         confirmation: ConfirmationType::TableNameInput { target: name },
+                        read_only_allowed: false,
                     },
                     None => high_acknowledge(kind),
                 }
             } else {
-                low_immediate()
+                SqlRiskDecision {
+                    risk_level: RiskLevel::Low,
+                    confirmation: ConfirmationType::Immediate,
+                    read_only_allowed: false,
+                }
             }
         }
         StatementKind::Update { has_where: false }
@@ -202,6 +457,7 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
             Some(name) => SqlRiskDecision {
                 risk_level: RiskLevel::High,
                 confirmation: ConfirmationType::TableNameInput { target: name },
+                read_only_allowed: false,
             },
             None => high_acknowledge(kind),
         },
@@ -209,7 +465,20 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
 }
 
 pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
-    let statements = split_statements(sql);
+    evaluate_multi_statement_for_database(DatabaseType::PostgreSQL, sql)
+}
+
+pub fn evaluate_multi_statement_for_database(
+    database_type: DatabaseType,
+    sql: &str,
+) -> MultiStatementDecision {
+    if contains_cli_meta_command(database_type, sql) {
+        return MultiStatementDecision::Block {
+            reason: "CLI meta-commands are not supported in SQL input".to_string(),
+        };
+    }
+
+    let statements = split_statements_for_database(database_type, sql);
 
     if statements.is_empty() {
         return MultiStatementDecision::Block {
@@ -221,7 +490,7 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
 
     for stmt in &statements {
         let kind = classify(stmt);
-        let decision = evaluate_sql_risk(&kind, stmt);
+        let decision = evaluate_sql_risk_for_database(database_type, &kind, stmt);
         decisions.push((stmt.clone(), decision));
     }
 
@@ -271,7 +540,367 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         risk: SqlRiskDecision {
             risk_level: max_risk,
             confirmation,
+            read_only_allowed: decisions.iter().all(|(_, d)| d.read_only_allowed),
         },
+    }
+}
+
+fn high_acknowledge_label(label: &str) -> SqlRiskDecision {
+    SqlRiskDecision {
+        risk_level: RiskLevel::High,
+        confirmation: ConfirmationType::Acknowledge {
+            reason: AcknowledgeReason::TargetNameUnavailable,
+            label: label.to_string(),
+        },
+        read_only_allowed: false,
+    }
+}
+
+fn high_acknowledge_keyword(keyword: &str) -> SqlRiskDecision {
+    high_acknowledge_label(&keyword.to_uppercase())
+}
+
+fn sqlite_replace_target_in_statement(sql: &str) -> Option<String> {
+    let trimmed = sql.trim();
+    let tokens = top_level_token_pairs(trimmed);
+    let lowers: Vec<String> = tokens
+        .iter()
+        .map(|(_, token)| token.to_lowercase())
+        .collect();
+    let replace_into = lowers.first().is_some_and(|token| token == "replace")
+        && lowers.get(1).is_some_and(|token| token == "into");
+    if replace_into {
+        let into = tokens.get(1)?;
+        return sqlite_identifier_after(trimmed, into.0 + into.1.len());
+    }
+    let insert_or_replace = lowers.first().is_some_and(|token| token == "insert")
+        && lowers.get(1).is_some_and(|token| token == "or")
+        && lowers.get(2).is_some_and(|token| token == "replace")
+        && lowers.get(3).is_some_and(|token| token == "into");
+    if insert_or_replace {
+        let into = tokens.get(3)?;
+        return sqlite_identifier_after(trimmed, into.0 + into.1.len());
+    }
+    None
+}
+
+fn top_level_token_pairs(sql: &str) -> Vec<(usize, String)> {
+    let trimmed = sql.trim();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    collect_top_level_tokens(trimmed, &chars)
+}
+
+fn top_level_tokens(sql: &str) -> Vec<String> {
+    top_level_token_pairs(sql)
+        .into_iter()
+        .map(|(_, token)| token)
+        .collect()
+}
+
+fn top_level_token_lowers(sql: &str) -> Vec<String> {
+    top_level_tokens(sql)
+        .into_iter()
+        .map(|token| token.to_lowercase())
+        .collect()
+}
+
+fn sqlite_drop_label(sql: &str) -> Option<&'static str> {
+    match drop_subtype(sql).as_deref()? {
+        "index" => Some("DROP INDEX"),
+        "view" => Some("DROP VIEW"),
+        "trigger" => Some("DROP TRIGGER"),
+        _ => None,
+    }
+}
+
+fn sqlite_drop_risk(sql: &str) -> Option<SqlRiskDecision> {
+    let label = sqlite_drop_label(sql)?;
+    let kind = StatementKind::Drop;
+    Some(match extract_target_name(sql, &kind) {
+        Some(target) => SqlRiskDecision {
+            risk_level: RiskLevel::High,
+            confirmation: ConfirmationType::TableNameInput { target },
+            read_only_allowed: false,
+        },
+        None => high_acknowledge_label(label),
+    })
+}
+
+pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
+    let effective = statement_after_leading_ctes(sql);
+    let tokens = top_level_token_lowers(effective);
+    match tokens.first().map(String::as_str)? {
+        "pragma" => Some("PRAGMA"),
+        "attach" => Some("ATTACH"),
+        "detach" => Some("DETACH"),
+        "vacuum" => Some("VACUUM"),
+        "reindex" => Some("REINDEX"),
+        "analyze" => Some("ANALYZE"),
+        "replace" => Some("REPLACE"),
+        "insert" if sqlite_replace_target_in_statement(effective).is_some() => Some("REPLACE"),
+        "drop" => sqlite_drop_label(effective),
+        _ => None,
+    }
+}
+
+pub fn adhoc_label_for_statement(database_type: DatabaseType, sql: &str) -> &'static str {
+    let sqlite_label = (database_type == DatabaseType::SQLite)
+        .then(|| sqlite_specific_label(sql))
+        .flatten();
+    let kind = classify(sql);
+    let decision = write_guardrails::evaluate_sql_risk(&kind);
+    sqlite_label.unwrap_or(decision.label)
+}
+
+pub fn adhoc_label_for_table_name_confirmation(
+    database_type: DatabaseType,
+    sql: &str,
+) -> Option<&'static str> {
+    for stmt in split_statements_for_database(database_type, sql) {
+        let kind = classify(&stmt);
+        let decision = evaluate_sql_risk_for_database(database_type, &kind, &stmt);
+        if matches!(
+            decision.confirmation,
+            ConfirmationType::TableNameInput { .. }
+        ) {
+            return Some(adhoc_label_for_statement(database_type, &stmt));
+        }
+    }
+    None
+}
+
+fn skip_whitespace(sql: &str, mut cursor: usize) -> usize {
+    while cursor < sql.len() {
+        let Some(ch) = sql[cursor..].chars().next() else {
+            break;
+        };
+        if !ch.is_whitespace() {
+            break;
+        }
+        cursor += ch.len_utf8();
+    }
+    cursor
+}
+
+fn sqlite_identifier_part(sql: &str, cursor: usize) -> Option<(String, usize)> {
+    let ch = sql[cursor..].chars().next()?;
+    let close_quote = match ch {
+        '"' => Some('"'),
+        '`' => Some('`'),
+        '[' => Some(']'),
+        _ => None,
+    };
+    if let Some(close) = close_quote {
+        let mut value = String::new();
+        let mut next = cursor + ch.len_utf8();
+        while next < sql.len() {
+            let c = sql[next..].chars().next()?;
+            next += c.len_utf8();
+            if c == close {
+                if close != ']' && sql[next..].starts_with(close) {
+                    value.push(close);
+                    next += close.len_utf8();
+                    continue;
+                }
+                return Some((value, next));
+            }
+            value.push(c);
+        }
+        return None;
+    }
+
+    let mut end = cursor;
+    while end < sql.len() {
+        let c = sql[end..].chars().next()?;
+        if c.is_whitespace() || matches!(c, '.' | '(' | ',' | ';') {
+            break;
+        }
+        end += c.len_utf8();
+    }
+    (end > cursor).then(|| (sql[cursor..end].to_string(), end))
+}
+
+fn sqlite_identifier_after(sql: &str, start: usize) -> Option<String> {
+    let mut cursor = skip_whitespace(sql, start);
+    let mut parts = Vec::new();
+
+    loop {
+        let (part, next) = sqlite_identifier_part(sql, cursor)?;
+        parts.push(part);
+        cursor = skip_whitespace(sql, next);
+        if !sql[cursor..].starts_with('.') {
+            break;
+        }
+        cursor = skip_whitespace(sql, cursor + 1);
+    }
+
+    Some(parts.join("."))
+}
+
+fn top_level_char_index(sql: &str, target: char) -> Option<usize> {
+    let chars: Vec<(usize, char)> = sql.char_indices().collect();
+    let mut i = 0;
+    let mut depth: i32 = 0;
+    let mut in_string = false;
+
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+
+        if let Some(next_i) = skip_line_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = advance_single_quote(&chars, i, ch, &mut in_string) {
+            i = next_i;
+            continue;
+        }
+        if in_string {
+            i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_double_quoted_identifier(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_sqlite_quoted_identifier(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_dollar_quoted_string(sql, &chars, i, byte_pos, ch) {
+            i = next_i;
+            continue;
+        }
+
+        if depth == 0 && ch == target {
+            return Some(byte_pos);
+        }
+        if ch == '(' {
+            depth += 1;
+        } else if ch == ')' {
+            depth -= 1;
+        }
+        i += 1;
+    }
+
+    None
+}
+
+fn top_level_contains_char(sql: &str, target: char) -> bool {
+    top_level_char_index(sql, target).is_some()
+}
+
+fn parenthesized_pragma_value(sql: &str) -> Option<String> {
+    let open = top_level_char_index(sql, '(')?;
+    let close = sql[open + 1..].find(')')? + open + 1;
+    sql[open + 1..close]
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+        .find(|part| !part.is_empty())
+        .map(str::to_lowercase)
+}
+
+fn sqlite_read_only_parameterized_pragma(name: &str) -> bool {
+    matches!(
+        name,
+        "table_info"
+            | "table_xinfo"
+            | "index_info"
+            | "index_xinfo"
+            | "index_list"
+            | "foreign_key_list"
+            | "database_list"
+            | "table_list"
+            | "pragma_list"
+            | "function_list"
+            | "module_list"
+            | "collation_list"
+            | "integrity_check"
+            | "quick_check"
+            | "column_info"
+    )
+}
+
+fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
+    let tokens = top_level_token_lowers(sql);
+    let name = tokens.get(1)?;
+    let pragma_name = name.rsplit('.').next().unwrap_or(name);
+    let has_assignment = top_level_contains_char(sql, '=') || tokens.len() > 2;
+    let has_parenthesized_value = top_level_contains_char(sql, '(');
+    let is_read_only_parameterized =
+        has_parenthesized_value && sqlite_read_only_parameterized_pragma(pragma_name);
+    let has_side_effect_without_assignment = (has_parenthesized_value
+        && !is_read_only_parameterized)
+        || matches!(
+            pragma_name,
+            "optimize" | "incremental_vacuum" | "wal_checkpoint"
+        );
+
+    if !has_assignment && !has_side_effect_without_assignment {
+        return Some(low_immediate());
+    }
+
+    let parenthesized_value = parenthesized_pragma_value(sql);
+    let value = tokens
+        .get(2)
+        .map(String::as_str)
+        .or(parenthesized_value.as_deref());
+    let dangerous = matches!(
+        pragma_name,
+        "writable_schema"
+            | "journal_mode"
+            | "locking_mode"
+            | "optimize"
+            | "incremental_vacuum"
+            | "wal_checkpoint"
+    ) || (pragma_name == "foreign_keys"
+        && matches!(value, Some("off" | "0" | "false")));
+
+    Some(SqlRiskDecision {
+        risk_level: if dangerous {
+            RiskLevel::High
+        } else {
+            RiskLevel::Medium
+        },
+        confirmation: if dangerous {
+            ConfirmationType::Acknowledge {
+                reason: AcknowledgeReason::TargetNameUnavailable,
+                label: "PRAGMA".to_string(),
+            }
+        } else {
+            ConfirmationType::Immediate
+        },
+        read_only_allowed: false,
+    })
+}
+
+fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
+    let effective = statement_after_leading_ctes(sql);
+    let tokens = top_level_token_lowers(effective);
+    match tokens.first().map(String::as_str)? {
+        "pragma" => sqlite_pragma_risk(effective),
+        "attach" | "detach" | "vacuum" | "reindex" | "analyze" => {
+            Some(high_acknowledge_keyword(&tokens[0]))
+        }
+        "replace" => sqlite_replace_target_in_statement(effective).map_or_else(
+            || Some(high_acknowledge_label("REPLACE")),
+            |target| {
+                Some(SqlRiskDecision {
+                    risk_level: RiskLevel::High,
+                    confirmation: ConfirmationType::TableNameInput { target },
+                    read_only_allowed: false,
+                })
+            },
+        ),
+        "insert" => sqlite_replace_target_in_statement(effective).map(|target| SqlRiskDecision {
+            risk_level: RiskLevel::High,
+            confirmation: ConfirmationType::TableNameInput { target },
+            read_only_allowed: false,
+        }),
+        "drop" => sqlite_drop_risk(effective),
+        _ => None,
     }
 }
 
@@ -300,6 +929,111 @@ mod tests {
         #[case::tagged_dollar_quote("SELECT $tag$a;b$tag$", vec!["SELECT $tag$a;b$tag$"])]
         fn semicolon_in_strings(#[case] sql: &str, #[case] expected: Vec<&str>) {
             assert_eq!(split_statements(sql), expected);
+        }
+
+        #[rstest]
+        #[case::bracket_quote(
+            "DROP TABLE [a;b]; SELECT 1",
+            vec!["DROP TABLE [a", "b]", "SELECT 1"]
+        )]
+        #[case::backtick_quote(
+            "DROP TABLE `a;b`; SELECT 1",
+            vec!["DROP TABLE `a", "b`", "SELECT 1"]
+        )]
+        #[case::bracket_contains_drop(
+            "SELECT [1; DROP TABLE users]",
+            vec!["SELECT [1", "DROP TABLE users]"]
+        )]
+        #[case::backtick_contains_drop(
+            "SELECT `1; DROP TABLE users`",
+            vec!["SELECT `1", "DROP TABLE users`"]
+        )]
+        fn postgres_brackets_and_backticks_do_not_hide_semicolons(
+            #[case] sql: &str,
+            #[case] expected: Vec<&str>,
+        ) {
+            assert_eq!(split_statements(sql), expected);
+        }
+
+        #[rstest]
+        #[case::backtick_quote(
+            "DROP TABLE `a;b`; SELECT 1",
+            vec!["DROP TABLE `a;b`", "SELECT 1"]
+        )]
+        #[case::bracket_quote(
+            "DROP TABLE [a;b]; SELECT 1",
+            vec!["DROP TABLE [a;b]", "SELECT 1"]
+        )]
+        fn sqlite_identifier_quotes_hide_semicolons(
+            #[case] sql: &str,
+            #[case] expected: Vec<&str>,
+        ) {
+            assert_eq!(
+                split_statements_for_database(DatabaseType::SQLite, sql),
+                expected
+            );
+        }
+
+        #[test]
+        fn sqlite_create_trigger_body_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
+    INSERT INTO agent_messages_fts(rowid, role, content)
+    VALUES (new.id, new.role, new.content);
+END";
+            let sql = format!("{trigger}; SELECT 1");
+
+            let result = split_statements_for_database(DatabaseType::SQLite, &sql);
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], trigger);
+            assert_eq!(result[1], "SELECT 1");
+        }
+
+        #[test]
+        fn sqlite_create_trigger_with_dotted_end_reference_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id, end_value) VALUES (new.id, old.end);
+END";
+            let sql = format!("{trigger}; SELECT 1");
+
+            let result = split_statements_for_database(DatabaseType::SQLite, &sql);
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], trigger);
+            assert_eq!(result[1], "SELECT 1");
+        }
+
+        #[test]
+        fn sqlite_create_trigger_with_case_end_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
+    UPDATE counters
+    SET end_value = CASE WHEN new.end > 0 THEN new.end ELSE old.end END
+    WHERE id = new.id;
+    INSERT INTO audit(event_id) VALUES (new.id);
+END";
+            let sql = format!("{trigger}; SELECT 1");
+
+            let result = split_statements_for_database(DatabaseType::SQLite, &sql);
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], trigger);
+            assert_eq!(result[1], "SELECT 1");
+        }
+
+        #[test]
+        fn sqlite_unclosed_create_trigger_body_is_not_split() {
+            let trigger = "\
+CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
+    UPDATE counters SET end_value = new.end WHERE id = new.id;
+    INSERT INTO audit(event_id) VALUES (new.id);";
+
+            let result = split_statements_for_database(DatabaseType::SQLite, trigger);
+
+            assert_eq!(result, vec![trigger]);
         }
 
         #[rstest]
@@ -382,6 +1116,11 @@ mod tests {
             "DO"
         )]
         #[case::copy(StatementKind::Unsupported, "COPY users FROM '/tmp/data.csv'", "COPY")]
+        #[case::cte_unsupported(
+            StatementKind::Unsupported,
+            "WITH c AS (SELECT 1) CALL refresh()",
+            "CALL"
+        )]
         #[case::select_into(StatementKind::Other, "SELECT * INTO backup FROM users", "SELECT")]
         #[case::unparseable(StatementKind::Other, "??? invalid", "INVALID")]
         fn unassessable_requires_acknowledgment(
@@ -430,6 +1169,22 @@ mod tests {
                     reason: AcknowledgeReason::TargetNameUnavailable,
                     ref label,
                 } if label == expected_label
+            ));
+        }
+
+        #[test]
+        fn data_modifying_cte_blocks_read_only() {
+            let sql = "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x";
+            let result = evaluate_sql_risk(&classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::TargetNameUnavailable,
+                    ref label,
+                } if label == "UPDATE (no WHERE)"
             ));
         }
 
@@ -489,6 +1244,223 @@ mod tests {
             let result = evaluate_sql_risk(&StatementKind::Drop, sql);
             assert_eq!(result.risk_level, RiskLevel::Low);
             assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
+        #[test]
+        fn sqlite_read_only_pragma_returns_low_immediate() {
+            let sql = "PRAGMA table_info(users)";
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Low);
+            assert!(result.read_only_allowed);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
+        #[test]
+        fn sqlite_allowlisted_parameterized_pragma_returns_low_immediate() {
+            let sql = "PRAGMA index_info(users_name_idx)";
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Low);
+            assert!(result.read_only_allowed);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
+        #[rstest]
+        #[case::writable_schema("PRAGMA writable_schema = ON")]
+        #[case::writable_schema_call("PRAGMA writable_schema(ON)")]
+        #[case::foreign_keys_off("PRAGMA foreign_keys = OFF")]
+        #[case::foreign_keys_call_off("PRAGMA foreign_keys(OFF)")]
+        #[case::journal_mode("PRAGMA journal_mode = WAL")]
+        #[case::journal_mode_call("PRAGMA journal_mode(WAL)")]
+        #[case::locking_mode("PRAGMA locking_mode = EXCLUSIVE")]
+        #[case::optimize("PRAGMA optimize")]
+        #[case::incremental_vacuum("PRAGMA incremental_vacuum")]
+        #[case::wal_checkpoint("PRAGMA wal_checkpoint")]
+        fn sqlite_dangerous_pragma_requires_acknowledgment(#[case] sql: &str) {
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::TargetNameUnavailable,
+                    ref label,
+                } if label == "PRAGMA"
+            ));
+        }
+
+        #[test]
+        fn sqlite_non_dangerous_pragma_assignment_is_medium_write() {
+            let sql = "PRAGMA user_version = 3";
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Medium);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
+        #[test]
+        fn sqlite_non_allowlisted_parameterized_pragma_is_medium_write() {
+            let sql = "PRAGMA user_version(3)";
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Medium);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
+        #[rstest]
+        #[case::attach("ATTACH DATABASE 'other.db' AS other", "ATTACH")]
+        #[case::detach("DETACH DATABASE other", "DETACH")]
+        #[case::vacuum("VACUUM INTO 'copy.db'", "VACUUM")]
+        #[case::reindex("REINDEX users_name_idx", "REINDEX")]
+        #[case::analyze("ANALYZE users", "ANALYZE")]
+        fn sqlite_high_risk_statements_require_acknowledgment(
+            #[case] sql: &str,
+            #[case] expected_label: &str,
+        ) {
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::Acknowledge { ref label, .. } if label == expected_label
+            ));
+        }
+
+        #[rstest]
+        #[case::insert_or_replace("INSERT OR REPLACE INTO users(id) VALUES (1)", "users")]
+        #[case::with_insert_or_replace(
+            "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+            "users"
+        )]
+        #[case::with_recursive_insert_or_replace(
+            "WITH RECURSIVE payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+            "users"
+        )]
+        #[case::with_materialized_insert_or_replace(
+            "WITH payload(id) AS MATERIALIZED (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+            "users"
+        )]
+        #[case::with_not_materialized_insert_or_replace(
+            "WITH payload(id) AS NOT MATERIALIZED (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+            "users"
+        )]
+        #[case::with_multiple_ctes_insert_or_replace(
+            "WITH a(id) AS (VALUES (1)), b(id) AS (VALUES (2)) INSERT OR REPLACE INTO users(id) SELECT id FROM a",
+            "users"
+        )]
+        #[case::replace("REPLACE INTO users(id) VALUES (1)", "users")]
+        #[case::with_replace(
+            "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload",
+            "users"
+        )]
+        #[case::bracket_quoted("REPLACE INTO [my table](id) VALUES (1)", "my table")]
+        #[case::backtick_quoted("REPLACE INTO `my table`(id) VALUES (1)", "my table")]
+        #[case::double_quoted(r#"REPLACE INTO "my table"(id) VALUES (1)"#, "my table")]
+        #[case::double_quoted_escaped(r#"REPLACE INTO "my""table"(id) VALUES (1)"#, r#"my"table"#)]
+        #[case::backtick_quoted_escaped("REPLACE INTO `my``table`(id) VALUES (1)", "my`table")]
+        #[case::bracket_doubled_close_is_not_escape(
+            "REPLACE INTO [my]]table](id) VALUES (1)",
+            "my"
+        )]
+        #[case::schema_qualified(
+            "INSERT OR REPLACE INTO main.[my table](id) VALUES (1)",
+            "main.my table"
+        )]
+        fn sqlite_replace_requires_table_name_input(
+            #[case] sql: &str,
+            #[case] expected_target: &str,
+        ) {
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::TableNameInput { ref target } if target == expected_target
+            ));
+        }
+
+        #[test]
+        fn sqlite_specific_label_detects_commented_insert_or_replace() {
+            let sql = "-- upsert\nINSERT OR REPLACE INTO users(id) VALUES (1)";
+
+            assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
+        }
+
+        #[test]
+        fn sqlite_specific_label_detects_with_insert_or_replace() {
+            let sql = "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload";
+
+            assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
+        }
+
+        #[rstest]
+        #[case::drop_index("DROP INDEX my_index", "DROP INDEX")]
+        #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "DROP INDEX")]
+        #[case::drop_view("DROP VIEW my_view", "DROP VIEW")]
+        #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "DROP VIEW")]
+        #[case::drop_trigger("DROP TRIGGER my_trigger", "DROP TRIGGER")]
+        #[case::drop_trigger_if_exists("DROP TRIGGER IF EXISTS my_trigger", "DROP TRIGGER")]
+        fn sqlite_specific_label_detects_dangerous_drops(
+            #[case] sql: &str,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(sqlite_specific_label(sql), Some(expected));
+        }
+
+        #[rstest]
+        #[case::drop_index("DROP INDEX my_index", "my_index")]
+        #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "my_index")]
+        #[case::drop_view("DROP VIEW my_view", "my_view")]
+        #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "my_view")]
+        #[case::drop_trigger("DROP TRIGGER my_trigger", "my_trigger")]
+        #[case::drop_trigger_if_exists("DROP TRIGGER IF EXISTS main.my_trigger", "main.my_trigger")]
+        #[case::drop_index_quoted("DROP INDEX `my index`", "my index")]
+        #[case::drop_view_quoted(r#"DROP VIEW "my view""#, "my view")]
+        #[case::drop_trigger_quoted("DROP TRIGGER [my trigger]", "my trigger")]
+        fn sqlite_dangerous_drop_requires_table_name_input(
+            #[case] sql: &str,
+            #[case] expected_target: &str,
+        ) {
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::TableNameInput { ref target } if target == expected_target
+            ));
+        }
+
+        #[rstest]
+        #[case::drop_policy("DROP POLICY p ON t")]
+        #[case::drop_schema("DROP SCHEMA s")]
+        fn sqlite_unhandled_drop_subtypes_fall_back_to_generic_low_immediate(#[case] sql: &str) {
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::Low);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        }
+
+        #[test]
+        fn sqlite_drop_multiple_index_requires_acknowledgment() {
+            let sql = "DROP INDEX a, b";
+            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(!result.read_only_allowed);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::TargetNameUnavailable,
+                    ref label,
+                } if label == "DROP INDEX"
+            ));
         }
     }
 
@@ -605,6 +1577,90 @@ mod tests {
         fn empty_input_blocked() {
             let result = evaluate_multi_statement("");
             assert!(matches!(result, MultiStatementDecision::Block { .. }));
+        }
+
+        #[rstest]
+        #[case::sqlite_shell(".shell echo injected")]
+        #[case::sqlite_open_after_select("SELECT 1;\n.open writable.db")]
+        #[case::psql_shell("\\! echo injected")]
+        #[case::indented_meta_command("  .output /tmp/out.csv")]
+        #[case::psql_backslash_inside_bracket_identifier("SELECT [\n\\! echo injected\n]")]
+        #[case::psql_backslash_inside_backtick_identifier("SELECT `\n\\! echo injected\n`")]
+        fn cli_meta_commands_are_blocked(#[case] sql: &str) {
+            let result = evaluate_multi_statement(sql);
+
+            assert!(matches!(
+                result,
+                MultiStatementDecision::Block { reason }
+                    if reason == "CLI meta-commands are not supported in SQL input"
+            ));
+        }
+
+        #[rstest]
+        #[case::dot_inside_string("SELECT '.shell echo ok'")]
+        #[case::backslash_inside_string("SELECT '\\\\! echo ok'")]
+        #[case::dot_inside_comment("-- .shell ignored\nSELECT 1")]
+        #[case::backslash_inside_block_comment("SELECT /* \\! ignored */ 1")]
+        #[case::backslash_inside_quoted_identifier(r#"SELECT "table\!name" FROM "table\!name""#)]
+        #[case::dot_inside_dollar_quote("SELECT $tag$\n.shell ignored\n$tag$")]
+        fn cli_meta_command_like_text_is_allowed(#[case] sql: &str) {
+            let result = evaluate_multi_statement(sql);
+
+            assert!(matches!(result, MultiStatementDecision::Allow { .. }));
+        }
+
+        #[rstest]
+        #[case::dot_inside_bracket_identifier("SELECT [\n.shell ignored] FROM t")]
+        #[case::backslash_inside_backtick_identifier("SELECT `\n\\! ignored` FROM t")]
+        fn sqlite_cli_meta_command_like_identifier_text_is_allowed(#[case] sql: &str) {
+            let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
+
+            assert!(matches!(result, MultiStatementDecision::Allow { .. }));
+        }
+
+        #[rstest]
+        #[case::bracket_contains_drop("SELECT [1; DROP TABLE users]", "users")]
+        #[case::backtick_contains_drop("SELECT `1; DROP TABLE users`", "users")]
+        fn postgres_brackets_and_backticks_do_not_hide_dangerous_statements(
+            #[case] sql: &str,
+            #[case] expected_target: &str,
+        ) {
+            let result = evaluate_multi_statement(sql);
+
+            match result {
+                MultiStatementDecision::Allow { statements, risk } => {
+                    assert_eq!(statements.len(), 2);
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == expected_target
+                    ));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[rstest]
+        #[case::update_backtick_where_identifier("UPDATE `where` SET x = 1", "where")]
+        #[case::delete_bracket_quoted_dot("DELETE FROM [main.users]", "main.users")]
+        #[case::drop_table_backtick_qualified("DROP TABLE main.`my.table`", "main.my.table")]
+        #[case::drop_table_bracket_reserved_word("DROP TABLE [select]", "select")]
+        fn sqlite_quoted_targets_require_table_name_input(
+            #[case] sql: &str,
+            #[case] expected_target: &str,
+        ) {
+            let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
+
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == expected_target
+                    ));
+                }
+                _ => panic!("expected Allow"),
+            }
         }
 
         #[test]
@@ -739,12 +1795,60 @@ mod tests {
         }
 
         #[test]
-        fn drop_index_returns_low_immediate() {
+        fn drop_index_returns_low_immediate_for_postgres() {
             let result = evaluate_multi_statement("DROP INDEX my_index");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
                     assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn sqlite_multiple_high_drops_use_first_target() {
+            let result = evaluate_multi_statement_for_database(
+                DatabaseType::SQLite,
+                "DROP INDEX my_index; DROP VIEW my_view",
+            );
+            match result {
+                MultiStatementDecision::Allow { statements, risk } => {
+                    assert_eq!(statements, vec!["DROP INDEX my_index", "DROP VIEW my_view"]);
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(!risk.read_only_allowed);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                    ));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn sqlite_table_name_confirmation_label_matches_first_target_statement() {
+            let sql = "DROP INDEX my_index; DROP VIEW my_view";
+            assert_eq!(
+                adhoc_label_for_table_name_confirmation(DatabaseType::SQLite, sql),
+                Some("DROP INDEX")
+            );
+        }
+
+        #[test]
+        fn sqlite_drop_index_requires_table_name_input() {
+            let result = evaluate_multi_statement_for_database(
+                DatabaseType::SQLite,
+                "DROP INDEX IF EXISTS my_index",
+            );
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(!risk.read_only_allowed);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                    ));
                 }
                 _ => panic!("expected Allow"),
             }
@@ -757,6 +1861,36 @@ mod tests {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
                     assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn sqlite_safe_pragma_is_read_only_allowed() {
+            let result =
+                evaluate_multi_statement_for_database(DatabaseType::SQLite, "PRAGMA table_info(t)");
+
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
+                    assert!(risk.read_only_allowed);
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn sqlite_dangerous_pragma_blocks_read_only() {
+            let result = evaluate_multi_statement_for_database(
+                DatabaseType::SQLite,
+                "PRAGMA foreign_keys = OFF",
+            );
+
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(!risk.read_only_allowed);
                 }
                 _ => panic!("expected Allow"),
             }

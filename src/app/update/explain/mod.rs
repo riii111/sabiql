@@ -22,34 +22,23 @@ pub fn dispatch_explain(
         .or_else(|| analyze::reduce_analyze(state, action, now, services))
         .or_else(|| output::reduce_output(state, action, now))
         .or_else(|| scroll::reduce_scroll(state, action, now))
-        .or_else(|| tabs::reduce_tabs(state, action, now, services))
-}
-
-#[cfg(test)]
-fn reduce_explain_with_services(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
-    dispatch_explain(state, action, now, services)
+        .or_else(|| tabs::reduce_tabs(state, action, now))
 }
 
 #[cfg(test)]
 fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-    dispatch_explain(state, action, now, &crate::services::AppServices::stub())
+    dispatch_explain(state, action, now, &AppServices::stub())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::model::shared::db_capabilities::DbCapabilities;
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
     use crate::services::AppServices;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::test_fixtures;
     use std::time::Instant;
 
     fn sql_modal_state() -> AppState {
@@ -58,10 +47,12 @@ mod tests {
         state
     }
 
-    fn services_without_explain() -> AppServices {
-        let mut services = AppServices::stub();
-        services.db_capabilities = DbCapabilities::new(false, vec![InspectorTab::Info]);
-        services
+    fn activate_postgres_connection(state: &mut AppState) {
+        test_fixtures::activate_postgres_connection(state, "dsn://test");
+    }
+
+    fn activate_sqlite_connection(state: &mut AppState) {
+        test_fixtures::activate_sqlite_connection(state, "sqlite:///tmp/app.db");
     }
 
     mod explain_request {
@@ -71,7 +62,7 @@ mod tests {
         fn empty_query_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("  ".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             let effects = reduce_explain(&mut state, &Action::ExplainRequest, Instant::now())
                 .into_effects()
@@ -96,7 +87,7 @@ mod tests {
         fn running_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
             let effects = reduce_explain(&mut state, &Action::ExplainRequest, Instant::now())
@@ -107,16 +98,15 @@ mod tests {
         }
 
         #[test]
-        fn unsupported_database_sets_error_without_effects() {
+        fn disconnected_session_sets_error_without_effects() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
 
-            let effects = reduce_explain_with_services(
+            let effects = dispatch_explain(
                 &mut state,
                 &Action::ExplainRequest,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -129,13 +119,119 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_connection_emits_execute_explain_query_plan_effect() {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    is_analyze: false,
+                    read_only: true,
+                    ..
+                } if query == "EXPLAIN QUERY PLAN SELECT 1"
+            ));
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+        }
+
+        #[test]
+        fn sqlite_non_select_sets_query_plan_error_on_plan_tab() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("EXPLAIN QUERY PLAN supports SELECT statements only")
+            );
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+        }
+
+        #[test]
+        fn sqlite_explain_prefixed_query_sets_prefix_specific_error() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("EXPLAIN SELECT 1".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("EXPLAIN QUERY PLAN is added automatically; enter a SELECT query only")
+            );
+        }
+
+        #[test]
+        fn sqlite_explain_analyze_request_stops_before_confirmation() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainAnalyzeRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("EXPLAIN ANALYZE is not supported for SQLite")
+            );
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+            assert!(!matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                    | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
+            ));
+        }
+
+        #[test]
         fn multi_statement_sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
                 .editor
                 .set_content("SELECT 1; DELETE FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             let effects = reduce_explain(&mut state, &Action::ExplainRequest, Instant::now())
                 .into_effects()
@@ -153,7 +249,7 @@ mod tests {
         fn starts_query_timer() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             reduce_explain(&mut state, &Action::ExplainRequest, Instant::now());
 
@@ -165,7 +261,7 @@ mod tests {
         fn emits_execute_explain_effect() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             let effects = reduce_explain(&mut state, &Action::ExplainRequest, Instant::now())
                 .into_effects()
@@ -192,7 +288,7 @@ mod tests {
         #[test]
         fn empty_query_is_noop() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
@@ -209,7 +305,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT 1; DELETE FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
@@ -226,16 +322,15 @@ mod tests {
         }
 
         #[test]
-        fn unsupported_database_sets_error_without_effects() {
+        fn disconnected_session_sets_error_without_effects() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
 
-            let effects = reduce_explain_with_services(
+            let effects = dispatch_explain(
                 &mut state,
                 &Action::ExplainAnalyzeRequest,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -251,7 +346,7 @@ mod tests {
         fn select_executes_immediately_without_confirm() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
@@ -276,7 +371,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("INSERT INTO users VALUES (1)".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
@@ -301,7 +396,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("UPDATE users SET name='x' WHERE id=1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
@@ -326,7 +421,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -343,7 +438,7 @@ mod tests {
             state.sql_modal.editor.set_content(
                 "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE".to_string(),
             );
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -363,7 +458,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id=1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
@@ -388,7 +483,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DROP TABLE users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -405,7 +500,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("TRUNCATE users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -426,8 +521,8 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id=1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
-            state.session.read_only = true;
+            activate_postgres_connection(&mut state);
+            state.session.enable_read_only();
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -451,8 +546,8 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT * FROM users".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
-            state.session.read_only = true;
+            activate_postgres_connection(&mut state);
+            state.session.enable_read_only();
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now())
@@ -477,8 +572,8 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("INSERT INTO users VALUES (1)".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
-            state.session.read_only = true;
+            activate_postgres_connection(&mut state);
+            state.session.enable_read_only();
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
@@ -500,8 +595,8 @@ mod tests {
         #[test]
         fn confirm_from_high_with_matching_table_emits_effect() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
-            let mut input = crate::model::shared::text_input::TextInputState::default();
+            activate_postgres_connection(&mut state);
+            let mut input = TextInputState::default();
             for c in "users".chars() {
                 input.insert_char(c);
             }
@@ -525,8 +620,8 @@ mod tests {
         #[test]
         fn confirm_from_high_with_mismatch_is_noop() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
-            let mut input = crate::model::shared::text_input::TextInputState::default();
+            activate_postgres_connection(&mut state);
+            let mut input = TextInputState::default();
             input.insert_char('x');
             state
                 .sql_modal
@@ -568,7 +663,7 @@ mod tests {
         fn confirm_from_risk_acknowledge_emits_effect() {
             use crate::policy::write::sql_risk::AcknowledgeReason;
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
             state
                 .sql_modal
                 .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
@@ -609,7 +704,7 @@ mod tests {
         #[test]
         fn sets_plan_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
@@ -635,7 +730,7 @@ mod tests {
         #[test]
         fn mismatched_dsn_does_not_replace_plan() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://current".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
             state
@@ -671,7 +766,7 @@ mod tests {
         #[test]
         fn sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
 
@@ -697,7 +792,7 @@ mod tests {
         #[test]
         fn mismatched_dsn_does_not_replace_plan_with_error() {
             let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://current".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
             state
@@ -727,7 +822,7 @@ mod tests {
         fn two_explains_auto_advance_returns_comparable_slots() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("dsn://test".to_string());
+            activate_postgres_connection(&mut state);
             let now = Instant::now();
 
             // Step 1: First EXPLAIN
@@ -778,6 +873,7 @@ mod tests {
 
     mod scroll {
         use super::*;
+        use crate::model::explain_context::ExplainContext;
 
         #[test]
         fn plan_scroll_up_saturates_at_zero() {
@@ -800,7 +896,7 @@ mod tests {
         #[test]
         fn plan_scroll_down_increments() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
@@ -823,15 +919,13 @@ mod tests {
         #[test]
         fn plan_scroll_down_clamps_at_max() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
-            let modal_inner = crate::model::explain_context::ExplainContext::modal_inner_height(
-                state.ui.terminal_height,
-            );
+            let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height());
             let max = state.explain.line_count().saturating_sub(modal_inner);
             state.explain.scroll_offset = max;
 
@@ -892,7 +986,7 @@ mod tests {
         #[test]
         fn compare_scroll_down_stops_at_max() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
@@ -900,7 +994,7 @@ mod tests {
             state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
             state.explain.set_plan(long_plan, false, 0, "Q2");
 
-            let max = state.explain.compare_max_scroll(state.ui.terminal_height);
+            let max = state.explain.compare_max_scroll(state.ui.terminal_height());
 
             // Scroll to max
             for _ in 0..max + 5 {
@@ -933,7 +1027,7 @@ mod tests {
         #[test]
         fn right_only_plan_scroll_down_increments() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 24;
+            state.ui.set_terminal_height(24);
             let long_plan = (0..20)
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
@@ -977,6 +1071,7 @@ mod tests {
         #[test]
         fn next_tab_switches_sql_to_plan() {
             let mut state = sql_modal_state();
+            activate_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
             reduce_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
@@ -987,6 +1082,7 @@ mod tests {
         #[test]
         fn next_tab_switches_plan_to_compare() {
             let mut state = sql_modal_state();
+            activate_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
             reduce_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
@@ -997,6 +1093,7 @@ mod tests {
         #[test]
         fn next_tab_switches_compare_to_sql() {
             let mut state = sql_modal_state();
+            activate_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
             reduce_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
@@ -1009,14 +1106,30 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalNextTab,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+        }
+
+        #[test]
+        fn next_tab_cycles_to_plan_for_sqlite_connection() {
+            let mut state = sql_modal_state();
+            activate_sqlite_connection(&mut state);
+            state.sql_modal.set_active_tab(SqlModalTab::Sql);
+
+            dispatch_explain(
+                &mut state,
+                &Action::SqlModalNextTab,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
         }
 
         #[test]
@@ -1024,11 +1137,11 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalNextTab,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
@@ -1037,6 +1150,7 @@ mod tests {
         #[test]
         fn prev_tab_switches_sql_to_compare() {
             let mut state = sql_modal_state();
+            activate_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
             reduce_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
@@ -1047,6 +1161,7 @@ mod tests {
         #[test]
         fn prev_tab_switches_compare_to_plan() {
             let mut state = sql_modal_state();
+            activate_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
             reduce_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
@@ -1057,6 +1172,7 @@ mod tests {
         #[test]
         fn prev_tab_switches_plan_to_sql() {
             let mut state = sql_modal_state();
+            activate_postgres_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
             reduce_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
@@ -1069,14 +1185,30 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalPrevTab,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+        }
+
+        #[test]
+        fn prev_tab_cycles_to_compare_for_sqlite_connection() {
+            let mut state = sql_modal_state();
+            activate_sqlite_connection(&mut state);
+            state.sql_modal.set_active_tab(SqlModalTab::Sql);
+
+            dispatch_explain(
+                &mut state,
+                &Action::SqlModalPrevTab,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Compare);
         }
 
         #[test]
@@ -1084,11 +1216,11 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
-            reduce_explain_with_services(
+            dispatch_explain(
                 &mut state,
                 &Action::SqlModalPrevTab,
                 Instant::now(),
-                &services_without_explain(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);

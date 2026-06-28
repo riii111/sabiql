@@ -17,13 +17,14 @@ use crate::cmd::er::handler as cmd_er;
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history as cmd_query_history;
+use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
 use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
-    Renderer, SettingsStore,
+    Renderer, SettingsStore, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -32,11 +33,13 @@ pub struct ConnectionDeps {
     pub dsn_builder: Arc<dyn DsnBuilder>,
     pub connection_store: Arc<dyn ConnectionStore>,
     pub pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
+    pub sqlite_path_validator: Arc<dyn SqlitePathValidator>,
 }
 
 pub struct QueryDeps {
     pub query_executor: Arc<dyn QueryExecutor>,
     pub query_history_store: Arc<dyn QueryHistoryStore>,
+    pub sqlite_diagnostics: Arc<dyn SqliteDiagnosticsProvider>,
 }
 
 pub struct ErDeps {
@@ -168,11 +171,9 @@ impl EffectRunner {
                 cmd_connection::run(
                     e,
                     &self.action_tx,
-                    &self.connection.dsn_builder,
+                    &self.connection,
                     &self.metadata_provider,
                     &self.metadata_cache,
-                    &self.connection.connection_store,
-                    self.connection.pg_service_entry_reader.as_ref(),
                     state,
                 )
                 .await?;
@@ -190,6 +191,7 @@ impl EffectRunner {
                     &self.action_tx,
                     &self.metadata_provider,
                     &self.metadata_cache,
+                    &self.connection.sqlite_path_validator,
                     state,
                     completion_engine,
                 )
@@ -202,7 +204,8 @@ impl EffectRunner {
             | Effect::ExecuteExplain { .. }
             | Effect::ExecuteWrite { .. }
             | Effect::CountRowsForExport { .. }
-            | Effect::ExportCsv { .. }) => {
+            | Effect::ExportCsv { .. }
+            | Effect::ExportCsvFromCache { .. }) => {
                 cmd_browse::query::run(
                     e,
                     &self.action_tx,
@@ -242,6 +245,12 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
+            e @ (Effect::FetchSqliteDiagnosticsCore { .. }
+            | Effect::FetchSqliteDiagnosticsQuickCheck { .. }) => {
+                sqlite_diagnostics::run(e, &self.action_tx, &self.query.sqlite_diagnostics);
+                Ok(vec![])
+            }
+
             e @ (Effect::CacheTableInCompletionEngine { .. }
             | Effect::EvictTablesFromCompletionCache { .. }
             | Effect::ClearCompletionEngineCache
@@ -257,7 +266,7 @@ impl EffectRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::test_support::*;
+    use crate::cmd::test_fixtures;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
@@ -321,7 +330,7 @@ mod tests {
         #[tokio::test]
         async fn calls_draw() {
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -348,7 +357,7 @@ mod tests {
         #[tokio::test]
         async fn clamps_stale_explorer_horizontal_offset_to_new_maximum() {
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -357,17 +366,17 @@ mod tests {
             );
 
             let state = &mut AppState::new("test".to_string());
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            state.session.set_metadata(Some(Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "abcdefghij".to_string(),
                     Some(0),
                     false,
-                )],
+                )];
+                metadata
             })));
-            state.ui.explorer_horizontal_offset = 20;
+            state.ui.set_explorer_horizontal_offset(20);
 
             let ce = RefCell::new(CompletionEngine::new());
             let mut renderer = ExplorerWidthRenderer {
@@ -385,13 +394,13 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.explorer_horizontal_offset, 9);
+            assert_eq!(state.ui.explorer_horizontal_offset(), 9);
         }
 
         #[tokio::test]
         async fn recomputes_jsonb_editor_scroll_when_visible_rows_change() {
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -426,7 +435,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.jsonb_detail_editor_visible_rows, 2);
+            assert_eq!(state.ui.jsonb_detail_editor_visible_rows(), 2);
             assert_eq!(state.jsonb_detail.editor().cursor_to_position().0, 3);
             assert_eq!(state.jsonb_detail.editor().scroll_row(), 2);
         }
@@ -438,7 +447,7 @@ mod tests {
         #[tokio::test]
         async fn dispatches_all_actions() {
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),

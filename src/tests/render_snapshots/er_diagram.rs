@@ -6,16 +6,12 @@ fn er_waiting_progress() {
     let mut state = explorer_selected_state();
     let mut terminal = create_test_terminal();
 
-    state.er_preparation.status = ErStatus::Waiting;
-    state.er_preparation.total_tables = 3;
+    let _ = state.er_preparation.start_waiting_run();
+    state.er_preparation.begin_full_prefetch(3);
     state
         .er_preparation
-        .pending_tables
-        .insert("public.comments".to_string());
-    state
-        .er_preparation
-        .fetching_tables
-        .insert("public.posts".to_string());
+        .queue_pending_table("public.comments".to_string());
+    state.er_preparation.start_fetching("public.posts");
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -40,7 +36,7 @@ fn er_table_picker_filtered() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
-    state.ui.er_picker.insert_filter_str("user");
+    state.ui.er_picker_mut().insert_filter_str("user");
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -55,8 +51,7 @@ fn er_table_picker_single_select() {
     state.modal.set_mode(InputMode::ErTablePicker);
     state
         .ui
-        .er_selected_tables
-        .insert("public.users".to_string());
+        .replace_er_selected_tables(["public.users".to_string()]);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -71,12 +66,7 @@ fn er_table_picker_multi_select() {
     state.modal.set_mode(InputMode::ErTablePicker);
     state
         .ui
-        .er_selected_tables
-        .insert("public.users".to_string());
-    state
-        .ui
-        .er_selected_tables
-        .insert("public.posts".to_string());
+        .replace_er_selected_tables(["public.users".to_string(), "public.posts".to_string()]);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -89,18 +79,11 @@ fn er_table_picker_all_selected() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ErTablePicker);
-    state
-        .ui
-        .er_selected_tables
-        .insert("public.users".to_string());
-    state
-        .ui
-        .er_selected_tables
-        .insert("public.posts".to_string());
-    state
-        .ui
-        .er_selected_tables
-        .insert("public.comments".to_string());
+    state.ui.replace_er_selected_tables([
+        "public.users".to_string(),
+        "public.posts".to_string(),
+        "public.comments".to_string(),
+    ]);
 
     let output = render_to_string(&mut terminal, &mut state);
 

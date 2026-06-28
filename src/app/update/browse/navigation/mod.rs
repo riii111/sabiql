@@ -13,14 +13,13 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
-    let active_tab = services
-        .db_capabilities
-        .normalize_inspector_tab(state.ui.inspector_tab);
+    let capabilities = state.session.active_db_capabilities();
+    let active_tab = capabilities.normalize_inspector_tab(state.ui.inspector_tab());
     state
         .session
         .table_detail()
         .map_or(0, |t| match active_tab {
-            InspectorTab::Info => 5,
+            InspectorTab::Info => capabilities.inspector_info_line_count(),
             InspectorTab::Columns => t.columns.len(),
             InspectorTab::Indexes => t.indexes.len(),
             InspectorTab::ForeignKeys => t.foreign_keys.len(),
@@ -38,14 +37,17 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
                 lines
             }),
             InspectorTab::Triggers => t.triggers.len(),
-            InspectorTab::Ddl => services.ddl_generator.ddl_line_count(t),
+            InspectorTab::Ddl => services
+                .ddl_generator
+                .ddl_line_count(state.session.active_database_type_or_default(), t),
         })
 }
 
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
-    let visible = match services
-        .db_capabilities
-        .normalize_inspector_tab(state.ui.inspector_tab)
+    let visible = match state
+        .session
+        .active_db_capabilities()
+        .normalize_inspector_tab(state.ui.inspector_tab())
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
         _ => state.inspector_visible_rows(),
@@ -63,7 +65,7 @@ pub fn dispatch_navigation(
     services: &AppServices,
     now: Instant,
 ) -> DispatchResult {
-    focus::reduce_focus(state, action, services, now)
+    focus::reduce_focus(state, action)
         .or_else(|| input::reduce_input(state, action))
         .or_else(|| explorer::reduce_explorer(state, action))
         .or_else(|| inspector::reduce_inspector(state, action, services))

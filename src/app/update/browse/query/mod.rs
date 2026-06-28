@@ -36,36 +36,38 @@ pub(super) fn preview_effect_for_current_table(
     target_page: usize,
     generation: u64,
 ) -> Option<Effect> {
-    let dsn = state.session.dsn.clone()?;
+    let dsn = state.session.dsn().map(String::from)?;
     let run_id = state.query.begin_running(now);
     Some(Effect::ExecutePreview {
         dsn,
-        schema: state.query.pagination.schema.clone(),
-        table: state.query.pagination.table.clone(),
+        schema: state.query.pagination.schema().to_string(),
+        table: state.query.pagination.table().to_string(),
         generation,
         run_id,
         limit: PREVIEW_PAGE_SIZE,
         offset: target_page * PREVIEW_PAGE_SIZE,
         target_page,
-        read_only: state.session.read_only,
+        read_only: state.session.is_read_only(),
     })
 }
 
 #[cfg(test)]
 pub(super) mod tests {
+    use crate::domain::Column;
     use std::sync::Arc;
     use std::time::Instant;
 
     use crate::domain::{
-        Column, ColumnAttributes, CommandTag, Index, IndexAttributes, IndexType, QueryResult,
-        QuerySource, Table, Trigger, TriggerEvent, TriggerTiming,
+        ColumnAttributes, CommandTag, Index, IndexAttributes, IndexType, QueryResult, QuerySource,
+        Table, Trigger, TriggerEvent, TriggerTiming,
     };
     use crate::model::app_state::AppState;
     use crate::update::action::Action;
+    use crate::update::test_fixtures;
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
-        state.session.dsn = Some("postgres://localhost/test".to_string());
+        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
         state
     }
 
@@ -124,27 +126,14 @@ pub(super) mod tests {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            owner: None,
             columns: vec![
                 Column {
-                    name: "id".to_string(),
-                    data_type: "int".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
+                    ..sabiql_test_support::column::test_nullable_column("id", "int", 1)
                 },
-                Column {
-                    name: "name".to_string(),
-                    data_type: "text".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 2,
-                },
+                sabiql_test_support::column::test_nullable_column("name", "text", 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
-            foreign_keys: vec![],
             indexes: vec![Index {
                 name: "users_pkey".to_string(),
                 columns: vec!["id".to_string()],
@@ -152,7 +141,6 @@ pub(super) mod tests {
                 index_type: IndexType::BTree,
                 definition: None,
             }],
-            rls: None,
             triggers: vec![Trigger {
                 name: "trg".to_string(),
                 timing: TriggerTiming::After,
@@ -160,21 +148,17 @@ pub(super) mod tests {
                 function_name: "f".to_string(),
                 security_definer: false,
             }],
-            row_count_estimate: None,
-            comment: None,
+            ..sabiql_test_support::table::minimal("", "")
         }
     }
 
     pub fn jsonb_table_detail() -> Table {
         let mut detail = users_table_detail();
-        detail.columns.push(Column {
-            name: "metadata".to_string(),
-            data_type: "jsonb".to_string(),
-            default: None,
-            attributes: ColumnAttributes::NULLABLE,
-            comment: None,
-            ordinal_position: 3,
-        });
+        detail
+            .columns
+            .push(sabiql_test_support::column::test_nullable_column(
+                "metadata", "jsonb", 3,
+            ));
         detail
     }
 
@@ -194,9 +178,11 @@ pub(super) mod tests {
 
     // Mirrors the executor's command-tag path: affected rows become row_count
     pub fn adhoc_result_with_tag(tag: CommandTag) -> Arc<QueryResult> {
-        let mut result = QueryResult::success(String::new(), vec![], vec![], 5, QuerySource::Adhoc);
-        result.row_count = tag.affected_rows().unwrap_or(0) as usize;
-        Arc::new(result.with_command_tag(tag))
+        Arc::new(
+            QueryResult::success(String::new(), vec![], vec![], 5, QuerySource::Adhoc)
+                .with_row_count(tag.affected_rows().unwrap_or(0) as usize)
+                .with_command_tag(tag),
+        )
     }
 
     pub fn adhoc_error_result() -> Arc<QueryResult> {
@@ -210,8 +196,7 @@ pub(super) mod tests {
 
     pub fn state_with_table(schema: &str, table: &str) -> AppState {
         let mut state = create_test_state();
-        state.query.pagination.schema = schema.to_string();
-        state.query.pagination.table = table.to_string();
+        state.query.pagination.reset_for_table(schema, table);
         state
     }
 }

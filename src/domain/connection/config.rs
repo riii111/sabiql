@@ -1,0 +1,218 @@
+use serde::{Deserialize, Serialize};
+
+use super::ssl_mode::SslMode;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PostgresConnectionConfig {
+    pub host: String,
+    pub port: u16,
+    pub database: String,
+    pub username: String,
+    pub password: String,
+    pub ssl_mode: SslMode,
+}
+
+impl PostgresConnectionConfig {
+    pub fn new(
+        host: impl Into<String>,
+        port: u16,
+        database: impl Into<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
+        ssl_mode: SslMode,
+    ) -> Self {
+        Self {
+            host: host.into(),
+            port,
+            database: database.into(),
+            username: username.into(),
+            password: password.into(),
+            ssl_mode,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SqliteConnectionConfig {
+    path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SqliteConnectionConfigError {
+    #[error("SQLite database path is required")]
+    EmptyPath,
+    #[error("SQLite database path contains unsupported characters")]
+    UnsupportedPath,
+    #[error(
+        "SQLite in-memory databases and URI filenames are not supported; use a regular file path"
+    )]
+    UnsupportedConnectionFormat,
+}
+
+impl SqliteConnectionConfig {
+    pub fn new(path: impl Into<String>) -> Result<Self, SqliteConnectionConfigError> {
+        let path = path.into();
+        validate_sqlite_path(&path)?;
+        Ok(Self { path })
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+impl<'de> Deserialize<'de> for SqliteConnectionConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawSqliteConnectionConfig {
+            path: String,
+        }
+
+        let raw = RawSqliteConnectionConfig::deserialize(deserializer)?;
+        Self::new(raw.path).map_err(serde::de::Error::custom)
+    }
+}
+
+fn validate_sqlite_path(path: &str) -> Result<(), SqliteConnectionConfigError> {
+    if path.trim().is_empty() {
+        return Err(SqliteConnectionConfigError::EmptyPath);
+    }
+    if path.chars().any(|c| c == '\0' || c.is_control()) {
+        return Err(SqliteConnectionConfigError::UnsupportedPath);
+    }
+    if is_unsupported_sqlite_connection_format(path) {
+        return Err(SqliteConnectionConfigError::UnsupportedConnectionFormat);
+    }
+    Ok(())
+}
+
+fn is_unsupported_sqlite_connection_format(path: &str) -> bool {
+    if path.trim() == ":memory:" {
+        return true;
+    }
+
+    path.as_bytes()
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"file:"))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConnectionConfig {
+    PostgreSQL(PostgresConnectionConfig),
+    SQLite(SqliteConnectionConfig),
+}
+
+impl ConnectionConfig {
+    pub fn database_type(&self) -> super::DatabaseType {
+        match self {
+            Self::PostgreSQL(_) => super::DatabaseType::PostgreSQL,
+            Self::SQLite(_) => super::DatabaseType::SQLite,
+        }
+    }
+
+    pub fn as_postgres(&self) -> Option<&PostgresConnectionConfig> {
+        match self {
+            Self::PostgreSQL(config) => Some(config),
+            Self::SQLite(_) => None,
+        }
+    }
+
+    pub fn as_sqlite(&self) -> Option<&SqliteConnectionConfig> {
+        match self {
+            Self::SQLite(config) => Some(config),
+            Self::PostgreSQL(_) => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod sqlite_deserialize {
+        use super::*;
+
+        #[test]
+        fn accepts_valid_path() {
+            let config: SqliteConnectionConfig =
+                serde_json::from_str(r#"{ "path": "/tmp/app.db" }"#).unwrap();
+
+            assert_eq!(config.path(), "/tmp/app.db");
+        }
+
+        #[test]
+        fn rejects_empty_path() {
+            let result = serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "   " }"#);
+
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn rejects_control_characters() {
+            let result =
+                serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "/tmp/app\n.db" }"#);
+
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn rejects_in_memory_database() {
+            let result =
+                serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": ":memory:" }"#);
+
+            assert!(matches!(
+                result,
+                Err(error) if error.to_string().contains("in-memory")
+            ));
+        }
+
+        #[test]
+        fn rejects_uri_filename() {
+            let result = serde_json::from_str::<SqliteConnectionConfig>(
+                r#"{ "path": "file:/tmp/app.db?mode=ro" }"#,
+            );
+
+            assert!(matches!(
+                result,
+                Err(error) if error.to_string().contains("URI filename")
+            ));
+        }
+
+        #[test]
+        fn rejects_uri_filename_case_insensitively() {
+            let result =
+                serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "FILE:/tmp/app.db" }"#);
+
+            assert!(result.is_err());
+        }
+    }
+
+    mod validate_sqlite_path {
+        use super::*;
+
+        #[test]
+        fn accepts_regular_file_path() {
+            assert!(validate_sqlite_path("/tmp/app.db").is_ok());
+            assert!(validate_sqlite_path("./relative/app.db").is_ok());
+        }
+
+        #[test]
+        fn rejects_memory_database() {
+            assert!(matches!(
+                validate_sqlite_path(":memory:"),
+                Err(SqliteConnectionConfigError::UnsupportedConnectionFormat)
+            ));
+        }
+
+        #[test]
+        fn rejects_file_uri() {
+            assert!(matches!(
+                validate_sqlite_path("file:memdb?mode=memory"),
+                Err(SqliteConnectionConfigError::UnsupportedConnectionFormat)
+            ));
+        }
+    }
+}

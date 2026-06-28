@@ -12,10 +12,10 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::db_capabilities::DbCapabilities;
 use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
-use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
     sql_modal, sql_modal_compare, sql_modal_normal, sql_modal_plan, sql_modal_plan_explain,
 };
@@ -33,7 +33,6 @@ impl SqlModal {
     pub fn render(
         frame: &mut Frame,
         state: &AppState,
-        services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
     ) -> Option<u16> {
@@ -41,9 +40,8 @@ impl SqlModal {
             state.sql_modal.status(),
             SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
         );
-        let active_tab = services
-            .db_capabilities
-            .normalize_sql_modal_tab(state.sql_modal.active_tab());
+        let db_capabilities = state.session.active_db_capabilities();
+        let active_tab = db_capabilities.normalize_sql_modal_tab(state.sql_modal.active_tab());
 
         let (area, inner) = if is_confirming {
             match state.sql_modal.status() {
@@ -98,7 +96,7 @@ impl SqlModal {
         } else {
             let hint = match state.sql_modal.status() {
                 SqlModalStatus::Editing => {
-                    Self::editing_hint(services, state.settings.saved_keymap_preset())
+                    Self::editing_hint(db_capabilities, state.settings.saved_keymap_preset())
                 }
                 SqlModalStatus::Running => FooterHintBar::message("Running\u{2026}"),
                 SqlModalStatus::ConfirmingAnalyzeHigh {
@@ -115,17 +113,16 @@ impl SqlModal {
                     FooterHintBar::new([("Enter", "Execute"), ("Esc", "Cancel")])
                 }
                 _ => {
-                    let compare_can_yank =
-                        state.explain.left.is_some() && state.explain.right.is_some();
+                    let compare_can_yank = state.explain.can_yank_compare();
                     Self::border_hint(
                         active_tab,
                         compare_can_yank,
-                        services,
+                        db_capabilities,
                         state.settings.saved_keymap_preset(),
                     )
                 }
             };
-            Self::render_modal_with_tabs(frame, active_tab, hint, services, theme)
+            Self::render_modal_with_tabs(frame, active_tab, hint, db_capabilities, theme)
         };
 
         // Add 1-char horizontal padding for breathing room inside the modal
@@ -169,8 +166,7 @@ impl SqlModal {
                 completion::render_completion_popup(frame, area, main_area, state, theme);
             }
         } else if active_tab == SqlModalTab::Plan {
-            let plan_viewport_height =
-                explain::render(frame, main_area, state, services, now, theme);
+            let plan_viewport_height = explain::render(frame, main_area, state, now, theme);
             status::render_status(frame, status_area, state, theme);
             return Some(plan_viewport_height);
         } else {
@@ -186,7 +182,7 @@ impl SqlModal {
         frame: &mut Frame,
         active_tab: SqlModalTab,
         hint: FooterHintBar,
-        services: &AppServices,
+        db_capabilities: &DbCapabilities,
         theme: &ThemePalette,
     ) -> (Rect, Rect) {
         let area = centered_rect(
@@ -197,7 +193,7 @@ impl SqlModal {
         render_scrim(frame, theme);
         frame.render_widget(Clear, area);
 
-        let title = Self::build_title_with_tabs(active_tab, services, theme);
+        let title = Self::build_title_with_tabs(active_tab, db_capabilities, theme);
         let block = Block::default()
             .title(title)
             .title_bottom(hint.line(theme))
@@ -213,7 +209,7 @@ impl SqlModal {
 
     fn build_title_with_tabs(
         active_tab: SqlModalTab,
-        services: &AppServices,
+        db_capabilities: &DbCapabilities,
         theme: &ThemePalette,
     ) -> Line<'static> {
         let title_style = theme.modal_title_style();
@@ -229,7 +225,7 @@ impl SqlModal {
                 inactive_style
             }
         };
-        let supported_tabs = services.db_capabilities.supported_sql_modal_tabs();
+        let supported_tabs = db_capabilities.supported_sql_modal_tabs();
 
         if supported_tabs.len() == 1 {
             return Line::from(vec![Span::styled(" SQL Editor ", title_style)]);
@@ -254,12 +250,12 @@ impl SqlModal {
     fn border_hint(
         tab: SqlModalTab,
         compare_can_yank: bool,
-        services: &AppServices,
+        db_capabilities: &DbCapabilities,
         keymap_preset: KeymapPreset,
     ) -> FooterHintBar {
         match tab {
-            SqlModalTab::Sql if services.db_capabilities.supported_sql_modal_tabs().len() == 1 => {
-                if services.db_capabilities.supports_explain() {
+            SqlModalTab::Sql if db_capabilities.supported_sql_modal_tabs().len() == 1 => {
+                if db_capabilities.supports_explain() {
                     FooterHintBar::new([
                         sql_modal_normal::RUN.as_hint(),
                         sql_modal_plan_explain(keymap_preset).as_hint(),
@@ -291,7 +287,7 @@ impl SqlModal {
                 sql_modal_compare::CLOSE.as_hint(),
             ]),
             SqlModalTab::Sql => {
-                if services.db_capabilities.supports_explain() {
+                if db_capabilities.supports_explain() {
                     FooterHintBar::new([
                         sql_modal_normal::RUN.as_hint(),
                         sql_modal_plan_explain(keymap_preset).as_hint(),
@@ -311,8 +307,11 @@ impl SqlModal {
         }
     }
 
-    fn editing_hint(services: &AppServices, keymap_preset: KeymapPreset) -> FooterHintBar {
-        match (services.db_capabilities.supports_explain(), keymap_preset) {
+    fn editing_hint(
+        db_capabilities: &DbCapabilities,
+        keymap_preset: KeymapPreset,
+    ) -> FooterHintBar {
+        match (db_capabilities.supports_explain(), keymap_preset) {
             (true, KeymapPreset::Default) => FooterHintBar::new([
                 sql_modal::RUN.as_hint(),
                 sql_modal_plan::EXPLAIN.as_hint(),

@@ -7,16 +7,59 @@ use crate::cmd::cache::TtlCache;
 use crate::cmd::runner::{
     ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
 };
+use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::query_history::QueryHistoryEntry;
-use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};
+use crate::domain::{
+    ConnectionId, DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource,
+    SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
+};
+use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
-    ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder,
-    ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
+    AppSettings, ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore,
+    DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
     MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore,
-    ServiceFileError, SettingsStore, SettingsStoreError,
+    ServiceFileError, SettingsStore, SettingsStoreError, SqliteDiagnosticsProvider,
+    SqlitePathValidator,
 };
 use crate::update::action::Action;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TestFsSqlitePathValidator;
+
+impl SqlitePathValidator for TestFsSqlitePathValidator {
+    fn validate_database_path(&self, path: &str) -> Result<(), SqlitePathError> {
+        let path = Path::new(path);
+        let display = path.display().to_string();
+        let metadata = match std::fs::metadata(path) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                return Err(classify_sqlite_metadata_error(
+                    &display,
+                    error.kind(),
+                    &error.to_string(),
+                ));
+            }
+        };
+
+        if metadata.is_dir() {
+            return Err(SqlitePathError::IsDirectory(display));
+        }
+
+        if !metadata.is_file() {
+            return Err(SqlitePathError::NotRegularFile(display));
+        }
+
+        match std::fs::File::open(path) {
+            Ok(_) => Ok(()),
+            Err(error) => Err(classify_sqlite_read_error(
+                &display,
+                error.kind(),
+                &error.to_string(),
+            )),
+        }
+    }
+}
 
 pub struct NoopConfigWriter;
 impl ConfigWriter for NoopConfigWriter {
@@ -100,15 +143,28 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
 
 pub struct NoopSettingsStore;
 impl SettingsStore for NoopSettingsStore {
-    fn load(&self) -> Result<crate::ports::outbound::AppSettings, SettingsStoreError> {
-        Ok(crate::ports::outbound::AppSettings::default())
+    fn load(&self) -> Result<AppSettings, SettingsStoreError> {
+        Ok(AppSettings::default())
     }
 
-    fn save(
-        &self,
-        _settings: crate::ports::outbound::AppSettings,
-    ) -> Result<(), SettingsStoreError> {
+    fn save(&self, _settings: AppSettings) -> Result<(), SettingsStoreError> {
         Ok(())
+    }
+}
+
+pub struct NoopSqliteDiagnosticsProvider;
+#[async_trait::async_trait]
+impl SqliteDiagnosticsProvider for NoopSqliteDiagnosticsProvider {
+    async fn fetch_diagnostics_core(
+        &self,
+        _dsn: &str,
+        _read_only: bool,
+    ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
+        Ok(SqliteDiagnosticsSnapshot::default())
+    }
+
+    async fn fetch_quick_check(&self, _dsn: &str, _read_only: bool) -> DiagnosticField {
+        DiagnosticField::default()
     }
 }
 
@@ -143,10 +199,12 @@ pub fn make_runner_with_dsn(
             dsn_builder,
             connection_store,
             pg_service_entry_reader: Some(Arc::new(NoopPgServiceEntryReader)),
+            sqlite_path_validator: Arc::new(TestFsSqlitePathValidator),
         },
         QueryDeps {
             query_executor,
             query_history_store: Arc::new(NoopQueryHistoryStore),
+            sqlite_diagnostics: Arc::new(NoopSqliteDiagnosticsProvider),
         },
         ErDeps {
             er_exporter: Arc::new(NoopErExporter),
@@ -166,11 +224,7 @@ pub fn make_runner_with_dsn(
 }
 
 pub fn sample_metadata() -> DatabaseMetadata {
-    DatabaseMetadata {
-        database_name: "testdb".to_string(),
-        schemas: vec![],
-        table_summaries: vec![],
-    }
+    DatabaseMetadata::new("testdb".to_string())
 }
 
 pub fn sample_query_result() -> QueryResult {

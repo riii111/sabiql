@@ -3,28 +3,34 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::write::write_update::build_pk_pairs;
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
-use crate::update::helpers::{EditGuardrailError, editable_preview_base};
+use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
+use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
-fn is_jsonb_cell(state: &AppState) -> bool {
+fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
     let Some(td) = state.session.table_detail() else {
         return false;
     };
-    // Ensure table_detail matches current preview target
-    if td.schema != state.query.pagination.schema || td.name != state.query.pagination.table {
+    if td.schema != state.query.pagination.schema() || td.name != state.query.pagination.table() {
         return false;
     }
-    td.columns
-        .get(col_idx)
-        .is_some_and(|c| c.data_type == "jsonb")
+    let Some(column) = td.columns.get(col_idx) else {
+        return false;
+    };
+    let handling = preview_cell_text_diff_handling(
+        state.session.active_database_type_or_default(),
+        column.data_type.as_str(),
+    );
+    uses_jsonb_detail_modal(handling)
 }
 
 fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {
@@ -45,22 +51,25 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
         .columns
         .get(col_idx)
         .ok_or(EditGuardrailError::ColumnIndexOutOfBounds)?;
-    if pk_cols.iter().any(|pk| pk == column_name) {
-        return Err(EditGuardrailError::PrimaryKeyColumnsReadOnly);
-    }
+    ensure_column_writable(state, column_name, pk_cols)?;
 
     let row = result
-        .rows
+        .values()
         .get(row_idx)
         .ok_or(EditGuardrailError::RowIndexOutOfBounds)?;
     if build_pk_pairs(&result.columns, row, pk_cols).is_none() {
         return Err(EditGuardrailError::StableKeyColumnsMissing);
     }
 
-    let cell_value = row
-        .get(col_idx)
+    let cell_value = match result
+        .value_at(row_idx, col_idx)
         .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
-        .clone();
+    {
+        QueryValue::Text(value) => value.clone(),
+        QueryValue::Null | QueryValue::Blob(_) | QueryValue::SqlLiteral(_) => {
+            return Err(EditGuardrailError::NonTextInlineEdit);
+        }
+    };
 
     Ok((row_idx, col_idx, cell_value))
 }
@@ -68,7 +77,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
 pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::ResultEnterCellEdit => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -76,7 +85,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             }
 
             // JSONB columns open the dedicated detail modal instead of inline edit
-            if is_jsonb_cell(state) {
+            if cell_uses_jsonb_detail_modal(state) {
                 return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
                     Action::OpenModal(ModalKind::JsonbDetail),
                 ])]);
@@ -84,14 +93,9 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 
             match editable_cell_context(state) {
                 Ok((row_idx, col_idx, value)) => {
-                    if state.result_interaction.cell_edit().row != Some(row_idx)
-                        || state.result_interaction.cell_edit().col != Some(col_idx)
-                    {
-                        state
-                            .result_interaction
-                            .begin_cell_edit(row_idx, col_idx, value);
-                        state.result_interaction.clear_write_preview();
-                    }
+                    state
+                        .result_interaction
+                        .ensure_cell_edit_at(row_idx, col_idx, value);
                     state.modal.set_mode(InputMode::CellEdit);
                     DispatchResult::handled()
                 }
@@ -102,11 +106,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             }
         }
         Action::ResultCancelCellEdit => {
-            if state.result_interaction.cell_edit().has_pending_draft() {
-                state.result_interaction.clear_write_preview();
-            } else {
-                state.result_interaction.discard_cell_edit();
-            }
+            state.result_interaction.leave_cell_edit();
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
@@ -119,32 +119,26 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             target: InputTarget::ResultCellEdit,
             ch: c,
         } => {
-            state
-                .result_interaction
-                .cell_edit_input_mut()
-                .insert_char(*c);
+            state.result_interaction.cell_edit_insert_char(*c);
             DispatchResult::handled()
         }
         Action::TextBackspace {
             target: InputTarget::ResultCellEdit,
         } => {
-            state.result_interaction.cell_edit_input_mut().backspace();
+            state.result_interaction.cell_edit_backspace();
             DispatchResult::handled()
         }
         Action::TextDelete {
             target: InputTarget::ResultCellEdit,
         } => {
-            state.result_interaction.cell_edit_input_mut().delete();
+            state.result_interaction.cell_edit_delete();
             DispatchResult::handled()
         }
         Action::TextMoveCursor {
             target: InputTarget::ResultCellEdit,
             direction: m,
         } => {
-            state
-                .result_interaction
-                .cell_edit_input_mut()
-                .move_cursor(*m);
+            state.result_interaction.cell_edit_move_cursor(*m);
             DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
@@ -154,8 +148,10 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{QueryResult, QuerySource, Table};
+    pub use crate::domain::Column;
+    use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
     use crate::update::action::CursorMove;
+    use rstest::rstest;
     use std::sync::Arc;
 
     mod cell_edit_entry_guardrails {
@@ -165,15 +161,8 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
-                columns: vec![],
                 primary_key: Some(vec!["id".to_string()]),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..sabiql_test_support::table::minimal("", "")
             }
         }
 
@@ -188,8 +177,7 @@ mod tests {
                     1,
                     QuerySource::Preview,
                 )));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.reset_for_table("public", "users");
             state.result_interaction.activate_cell(0, 1);
             state
         }
@@ -205,8 +193,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content("modified".to_string());
+                .replace_cell_edit_draft("modified".to_string());
             state.modal.set_mode(InputMode::Normal);
 
             reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
@@ -231,16 +218,48 @@ mod tests {
                 .begin_cell_edit(0, 99, "stale".to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content("stale-modified".to_string());
+                .replace_cell_edit_draft("stale-modified".to_string());
 
             reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
                 .expect("reducer should handle action");
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert_eq!(state.result_interaction.cell_edit().col, Some(1));
+            assert_eq!(state.result_interaction.cell_edit().col(), Some(1));
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "alice");
+        }
+
+        #[rstest]
+        #[case(QueryValue::Null)]
+        #[case(QueryValue::Blob(vec![0, 255]))]
+        #[case(QueryValue::SqlLiteral("42".to_string()))]
+        fn non_text_cell_blocks_cell_edit_entry(#[case] cell_value: QueryValue) {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![vec![QueryValue::text("1"), cell_value]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.query.pagination.reset_for_table("public", "users");
+            state.result_interaction.activate_cell(0, 1);
+            state
+                .session
+                .set_table_detail_raw(Some(minimal_users_table()));
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Only text cells can be edited inline")
+            );
         }
 
         #[test]
@@ -249,15 +268,8 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "posts".to_string(),
-                owner: None,
-                columns: vec![],
                 primary_key: Some(vec!["id".to_string()]),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..sabiql_test_support::table::minimal("", "")
             }));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
@@ -267,10 +279,39 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
-                state.messages.last_error.as_deref(),
+                state.messages.last_error(),
                 Some("Table metadata does not match current preview target")
             );
         }
+
+        #[test]
+        fn read_only_column_blocks_cell_edit_entry() {
+            let mut state = preview_state_with_selection();
+            let mut table = minimal_users_table();
+            table.columns = vec![
+                Column {
+                    attributes: ColumnAttributes::PRIMARY_KEY,
+                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                },
+                Column {
+                    attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
+                    ..sabiql_test_support::column::test_nullable_column("name", "text", 2)
+                },
+            ];
+            state.session.set_table_detail_raw(Some(table));
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Read-only column cannot be edited: name (generated)")
+            );
+        }
+
         #[test]
         fn cancel_without_changes_clears_cell_edit() {
             let mut state = preview_state_with_selection();
@@ -301,8 +342,7 @@ mod tests {
                 .begin_cell_edit(0, 1, "alice".to_string());
             state
                 .result_interaction
-                .cell_edit_input_mut()
-                .set_content("bob".to_string());
+                .replace_cell_edit_draft("bob".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 
             reduce_edit(&mut state, &Action::ResultCancelCellEdit, Instant::now())
@@ -317,28 +357,24 @@ mod tests {
 
     mod jsonb_dispatch {
         use super::*;
-        use crate::domain::column::Column;
+        use crate::domain::DatabaseType;
+        use crate::domain::connection::ConnectionId;
 
         fn state_with_jsonb_column() -> AppState {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             let mut table = cell_edit_entry_guardrails::minimal_users_table();
             table.columns = vec![
                 Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
+                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
                 },
-                Column {
-                    name: "name".to_string(),
-                    data_type: "jsonb".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 2,
-                },
+                sabiql_test_support::column::test_nullable_column("name", "jsonb", 2),
             ];
             state.session.set_table_detail_raw(Some(table));
             state
@@ -358,6 +394,25 @@ mod tests {
                 Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
             ));
         }
+
+        #[test]
+        fn sqlite_jsonb_cell_opens_inline_edit() {
+            let mut state = state_with_jsonb_column();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(state.result_interaction.cell_edit().is_active());
+        }
     }
 
     mod read_only_guard {
@@ -369,7 +424,7 @@ mod tests {
             state
                 .session
                 .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
@@ -377,7 +432,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 
@@ -390,10 +445,7 @@ mod tests {
             state
                 .result_interaction
                 .begin_cell_edit(0, 0, content.to_string());
-            state
-                .result_interaction
-                .cell_edit_input_mut()
-                .set_cursor(cursor);
+            state.result_interaction.cell_edit_set_cursor(cursor);
             state
         }
 
@@ -410,7 +462,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "acd");
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
 
         #[test]
@@ -441,7 +493,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
 
         #[test]
@@ -457,7 +509,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 2);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 2);
         }
 
         #[test]
@@ -473,7 +525,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 0);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 0);
         }
 
         #[test]
@@ -489,7 +541,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 3);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 3);
         }
 
         #[test]
@@ -506,7 +558,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "abc");
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 2);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 2);
         }
 
         #[test]
@@ -522,7 +574,7 @@ mod tests {
             );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "ac");
-            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input().cursor(), 1);
         }
     }
 }

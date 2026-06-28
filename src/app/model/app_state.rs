@@ -2,15 +2,16 @@ use std::time::Instant;
 
 use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
-use crate::domain::TableSummary;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+use crate::domain::{DatabaseType, TableSummary};
+use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::browse::query_execution::QueryExecution;
 use crate::model::browse::result_interaction::ResultInteraction;
 use crate::model::browse::session::BrowseSession;
 use crate::model::connection::cache::ConnectionCacheStore;
 use crate::model::connection::error_state::ConnectionErrorState;
-use crate::model::connection::list::ConnectionListItem;
+use crate::model::connection::list::{self, ConnectionListItem};
 use crate::model::connection::setup::ConnectionSetupState;
 use crate::model::shared::confirm_dialog::ConfirmDialogState;
 use crate::model::shared::flash_timer::FlashTimerStore;
@@ -19,14 +20,17 @@ use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
 use crate::model::shared::render_output::RenderOutput;
 use crate::model::shared::settings::SettingsState;
+use crate::model::shared::text_input::TextInputState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
+use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
 use crate::policy::sql::result_query::is_rerunnable_select;
+use crate::policy::table_kind::max_explorer_table_label_width;
 
 pub struct AppState {
     pub should_quit: bool,
-    pub command_line_input: crate::model::shared::text_input::TextInputState,
+    pub command_line_input: TextInputState,
     pub command_line_visible_width: usize,
 
     pub render_dirty: bool,
@@ -42,9 +46,11 @@ pub struct AppState {
     pub connection_error: ConnectionErrorState,
     pub confirm_dialog: ConfirmDialogState,
     pub result_interaction: ResultInteraction,
+    pub cell_detail: CellDetailState,
     pub jsonb_detail: JsonbDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub settings: SettingsState,
+    pub sqlite_diagnostics: SqliteDiagnosticsState,
     pub explain: ExplainContext,
     pub modal: ModalState,
     pub flash_timers: FlashTimerStore,
@@ -58,7 +64,7 @@ impl AppState {
     pub fn new(project_name: String) -> Self {
         Self {
             should_quit: false,
-            command_line_input: crate::model::shared::text_input::TextInputState::default(),
+            command_line_input: TextInputState::default(),
             command_line_visible_width: 70,
             render_dirty: true,
             session: BrowseSession::default(),
@@ -72,9 +78,11 @@ impl AppState {
             connection_error: ConnectionErrorState::default(),
             confirm_dialog: ConfirmDialogState::default(),
             result_interaction: ResultInteraction::default(),
+            cell_detail: CellDetailState::default(),
             jsonb_detail: JsonbDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             settings: SettingsState::default(),
+            sqlite_diagnostics: SqliteDiagnosticsState::default(),
             explain: ExplainContext::default(),
             modal: ModalState::default(),
             flash_timers: FlashTimerStore::default(),
@@ -110,55 +118,69 @@ impl AppState {
     /// plans are skipped in focus mode to keep the pre-focus plan restorable.
     pub fn apply_render_output(&mut self, output: RenderOutput) {
         if !self.ui.is_focus_mode() {
-            self.ui.inspector_viewport_plan = output.inspector_viewport_plan;
+            self.ui
+                .set_inspector_viewport_plan(output.inspector_viewport_plan);
         }
-        self.ui.result_viewport_plan = output.result_viewport_plan;
-        self.ui.result_widths_cache = output.result_widths_cache;
-        self.ui.explorer_pane_height = output.explorer_pane_height;
-        self.ui.explorer_content_width = output.explorer_content_width;
-        let max_name_width = self
-            .tables()
-            .iter()
-            .map(|table| table.qualified_name().chars().count())
-            .max()
-            .unwrap_or(0);
-        let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width);
-        self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
-        self.ui.inspector_pane_height = output.inspector_pane_height;
-        self.ui.result_pane_height = output.result_pane_height;
+        self.ui
+            .set_result_viewport_plan(output.result_viewport_plan);
+        self.ui.set_result_widths_cache(output.result_widths_cache);
+        self.ui
+            .set_explorer_pane_height(output.explorer_pane_height);
+        self.ui
+            .set_explorer_content_width(output.explorer_content_width);
+        let max_name_width = max_explorer_table_label_width(self.tables());
+        let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width());
+        self.ui
+            .set_explorer_horizontal_offset(self.ui.explorer_horizontal_offset().min(max_offset));
+        self.ui
+            .set_inspector_pane_height(output.inspector_pane_height);
+        self.ui.set_result_pane_height(output.result_pane_height);
         if let Some(width) = output.command_line_visible_width {
             self.command_line_visible_width = width;
         }
         if let Some(height) = output.connection_list_pane_height {
-            self.ui.connection_list_pane_height = height;
+            self.ui.set_connection_list_pane_height(height);
         }
         if let Some(height) = output.table_picker_pane_height {
-            self.ui.table_picker.pane_height = height;
+            self.ui.table_picker_mut().set_pane_height(height);
         }
         if let Some(width) = output.table_picker_filter_visible_width {
-            self.ui.table_picker.filter_visible_width = width;
+            self.ui.table_picker_mut().set_filter_visible_width(width);
         }
         if let Some(height) = output.er_picker_pane_height {
-            self.ui.er_picker.pane_height = height;
+            self.ui.er_picker_mut().set_pane_height(height);
         }
         if let Some(width) = output.er_picker_filter_visible_width {
-            self.ui.er_picker.filter_visible_width = width;
+            self.ui.er_picker_mut().set_filter_visible_width(width);
         }
         if let Some(height) = output.query_history_picker_pane_height {
-            self.query_history_picker.pane_height = height;
+            self.query_history_picker.set_pane_height(height);
         }
         if let Some(width) = output.query_history_picker_filter_visible_width {
-            self.query_history_picker.filter_visible_width = width;
+            self.query_history_picker.set_filter_visible_width(width);
         }
         if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
-            self.ui.jsonb_detail_editor_visible_rows = visible_rows;
+            self.ui.set_jsonb_detail_editor_visible_rows(visible_rows);
             self.jsonb_detail.editor_mut().update_scroll(visible_rows);
         }
-        self.confirm_dialog.preview_viewport_height = output.confirm_preview_viewport_height;
-        self.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
-        self.confirm_dialog.preview_scroll = output.confirm_preview_scroll;
+        if let Some(viewport) = output.cell_detail_viewport {
+            self.cell_detail
+                .set_viewport_metrics(viewport.visible_rows, viewport.viewport_width);
+        }
+        self.confirm_dialog.apply_preview_metrics(
+            output.confirm_preview_viewport_height,
+            output.confirm_preview_content_height,
+            output.confirm_preview_scroll,
+        );
         if let Some(height) = output.explain_compare_viewport_height {
-            self.explain.compare_viewport_height = Some(height);
+            self.explain.set_compare_viewport_height(height);
+        }
+        if let (Some(content), Some(viewport)) = (
+            output.sqlite_diagnostics_content_line_count,
+            output.sqlite_diagnostics_viewport_height,
+        ) {
+            self.sqlite_diagnostics
+                .apply_viewport_metrics(content, viewport);
         }
     }
 
@@ -175,7 +197,7 @@ impl AppState {
     }
 
     pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
-        self.ui.jsonb_detail_editor_visible_rows
+        self.ui.jsonb_detail_editor_visible_rows()
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
@@ -183,7 +205,12 @@ impl AppState {
     }
 
     pub fn filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.table_picker.filter_input().content().to_lowercase();
+        let filter_lower = self
+            .ui
+            .table_picker()
+            .filter_input()
+            .content()
+            .to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -196,7 +223,7 @@ impl AppState {
     }
 
     pub fn er_filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.er_picker.filter_input().content().to_lowercase();
+        let filter_lower = self.ui.er_picker().filter_input().content().to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -250,10 +277,8 @@ impl AppState {
     }
 
     fn rebuild_connection_list(&mut self) {
-        self.connection_list_items = crate::model::connection::list::build_connection_list(
-            self.connections.len(),
-            self.service_entries.len(),
-        );
+        self.connection_list_items =
+            list::build_connection_list(self.connections.len(), self.service_entries.len());
     }
 
     pub fn toggle_focus(&mut self) -> bool {
@@ -261,15 +286,22 @@ impl AppState {
     }
 
     pub fn can_request_csv_export(&self) -> bool {
-        self.query
-            .visible_result()
-            .is_some_and(|r| !r.is_error() && is_rerunnable_select(&r.query))
+        let Some(result) = self.query.visible_result() else {
+            return false;
+        };
+        if result.is_error() {
+            return false;
+        }
+        if self.session.active_database_type() == Some(DatabaseType::SQLite) {
+            return true;
+        }
+        is_rerunnable_select(&result.query)
     }
 
     /// True when a run-scoped async response no longer belongs to the active
     /// connection and query run, and must be dropped without touching state.
     pub fn is_stale_query_run(&self, dsn: &str, run_id: u64) -> bool {
-        self.session.dsn.as_deref() != Some(dsn) || !self.query.is_current_run(run_id)
+        !self.session.dsn_matches(dsn) || !self.query.is_current_run(run_id)
     }
 }
 
@@ -279,14 +311,26 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, Table};
+    use crate::domain::{
+        ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource, Table,
+    };
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
+    use crate::model::sql_editor::modal::FailedPrefetchEntry;
     use crate::update::action::Action;
     use crate::update::dispatch_metadata;
     use rstest::rstest;
     fn make_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    fn activate_postgres_connection(state: &mut AppState, dsn: &str) {
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "postgres",
+            DatabaseType::PostgreSQL,
+            dsn,
+        );
     }
 
     fn make_query_result(source: QuerySource) -> Arc<QueryResult> {
@@ -300,26 +344,16 @@ mod tests {
     }
 
     fn make_metadata(table_summaries: Vec<TableSummary>) -> Arc<DatabaseMetadata> {
-        Arc::new(DatabaseMetadata {
-            database_name: "test".to_string(),
-            schemas: vec![],
-            table_summaries,
-        })
+        let mut metadata = DatabaseMetadata::new("test".to_string());
+        metadata.table_summaries = table_summaries;
+        Arc::new(metadata)
     }
 
     fn make_table_detail() -> Table {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            owner: None,
-            columns: Vec::new(),
-            primary_key: None,
-            foreign_keys: Vec::new(),
-            indexes: Vec::new(),
-            rls: None,
-            triggers: Vec::new(),
-            row_count_estimate: None,
-            comment: None,
+            ..sabiql_test_support::table::minimal("", "")
         }
     }
 
@@ -342,7 +376,7 @@ mod tests {
         #[case(30, 25)]
         fn result_rows_follow_pane_height(#[case] pane_height: u16, #[case] expected: usize) {
             let mut state = make_state();
-            state.ui.result_pane_height = pane_height;
+            state.ui.set_result_pane_height(pane_height);
 
             let visible = state.result_visible_rows();
 
@@ -352,7 +386,7 @@ mod tests {
         #[test]
         fn result_rows_clamp_small_heights() {
             let mut state = make_state();
-            state.ui.result_pane_height = 2;
+            state.ui.set_result_pane_height(2);
 
             let visible = state.result_visible_rows();
 
@@ -362,7 +396,7 @@ mod tests {
         #[test]
         fn result_rows_stay_zero_at_minimum() {
             let mut state = make_state();
-            state.ui.result_pane_height = 1;
+            state.ui.set_result_pane_height(1);
 
             let visible = state.result_visible_rows();
 
@@ -372,7 +406,7 @@ mod tests {
         #[test]
         fn result_rows_scale_with_height() {
             let mut state = make_state();
-            state.ui.result_pane_height = 50;
+            state.ui.set_result_pane_height(50);
 
             let visible = state.result_visible_rows();
 
@@ -382,7 +416,7 @@ mod tests {
         #[test]
         fn inspector_ddl_rows_exceed_standard_rows() {
             let mut state = make_state();
-            state.ui.inspector_pane_height = 20;
+            state.ui.set_inspector_pane_height(20);
 
             let standard = state.inspector_visible_rows();
             let ddl = state.inspector_ddl_visible_rows();
@@ -397,7 +431,7 @@ mod tests {
         #[case(20, 17)]
         fn inspector_ddl_rows_subtract_three(#[case] pane_height: u16, #[case] expected: usize) {
             let mut state = make_state();
-            state.ui.inspector_pane_height = pane_height;
+            state.ui.set_inspector_pane_height(pane_height);
 
             let visible = state.inspector_ddl_visible_rows();
 
@@ -407,7 +441,7 @@ mod tests {
         #[test]
         fn inspector_ddl_rows_clamp_small_heights() {
             let mut state = make_state();
-            state.ui.inspector_pane_height = 2;
+            state.ui.set_inspector_pane_height(2);
 
             let visible = state.inspector_ddl_visible_rows();
 
@@ -425,7 +459,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ])));
-            state.ui.table_picker.clear_filter();
+            state.ui.table_picker_mut().clear_filter();
 
             let filtered = state.filtered_tables();
 
@@ -439,7 +473,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ])));
-            state.ui.table_picker.insert_filter_str("user");
+            state.ui.table_picker_mut().insert_filter_str("user");
 
             let filtered = state.filtered_tables();
 
@@ -458,7 +492,7 @@ mod tests {
                     Some(100),
                     false,
                 )])));
-            state.ui.table_picker.insert_filter_str("user");
+            state.ui.table_picker_mut().insert_filter_str("user");
 
             let filtered = state.filtered_tables();
 
@@ -510,24 +544,20 @@ mod tests {
         fn prefetch_queue_starts_empty() {
             let state = make_state();
 
-            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(state.sql_modal.prefetch_queue().is_empty());
             assert!(!state.sql_modal.is_prefetch_started());
         }
 
         #[test]
         fn prefetch_queue_is_fifo() {
             let mut state = make_state();
+            state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
-            state
-                .sql_modal
-                .prefetch_queue
-                .push_back("public.orders".to_string());
+                .enqueue_prefetch("public.orders".to_string());
 
-            let first = state.sql_modal.prefetch_queue.pop_front();
-            let second = state.sql_modal.prefetch_queue.pop_front();
+            let first = state.sql_modal.dequeue_prefetch();
+            let second = state.sql_modal.dequeue_prefetch();
 
             assert_eq!(first, Some("public.users".to_string()));
             assert_eq!(second, Some("public.orders".to_string()));
@@ -537,13 +567,20 @@ mod tests {
         fn prefetching_tables_track_in_flight() {
             let mut state = make_state();
 
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert("public.users".to_string());
+            state.sql_modal.mark_prefetching("public.users".to_string());
 
-            assert!(state.sql_modal.prefetching_tables.contains("public.users"));
-            assert!(!state.sql_modal.prefetching_tables.contains("public.orders"));
+            assert!(
+                state
+                    .sql_modal
+                    .prefetching_tables()
+                    .contains("public.users")
+            );
+            assert!(
+                !state
+                    .sql_modal
+                    .prefetching_tables()
+                    .contains("public.orders")
+            );
         }
 
         #[test]
@@ -551,9 +588,9 @@ mod tests {
             let mut state = make_state();
             let now = Instant::now();
 
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.record_prefetch_failure(
                 "public.users".to_string(),
-                crate::model::sql_editor::modal::FailedPrefetchEntry {
+                FailedPrefetchEntry {
                     failed_at: now,
                     error: "connection timeout".to_string(),
                     retry_count: 0,
@@ -563,12 +600,12 @@ mod tests {
             assert!(
                 state
                     .sql_modal
-                    .failed_prefetch_tables
+                    .failed_prefetch_tables()
                     .contains_key("public.users")
             );
             let entry = state
                 .sql_modal
-                .failed_prefetch_tables
+                .failed_prefetch_tables()
                 .get("public.users")
                 .unwrap();
             assert_eq!(entry.failed_at, now);
@@ -581,19 +618,15 @@ mod tests {
 
         fn prepare_state_for_reload() -> AppState {
             let mut state = make_state();
-            let _ = state.session.begin_connecting("postgres://localhost/test");
+            activate_postgres_connection(&mut state, "postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
+            state.sql_modal.enqueue_prefetch("public.users".to_string());
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert("public.orders".to_string());
-            state.sql_modal.failed_prefetch_tables.insert(
+                .mark_prefetching("public.orders".to_string());
+            state.sql_modal.record_prefetch_failure(
                 "public.failed".to_string(),
-                crate::model::sql_editor::modal::FailedPrefetchEntry {
+                FailedPrefetchEntry {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: 0,
@@ -609,37 +642,35 @@ mod tests {
             dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(!state.sql_modal.is_prefetch_started());
-            assert!(state.sql_modal.prefetch_queue.is_empty());
-            assert!(state.sql_modal.prefetching_tables.is_empty());
-            assert!(state.sql_modal.failed_prefetch_tables.is_empty());
+            assert!(state.sql_modal.prefetch_queue().is_empty());
+            assert!(state.sql_modal.prefetching_tables().is_empty());
+            assert!(state.sql_modal.failed_prefetch_tables().is_empty());
         }
 
         #[test]
         fn resets_er_preparation() {
             let mut state = prepare_state_for_reload();
-            state.er_preparation.status = ErStatus::Waiting;
+            let _ = state.er_preparation.start_waiting_run();
 
             dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
-            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
 
         #[test]
         fn clears_stale_messages() {
             let mut state = prepare_state_for_reload();
-            state.messages.last_error = Some("Old error".to_string());
-            state.messages.last_success = Some("Old success".to_string());
-            state.messages.expires_at = Some(Instant::now());
+            state
+                .messages
+                .set_error_at("Old error".to_string(), Instant::now());
 
-            assert!(state.messages.last_error.is_some());
-            assert!(state.messages.last_success.is_some());
-            assert!(state.messages.expires_at.is_some());
+            assert!(state.messages.last_error().is_some());
+            assert!(state.messages.expires_at().is_some());
 
             dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
-            assert!(state.messages.last_error.is_none());
-            assert!(state.messages.last_success.is_none());
-            assert!(state.messages.expires_at.is_none());
+            assert!(state.messages.last_error().is_none());
+            assert!(state.messages.expires_at().is_none());
         }
     }
 
@@ -649,15 +680,15 @@ mod tests {
         #[test]
         fn toggle_focus_enters_focus_mode() {
             let mut state = make_state();
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_focused_pane(FocusedPane::Explorer);
 
             let result = state.toggle_focus();
 
             assert!(result);
             assert!(state.ui.is_focus_mode());
-            assert_eq!(state.ui.focused_pane, FocusedPane::Result);
+            assert_eq!(state.ui.focused_pane(), FocusedPane::Result);
             assert_eq!(
-                state.ui.focus_mode.previous_pane(),
+                state.ui.focus_mode().previous_pane(),
                 Some(FocusedPane::Explorer)
             );
         }
@@ -665,14 +696,14 @@ mod tests {
         #[test]
         fn toggle_focus_restores_previous_pane() {
             let mut state = make_state();
-            state.ui.focused_pane = FocusedPane::Inspector;
+            state.ui.set_focused_pane(FocusedPane::Inspector);
             state.toggle_focus();
 
             let result = state.toggle_focus();
 
             assert!(result);
             assert!(!state.ui.is_focus_mode());
-            assert_eq!(state.ui.focused_pane, FocusedPane::Inspector);
+            assert_eq!(state.ui.focused_pane(), FocusedPane::Inspector);
         }
 
         #[test]
@@ -711,7 +742,7 @@ mod tests {
             fn defaults_to_idle() {
                 let state = make_state();
 
-                assert_eq!(state.er_preparation.status, ErStatus::Idle);
+                assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             }
 
             #[rstest]
@@ -720,9 +751,15 @@ mod tests {
             fn accepts_status(#[case] status: ErStatus) {
                 let mut state = make_state();
 
-                state.er_preparation.status = status;
+                match status {
+                    ErStatus::Idle => state.er_preparation.mark_idle(),
+                    ErStatus::Waiting => {
+                        let _ = state.er_preparation.start_waiting_run();
+                    }
+                    ErStatus::Rendering => state.er_preparation.mark_rendering(),
+                }
 
-                assert_eq!(state.er_preparation.status, status);
+                assert_eq!(state.er_preparation.status(), status);
             }
         }
 
@@ -736,9 +773,9 @@ mod tests {
                     .session
                     .select_table("public", "users", &mut state.query.pagination);
                 let generation = state.session.selection_generation();
-                state.session.dsn = Some("dsn://test".to_string());
+                activate_postgres_connection(&mut state, "dsn://test");
                 let run_id = state.session.begin_table_detail_run();
-                state.ui.inspector_scroll_offset = 42;
+                state.ui.set_inspector_scroll_offset(42);
 
                 dispatch_metadata(
                     &mut state,
@@ -751,14 +788,14 @@ mod tests {
                     Instant::now(),
                 );
 
-                assert_eq!(state.ui.inspector_scroll_offset, 0);
+                assert_eq!(state.ui.inspector_scroll_offset(), 0);
             }
 
             #[test]
             fn offset_defaults_to_zero() {
                 let state = make_state();
 
-                assert_eq!(state.ui.inspector_scroll_offset, 0);
+                assert_eq!(state.ui.inspector_scroll_offset(), 0);
                 assert!(state.session.table_detail().is_none());
             }
         }
@@ -766,24 +803,24 @@ mod tests {
 
     mod connection_catalog {
         use super::*;
-        use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+        use crate::domain::connection::{ConnectionProfile, SslMode};
         use crate::model::connection::list::ConnectionListItem;
 
         fn make_profile(name: &str) -> ConnectionProfile {
-            ConnectionProfile {
-                id: ConnectionId::new(),
-                name: ConnectionName::new(name).unwrap(),
-                host: "localhost".to_string(),
-                port: 5432,
-                database: "test".to_string(),
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                ssl_mode: SslMode::Prefer,
-            }
+            ConnectionProfile::new_postgres(
+                name,
+                "localhost",
+                5432,
+                "test",
+                "user",
+                "pass",
+                SslMode::Prefer,
+            )
+            .unwrap()
         }
 
-        fn make_service(name: &str) -> crate::domain::connection::ServiceEntry {
-            crate::domain::connection::ServiceEntry {
+        fn make_service(name: &str) -> ServiceEntry {
+            ServiceEntry {
                 service_name: name.to_string(),
                 host: None,
                 dbname: None,

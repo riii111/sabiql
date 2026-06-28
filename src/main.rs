@@ -22,6 +22,7 @@ mod tests;
 mod render_snapshots;
 
 use sabiql_app::cmd::cache::TtlCache;
+use sabiql_app::cmd::cli_sqlite::{activate_cli_sqlite_connection, resolve_cli_sqlite_target};
 use sabiql_app::cmd::completion_engine::CompletionEngine;
 use sabiql_app::cmd::effect::Effect;
 use sabiql_app::cmd::render_schedule::next_animation_deadline;
@@ -29,19 +30,18 @@ use sabiql_app::cmd::runner::{
     ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
 };
 use sabiql_app::model::app_state::AppState;
-use sabiql_app::model::shared::db_capabilities::DbCapabilities;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
-    ConnectionStore, ConnectionStoreError, DatabaseCapabilityProvider, DdlGenerator,
-    PgServiceEntryReader, ServiceFileError, SettingsStore, SqlDialect,
+    ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError, SettingsStore,
 };
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
 use sabiql_infra::adapters::{
-    ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
-    PgServiceFileReader, PostgresAdapter, TomlConnectionStore, TomlSettingsStore,
+    ArboardClipboard, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter,
+    FsSqlitePathValidator, NativeFolderOpener, PgServiceFileReader, PostgresAdapter,
+    TomlConnectionStore, TomlSettingsStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -51,6 +51,9 @@ use sabiql_ui::tui::TuiRunner;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// SQLite database file (.db, .sqlite, .sqlite3) or sqlite:// DSN
+    database: Option<String>,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -88,12 +91,21 @@ async fn main() -> Result<()> {
         }
     }
 
+    let cli_sqlite = match args.database {
+        Some(database) => Some(
+            resolve_cli_sqlite_target(&database, &FsSqlitePathValidator)
+                .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?,
+        ),
+        None => None,
+    };
+
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
 
     let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
 
-    let adapter = Arc::new(PostgresAdapter::new());
+    let postgres_adapter = Arc::new(PostgresAdapter::new());
+    let adapter_registry = Arc::new(DbAdapterRegistry::new(Arc::clone(&postgres_adapter)));
     let metadata_cache = TtlCache::new(300);
     let completion_engine = RefCell::new(CompletionEngine::new());
     let connection_store = TomlConnectionStore::new()?;
@@ -103,20 +115,21 @@ async fn main() -> Result<()> {
     let connection_store = Arc::new(connection_store);
     let settings_store = Arc::new(settings_store);
 
-    let db_capabilities: DbCapabilities = adapter.capabilities().into();
     let pg_service_entry_reader: Arc<dyn PgServiceEntryReader> =
         Arc::new(PgServiceFileReader::new());
 
     let effect_runner = EffectRunner::new(
-        Arc::clone(&adapter) as _,
+        Arc::clone(&adapter_registry) as _,
         ConnectionDeps {
-            dsn_builder: Arc::clone(&adapter) as _,
+            dsn_builder: Arc::clone(&adapter_registry) as _,
             connection_store: Arc::clone(&connection_store) as _,
             pg_service_entry_reader: Some(Arc::clone(&pg_service_entry_reader)),
+            sqlite_path_validator: Arc::new(FsSqlitePathValidator),
         },
         QueryDeps {
-            query_executor: Arc::clone(&adapter) as _,
+            query_executor: Arc::clone(&adapter_registry) as _,
             query_history_store: Arc::new(FileQueryHistoryStore::new()),
+            sqlite_diagnostics: Arc::clone(&adapter_registry) as _,
         },
         ErDeps {
             er_exporter: Arc::new(DotExporter::new()),
@@ -134,12 +147,9 @@ async fn main() -> Result<()> {
         action_tx.clone(),
     );
 
-    let ddl_generator: Arc<dyn DdlGenerator> = adapter.clone();
-    let sql_dialect: Arc<dyn SqlDialect> = adapter.clone();
     let services = AppServices {
-        ddl_generator,
-        sql_dialect,
-        db_capabilities,
+        ddl_generator: Arc::clone(&adapter_registry) as _,
+        sql_dialect: Arc::clone(&adapter_registry) as _,
     };
 
     let mut state = AppState::new(project_name);
@@ -152,10 +162,10 @@ async fn main() -> Result<()> {
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
             load_service_entries(&mut state, Some(&*pg_service_entry_reader));
-            if state.service_entries().is_empty() {
-                state.connection_setup.is_first_run = true;
+            if cli_sqlite.is_none() && state.service_entries().is_empty() {
+                state.connection_setup.set_first_run(true);
                 state.modal.set_mode(InputMode::ConnectionSetup);
-            } else {
+            } else if cli_sqlite.is_none() {
                 state.modal.set_mode(InputMode::ConnectionSelector);
                 state.ui.set_connection_list_selection(Some(0));
             }
@@ -169,10 +179,12 @@ async fn main() -> Result<()> {
             state.set_connections(profiles);
             load_service_entries(&mut state, Some(&*pg_service_entry_reader));
 
-            state.modal.set_mode(InputMode::ConnectionSelector);
-            state.ui.set_connection_list_selection(Some(0));
+            if cli_sqlite.is_none() {
+                state.modal.set_mode(InputMode::ConnectionSelector);
+                state.ui.set_connection_list_selection(Some(0));
+            }
         }
-        Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
+        Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_sqlite.is_none() => {
             eprintln!(
                 "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
                  Please delete {} and reconfigure.",
@@ -182,20 +194,26 @@ async fn main() -> Result<()> {
             );
             std::process::exit(1);
         }
-        Err(_) => {
-            state.connection_setup.is_first_run = true;
+        Err(_) if cli_sqlite.is_none() => {
+            state.connection_setup.set_first_run(true);
             state.modal.set_mode(InputMode::ConnectionSetup);
         }
+        Err(_) => {}
+    }
+
+    if let Some(target) = cli_sqlite.as_ref() {
+        activate_cli_sqlite_connection(&mut state, target)
+            .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
     }
 
     let mut tui = TuiRunner::new()?;
     tui.enter()?;
 
     let initial_size = tui.terminal().size()?;
-    state.ui.terminal_width = initial_size.width;
-    state.ui.terminal_height = initial_size.height;
+    state.ui.set_terminal_width(initial_size.width);
+    state.ui.set_terminal_height(initial_size.height);
 
-    if state.session.dsn.is_some() && state.input_mode() == InputMode::Normal {
+    if state.session.dsn().is_some() && state.input_mode() == InputMode::Normal {
         process_action(
             Action::TryConnect,
             &mut state,
@@ -216,7 +234,7 @@ async fn main() -> Result<()> {
 
         tokio::select! {
             Some(event) = tui.next_event() => {
-                let action = handle_event(event, &state, &services);
+                let action = handle_event(event, &state);
                 if !action.is_none() {
                     drain_and_process_terminal_events(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
                 }
@@ -437,7 +455,7 @@ async fn drain_and_process_terminal_events(
             break;
         };
         drained += 1;
-        let action = handle_event(event, state, services);
+        let action = handle_event(event, state);
         if action.is_none() {
             continue;
         }
@@ -513,7 +531,7 @@ fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntry
     match reader.read_services() {
         Ok((services, path)) if !services.is_empty() => {
             state.set_service_entries(services);
-            state.runtime.service_file_path = Some(path);
+            state.runtime.set_service_file_path(Some(path));
         }
         Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
         Err(e) => {

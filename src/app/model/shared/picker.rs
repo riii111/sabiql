@@ -8,8 +8,8 @@ use super::text_input::TextInputState;
 pub struct PickerState {
     selected: usize,
     scroll_offset: usize,
-    pub pane_height: u16,
-    pub filter_visible_width: usize,
+    pane_height: u16,
+    filter_visible_width: usize,
     filter_input: TextInputState,
 }
 
@@ -24,6 +24,23 @@ impl PickerState {
 
     pub fn scroll_offset(&self) -> usize {
         self.scroll_offset
+    }
+
+    pub fn pane_height(&self) -> u16 {
+        self.pane_height
+    }
+
+    pub fn filter_visible_width(&self) -> usize {
+        self.filter_visible_width
+    }
+
+    pub fn set_pane_height(&mut self, height: u16) {
+        self.pane_height = height;
+    }
+
+    pub fn set_filter_visible_width(&mut self, width: usize) {
+        self.filter_visible_width = width;
+        self.filter_input.update_viewport(width);
     }
 
     pub fn visible_items(&self) -> usize {

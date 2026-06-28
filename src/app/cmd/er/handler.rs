@@ -148,7 +148,7 @@ async fn handle_write_failure_log(
     state: &AppState,
     failed_tables: Vec<(String, String)>,
 ) -> Result<()> {
-    match config_writer.get_cache_dir(&state.runtime.project_name) {
+    match config_writer.get_cache_dir(state.runtime.project_name()) {
         Ok(cache_dir) => {
             let writer = Arc::clone(er_log_writer);
             let tx = action_tx.clone();
@@ -179,7 +179,7 @@ fn handle_smart_refresh(
 ) {
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
-    let old_signatures = state.er_preparation.last_signatures.clone();
+    let old_signatures = state.er_preparation.last_signatures().clone();
     let cached_tables = collect_cached_table_names(completion_engine);
     let request_dsn = dsn.clone();
 

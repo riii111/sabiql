@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
-assertion_line: 107
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
@@ -24,18 +23,18 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
+│                                       ││          │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
 │                                       ││          │  Host:       [                            ] Required       │                                                  │
-│                                       ││          │  Port:       [ 5432                       ]                │                                                  │
-│                                       │└──────────│  Database:   [                            ] Required       │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [                            ] Required       │──────────────────────────────────────────────────┐
-│                                       ││(select a │  Password:   [                            ]                │                                                  │
+│                                       │└──────────│  Port:       [ 5432                       ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  Database:   [                            ] Required       │──────────────────────────────────────────────────┐
+│                                       ││(select a │  User:       [                            ] Required       │                                                  │
+│                                       ││          │  Password:   [                            ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
-│                                       ││                                                                                                                          │
+│                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -52,4 +51,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-^S:Connect  Tab/⇧Tab:Field  Esc:Cancel
+Enter:Toggle  ^S:Connect  Tab/⇧Tab:Field  Esc:Cancel

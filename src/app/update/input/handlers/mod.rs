@@ -1,3 +1,4 @@
+mod cell_detail;
 mod connections;
 mod editors;
 mod jsonb;
@@ -9,14 +10,13 @@ mod sql_modal;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::ports::inbound::{InputEvent, KeyCombo};
-use crate::services::AppServices;
 use crate::update::action::Action;
 
-pub fn handle_event(event: InputEvent, state: &AppState, services: &AppServices) -> Action {
+pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
     match event {
         InputEvent::Init => Action::Render,
         InputEvent::Resize(w, h) => Action::Resize(w, h),
-        InputEvent::Key(combo) => handle_key_event(combo, state, services),
+        InputEvent::Key(combo) => handle_key_event(combo, state),
         InputEvent::Paste(text) => handle_paste_event(text, state),
     }
 }
@@ -31,12 +31,13 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::SqlModal
         | InputMode::QueryHistoryPicker
         | InputMode::JsonbEdit
-        | InputMode::JsonbDetail => Action::Paste(text),
+        | InputMode::JsonbDetail
+        | InputMode::CellDetail => Action::Paste(text),
         _ => Action::None,
     }
 }
 
-fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -> Action {
+fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
     match state.input_mode() {
         InputMode::Normal => normal::handle_normal_mode(combo, state),
         InputMode::CommandLine => editors::handle_command_line_mode(combo),
@@ -52,28 +53,38 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
                 combo,
                 completion_visible,
                 state.sql_modal.status(),
-                services
-                    .db_capabilities
+                state
+                    .session
+                    .active_db_capabilities()
                     .normalize_sql_modal_tab(state.sql_modal.active_tab()),
-                state.ui.key_sequence.pending_prefix(),
+                state.ui.key_sequence().pending_prefix(),
                 state.settings.saved_keymap_preset(),
+                state
+                    .session
+                    .active_db_capabilities()
+                    .supports_explain_analyze(),
             )
         }
         InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
         InputMode::ConnectionError => connections::handle_connection_error_keys(combo),
         InputMode::ConfirmDialog => overlays::handle_confirm_dialog_keys(combo),
+        InputMode::SqliteDiagnostics => overlays::handle_sqlite_diagnostics_keys(combo),
         InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
         InputMode::JsonbDetail => {
-            let is_searching = state.jsonb_detail.search().active;
+            let is_searching = state.jsonb_detail.search().is_active();
             jsonb::handle_jsonb_detail_keys(
                 combo,
                 is_searching,
-                state.ui.key_sequence.pending_prefix(),
+                state.ui.key_sequence().pending_prefix(),
             )
         }
         InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),
+        InputMode::CellDetail => {
+            let is_searching = state.cell_detail.search().is_active();
+            cell_detail::handle_cell_detail_keys(combo, is_searching)
+        }
     }
 }
 
@@ -89,6 +100,7 @@ mod tests {
 
     mod mode_dispatch {
         use super::*;
+        use crate::model::sql_editor::modal::SqlModalTab;
 
         fn make_state(mode: InputMode) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -99,10 +111,9 @@ mod tests {
         #[test]
         fn normal_mode_routes_to_normal_handler() {
             let state = make_state(InputMode::Normal);
-            let services = AppServices::stub();
 
             // 'q' in Normal mode should quit
-            let result = handle_key_event(combo(Key::Char('q')), &state, &services);
+            let result = handle_key_event(combo(Key::Char('q')), &state);
 
             assert!(matches!(result, Action::Quit));
         }
@@ -110,10 +121,9 @@ mod tests {
         #[test]
         fn sql_modal_mode_routes_to_sql_modal_handler() {
             let state = make_state(InputMode::SqlModal);
-            let services = AppServices::stub();
 
             // Esc in SqlModal (Normal mode, the default) should close modal
-            let result = handle_key_event(combo(Key::Esc), &state, &services);
+            let result = handle_key_event(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::CloseModal(ModalKind::SqlModal)));
         }
@@ -121,19 +131,20 @@ mod tests {
         #[test]
         fn sql_modal_normalizes_unsupported_tab_before_handling_keys() {
             let mut state = make_state(InputMode::SqlModal);
-            state
-                .sql_modal
-                .set_active_tab(crate::model::sql_editor::modal::SqlModalTab::Plan);
+            state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
-            let mut services = AppServices::stub();
-            services.db_capabilities = crate::model::shared::db_capabilities::DbCapabilities::new(
-                false,
-                vec![crate::model::shared::inspector_tab::InspectorTab::Info],
-            );
-
-            let result = handle_key_event(combo(Key::Char('i')), &state, &services);
+            let result = handle_key_event(combo(Key::Char('i')), &state);
 
             assert!(matches!(result, Action::SqlModalEnterInsert));
+        }
+
+        #[test]
+        fn cell_detail_mode_routes_to_cell_detail_handler() {
+            let state = make_state(InputMode::CellDetail);
+
+            let result = handle_key_event(combo(Key::Char('/')), &state);
+
+            assert!(matches!(result, Action::CellDetailEnterSearch));
         }
     }
 
@@ -183,6 +194,15 @@ mod tests {
         }
 
         #[test]
+        fn cell_detail_pastes_text() {
+            let state = make_state(InputMode::CellDetail);
+
+            let result = handle_paste_event("needle".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "needle"));
+        }
+
+        #[test]
         fn normal_mode_ignores_paste() {
             let state = make_state(InputMode::Normal);
 
@@ -207,9 +227,8 @@ mod tests {
         #[test]
         fn init_maps_to_render() {
             let state = AppState::new("test".to_string());
-            let services = AppServices::stub();
 
-            let result = handle_event(InputEvent::Init, &state, &services);
+            let result = handle_event(InputEvent::Init, &state);
 
             assert!(matches!(result, Action::Render));
         }
@@ -217,9 +236,8 @@ mod tests {
         #[test]
         fn resize_maps_to_resize() {
             let state = AppState::new("test".to_string());
-            let services = AppServices::stub();
 
-            let result = handle_event(InputEvent::Resize(80, 24), &state, &services);
+            let result = handle_event(InputEvent::Resize(80, 24), &state);
 
             assert!(matches!(result, Action::Resize(80, 24)));
         }

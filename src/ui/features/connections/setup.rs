@@ -7,7 +7,7 @@ use crate::app::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
 use crate::app::update::input::keybindings::{connection_setup, connection_setup_save};
-use crate::domain::connection::SslMode;
+use crate::domain::connection::{DatabaseType, SslMode};
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
@@ -16,7 +16,7 @@ const LABEL_WIDTH: u16 = 12;
 const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;
 const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
-const DROPDOWN_ITEM_COUNT: usize = 6;
+const MODAL_VERTICAL_CHROME: u16 = 6;
 
 fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> Line<'static> {
     Line::from(vec![
@@ -34,6 +34,10 @@ pub struct ConnectionSetup;
 impl ConnectionSetup {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let form_state = &state.connection_setup;
+        let visible_fields = form_state.visible_fields();
+
+        let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
+        let modal_height = visible_fields.len() as u16 + MODAL_VERTICAL_CHROME;
 
         let (title, submit_desc) = if form_state.is_edit_mode() {
             (" Edit Connection ", "Save")
@@ -46,8 +50,6 @@ impl ConnectionSetup {
         footer_hints.push(("Esc", "Cancel"));
         let footer = FooterHintBar::new(footer_hints);
 
-        let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
-        let modal_height = 13;
         let (_, modal_inner) = render_modal(
             frame,
             Constraint::Length(modal_width),
@@ -58,88 +60,93 @@ impl ConnectionSetup {
         );
 
         let inner = modal_inner.inner(Margin::new(2, 1));
-        let chunks = Layout::vertical([
-            Constraint::Length(FIELD_HEIGHT), // Name
-            Constraint::Length(FIELD_HEIGHT), // Host
-            Constraint::Length(FIELD_HEIGHT), // Port
-            Constraint::Length(FIELD_HEIGHT), // Database
-            Constraint::Length(FIELD_HEIGHT), // User
-            Constraint::Length(FIELD_HEIGHT), // Password
-            Constraint::Length(FIELD_HEIGHT), // SslMode
-            Constraint::Length(1),            // spacer
-            Constraint::Length(1),            // notice
-        ])
-        .split(inner);
+        let field_count = visible_fields.len();
+        let mut constraints = vec![Constraint::Length(FIELD_HEIGHT); field_count];
+        constraints.push(Constraint::Length(1));
+        constraints.push(Constraint::Length(1));
+        let chunks = Layout::vertical(constraints).split(inner);
 
-        Self::render_text_field(
-            frame,
-            chunks[0],
-            form_state,
-            ConnectionField::Name,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[1],
-            form_state,
-            ConnectionField::Host,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[2],
-            form_state,
-            ConnectionField::Port,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[3],
-            form_state,
-            ConnectionField::Database,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[4],
-            form_state,
-            ConnectionField::User,
-            false,
-            theme,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[5],
-            form_state,
-            ConnectionField::Password,
-            true,
-            theme,
-        );
-        Self::render_ssl_field(
-            frame,
-            chunks[6],
-            form_state.ssl_mode,
-            form_state.focused_field == ConnectionField::SslMode,
-            theme,
-        );
+        for (idx, field) in visible_fields.iter().enumerate() {
+            match field {
+                ConnectionField::DatabaseType => Self::render_dropdown_field(
+                    frame,
+                    chunks[idx],
+                    field.label(),
+                    &form_state.database_type().to_string(),
+                    form_state.focused_field() == ConnectionField::DatabaseType,
+                    theme,
+                ),
+                ConnectionField::SslMode => Self::render_dropdown_field(
+                    frame,
+                    chunks[idx],
+                    field.label(),
+                    ssl_mode_label(form_state.ssl_mode()),
+                    form_state.focused_field() == ConnectionField::SslMode,
+                    theme,
+                ),
+                field => Self::render_text_field(
+                    frame,
+                    chunks[idx],
+                    form_state,
+                    *field,
+                    *field == ConnectionField::Password,
+                    theme,
+                ),
+            }
+        }
 
         let notice = "Note: Connection info is stored locally in plain text";
         let notice_para =
             Paragraph::new(notice).style(Style::default().fg(theme.component.feedback.note_text));
-        frame.render_widget(notice_para, chunks[8]);
+        frame.render_widget(notice_para, chunks[field_count + 1]);
 
-        if form_state.ssl_dropdown.is_open {
-            Self::render_dropdown(
+        if form_state.database_type_dropdown().is_open()
+            && let Some(field_area) = Self::open_dropdown_field_area(
+                chunks.as_ref(),
+                visible_fields,
+                ConnectionField::DatabaseType,
+            )
+        {
+            Self::render_dropdown_list(
                 frame,
-                chunks[6],
-                form_state.ssl_dropdown.selected_index,
+                field_area,
+                DatabaseType::all()
+                    .iter()
+                    .map(|database_type| database_type.label()),
+                form_state.database_type_dropdown().selected_index(),
+                theme,
+            );
+        } else if form_state.ssl_dropdown().is_open()
+            && let Some(field_area) = Self::open_dropdown_field_area(
+                chunks.as_ref(),
+                visible_fields,
+                ConnectionField::SslMode,
+            )
+        {
+            Self::render_dropdown_list(
+                frame,
+                field_area,
+                SslMode::all_variants()
+                    .iter()
+                    .map(|ssl_mode| ssl_mode_label(*ssl_mode)),
+                form_state.ssl_dropdown().selected_index(),
                 theme,
             );
         }
+    }
+
+    fn open_dropdown_field_area(
+        chunks: &[Rect],
+        visible_fields: &[ConnectionField],
+        target: ConnectionField,
+    ) -> Option<Rect> {
+        let area = visible_fields
+            .iter()
+            .position(|field| *field == target)
+            .and_then(|idx| chunks.get(idx))
+            .copied();
+        debug_assert!(area.is_some(), "open dropdown field must be visible");
+        area
     }
 
     fn submit_hints(
@@ -147,7 +154,10 @@ impl ConnectionSetup {
         form_state: &ConnectionSetupState,
         submit_desc: &'static str,
     ) -> Vec<(&'static str, &'static str)> {
-        if form_state.focused_field == ConnectionField::SslMode {
+        if matches!(
+            form_state.focused_field(),
+            ConnectionField::DatabaseType | ConnectionField::SslMode
+        ) {
             vec![
                 connection_setup::ENTER_DROPDOWN.as_hint(),
                 (connection_setup::SAVE.key_short, submit_desc),
@@ -168,9 +178,9 @@ impl ConnectionSetup {
         mask: bool,
         theme: &ThemePalette,
     ) {
-        let is_focused = field == state.focused_field;
-        let value = state.field_value(field);
-        let error = state.validation_errors.get(&field);
+        let is_focused = field == state.focused_field();
+        let value = state.input(field).map_or("", |input| input.content());
+        let error = state.validation_error(field);
 
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),
@@ -251,10 +261,11 @@ impl ConnectionSetup {
         }
     }
 
-    fn render_ssl_field(
+    fn render_dropdown_field(
         frame: &mut Frame,
         area: Rect,
-        ssl_mode: SslMode,
+        label: &str,
+        value: &str,
         is_focused: bool,
         theme: &ThemePalette,
     ) {
@@ -265,19 +276,16 @@ impl ConnectionSetup {
         ])
         .split(area);
 
-        // Label: gray (like Explorer content), bold when focused
         let label_style = if is_focused {
             Style::default().fg(theme.semantic.text.secondary).bold()
         } else {
             Style::default().fg(theme.semantic.text.secondary)
         };
-        let label_para = Paragraph::new("SSL Mode:").style(label_style);
+        let label_para = Paragraph::new(label).style(label_style);
         frame.render_widget(label_para, chunks[0]);
 
-        // Value: white (emphasized), same width as text fields
         let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
-        let ssl_mode_str = ssl_mode.to_string();
-        let display_content = format!("{:<1$} ▼", ssl_mode_str, content_width - 2);
+        let display_content = format!("{:<1$} ▼", value, content_width - 2);
 
         let border_style = theme.modal_input_border_style(is_focused, false);
 
@@ -285,9 +293,10 @@ impl ConnectionSetup {
         frame.render_widget(input_para, chunks[1]);
     }
 
-    fn render_dropdown(
+    fn render_dropdown_list(
         frame: &mut Frame,
-        ssl_field_area: Rect,
+        field_area: Rect,
+        items: impl ExactSizeIterator<Item = &'static str>,
         selected_index: usize,
         theme: &ThemePalette,
     ) {
@@ -296,13 +305,13 @@ impl ConnectionSetup {
             Constraint::Length(INPUT_WIDTH),
             Constraint::Length(ERROR_WIDTH),
         ])
-        .split(ssl_field_area);
+        .split(field_area);
 
         let dropdown_area = Rect {
             x: chunks[1].x,
             y: chunks[1].y + 1,
             width: INPUT_WIDTH,
-            height: DROPDOWN_ITEM_COUNT as u16 + 2,
+            height: items.len() as u16 + 2,
         };
 
         frame.render_widget(Clear, dropdown_area);
@@ -314,12 +323,8 @@ impl ConnectionSetup {
         frame.render_widget(block, dropdown_area);
 
         let inner = dropdown_area.inner(Margin::new(1, 1));
-        let variants = SslMode::all_variants();
 
-        for (i, variant) in variants.iter().enumerate() {
-            if i >= DROPDOWN_ITEM_COUNT {
-                break;
-            }
+        for (i, item) in items.enumerate() {
             let item_area = Rect {
                 x: inner.x,
                 y: inner.y + i as u16,
@@ -334,9 +339,20 @@ impl ConnectionSetup {
                 Style::default().fg(theme.semantic.text.secondary)
             };
 
-            let item_para = Paragraph::new(variant.to_string()).style(item_style);
+            let item_para = Paragraph::new(item).style(item_style);
             frame.render_widget(item_para, item_area);
         }
+    }
+}
+
+fn ssl_mode_label(mode: SslMode) -> &'static str {
+    match mode {
+        SslMode::Disable => "disable",
+        SslMode::Allow => "allow",
+        SslMode::Prefer => "prefer",
+        SslMode::Require => "require",
+        SslMode::VerifyCa => "verify-ca",
+        SslMode::VerifyFull => "verify-full",
     }
 }
 
@@ -345,13 +361,28 @@ mod tests {
     use super::*;
     use crate::app::model::shared::settings::KeymapPreset;
 
+    fn focus_field(state: &mut ConnectionSetupState, field: ConnectionField) {
+        while state.focused_field() != field {
+            state.focus_next_field();
+        }
+    }
+
     #[test]
     fn submit_hints_include_toggle_and_save_on_ssl_field() {
         let state = AppState::new("test".to_string());
-        let form_state = ConnectionSetupState {
-            focused_field: ConnectionField::SslMode,
-            ..Default::default()
-        };
+        let mut form_state = ConnectionSetupState::default();
+        focus_field(&mut form_state, ConnectionField::SslMode);
+
+        assert_eq!(
+            ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
+            vec![("Enter", "Toggle"), ("^S", "Connect")]
+        );
+    }
+
+    #[test]
+    fn submit_hint_uses_toggle_on_database_type_field() {
+        let state = AppState::new("test".to_string());
+        let form_state = ConnectionSetupState::default();
 
         assert_eq!(
             ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
@@ -363,7 +394,8 @@ mod tests {
     fn submit_hints_use_preset_save_key_off_ssl_field() {
         let mut state = AppState::new("test".to_string());
         state.settings.load_keymap_preset(KeymapPreset::Ide);
-        let form_state = ConnectionSetupState::default();
+        let mut form_state = ConnectionSetupState::default();
+        form_state.focus_next_field();
 
         assert_eq!(
             ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
@@ -372,9 +404,10 @@ mod tests {
     }
 
     #[test]
-    fn submit_hints_use_short_default_save_key_off_ssl_field() {
+    fn submit_hints_use_default_save_key_on_text_field() {
         let state = AppState::new("test".to_string());
-        let form_state = ConnectionSetupState::default();
+        let mut form_state = ConnectionSetupState::default();
+        form_state.focus_next_field();
 
         assert_eq!(
             ConnectionSetup::submit_hints(&state, &form_state, "Connect"),

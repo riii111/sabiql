@@ -2,8 +2,10 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
+use crate::update::connection::helpers::reset_active_connection_state;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn reduce_connection_selector(
@@ -21,7 +23,7 @@ pub(super) fn reduce_connection_selector(
         // ===== Connection Deletion =====
         Action::RequestDeleteSelectedConnection => {
             use crate::model::connection::list::ConnectionListItem;
-            let selected_idx = state.ui.connection_list_selected;
+            let selected_idx = state.ui.connection_list_selected();
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
                 _ => return DispatchResult::handled(),
@@ -29,7 +31,7 @@ pub(super) fn reduce_connection_selector(
             if let Some(connection) = state.connections().get(profile_idx) {
                 let id = connection.id.clone();
                 let name = connection.name.as_str().to_string();
-                let is_active = state.session.active_connection_id.as_ref() == Some(&id);
+                let is_active = state.session.active_connection_id() == Some(&id);
 
                 let message = if is_active {
                     format!(
@@ -41,7 +43,7 @@ pub(super) fn reduce_connection_selector(
                 state.confirm_dialog.open(
                     "Delete Connection",
                     message,
-                    crate::model::shared::confirm_dialog::ConfirmIntent::DeleteConnection(id),
+                    ConfirmIntent::DeleteConnection(id),
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
             }
@@ -51,10 +53,8 @@ pub(super) fn reduce_connection_selector(
             DispatchResult::handled_with(vec![Effect::DeleteConnection { id: id.clone() }])
         }
         Action::ConnectionDeleted(id) => {
-            if state.session.active_connection_id.as_ref() == Some(id) {
-                state.session.reset(&mut state.query);
-                state.result_interaction.reset_view();
-                state.ui.set_explorer_selection(None);
+            if state.session.active_connection_id() == Some(id) {
+                reset_active_connection_state(state);
             }
 
             let id_clone = id.clone();
@@ -62,13 +62,13 @@ pub(super) fn reduce_connection_selector(
             state.connection_caches.remove(id);
 
             let list_len = state.connection_list_items().len();
-            if state.ui.connection_list_selected >= list_len && list_len > 0 {
+            if state.ui.connection_list_selected() >= list_len && list_len > 0 {
                 state.ui.set_connection_list_selection(Some(list_len - 1));
             }
 
             if state.connections().is_empty() && state.service_entries().is_empty() {
                 state.connection_setup.reset();
-                state.connection_setup.is_first_run = false;
+                state.connection_setup.set_first_run(false);
                 state.modal.set_mode(InputMode::ConnectionSetup);
             }
 
@@ -85,7 +85,7 @@ pub(super) fn reduce_connection_selector(
         // ===== Connection Edit =====
         Action::RequestEditSelectedConnection => {
             use crate::model::connection::list::ConnectionListItem;
-            let selected_idx = state.ui.connection_list_selected;
+            let selected_idx = state.ui.connection_list_selected();
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
                 _ => return DispatchResult::handled(),
@@ -105,11 +105,12 @@ pub(super) fn reduce_connection_selector(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::{ConnectionProfile, SslMode};
+    use crate::domain::connection::{ConnectionProfile, DatabaseType, SslMode};
     use crate::model::connection::list::build_connection_list;
+    use crate::model::shared::ui_state::ResultNavMode;
 
     fn create_profile(name: &str) -> ConnectionProfile {
-        ConnectionProfile::new(
+        ConnectionProfile::new_postgres(
             name.to_string(),
             "localhost".to_string(),
             5432,
@@ -152,7 +153,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
     }
 
@@ -164,7 +165,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
             state.set_connections(vec![profile]);
-            state.ui.connection_list_selected = 0;
+            state.ui.set_connection_list_selected_raw(0);
 
             reduce_connection_selector(
                 &mut state,
@@ -189,8 +190,13 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.ui.connection_list_selected = 0;
-            state.session.active_connection_id = Some(profile_id);
+            state.ui.set_connection_list_selected_raw(0);
+            state.session.activate_connection_with_dsn(
+                &profile_id,
+                "Production",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/db",
+            );
 
             reduce_connection_selector(
                 &mut state,
@@ -217,7 +223,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
             state.set_connections(vec![profile]);
-            state.ui.connection_list_selected = 0;
+            state.ui.set_connection_list_selected_raw(0);
 
             reduce_connection_selector(
                 &mut state,
@@ -253,7 +259,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
             state.set_connections(vec![profile]);
-            state.ui.connection_list_selected = 0;
+            state.ui.set_connection_list_selected_raw(0);
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.modal.set_mode(InputMode::ConnectionSelector);
 
@@ -273,6 +279,7 @@ mod tests {
     mod connection_deleted {
         use super::*;
         use crate::model::connection::state::ConnectionState;
+        use crate::model::er_state::ErStatus;
 
         #[test]
         fn removes_connection_from_list() {
@@ -298,8 +305,12 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.session.active_connection_id = Some(profile_id.clone());
-            state.session.dsn = Some("postgres://localhost/db".to_string());
+            state.session.activate_connection_with_dsn(
+                &profile_id,
+                "Production",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/db",
+            );
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -310,8 +321,8 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.session.active_connection_id.is_none());
-            assert!(state.session.dsn.is_none());
+            assert!(state.session.active_connection_id().is_none());
+            assert!(state.session.dsn().is_none());
             assert!(state.session.connection_state().is_not_connected());
         }
 
@@ -321,18 +332,27 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.session.active_connection_id = Some(profile_id.clone());
-            state.session.dsn = Some("postgres://localhost/db".to_string());
+            state.session.activate_connection_with_dsn(
+                &profile_id,
+                "Production",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/db",
+            );
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
 
-            // Set state that was previously not reset by ConnectionDeleted
-            state.query.pagination.current_page = 3;
+            // Set state that was previously not reset by ConnectionDeleted.
+            state.query.pagination.set_current_page(3);
             state.result_interaction.activate_cell(5, 0);
-            state.result_interaction.scroll_offset = 10;
-            state.result_interaction.horizontal_offset = 20;
+            state.result_interaction.set_scroll_offset(10);
+            state.result_interaction.set_horizontal_offset(20);
             state.result_interaction.stage_row(0);
+            state.ui.set_pending_er_picker(true);
+            let _ = state.er_preparation.start_waiting_run();
+            state
+                .er_preparation
+                .queue_pending_table("public.users".to_string());
 
             reduce_connection_selector(
                 &mut state,
@@ -340,15 +360,18 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.query.pagination.current_page, 0);
+            assert_eq!(state.query.pagination.current_page(), 0);
             assert_eq!(
                 state.result_interaction.selection().mode(),
-                crate::model::shared::ui_state::ResultNavMode::Scroll
+                ResultNavMode::Scroll
             );
-            assert_eq!(state.result_interaction.scroll_offset, 0);
-            assert_eq!(state.result_interaction.horizontal_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset(), 0);
+            assert_eq!(state.result_interaction.horizontal_offset(), 0);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert!(state.result_interaction.pending_write_preview().is_none());
+            assert!(!state.ui.pending_er_picker());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(state.er_preparation.pending_tables().is_empty());
         }
 
         #[test]
@@ -358,7 +381,7 @@ mod tests {
             let profile2 = create_profile("Second");
             let id_to_delete = profile2.id.clone();
             state.set_connections(vec![profile1, profile2]);
-            state.ui.connection_list_selected = 1;
+            state.ui.set_connection_list_selected_raw(1);
 
             reduce_connection_selector(
                 &mut state,
@@ -366,7 +389,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
 
         #[test]

@@ -2,6 +2,7 @@ use super::column::Column;
 use super::foreign_key::ForeignKey;
 use super::index::Index;
 use super::rls::RlsInfo;
+use super::table_kind::TableKindInfo;
 use super::trigger::Trigger;
 
 fn make_qualified_name(schema: &str, name: &str) -> String {
@@ -29,6 +30,8 @@ pub struct Table {
     pub triggers: Vec<Trigger>,
     pub row_count_estimate: Option<i64>,
     pub comment: Option<String>,
+    pub source_ddl: Option<String>,
+    pub kind_info: TableKindInfo,
 }
 
 impl Table {
@@ -39,6 +42,10 @@ impl Table {
     pub fn display_name(&self, omit_public: bool) -> String {
         make_display_name(&self.schema, &self.name, omit_public)
     }
+
+    pub fn source_ddl(&self) -> Option<&str> {
+        self.source_ddl.as_deref()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +54,7 @@ pub struct TableSummary {
     pub name: String,
     pub row_count_estimate: Option<i64>,
     pub has_rls: bool,
+    pub kind_info: TableKindInfo,
     // Pre-computed for efficient case-insensitive filtering
     qualified_name_lower: String,
 }
@@ -77,8 +85,15 @@ impl TableSummary {
             name,
             row_count_estimate,
             has_rls,
+            kind_info: TableKindInfo::default(),
             qualified_name_lower,
         }
+    }
+
+    #[must_use]
+    pub fn with_kind_info(mut self, kind_info: TableKindInfo) -> Self {
+        self.kind_info = kind_info;
+        self
     }
 
     pub fn qualified_name(&self) -> String {
@@ -111,6 +126,8 @@ mod tests {
             triggers: Vec::new(),
             row_count_estimate: None,
             comment: None,
+            source_ddl: None,
+            kind_info: TableKindInfo::default(),
         }
     }
 

@@ -109,6 +109,7 @@ pub enum HelpOrigin {
         focused_field: ConnectionField,
     },
     ConnectionError,
+    SqliteDiagnostics,
     ConfirmDialog,
     ConnectionSelector,
     ErTablePicker {
@@ -119,6 +120,9 @@ pub enum HelpOrigin {
         mode: JsonbHelpMode,
     },
     JsonbEdit,
+    CellDetail {
+        searching: bool,
+    },
 }
 
 impl HelpOrigin {
@@ -135,18 +139,20 @@ impl HelpOrigin {
             | Self::Settings
             | Self::Help
             | Self::ConnectionError
+            | Self::SqliteDiagnostics
             | Self::ConfirmDialog
             | Self::ConnectionSelector
             | Self::QueryHistoryPicker
             | Self::JsonbDetail { .. }
-            | Self::JsonbEdit => KeymapPreset::Default,
+            | Self::JsonbEdit
+            | Self::CellDetail { .. } => KeymapPreset::Default,
         }
     }
 
     pub fn from_state(state: &AppState) -> Self {
         match state.input_mode() {
             InputMode::Normal => Self::Normal {
-                focused_pane: state.ui.focused_pane,
+                focused_pane: state.ui.focused_pane(),
                 result_active: state.result_interaction.selection().cell().is_some(),
                 keymap_preset: state.settings.saved_keymap_preset(),
             },
@@ -165,6 +171,7 @@ impl HelpOrigin {
                 focused_field: state.connection_setup.focused_field,
             },
             InputMode::ConnectionError => Self::ConnectionError,
+            InputMode::SqliteDiagnostics => Self::SqliteDiagnostics,
             InputMode::ConfirmDialog => Self::ConfirmDialog,
             InputMode::ConnectionSelector => Self::ConnectionSelector,
             InputMode::ErTablePicker => Self::ErTablePicker {
@@ -175,6 +182,9 @@ impl HelpOrigin {
                 mode: JsonbHelpMode::from_state(state),
             },
             InputMode::JsonbEdit => Self::JsonbEdit,
+            InputMode::CellDetail => Self::CellDetail {
+                searching: state.cell_detail.search().is_active(),
+            },
         }
     }
 
@@ -201,12 +211,15 @@ impl HelpOrigin {
             Self::SqlModal { mode, .. } => mode.label(),
             Self::ConnectionSetup { .. } => "Connection Setup",
             Self::ConnectionError => "Connection Error",
+            Self::SqliteDiagnostics => "SQLite Diagnostics",
             Self::ConfirmDialog => "Confirm Dialog",
             Self::ConnectionSelector => "Connection Selector",
             Self::ErTablePicker { .. } => "ER Table Picker",
             Self::QueryHistoryPicker => "Query History Picker",
             Self::JsonbDetail { mode } => mode.label(),
             Self::JsonbEdit => "JSONB Edit",
+            Self::CellDetail { searching: true } => "Cell Detail Search",
+            Self::CellDetail { searching: false } => "Cell Detail",
         }
     }
 }
@@ -230,13 +243,15 @@ impl SqlHelpMode {
             | SqlModalStatus::ConfirmingRisk { .. }
             | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => Self::Confirm,
             SqlModalStatus::Running => Self::Running,
-            SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error => {
-                match state.sql_modal.active_tab() {
-                    SqlModalTab::Sql => Self::Normal,
-                    SqlModalTab::Plan => Self::Plan,
-                    SqlModalTab::Compare => Self::Compare,
-                }
-            }
+            SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error => match state
+                .session
+                .active_db_capabilities()
+                .normalize_sql_modal_tab(state.sql_modal.active_tab())
+            {
+                SqlModalTab::Sql => Self::Normal,
+                SqlModalTab::Plan => Self::Plan,
+                SqlModalTab::Compare => Self::Compare,
+            },
         }
     }
 
@@ -261,7 +276,7 @@ pub enum JsonbHelpMode {
 
 impl JsonbHelpMode {
     fn from_state(state: &AppState) -> Self {
-        if state.jsonb_detail.search().active {
+        if state.jsonb_detail.search().is_active() {
             Self::Search
         } else {
             match state.jsonb_detail.mode() {
@@ -288,7 +303,7 @@ mod tests {
     #[test]
     fn normal_origin_captures_focused_pane() {
         let mut state = AppState::new("test".to_string());
-        state.ui.focused_pane = FocusedPane::Inspector;
+        state.ui.set_focused_pane(FocusedPane::Inspector);
 
         let origin = HelpOrigin::from_state(&state);
 

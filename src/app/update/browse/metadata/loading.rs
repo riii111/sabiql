@@ -21,9 +21,7 @@ pub(super) fn reduce_loading(
             run_id,
             metadata,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.session.is_current_metadata_run(*run_id)
-            {
+            if !state.session.dsn_matches(dsn) || !state.session.is_current_metadata_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -32,22 +30,22 @@ pub(super) fn reduce_loading(
 
             let mut effects = vec![];
 
-            if state.query.pagination.table.is_empty() {
+            if state.query.pagination.table().is_empty() {
                 state
                     .ui
                     .set_explorer_selection(if has_tables { Some(0) } else { None });
             } else {
-                let prev_schema = &state.query.pagination.schema;
-                let prev_table = &state.query.pagination.table;
+                let prev_schema = state.query.pagination.schema();
+                let prev_table = state.query.pagination.table();
                 let found_index = metadata
                     .table_summaries
                     .iter()
-                    .position(|t| &t.schema == prev_schema && &t.name == prev_table);
+                    .position(|t| t.schema == prev_schema && t.name == prev_table);
                 if let Some(idx) = found_index {
                     state.ui.set_explorer_selection(Some(idx));
                     // Refresh preview and detail: DDL or reload may have changed
                     // data/schema even though the table still exists.
-                    let page = state.query.pagination.current_page;
+                    let page = state.query.pagination.current_page();
                     let generation = state.session.selection_generation();
                     effects.extend(preview_effect_for_current_table(
                         state, now, page, generation,
@@ -55,8 +53,8 @@ pub(super) fn reduce_loading(
                     let detail_run_id = state.session.begin_table_detail_run();
                     effects.push(Effect::FetchTableDetail {
                         dsn: dsn.clone(),
-                        schema: state.query.pagination.schema.clone(),
-                        table: state.query.pagination.table.clone(),
+                        schema: state.query.pagination.schema().to_string(),
+                        table: state.query.pagination.table().to_string(),
                         generation,
                         run_id: detail_run_id,
                     });
@@ -75,7 +73,7 @@ pub(super) fn reduce_loading(
 
             state.connection_error.clear();
 
-            if state.session.is_reloading {
+            if state.session.is_reloading() {
                 state.messages.set_success_at("Reloaded!".to_string(), now);
                 state.session.finish_reload();
             }
@@ -95,9 +93,7 @@ pub(super) fn reduce_loading(
             DispatchResult::handled_with(effects)
         }
         Action::MetadataFailed { dsn, run_id, error } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.session.is_current_metadata_run(*run_id)
-            {
+            if !state.session.dsn_matches(dsn) || !state.session.is_current_metadata_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -106,15 +102,22 @@ pub(super) fn reduce_loading(
             let was_connected = state.session.connection_state().is_connected();
             state.session.mark_connection_failed(error.masked_details());
             if !was_connected {
+                state.session.set_metadata(None);
+                state
+                    .session
+                    .clear_table_selection(&mut state.query.pagination);
+                state.query.clear_current_result();
+                state.ui.set_explorer_selection(None);
+                state.result_interaction.reset_view();
                 state.modal.replace_mode(InputMode::ConnectionError);
             }
-            if state.er_preparation.status == ErStatus::Waiting {
+            if state.er_preparation.status() == ErStatus::Waiting {
                 state.er_preparation.mark_idle();
             }
             DispatchResult::handled()
         }
         Action::LoadMetadata => {
-            if let Some(dsn) = state.session.dsn.clone() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_metadata_refresh();
                 DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
             } else {
@@ -122,7 +125,7 @@ pub(super) fn reduce_loading(
             }
         }
         Action::ReloadMetadata => {
-            if let Some(dsn) = state.session.dsn.clone() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();

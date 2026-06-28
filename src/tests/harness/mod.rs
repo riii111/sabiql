@@ -1,4 +1,5 @@
 pub mod fixtures;
+pub mod postgres;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -10,7 +11,10 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Position;
 
 use sabiql_app::model::app_state::AppState;
+use sabiql_app::model::connection::setup::ConnectionField;
+use sabiql_app::model::shared::text_input::TextInputState;
 use sabiql_app::services::AppServices;
+use sabiql_domain::{ConnectionId, DatabaseType};
 use sabiql_ui::shell::layout::MainLayout;
 use sabiql_ui::theme::{ThemePalette, palette_for};
 
@@ -23,8 +27,43 @@ pub fn test_instant() -> Instant {
 
 pub fn create_test_state() -> AppState {
     let mut state = AppState::new("test_project".to_string());
-    state.session.active_connection_name = Some("localhost:5432/test".to_string());
+    state.session.set_active_connection_identity_for_test(
+        &ConnectionId::from_string("test-connection"),
+        "localhost:5432/test",
+        DatabaseType::PostgreSQL,
+    );
     state
+}
+
+pub fn focus_connection_field(state: &mut AppState, field: ConnectionField) {
+    let fields = state.connection_setup.visible_fields();
+    let target_idx = fields
+        .iter()
+        .position(|candidate| *candidate == field)
+        .unwrap_or_else(|| panic!("field {field:?} is not visible: {fields:?}"));
+
+    loop {
+        let current = state.connection_setup.focused_field();
+        if current == field {
+            return;
+        }
+        let current_idx = fields
+            .iter()
+            .position(|candidate| *candidate == current)
+            .expect("focused field must be visible");
+        if target_idx > current_idx {
+            state.connection_setup.focus_next_field();
+        } else {
+            state.connection_setup.focus_prev_field();
+        }
+    }
+}
+
+pub fn set_connection_input(state: &mut AppState, field: ConnectionField, input: TextInputState) {
+    *state
+        .connection_setup
+        .input_mut(field)
+        .expect("expected text input field") = input;
 }
 
 pub fn create_test_terminal() -> Terminal<TestBackend> {
@@ -57,21 +96,43 @@ pub fn render_and_get_buffer_at_with_theme(
     now: Instant,
     theme: &ThemePalette,
 ) -> Buffer {
+    render_and_get_buffer_at_with_theme_and_services(
+        terminal,
+        state,
+        now,
+        theme,
+        &AppServices::stub(),
+    )
+}
+
+pub fn render_and_get_buffer_at_with_theme_and_services(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+    now: Instant,
+    theme: &ThemePalette,
+    services: &AppServices,
+) -> Buffer {
     terminal
         .draw(|frame| {
             let output = MainLayout::render_with_theme(
                 frame,
                 state,
                 Some(FIXED_TIME_MS),
-                &AppServices::stub(),
+                services,
                 now,
                 theme,
             );
-            state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
-            state.ui.result_viewport_plan = output.result_viewport_plan;
-            state.ui.result_widths_cache = output.result_widths_cache;
-            state.ui.inspector_pane_height = output.inspector_pane_height;
-            state.ui.result_pane_height = output.result_pane_height;
+            state
+                .ui
+                .set_inspector_viewport_plan(output.inspector_viewport_plan);
+            state
+                .ui
+                .set_result_viewport_plan(output.result_viewport_plan);
+            state.ui.set_result_widths_cache(output.result_widths_cache);
+            state
+                .ui
+                .set_inspector_pane_height(output.inspector_pane_height);
+            state.ui.set_result_pane_height(output.result_pane_height);
         })
         .unwrap();
 
@@ -80,6 +141,21 @@ pub fn render_and_get_buffer_at_with_theme(
 
 pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
     let buffer = render_and_get_buffer(terminal, state);
+    buffer_to_string(&buffer)
+}
+
+pub fn render_to_string_with_services(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+    services: &AppServices,
+) -> String {
+    let buffer = render_and_get_buffer_at_with_theme_and_services(
+        terminal,
+        state,
+        test_instant(),
+        palette_for(state.ui.theme_id()),
+        services,
+    );
     buffer_to_string(&buffer)
 }
 

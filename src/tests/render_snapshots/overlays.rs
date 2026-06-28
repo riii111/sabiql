@@ -2,8 +2,9 @@ use super::*;
 use harness::connected_state;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::help::HelpOrigin;
-use sabiql_app::model::shared::multi_line_input::MultiLineInputState;
+use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use sabiql_domain::{ConnectionId, QueryResult};
@@ -16,9 +17,9 @@ fn sql_modal_with_completion() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("SELECT * FROM us".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -31,12 +32,13 @@ fn sql_modal_completion_popup_with_scroll() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor.set_content("SELECT ".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("SELECT ".to_string());
+    state.sql_modal.enter_editing();
 
-    state.sql_modal.completion_mut_for_test().visible = true;
-    state.sql_modal.completion_mut_for_test().selected_index = 5;
-    state.sql_modal.completion_mut_for_test().candidates = vec![
+    let candidates = vec![
         CompletionCandidate {
             text: "users".into(),
             kind: CompletionKind::Table,
@@ -88,6 +90,12 @@ fn sql_modal_completion_popup_with_scroll() {
             score: 10,
         },
     ];
+    state
+        .sql_modal
+        .apply_completion_update(&candidates, 7, true);
+    for _ in 0..5 {
+        state.sql_modal.completion_next();
+    }
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -102,7 +110,7 @@ fn sql_modal_unknown_risk_acknowledge() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("DO $$ BEGIN DELETE FROM users; END $$".to_string());
     state
         .sql_modal
@@ -124,7 +132,7 @@ fn sql_modal_high_risk_without_target_acknowledge() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("DROP TABLE a, b".to_string());
     state
         .sql_modal
@@ -163,8 +171,11 @@ fn sql_modal_cursor_at_head() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor = MultiLineInputState::new("SELECT 1", 0);
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content_with_cursor("SELECT 1".to_string(), 0);
+    state.sql_modal.enter_editing();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -177,8 +188,11 @@ fn sql_modal_cursor_at_middle() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor = MultiLineInputState::new("SELECT 1", 4);
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content_with_cursor("SELECT 1".to_string(), 4);
+    state.sql_modal.enter_editing();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -191,8 +205,11 @@ fn sql_modal_cursor_at_tail() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor.set_content("SELECT 1".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("SELECT 1".to_string());
+    state.sql_modal.enter_editing();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -205,8 +222,11 @@ fn sql_modal_normal_cursor_at_tail() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor.set_content("SELECT 1".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("SELECT 1".to_string());
+    state.sql_modal.enter_normal();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -221,7 +241,7 @@ fn sql_modal_success_select() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("SELECT * FROM users".to_string());
     state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
         command_tag: None,
@@ -254,7 +274,7 @@ fn sql_modal_success_dml_with_command_tag() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("DELETE FROM users WHERE id = 1".to_string());
     state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
         command_tag: Some(CommandTag::Delete(3)),
@@ -262,17 +282,17 @@ fn sql_modal_success_dml_with_command_tag() {
         execution_time_ms: 12,
     });
     // DML: row_count carries affected rows, not result rows (executor's command-tag path)
-    let mut result = QueryResult::success(
-        "DELETE FROM users WHERE id = 1".to_string(),
-        vec![],
-        vec![],
-        12,
-        QuerySource::Adhoc,
-    );
-    result.row_count = 3;
-    state
-        .query
-        .set_current_result(Arc::new(result.with_command_tag(CommandTag::Delete(3))));
+    state.query.set_current_result(Arc::new(
+        QueryResult::success(
+            "DELETE FROM users WHERE id = 1".to_string(),
+            vec![],
+            vec![],
+            12,
+            QuerySource::Adhoc,
+        )
+        .with_row_count(3)
+        .with_command_tag(CommandTag::Delete(3)),
+    ));
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -287,7 +307,7 @@ fn sql_modal_success_ddl_create_table() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("CREATE TABLE backup AS SELECT * FROM users".to_string());
     state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
         command_tag: Some(CommandTag::Create("TABLE".to_string())),
@@ -318,7 +338,7 @@ fn sql_modal_error_with_message() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("SELECT * FORM users".to_string());
     state.sql_modal.finish_adhoc_error(
         "ERROR:  syntax error at or near \"FORM\"\nLINE 1: SELECT * FORM users\n                 ^"
@@ -338,20 +358,18 @@ fn sql_modal_confirming_high_matched() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("DROP TABLE users".to_string());
     let mut input = TextInputState::default();
     input.set_content("users".to_string());
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-            decision: AdhocRiskDecision {
-                risk_level: RiskLevel::High,
-                label: "DROP",
-            },
-            input,
-            target_name: "users".to_string(),
-        });
+    state.sql_modal.begin_confirming_high(
+        AdhocRiskDecision {
+            risk_level: RiskLevel::High,
+            label: "DROP",
+        },
+        "users".to_string(),
+    );
+    *state.sql_modal.confirming_high_input_mut().unwrap() = input;
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -366,20 +384,18 @@ fn sql_modal_confirming_high_unmatched() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("DROP TABLE users".to_string());
     let mut input = TextInputState::default();
     input.set_content("use".to_string());
-    state
-        .sql_modal
-        .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-            decision: AdhocRiskDecision {
-                risk_level: RiskLevel::High,
-                label: "DROP",
-            },
-            input,
-            target_name: "users".to_string(),
-        });
+    state.sql_modal.begin_confirming_high(
+        AdhocRiskDecision {
+            risk_level: RiskLevel::High,
+            label: "DROP",
+        },
+        "users".to_string(),
+    );
+    *state.sql_modal.confirming_high_input_mut().unwrap() = input;
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -403,11 +419,12 @@ fn help_overlay_filtered_current_result() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
-    state.ui.help.open(HelpOrigin::from_state(&state));
+    let origin = HelpOrigin::from_state(&state);
+    state.ui.help_mut().open(origin);
     for ch in "copy".chars() {
-        state.ui.help.insert_filter_char(ch);
+        state.ui.help_mut().insert_filter_char(ch);
     }
     state.modal.set_mode(InputMode::Help);
 
@@ -422,7 +439,7 @@ fn help_overlay_long_key_rows() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.help.set_scroll_offset(58);
+    state.ui.help_mut().set_scroll_offset(58);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -435,10 +452,10 @@ fn help_overlay_narrow_horizontal_scroll() {
     let mut terminal = create_test_terminal_sized(50, 24);
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.terminal_width = 50;
-    state.ui.terminal_height = 24;
-    state.ui.help.set_scroll_offset(58);
-    state.ui.help.set_horizontal_offset(18);
+    state.ui.set_terminal_width(50);
+    state.ui.set_terminal_height(24);
+    state.ui.help_mut().set_scroll_offset(58);
+    state.ui.help_mut().set_horizontal_offset(18);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -523,7 +540,7 @@ fn table_picker_overlay() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::TablePicker);
-    state.ui.table_picker.insert_filter_str("user");
+    state.ui.table_picker_mut().insert_filter_str("user");
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -794,6 +811,148 @@ fn sql_modal_normal_initial() {
 
     state.modal.set_mode(InputMode::SqlModal);
     // Normal mode is the default — empty editor with placeholder
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+fn sqlite_connected_state() -> AppState {
+    let mut state = create_test_state();
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "local",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    state
+        .session
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
+    state
+}
+
+#[test]
+fn sqlite_diagnostics_overlay_loading() {
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.sqlite_diagnostics.begin_fetch();
+    state.modal.set_mode(InputMode::SqliteDiagnostics);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sqlite_diagnostics_overlay_loaded() {
+    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    let run_id = state.sqlite_diagnostics.begin_fetch();
+    state.sqlite_diagnostics.set_loaded(
+        run_id,
+        SqliteDiagnosticsSnapshot {
+            db_file: DiagnosticField::ok("/tmp/app.db"),
+            sqlite_version: DiagnosticField::ok("3.45.0"),
+            foreign_keys: DiagnosticField::ok("on"),
+            journal_mode: DiagnosticField::ok("wal"),
+            query_only: DiagnosticField::ok("off"),
+            busy_timeout: DiagnosticField::ok("5000"),
+            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
+            quick_check: DiagnosticField::ok("ok"),
+        },
+    );
+    state.modal.set_mode(InputMode::SqliteDiagnostics);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sqlite_diagnostics_overlay_partial_failure() {
+    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    let run_id = state.sqlite_diagnostics.begin_fetch();
+    state.sqlite_diagnostics.set_loaded(
+        run_id,
+        SqliteDiagnosticsSnapshot {
+            db_file: DiagnosticField::ok("/tmp/app.db"),
+            sqlite_version: DiagnosticField::ok("3.45.0"),
+            foreign_keys: DiagnosticField::err("timeout"),
+            journal_mode: DiagnosticField::ok("delete"),
+            query_only: DiagnosticField::ok("on"),
+            busy_timeout: DiagnosticField::ok("5000"),
+            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
+            quick_check: DiagnosticField::ok("row 1 missing from index idx_users"),
+        },
+    );
+    state.modal.set_mode(InputMode::SqliteDiagnostics);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sqlite_diagnostics_overlay_quick_check_pending() {
+    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    let run_id = state.sqlite_diagnostics.begin_fetch();
+    state.sqlite_diagnostics.set_core_loaded(
+        run_id,
+        SqliteDiagnosticsSnapshot {
+            db_file: DiagnosticField::ok("/tmp/app.db"),
+            sqlite_version: DiagnosticField::ok("3.45.0"),
+            foreign_keys: DiagnosticField::ok("on"),
+            journal_mode: DiagnosticField::ok("wal"),
+            query_only: DiagnosticField::ok("off"),
+            busy_timeout: DiagnosticField::ok("5000"),
+            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
+            ..Default::default()
+        },
+    );
+    state.modal.set_mode(InputMode::SqliteDiagnostics);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sqlite_diagnostics_overlay_wrapped_scroll() {
+    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal_sized(50, 24);
+
+    let run_id = state.sqlite_diagnostics.begin_fetch();
+    state.sqlite_diagnostics.set_loaded(
+        run_id,
+        SqliteDiagnosticsSnapshot {
+            db_file: DiagnosticField::ok(
+                "/tmp/very/long/database/path/that/will/wrap/in/a/narrow/viewport/app.db",
+            ),
+            sqlite_version: DiagnosticField::ok("3.45.0"),
+            foreign_keys: DiagnosticField::ok("on"),
+            journal_mode: DiagnosticField::ok("wal"),
+            query_only: DiagnosticField::ok("off"),
+            busy_timeout: DiagnosticField::ok("5000"),
+            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
+            quick_check: DiagnosticField::ok("ok"),
+        },
+    );
+    state.sqlite_diagnostics.set_scroll_offset(8);
+    state.modal.set_mode(InputMode::SqliteDiagnostics);
 
     let output = render_to_string(&mut terminal, &mut state);
 

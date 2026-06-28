@@ -1,4 +1,11 @@
-use crate::domain::ConnectionId;
+use crate::domain::{ConnectionId, QueryValue};
+use crate::update::action::ScrollDirection;
+
+#[derive(Debug, Clone)]
+pub struct CsvExportCacheSnapshot {
+    pub columns: Vec<String>,
+    pub values: Vec<Vec<QueryValue>>,
+}
 
 #[derive(Debug, Clone)]
 pub enum ConfirmIntent {
@@ -8,24 +15,31 @@ pub enum ConfirmIntent {
         sql: String,
         blocked: bool,
     },
-    CsvExport {
+    CsvExportRerunnable {
         dsn: String,
         run_id: u64,
         export_query: String,
         file_name: String,
         row_count: Option<usize>,
     },
+    CsvExportCached {
+        dsn: String,
+        run_id: u64,
+        file_name: String,
+        row_count: Option<usize>,
+        snapshot: CsvExportCacheSnapshot,
+    },
     DisableReadOnly,
 }
 
 #[derive(Debug, Clone)]
 pub struct ConfirmDialogState {
-    title: String,
-    message: String,
-    intent: Option<ConfirmIntent>,
-    pub preview_scroll: u16,
-    pub preview_viewport_height: Option<u16>,
-    pub preview_content_height: Option<u16>,
+    pub(crate) title: String,
+    pub(crate) message: String,
+    pub(crate) intent: Option<ConfirmIntent>,
+    pub(crate) preview_scroll: u16,
+    pub(crate) preview_viewport_height: Option<u16>,
+    pub(crate) preview_content_height: Option<u16>,
 }
 
 impl ConfirmDialogState {
@@ -48,6 +62,35 @@ impl ConfirmDialogState {
             (Some(content), Some(viewport)) => content.saturating_sub(viewport),
             _ => 0,
         }
+    }
+
+    pub fn preview_scroll(&self) -> u16 {
+        self.preview_scroll
+    }
+
+    pub fn preview_viewport_height(&self) -> Option<u16> {
+        self.preview_viewport_height
+    }
+
+    pub fn preview_content_height(&self) -> Option<u16> {
+        self.preview_content_height
+    }
+
+    pub fn apply_preview_metrics(
+        &mut self,
+        viewport_height: Option<u16>,
+        content_height: Option<u16>,
+        scroll: u16,
+    ) {
+        self.preview_viewport_height = viewport_height;
+        self.preview_content_height = content_height;
+        self.preview_scroll = scroll.min(self.max_scroll());
+    }
+
+    pub fn scroll_preview(&mut self, direction: ScrollDirection) {
+        let max_scroll = self.max_scroll() as usize;
+        self.preview_scroll =
+            direction.clamp_vertical_offset(self.preview_scroll as usize, max_scroll, 1) as u16;
     }
 
     pub fn title(&self) -> &str {

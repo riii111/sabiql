@@ -2,6 +2,7 @@ pub mod async_run;
 pub mod confirm_dialog;
 pub mod cursor;
 pub mod db_capabilities;
+pub mod detail_view;
 pub mod flash_timer;
 pub mod focused_pane;
 pub mod help;

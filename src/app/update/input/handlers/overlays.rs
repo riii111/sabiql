@@ -1,4 +1,4 @@
-use crate::update::action::Action;
+use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, KeyCombo, Modifiers};
 use crate::update::input::keymap;
 
@@ -9,7 +9,7 @@ pub fn handle_help_keys(combo: KeyCombo) -> Action {
 
     match (combo.key, combo.modifiers) {
         (keybindings::Key::Char(ch), Modifiers::NONE | Modifiers::SHIFT) => Action::TextInput {
-            target: crate::update::action::InputTarget::HelpFilter,
+            target: InputTarget::HelpFilter,
             ch,
         },
         _ => Action::None,
@@ -18,6 +18,12 @@ pub fn handle_help_keys(combo: KeyCombo) -> Action {
 
 pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
     keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
+}
+
+pub fn handle_sqlite_diagnostics_keys(combo: KeyCombo) -> Action {
+    keybindings::SQLITE_DIAGNOSTICS
+        .resolve(&combo)
+        .unwrap_or(Action::None)
 }
 
 #[cfg(test)]
@@ -193,6 +199,17 @@ mod tests {
             let result = handle_confirm_dialog_keys(combo(code));
 
             assert!(matches!(result, Action::None));
+        }
+    }
+
+    mod sqlite_diagnostics_keys {
+        use super::*;
+
+        #[test]
+        fn question_mark_toggles_help() {
+            let result = handle_sqlite_diagnostics_keys(combo(Key::Char('?')));
+
+            assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
         }
     }
 }

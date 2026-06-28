@@ -125,10 +125,10 @@ impl QueryHistoryStore for FileQueryHistoryStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::query_history::QueryResultStatus;
     use tempfile::TempDir;
 
     fn make_entry(query: &str) -> QueryHistoryEntry {
-        use crate::domain::query_history::QueryResultStatus;
         QueryHistoryEntry::new(
             query.to_string(),
             "2026-03-13T12:00:00Z".to_string(),
@@ -136,6 +136,30 @@ mod tests {
             QueryResultStatus::Success,
             None,
         )
+    }
+
+    #[tokio::test]
+    async fn append_and_load_succeed_for_cli_sqlite_connection_id() {
+        use sabiql_app::cmd::cli_sqlite::connection_id_for_path;
+
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
+        let conn_id = connection_id_for_path("/tmp/app.db");
+
+        assert!(!conn_id.as_str().contains('/'));
+
+        store
+            .append("test", &conn_id, &make_entry("SELECT 1"))
+            .await
+            .unwrap();
+
+        let history_dir = tmp.path().join("history");
+        let path = history_dir.join(format!("{conn_id}.jsonl"));
+        assert!(path.is_file());
+
+        let entries = store.load("test", &conn_id).await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].query, "SELECT 1");
     }
 
     #[tokio::test]
@@ -365,16 +389,10 @@ mod tests {
 
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].query, "SELECT 1");
-        assert_eq!(
-            entries[0].result_status,
-            crate::domain::query_history::QueryResultStatus::Success
-        );
+        assert_eq!(entries[0].result_status, QueryResultStatus::Success);
         assert_eq!(entries[0].affected_rows, None);
         assert_eq!(entries[1].query, "UPDATE t SET x=1");
-        assert_eq!(
-            entries[1].result_status,
-            crate::domain::query_history::QueryResultStatus::Success
-        );
+        assert_eq!(entries[1].result_status, QueryResultStatus::Success);
         assert_eq!(entries[1].affected_rows, Some(5));
     }
 }

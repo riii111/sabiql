@@ -2,13 +2,95 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::QuerySource;
+use crate::domain::{DatabaseType, QuerySource, QueryValue};
 use crate::model::app_state::AppState;
+use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
 use crate::model::shared::input_mode::InputMode;
+use crate::policy::sql::sqlite_export::{SqliteExportPlan, sqlite_export_plan};
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
+
+const LARGE_EXPORT_THRESHOLD: usize = 100_000;
+
+fn csv_export_file_name(state: &AppState, source: QuerySource) -> String {
+    match source {
+        QuerySource::Preview => {
+            let table = state.query.pagination.table();
+            table
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect()
+        }
+        QuerySource::Adhoc => "adhoc".to_string(),
+    }
+}
+
+fn dispatch_cached_csv_export(
+    state: &mut AppState,
+    dsn: String,
+    run_id: u64,
+    file_name: String,
+    columns: Vec<String>,
+    values: Vec<Vec<QueryValue>>,
+    row_count: Option<usize>,
+) -> DispatchResult {
+    let needs_confirm = row_count.is_some_and(|count| count > LARGE_EXPORT_THRESHOLD);
+    if needs_confirm {
+        let msg = match row_count {
+            Some(n) => format!("Export {n} rows to CSV? This may take a while."),
+            None => "Export to CSV?".to_string(),
+        };
+        state.confirm_dialog.open(
+            "Confirm CSV Export",
+            msg,
+            ConfirmIntent::CsvExportCached {
+                dsn,
+                run_id,
+                file_name,
+                row_count,
+                snapshot: CsvExportCacheSnapshot { columns, values },
+            },
+        );
+        state.modal.push_mode(InputMode::ConfirmDialog);
+        DispatchResult::handled()
+    } else {
+        DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
+            dsn,
+            run_id,
+            file_name,
+            columns,
+            values,
+            row_count,
+        }])
+    }
+}
+
+fn dispatch_rerunnable_csv_export(
+    state: &AppState,
+    dsn: String,
+    run_id: u64,
+    export_query: String,
+    file_name: String,
+) -> DispatchResult {
+    let stripped = export_query.trim_end().trim_end_matches(';').to_string();
+    let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
+    DispatchResult::handled_with(vec![Effect::CountRowsForExport {
+        dsn,
+        run_id,
+        count_query,
+        export_query,
+        file_name,
+        read_only: state.session.is_read_only(),
+    }])
+}
 
 pub fn reduce_pagination(
     state: &mut AppState,
@@ -24,41 +106,45 @@ pub fn reduce_pagination(
             let Some(result) = state.query.visible_result() else {
                 return DispatchResult::handled();
             };
-            let dsn = match &state.session.dsn {
-                Some(d) => d.clone(),
-                None => return DispatchResult::handled(),
+            let Some(dsn) = state.session.dsn().map(String::from) else {
+                return DispatchResult::handled();
             };
 
             let export_query = result.query.clone();
-            let file_name = match result.source {
-                QuerySource::Preview => {
-                    let table = &state.query.pagination.table;
-                    table
-                        .chars()
-                        .map(|c| {
-                            if c.is_ascii_alphanumeric() || c == '_' {
-                                c
-                            } else {
-                                '_'
-                            }
-                        })
-                        .collect()
+            let file_name = csv_export_file_name(state, result.source);
+            let row_count = result.row_count();
+
+            if state.session.active_database_type() == Some(DatabaseType::SQLite) {
+                match sqlite_export_plan(&export_query, &result.columns, row_count) {
+                    SqliteExportPlan::NotExportable { reason } => {
+                        state.messages.set_error_at(reason, now);
+                        return DispatchResult::handled();
+                    }
+                    SqliteExportPlan::RerunnableQuery { query } => {
+                        let run_id = state.query.begin_running(now);
+                        return dispatch_rerunnable_csv_export(
+                            state, dsn, run_id, query, file_name,
+                        );
+                    }
+                    SqliteExportPlan::CachedResult { row_count } => {
+                        let columns = result.columns.clone();
+                        let values = result.values().to_vec();
+                        let run_id = state.query.begin_running(now);
+                        return dispatch_cached_csv_export(
+                            state,
+                            dsn,
+                            run_id,
+                            file_name,
+                            columns,
+                            values,
+                            Some(row_count),
+                        );
+                    }
                 }
-                QuerySource::Adhoc => "adhoc".to_string(),
-            };
+            }
 
-            let stripped = export_query.trim_end().trim_end_matches(';').to_string();
-            let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
             let run_id = state.query.begin_running(now);
-
-            DispatchResult::handled_with(vec![Effect::CountRowsForExport {
-                dsn,
-                run_id,
-                count_query,
-                export_query,
-                file_name,
-                read_only: state.session.read_only,
-            }])
+            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
         }
 
         Action::CsvExportRowsCounted {
@@ -71,8 +157,6 @@ pub fn reduce_pagination(
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
-
-            const LARGE_EXPORT_THRESHOLD: usize = 100_000;
 
             let needs_confirm = match row_count {
                 Some(n) => *n > LARGE_EXPORT_THRESHOLD,
@@ -87,7 +171,7 @@ pub fn reduce_pagination(
                 state.confirm_dialog.open(
                     "Confirm CSV Export",
                     msg,
-                    crate::model::shared::confirm_dialog::ConfirmIntent::CsvExport {
+                    ConfirmIntent::CsvExportRerunnable {
                         dsn: dsn.clone(),
                         run_id: *run_id,
                         export_query: export_query.clone(),
@@ -104,7 +188,7 @@ pub fn reduce_pagination(
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
-                    read_only: state.session.read_only,
+                    read_only: state.session.is_read_only(),
                 }])
             }
         }
@@ -126,7 +210,7 @@ pub fn reduce_pagination(
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
-                read_only: state.session.read_only,
+                read_only: state.session.is_read_only(),
             }])
         }
 
@@ -177,7 +261,7 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_next() {
                 return DispatchResult::handled();
             }
-            let next_page = state.query.pagination.current_page + 1;
+            let next_page = state.query.pagination.next_page();
             let generation = state.session.selection_generation();
             match preview_effect_for_current_table(state, now, next_page, generation) {
                 Some(effect) => {
@@ -195,12 +279,12 @@ pub fn reduce_pagination(
             if !state.query.pagination.can_prev() {
                 return DispatchResult::handled();
             }
-            let prev_page = state.query.pagination.current_page - 1;
+            let prev_page = state.query.pagination.prev_page();
             let generation = state.session.selection_generation();
             match preview_effect_for_current_table(state, now, prev_page, generation) {
                 Some(effect) => {
                     state.result_interaction.reset_view();
-                    state.query.pagination.reached_end = false;
+                    state.query.pagination.clear_reached_end();
                     DispatchResult::handled_with(vec![effect])
                 }
                 None => DispatchResult::handled(),
@@ -216,9 +300,10 @@ mod tests {
     use super::*;
     use crate::domain::{QueryResult, QuerySource};
     use crate::ports::outbound::DbOperationError;
+    use crate::update::test_fixtures;
     use std::sync::Arc;
 
-    use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PaginationState};
+    use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
 
@@ -279,13 +364,10 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination = PaginationState {
-                current_page: 0,
-                total_rows_estimate: Some(1500),
-                reached_end: false,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            state
+                .query
+                .pagination
+                .reset_for_table_with_estimate("public", "users", Some(1500));
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -314,7 +396,7 @@ mod tests {
         fn noop_when_reached_end() {
             let mut state = create_test_state();
             state.query.set_current_result(preview_result(100));
-            state.query.pagination.reached_end = true;
+            state.query.pagination.set_page_result(0, true);
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -371,7 +453,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(100));
-            state.query.pagination.reached_end = true;
+            state.query.pagination.set_page_result(0, true);
             state.result_interaction.activate_cell(2, 1);
             state.result_interaction.stage_row(2);
 
@@ -393,13 +475,10 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination = PaginationState {
-                current_page: 0,
-                total_rows_estimate: Some(1500),
-                reached_end: false,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            state
+                .query
+                .pagination
+                .reset_for_table_with_estimate("public", "users", Some(1500));
             state.result_interaction.activate_cell(3, 1);
             state.result_interaction.stage_row(3);
 
@@ -425,13 +504,11 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination = PaginationState {
-                current_page: 2,
-                total_rows_estimate: Some(1500),
-                reached_end: false,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
+            state
+                .query
+                .pagination
+                .reset_for_table_with_estimate("public", "users", Some(1500));
+            state.query.pagination.set_page_result(2, false);
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -462,7 +539,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.pagination.current_page = 0;
+            state.query.pagination.set_current_page(0);
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -482,7 +559,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(PREVIEW_PAGE_SIZE));
-            state.query.pagination.current_page = 0;
+            state.query.pagination.set_current_page(0);
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 
@@ -507,7 +584,7 @@ mod tests {
 
         fn export_test_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
         }
 
@@ -515,9 +592,8 @@ mod tests {
         fn request_with_preview_result_emits_count_effect() {
             let mut state = export_test_state();
             state.query.set_current_result(preview_result(10));
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
-            state.query.pagination.total_rows_estimate = Some(100);
+            state.query.pagination.reset_for_table("public", "users");
+            state.query.pagination.set_total_rows_estimate(Some(100));
 
             let effects = dispatch_query(
                 &mut state,
@@ -740,6 +816,98 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
+        }
+
+        mod sqlite {
+            use super::*;
+
+            fn sqlite_state() -> AppState {
+                let mut state = AppState::new("test_project".to_string());
+                test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+                state
+            }
+
+            #[test]
+            fn write_only_query_shows_not_exportable_error() {
+                let mut state = sqlite_state();
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success(
+                        "INSERT INTO users(id) VALUES (1)".to_string(),
+                        vec![],
+                        vec![],
+                        1,
+                        QuerySource::Adhoc,
+                    )));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                assert!(effects.is_empty());
+                assert!(
+                    state
+                        .messages
+                        .last_error
+                        .as_deref()
+                        .unwrap()
+                        .contains("Cannot export")
+                );
+            }
+
+            #[test]
+            fn mixed_query_exports_cached_rows_without_count_effect() {
+                let mut state = sqlite_state();
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success(
+                        "INSERT INTO users(id) VALUES (1); SELECT id FROM users".to_string(),
+                        vec!["id".to_string()],
+                        vec![vec!["1".to_string()]],
+                        1,
+                        QuerySource::Adhoc,
+                    )));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(&effects[0], Effect::ExportCsvFromCache { .. }));
+            }
+
+            #[test]
+            fn select_still_uses_count_effect() {
+                let mut state = sqlite_state();
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success(
+                        "SELECT id FROM users".to_string(),
+                        vec!["id".to_string()],
+                        vec![vec!["1".to_string()]],
+                        1,
+                        QuerySource::Adhoc,
+                    )));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                assert_eq!(effects.len(), 1);
+                assert!(matches!(&effects[0], Effect::CountRowsForExport { .. }));
+            }
         }
     }
 }

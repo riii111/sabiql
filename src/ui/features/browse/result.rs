@@ -11,6 +11,7 @@ use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
@@ -53,7 +54,7 @@ impl ResultPane {
         now: Instant,
         theme: &ThemePalette,
     ) -> (ViewportPlan, ColumnWidthsCache) {
-        let is_focused = state.ui.focused_pane == FocusedPane::Result;
+        let is_focused = state.ui.focused_pane() == FocusedPane::Result;
         let should_highlight = state
             .query
             .result_highlight_until()
@@ -70,18 +71,17 @@ impl ResultPane {
             if result.is_error() {
                 Self::render_error(frame, area, result, block, theme);
                 default_result()
-            } else if result.rows.is_empty() {
+            } else if result.rows().is_empty() {
                 Self::render_empty(frame, area, block, theme);
                 default_result()
             } else {
                 let cell_edit = state.result_interaction.cell_edit();
                 let editing_cell = cell_edit.is_active().then(|| EditingCellView {
-                    row: cell_edit.row.unwrap_or_default(),
-                    col: cell_edit.col.unwrap_or_default(),
+                    row: cell_edit.row().unwrap_or_default(),
+                    col: cell_edit.col().unwrap_or_default(),
                     draft: cell_edit.draft_value(),
-                    actively_editing: state.input_mode()
-                        == crate::app::model::shared::input_mode::InputMode::CellEdit,
-                    cursor: cell_edit.input.cursor(),
+                    actively_editing: state.input_mode() == InputMode::CellEdit,
+                    cursor: cell_edit.input().cursor(),
                 });
                 Self::render_table(
                     frame,
@@ -89,15 +89,15 @@ impl ResultPane {
                     result,
                     block,
                     ResultTableParams {
-                        scroll_offset: state.result_interaction.scroll_offset,
-                        horizontal_offset: state.result_interaction.horizontal_offset,
-                        stored_plan: &state.ui.result_viewport_plan,
-                        stored_cache: &state.ui.result_widths_cache,
+                        scroll_offset: state.result_interaction.scroll_offset(),
+                        horizontal_offset: state.result_interaction.horizontal_offset(),
+                        stored_plan: state.ui.result_viewport_plan(),
+                        stored_cache: state.ui.result_widths_cache(),
                         result_generation: state.query.result_generation(),
                         selection: state.result_interaction.selection(),
                         editing_cell,
                         staged_delete_rows: state.result_interaction.staged_delete_rows(),
-                        yank_flash: state.result_interaction.yank_flash,
+                        yank_flash: state.result_interaction.yank_flash(),
                         now,
                     },
                     theme,
@@ -201,7 +201,7 @@ impl ResultPane {
                 &stored_cache.header_min_widths[..],
             )
         } else {
-            fresh_ideal = calculate_ideal_widths(&result.columns, &result.rows);
+            fresh_ideal = calculate_ideal_widths(&result.columns, result.rows());
             fresh_min = calculate_header_min_widths(&result.columns);
             (&fresh_ideal[..], &fresh_min[..])
         };
@@ -266,7 +266,7 @@ impl ResultPane {
         let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
 
         let rows: Vec<Row> = result
-            .rows
+            .rows()
             .iter()
             .enumerate()
             .skip(scroll_offset)
@@ -364,7 +364,7 @@ impl ResultPane {
         frame.render_widget(table, inner);
 
         // Scroll indicators (pass inner area, not outer with border)
-        let total_rows = result.rows.len();
+        let total_rows = result.rows().len();
         let total_cols = result.columns.len();
 
         use crate::primitives::atoms::scroll_indicator::{

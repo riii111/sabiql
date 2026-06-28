@@ -17,7 +17,7 @@ pub fn reduce_connection_list(
             motion: ListMotion::Next,
         } => {
             let len = state.connection_list_items().len();
-            let next = state.ui.connection_list_selected + 1;
+            let next = state.ui.connection_list_selected() + 1;
             if next < len {
                 state.ui.set_connection_list_selection(Some(next));
             }
@@ -27,10 +27,10 @@ pub fn reduce_connection_list(
             target: ListTarget::ConnectionList,
             motion: ListMotion::Previous,
         } => {
-            if state.ui.connection_list_selected > 0 {
+            if state.ui.connection_list_selected() > 0 {
                 state
                     .ui
-                    .set_connection_list_selection(Some(state.ui.connection_list_selected - 1));
+                    .set_connection_list_selection(Some(state.ui.connection_list_selected() - 1));
             }
             DispatchResult::handled()
         }
@@ -50,8 +50,7 @@ pub fn reduce_connection_list(
             state.set_connections_and_services(sorted, services.clone());
             state
                 .runtime
-                .service_file_path
-                .clone_from(service_file_path);
+                .set_service_file_path(service_file_path.clone());
 
             if let Some(warning) = profile_load_warning {
                 state.messages.set_error_at(warning.clone(), now);
@@ -63,26 +62,26 @@ pub fn reduce_connection_list(
             let list_len = state.connection_list_items().len();
             if list_len == 0 {
                 state.ui.set_connection_list_selection(Some(0));
-            } else if state.ui.connection_list_selected >= list_len {
+            } else if state.ui.connection_list_selected() >= list_len {
                 state
                     .ui
                     .set_connection_list_selection(Some(list_len.saturating_sub(1)));
             } else {
                 state
                     .ui
-                    .set_connection_list_selection(Some(state.ui.connection_list_selected));
+                    .set_connection_list_selection(Some(state.ui.connection_list_selected()));
             }
             DispatchResult::handled()
         }
         Action::ConfirmConnectionSelection => {
             use crate::model::connection::list::ConnectionListItem;
-            let selected_idx = state.ui.connection_list_selected;
+            let selected_idx = state.ui.connection_list_selected();
 
             let effect = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => state
                     .connections()
                     .get(*i)
-                    .filter(|c| state.session.active_connection_id.as_ref() != Some(&c.id))
+                    .filter(|c| state.session.active_connection_id() != Some(&c.id))
                     .map(|_| Effect::SwitchConnection {
                         connection_index: *i,
                     }),
@@ -107,21 +106,21 @@ pub fn reduce_connection_list(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+    use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
     use crate::services::AppServices;
     use crate::update::browse::navigation::dispatch_navigation;
 
     fn create_test_profile(name: &str) -> ConnectionProfile {
-        ConnectionProfile {
-            id: ConnectionId::new(),
-            name: ConnectionName::new(name).unwrap(),
-            host: "localhost".to_string(),
-            port: 5432,
-            database: "test".to_string(),
-            username: "user".to_string(),
-            password: "pass".to_string(),
-            ssl_mode: SslMode::Prefer,
-        }
+        ConnectionProfile::new_postgres(
+            name,
+            "localhost",
+            5432,
+            "test",
+            "user",
+            "pass",
+            SslMode::Prefer,
+        )
+        .unwrap()
     }
 
     mod connection_list_navigation {
@@ -149,7 +148,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 1);
+            assert_eq!(state.ui.connection_list_selected(), 1);
         }
 
         #[test]
@@ -168,7 +167,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 1);
+            assert_eq!(state.ui.connection_list_selected(), 1);
         }
 
         #[test]
@@ -187,7 +186,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
 
         #[test]
@@ -206,7 +205,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
     }
 
@@ -258,7 +257,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_selected(), 0);
         }
 
         #[test]
@@ -279,7 +278,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.runtime.service_file_path, Some(path));
+            assert_eq!(state.runtime.service_file_path(), Some(path.as_path()));
         }
 
         #[test]
@@ -299,24 +298,26 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
         }
     }
 
     mod confirm_connection_selection {
         use super::*;
+        use crate::domain::DatabaseType;
 
         fn create_test_profile_with_id(name: &str, id: ConnectionId) -> ConnectionProfile {
-            ConnectionProfile {
+            ConnectionProfile::with_id_postgres(
                 id,
-                name: ConnectionName::new(name).unwrap(),
-                host: "localhost".to_string(),
-                port: 5432,
-                database: "test".to_string(),
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                ssl_mode: SslMode::Prefer,
-            }
+                name,
+                "localhost",
+                5432,
+                "test",
+                "user",
+                "pass",
+                SslMode::Prefer,
+            )
+            .unwrap()
         }
 
         #[test]
@@ -329,7 +330,12 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state.session.active_connection_id = Some(active_id);
+            state.session.activate_connection_with_dsn(
+                &active_id,
+                "active",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.ui.set_connection_list_selection(Some(1));
 
             let effects = dispatch_navigation(
@@ -358,7 +364,12 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.session.active_connection_id = Some(active_id);
+            state.session.activate_connection_with_dsn(
+                &active_id,
+                "active",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.ui.set_connection_list_selection(Some(0));
 
             let effects = dispatch_navigation(
@@ -397,7 +408,12 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id),
             ]);
-            state.session.active_connection_id = Some(active_id);
+            state.session.activate_connection_with_dsn(
+                &active_id,
+                "active",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(1));
 
@@ -424,7 +440,12 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.session.active_connection_id = Some(active_id);
+            state.session.activate_connection_with_dsn(
+                &active_id,
+                "active",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
 

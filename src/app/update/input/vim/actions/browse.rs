@@ -46,7 +46,7 @@ pub(in crate::update::input::vim) fn mode_transition(
         (VimModeTransition::ConfirmOrEnter, BrowseVimContext::Result(result_ctx)) => {
             match result_ctx.mode {
                 ResultNavMode::Scroll => Action::ResultActivateCell,
-                ResultNavMode::CellActive => Action::None,
+                ResultNavMode::CellActive => Action::ResultOpenCellDetail,
             }
         }
         (VimModeTransition::Insert, BrowseVimContext::Result(result_ctx))
@@ -293,7 +293,9 @@ fn result_navigation(navigation: VimNavigation, ctx: ResultVimContext) -> Action
 mod tests {
     use super::*;
     use crate::model::shared::ui_state::ResultNavMode;
-    use crate::update::input::vim::{VimCommand, VimSurfaceContext, action_for_command};
+    use crate::update::input::vim::{
+        SearchContinuation, VimCommand, VimSurfaceContext, action_for_command,
+    };
     use rstest::rstest;
 
     fn result_ctx(mode: ResultNavMode) -> ResultVimContext {
@@ -320,6 +322,16 @@ mod tests {
         );
 
         assert!(matches!(action, Some(Action::ResultDiscardCellEdit)));
+    }
+
+    #[test]
+    fn result_cell_enter_opens_cell_detail() {
+        let action = action_for_command(
+            VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter),
+            browse_result(result_ctx(ResultNavMode::CellActive)),
+        );
+
+        assert!(matches!(action, Some(Action::ResultOpenCellDetail)));
     }
 
     #[test]
@@ -456,7 +468,7 @@ mod tests {
     #[test]
     fn result_search_continuation_stays_unsupported() {
         let action = action_for_command(
-            VimCommand::SearchContinuation(crate::update::input::vim::SearchContinuation::Next),
+            VimCommand::SearchContinuation(SearchContinuation::Next),
             browse_result(result_ctx(ResultNavMode::Scroll)),
         );
 

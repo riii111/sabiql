@@ -180,7 +180,7 @@ impl ConfirmDialog {
                             Style::default().fg(theme.semantic.text.secondary),
                         ),
                         Span::styled(
-                            format!("\"{}\"", escape_preview_value(value)),
+                            format!("\"{}\"", escape_preview_value(&value.display_value())),
                             Style::default().fg(theme.semantic.text.primary),
                         ),
                     ]));
@@ -257,7 +257,7 @@ impl ConfirmDialog {
 
         let scroll = state
             .confirm_dialog
-            .preview_scroll
+            .preview_scroll()
             .min(wrapped_height.saturating_sub(inner.height));
 
         let para = Paragraph::new(content_lines)

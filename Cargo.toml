@@ -3,6 +3,7 @@ members = [
     "src/app",
     "src/domain",
     "src/infra",
+    "src/test-support",
     "src/ui",
 ]
 resolver = "3"
@@ -15,9 +16,11 @@ license = "MIT"
 repository = "https://github.com/riii111/sabiql"
 
 [workspace.dependencies]
+# When adding third-party dependencies, update `absolute-paths-allowed-crates` in clippy.toml.
 sabiql-domain = { path = "src/domain", version = "1.13.0" }
 sabiql-app = { path = "src/app", version = "1.13.0" }
 sabiql-infra = { path = "src/infra", version = "1.13.0" }
+sabiql-test-support = { path = "src/test-support", version = "1.13.0" }
 sabiql-ui = { path = "src/ui", version = "1.13.0" }
 arboard = "3"
 async-trait = "0.1"
@@ -45,19 +48,19 @@ toml = "0.8"
 unicode-casefold = "0.2"
 unicode-width = "0.2"
 urlencoding = "2"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v5"] }
 
 [package]
 name = "sabiql"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "A fast, driver-less TUI for browsing and editing PostgreSQL databases"
+description = "A fast, driver-less TUI for browsing and editing PostgreSQL and SQLite databases"
 license.workspace = true
 repository.workspace = true
 homepage = "https://github.com/riii111/sabiql"
 readme = "README.md"
-keywords = ["postgresql", "tui", "database", "cli", "sql"]
+keywords = ["postgresql", "sqlite", "tui", "database", "cli", "sql"]
 categories = ["command-line-utilities", "database"]
 
 [dependencies]
@@ -68,6 +71,7 @@ clap.workspace = true
 dotenvy.workspace = true
 self_update = { workspace = true, optional = true }
 sabiql-app.workspace = true
+sabiql-domain.workspace = true
 sabiql-infra.workspace = true
 sabiql-ui.workspace = true
 
@@ -78,9 +82,11 @@ self-update = ["dep:self_update"]
 [dev-dependencies]
 sabiql-domain.workspace = true
 sabiql-app = { workspace = true, features = ["test-support"] }
+sabiql-test-support.workspace = true
 sabiql-ui = { workspace = true, features = ["test-support"] }
 ratatui.workspace = true
 insta.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
@@ -130,6 +136,7 @@ used_underscore_binding = "allow"  # rstest #[case] doc params use _prefix conve
 naive_bytecount = "allow"  # bytecount crate would be an unnecessary dependency
 
 # Restriction lints (opt-in)
+absolute_paths = "warn"
 dbg_macro = "deny"
 todo = "deny"
 print_stdout = "deny"

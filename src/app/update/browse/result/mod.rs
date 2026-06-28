@@ -1,3 +1,4 @@
+mod cell_detail;
 mod edit;
 mod jsonb;
 mod scroll;
@@ -21,6 +22,7 @@ pub fn dispatch_result(
         .or_else(|| selection::reduce_selection(state, action, now))
         .or_else(|| edit::reduce_edit(state, action, now))
         .or_else(|| yank::reduce_yank(state, action, services, now))
+        .or_else(|| cell_detail::reduce_cell_detail(state, action, now))
         .or_else(|| jsonb::reduce_jsonb(state, action, now))
 }
 

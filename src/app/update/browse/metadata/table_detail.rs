@@ -17,14 +17,14 @@ pub(super) fn reduce_table_detail(
             detail,
             generation,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
+            if !state.session.dsn_matches(dsn)
                 || !state.session.is_current_table_detail_run(*run_id)
             {
                 return DispatchResult::handled();
             }
 
             if state.session.set_table_detail(*detail.clone(), *generation) {
-                state.ui.inspector_scroll_offset = 0;
+                state.ui.set_inspector_scroll_offset(0);
             }
             DispatchResult::handled()
         }
@@ -34,7 +34,7 @@ pub(super) fn reduce_table_detail(
             error,
             generation,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
+            if !state.session.dsn_matches(dsn)
                 || !state.session.is_current_table_detail_run(*run_id)
             {
                 return DispatchResult::handled();
@@ -50,7 +50,7 @@ pub(super) fn reduce_table_detail(
             table,
             generation,
         }) => {
-            if let Some(dsn) = state.session.dsn.clone() {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_table_detail_run();
                 DispatchResult::handled_with(vec![Effect::FetchTableDetail {
                     dsn,

@@ -161,6 +161,7 @@ impl ErTableInfo {
             foreign_keys: table
                 .foreign_keys
                 .iter()
+                .filter(|fk| fk.is_reference_resolved())
                 .map(|fk| ErFkInfo {
                     name: fk.name.clone(),
                     from_qualified: format!("{}.{}", fk.from_schema, fk.from_table),
@@ -174,6 +175,68 @@ impl ErTableInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod from_table {
+        use super::*;
+        use crate::{FkAction, ForeignKey, Table, TableKindInfo};
+
+        fn make_table(name: &str, foreign_keys: Vec<ForeignKey>) -> Table {
+            Table {
+                schema: "public".to_string(),
+                name: name.to_string(),
+                foreign_keys,
+                owner: None,
+                columns: Vec::new(),
+                primary_key: None,
+                indexes: Vec::new(),
+                rls: None,
+                triggers: Vec::new(),
+                row_count_estimate: None,
+                comment: None,
+                source_ddl: None,
+                kind_info: TableKindInfo::default(),
+            }
+        }
+
+        #[test]
+        fn excludes_unresolved_foreign_keys_from_er_graph() {
+            let table = make_table(
+                "child",
+                vec![
+                    ForeignKey {
+                        name: "fk_resolved".to_string(),
+                        from_schema: "public".to_string(),
+                        from_table: "child".to_string(),
+                        from_columns: vec!["user_id".to_string()],
+                        to_schema: "public".to_string(),
+                        to_table: "users".to_string(),
+                        to_columns: vec!["id".to_string()],
+                        on_delete: FkAction::NoAction,
+                        on_update: FkAction::NoAction,
+                        reference_resolved: true, // parent table exists in metadata
+                    },
+                    ForeignKey {
+                        name: "fk_unresolved".to_string(),
+                        from_schema: "public".to_string(),
+                        from_table: "child".to_string(),
+                        from_columns: vec!["org_id".to_string()],
+                        to_schema: "public".to_string(),
+                        to_table: "missing_orgs".to_string(), // parent table absent
+                        to_columns: vec!["id".to_string()],
+                        on_delete: FkAction::NoAction,
+                        on_update: FkAction::NoAction,
+                        reference_resolved: false, // excluded from ER graph
+                    },
+                ],
+            );
+
+            let er = ErTableInfo::from_table("public.child", &table);
+
+            assert_eq!(er.foreign_keys.len(), 1);
+            assert_eq!(er.foreign_keys[0].name, "fk_resolved");
+            assert_eq!(er.foreign_keys[0].to_qualified, "public.users");
+        }
+    }
 
     mod fk_reachable {
         use super::*;

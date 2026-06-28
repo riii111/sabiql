@@ -8,20 +8,15 @@ use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::ports::outbound::ClipboardError;
-use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(super) fn reduce_yank(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
+pub(super) fn reduce_yank(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::SqlModalYank => {
-            let active_tab = services
-                .db_capabilities
+            let active_tab = state
+                .session
+                .active_db_capabilities()
                 .normalize_sql_modal_tab(state.sql_modal.active_tab());
             let content = match active_tab {
                 SqlModalTab::Plan => state.explain.plan_text.clone(),

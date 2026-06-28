@@ -16,7 +16,7 @@ pub(super) fn reduce_query_history_picker(
             if state.modal.active_mode() == InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.active_connection_id.is_none() {
+            if state.session.active_connection_id().is_none() {
                 return DispatchResult::handled();
             }
             if state.query.is_running() {
@@ -34,7 +34,7 @@ pub(super) fn reduce_query_history_picker(
             state.query_history_picker.reset();
             state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-            let conn_id = state.session.active_connection_id.as_ref().unwrap();
+            let conn_id = state.session.active_connection_id().unwrap();
             DispatchResult::handled_with(vec![Effect::LoadQueryHistory {
                 project_name: state.runtime.project_name.clone(),
                 connection_id: conn_id.clone(),
@@ -49,7 +49,7 @@ pub(super) fn reduce_query_history_picker(
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.active_connection_id.as_ref() != Some(conn_id) {
+            if state.session.active_connection_id() != Some(conn_id) {
                 return DispatchResult::handled();
             }
             state.query_history_picker.replace_entries(entries);
@@ -59,7 +59,7 @@ pub(super) fn reduce_query_history_picker(
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.active_connection_id.as_ref() != Some(conn_id) {
+            if state.session.active_connection_id() != Some(conn_id) {
                 return DispatchResult::handled();
             }
             state.messages.set_error_at(e.to_string(), now);

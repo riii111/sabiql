@@ -2608,8 +2608,10 @@ dependencies = [
  "sabiql-app",
  "sabiql-domain",
  "sabiql-infra",
+ "sabiql-test-support",
  "sabiql-ui",
  "self_update",
+ "tempfile",
  "tokio",
 ]
 
@@ -2626,6 +2628,7 @@ dependencies = [
  "nucleo-matcher",
  "rstest",
  "sabiql-domain",
+ "sabiql-test-support",
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
@@ -2633,6 +2636,7 @@ dependencies = [
  "toml",
  "unicode-casefold",
  "unicode-width",
+ "uuid",
 ]
 
 [[package]]
@@ -2657,6 +2661,7 @@ dependencies = [
  "rstest",
  "sabiql-app",
  "sabiql-domain",
+ "sabiql-test-support",
  "serde",
  "serde_json",
  "tempfile",
@@ -2664,6 +2669,14 @@ dependencies = [
  "tokio",
  "toml",
  "urlencoding",
+]
+
+[[package]]
+name = "sabiql-test-support"
+version = "1.13.0"
+dependencies = [
+ "sabiql-domain",
+ "tempfile",
 ]
 
 [[package]]
@@ -2679,6 +2692,7 @@ dependencies = [
  "sabiql-domain",
  "tokio",
  "tokio-util",
+ "unicode-casefold",
  "unicode-width",
 ]
 
@@ -2792,6 +2806,12 @@ dependencies = [
  "ryu",
  "serde",
 ]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"
@@ -3493,6 +3513,7 @@ dependencies = [
  "atomic",
  "getrandom 0.4.2",
  "js-sys",
+ "sha1_smol",
  "wasm-bindgen",
 ]
 

@@ -14,14 +14,14 @@ pub(super) fn reduce_er_neighbors(
 ) -> DispatchResult {
     match action {
         Action::ExpandPrefetchWithFkNeighbors => {
-            let seed_tables = state.er_preparation.seed_tables.clone();
+            let seed_tables = state.er_preparation.seed_tables().to_vec();
             DispatchResult::handled_with(vec![Effect::ExtractFkNeighbors { seed_tables }])
         }
         Action::FkNeighborsDiscovered { tables } => {
             let Some(run_id) = state.sql_modal.active_prefetch_run_id() else {
                 return DispatchResult::handled();
             };
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.mark_fk_expanded();
 
             if tables.is_empty() {
                 // No new neighbors — proceed to generate with what we have
@@ -31,16 +31,12 @@ pub(super) fn reduce_er_neighbors(
             for qualified_name in tables {
                 let is_new_pending = state
                     .er_preparation
-                    .pending_tables
-                    .insert(qualified_name.clone());
-                let already_fetching = state.sql_modal.prefetching_tables.contains(qualified_name);
-                let already_queued = state.sql_modal.prefetch_queue.contains(qualified_name);
+                    .queue_pending_table(qualified_name.clone());
+                let already_fetching = state.sql_modal.is_prefetching(qualified_name);
+                let already_queued = state.sql_modal.is_prefetch_queued(qualified_name);
 
                 if is_new_pending && !already_fetching && !already_queued {
-                    state
-                        .sql_modal
-                        .prefetch_queue
-                        .push_back(qualified_name.clone());
+                    state.sql_modal.enqueue_prefetch(qualified_name.clone());
                 }
             }
             DispatchResult::handled_with(vec![Effect::ProcessPrefetchQueue { run_id }])

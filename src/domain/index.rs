@@ -13,8 +13,13 @@ pub struct Index {
 pub struct IndexAttributes(u8);
 
 impl IndexAttributes {
-    pub const UNIQUE: Self = Self(0b01);
-    pub const PRIMARY: Self = Self(0b10);
+    pub const UNIQUE: Self = Self(0b0_0001);
+    pub const PRIMARY: Self = Self(0b0_0010);
+    pub const PARTIAL: Self = Self(0b0_0100);
+    pub const EXPRESSION: Self = Self(0b0_1000);
+    pub const HAS_AUXILIARY_COLUMNS: Self = Self(0b1_0000);
+    pub const DESCENDING: Self = Self(0b10_0000);
+    pub const NON_BINARY_COLLATION: Self = Self(0b100_0000);
 
     pub const fn empty() -> Self {
         Self(0)
@@ -53,10 +58,48 @@ impl Index {
     pub const fn is_primary(&self) -> bool {
         self.attributes.contains(IndexAttributes::PRIMARY)
     }
+
+    pub const fn is_partial(&self) -> bool {
+        self.attributes.contains(IndexAttributes::PARTIAL)
+    }
+
+    pub const fn has_expression(&self) -> bool {
+        self.attributes.contains(IndexAttributes::EXPRESSION)
+    }
+
+    pub const fn has_auxiliary_columns(&self) -> bool {
+        self.attributes
+            .contains(IndexAttributes::HAS_AUXILIARY_COLUMNS)
+    }
+
+    pub const fn has_descending_key(&self) -> bool {
+        self.attributes.contains(IndexAttributes::DESCENDING)
+    }
+
+    pub const fn has_non_binary_collation(&self) -> bool {
+        self.attributes
+            .contains(IndexAttributes::NON_BINARY_COLLATION)
+    }
+
+    pub const fn has_index_detail(&self) -> bool {
+        self.is_partial()
+            || self.has_expression()
+            || self.has_auxiliary_columns()
+            || self.has_descending_key()
+            || self.has_non_binary_collation()
+    }
+
+    pub const fn needs_source_definition_detail(&self) -> bool {
+        self.is_partial()
+            || self.has_expression()
+            || self.has_descending_key()
+            || self.has_non_binary_collation()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum IndexType {
+    Unknown,
     #[default]
     BTree,
     Hash,
@@ -69,6 +112,7 @@ pub enum IndexType {
 impl std::fmt::Display for IndexType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Unknown => write!(f, "unknown"),
             Self::BTree => write!(f, "btree"),
             Self::Hash => write!(f, "hash"),
             Self::Gist => write!(f, "gist"),
@@ -84,6 +128,7 @@ impl FromStr for IndexType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_ascii_lowercase().as_str() {
+            "" | "unknown" => Self::Unknown,
             "btree" => Self::BTree,
             "hash" => Self::Hash,
             "gist" => Self::Gist,
@@ -142,6 +187,29 @@ mod tests {
             assert!(attributes.contains(IndexAttributes::UNIQUE));
             assert!(attributes.contains(IndexAttributes::PRIMARY));
         }
+
+        #[test]
+        fn detail_visibility_splits_column_and_source_definition_needs() {
+            let auxiliary_only = make_index(IndexAttributes::HAS_AUXILIARY_COLUMNS);
+            assert!(auxiliary_only.has_index_detail());
+            assert!(!auxiliary_only.needs_source_definition_detail());
+
+            let partial = make_index(IndexAttributes::PARTIAL);
+            assert!(partial.has_index_detail());
+            assert!(partial.needs_source_definition_detail());
+        }
+
+        #[test]
+        fn metadata_flags_report_expected_state() {
+            let attributes = IndexAttributes::PARTIAL
+                | IndexAttributes::EXPRESSION
+                | IndexAttributes::HAS_AUXILIARY_COLUMNS;
+            let index = make_index(attributes);
+
+            assert!(index.is_partial());
+            assert!(index.has_expression());
+            assert!(index.has_auxiliary_columns());
+        }
     }
 
     mod index_helpers {
@@ -165,6 +233,7 @@ mod tests {
     }
 
     #[rstest]
+    #[case(IndexType::Unknown)]
     #[case(IndexType::BTree)]
     #[case(IndexType::Hash)]
     #[case(IndexType::Gist)]
@@ -179,6 +248,7 @@ mod tests {
     }
 
     #[rstest]
+    #[case("", IndexType::Unknown)]
     #[case("btree", IndexType::BTree)]
     #[case("HASH", IndexType::Hash)]
     #[case("gist", IndexType::Gist)]

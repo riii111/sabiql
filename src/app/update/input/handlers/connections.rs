@@ -7,7 +7,7 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
     use crate::model::connection::setup::ConnectionField;
     use crate::update::action::CursorMove;
 
-    let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
+    let dropdown_open = state.connection_setup.has_open_dropdown();
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
     let alt = combo.modifiers.contains(Modifiers::ALT);
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
@@ -18,7 +18,10 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
         && keybindings::connection_setup::SAVE.combos.contains(&combo);
     if (primary_save.combos.contains(&combo) || auxiliary_save)
         && !(combo.key == Key::Enter
-            && state.connection_setup.focused_field == ConnectionField::SslMode)
+            && matches!(
+                state.connection_setup.focused_field(),
+                ConnectionField::DatabaseType | ConnectionField::SslMode
+            ))
     {
         return Action::ConnectionSetupSave;
     }
@@ -40,8 +43,12 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
         Key::BackTab => Action::ConnectionSetupPrevField,
         Key::Esc => Action::ConnectionSetupCancel,
 
-        // SSL Mode toggle (Enter on SslMode field)
-        Key::Enter if state.connection_setup.focused_field == ConnectionField::SslMode => {
+        Key::Enter
+            if matches!(
+                state.connection_setup.focused_field(),
+                ConnectionField::DatabaseType | ConnectionField::SslMode
+            ) =>
+        {
             Action::ConnectionSetupToggleDropdown
         }
 
@@ -120,6 +127,30 @@ mod tests {
             state
         }
 
+        fn focus_field(state: &mut AppState, field: ConnectionField) {
+            let fields = state.connection_setup.visible_fields();
+            let target_idx = fields
+                .iter()
+                .position(|candidate| *candidate == field)
+                .unwrap_or_else(|| panic!("field {field:?} is not visible: {fields:?}"));
+
+            loop {
+                let current = state.connection_setup.focused_field();
+                if current == field {
+                    return;
+                }
+                let current_idx = fields
+                    .iter()
+                    .position(|candidate| *candidate == current)
+                    .expect("focused field must be visible");
+                if target_idx > current_idx {
+                    state.connection_setup.focus_next_field();
+                } else {
+                    state.connection_setup.focus_prev_field();
+                }
+            }
+        }
+
         fn setup_state_with_preset(preset: KeymapPreset) -> AppState {
             let mut state = setup_state();
             state.settings.load_keymap_preset(preset);
@@ -155,7 +186,8 @@ mod tests {
 
         #[test]
         fn ide_enter_saves() {
-            let state = setup_state_with_preset(KeymapPreset::Ide);
+            let mut state = setup_state_with_preset(KeymapPreset::Ide);
+            focus_field(&mut state, ConnectionField::Name);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
@@ -163,9 +195,18 @@ mod tests {
         }
 
         #[test]
+        fn ide_enter_on_database_type_toggles_dropdown() {
+            let state = setup_state_with_preset(KeymapPreset::Ide);
+
+            let result = handle_connection_setup_keys(combo(Key::Enter), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
+        }
+
+        #[test]
         fn ide_enter_on_ssl_field_toggles_dropdown() {
             let mut state = setup_state_with_preset(KeymapPreset::Ide);
-            state.connection_setup.focused_field = ConnectionField::SslMode;
+            focus_field(&mut state, ConnectionField::SslMode);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
@@ -275,7 +316,17 @@ mod tests {
         #[test]
         fn enter_on_ssl_field_toggles_dropdown() {
             let mut state = setup_state();
-            state.connection_setup.focused_field = ConnectionField::SslMode;
+            focus_field(&mut state, ConnectionField::SslMode);
+
+            let result = handle_connection_setup_keys(combo(Key::Enter), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
+        }
+
+        #[test]
+        fn enter_on_database_type_field_toggles_dropdown() {
+            let mut state = setup_state();
+            focus_field(&mut state, ConnectionField::DatabaseType);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
@@ -287,7 +338,15 @@ mod tests {
 
             fn dropdown_state() -> AppState {
                 let mut state = setup_state();
-                state.connection_setup.ssl_dropdown.is_open = true;
+                focus_field(&mut state, ConnectionField::SslMode);
+                state.connection_setup.toggle_focused_dropdown();
+                state
+            }
+
+            fn database_type_dropdown_state() -> AppState {
+                let mut state = setup_state();
+                focus_field(&mut state, ConnectionField::DatabaseType);
+                state.connection_setup.toggle_focused_dropdown();
                 state
             }
 
@@ -305,6 +364,15 @@ mod tests {
                     std::mem::discriminant(&result),
                     std::mem::discriminant(&expected)
                 );
+            }
+
+            #[test]
+            fn database_type_dropdown_routes_navigation() {
+                let state = database_type_dropdown_state();
+
+                let result = handle_connection_setup_keys(combo(Key::Up), &state);
+
+                assert!(matches!(result, Action::ConnectionSetupDropdownPrev));
             }
 
             #[rstest]
@@ -419,10 +487,10 @@ mod tests {
         }
 
         #[test]
-        fn r_key_retries_service_connection() {
+        fn r_key_retries_connection() {
             let result = handle_connection_error_keys(combo(Key::Char('r')));
 
-            assert!(matches!(result, Action::RetryServiceConnection));
+            assert!(matches!(result, Action::RetryConnection));
         }
     }
 

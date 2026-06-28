@@ -4,7 +4,7 @@ use std::time::Instant;
 use crate::model::app_state::AppState;
 use crate::services::AppServices;
 
-pub use crate::model::shared::render_output::RenderOutput;
+pub use crate::model::shared::render_output::{CellDetailViewport, RenderOutput};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum RenderError {

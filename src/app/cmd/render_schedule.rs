@@ -15,7 +15,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(now + SPINNER_INTERVAL));
     }
 
-    if let Some(expires_at) = state.messages.expires_at {
+    if let Some(expires_at) = state.messages.expires_at() {
         earliest = min_instant(earliest, Some(expires_at));
     }
 
@@ -27,7 +27,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(debounce_until));
     }
 
-    if let Some(flash) = state.result_interaction.yank_flash {
+    if let Some(flash) = state.result_interaction.yank_flash() {
         earliest = min_instant(earliest, Some(flash.until));
     }
 
@@ -42,7 +42,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
 }
 
 fn has_active_spinner(state: &AppState) -> bool {
-    state.query.is_running() || state.er_preparation.status == ErStatus::Waiting
+    state.query.is_running() || state.er_preparation.status() == ErStatus::Waiting
 }
 
 fn has_blinking_cursor(state: &AppState) -> bool {
@@ -74,6 +74,8 @@ mod tests {
     mod next_animation_deadline_tests {
         use super::*;
 
+        const MESSAGE_TIMEOUT: Duration = Duration::from_secs(3);
+
         #[test]
         fn idle_state_returns_none() {
             let state = create_test_state();
@@ -100,7 +102,7 @@ mod tests {
         #[test]
         fn er_waiting_returns_spinner_interval() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Waiting;
+            let _ = state.er_preparation.start_waiting_run();
             let now = Instant::now();
 
             let deadline = next_animation_deadline(&state, now);
@@ -115,7 +117,10 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let expires_at = now + Duration::from_secs(2);
-            state.messages.expires_at = Some(expires_at);
+            state.messages.set_error_at(
+                "message".to_string(),
+                expires_at.checked_sub(MESSAGE_TIMEOUT).unwrap(),
+            );
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -194,7 +199,10 @@ mod tests {
             let _ = state.query.begin_running(now);
             // Message expires before spinner would update
             let expires_at = now + Duration::from_millis(50);
-            state.messages.expires_at = Some(expires_at);
+            state.messages.set_error_at(
+                "message".to_string(),
+                expires_at.checked_sub(MESSAGE_TIMEOUT).unwrap(),
+            );
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -207,7 +215,11 @@ mod tests {
             let now = Instant::now();
 
             let _ = state.query.begin_running(now);
-            state.messages.expires_at = Some(now + Duration::from_secs(2));
+            let message_expires_at = now + Duration::from_secs(2);
+            state.messages.set_error_at(
+                "message".to_string(),
+                message_expires_at.checked_sub(MESSAGE_TIMEOUT).unwrap(),
+            );
             state
                 .query
                 .set_result_highlight(now + Duration::from_millis(100));
@@ -223,9 +235,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let debounce_until = now + Duration::from_millis(100);
-            state
-                .sql_modal
-                .set_completion_debounce_for_test(Some(debounce_until));
+            state.sql_modal.schedule_completion(debounce_until);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -261,7 +271,7 @@ mod tests {
         #[test]
         fn er_waiting_returns_true() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Waiting;
+            let _ = state.er_preparation.start_waiting_run();
 
             assert!(has_active_spinner(&state));
         }
@@ -269,7 +279,7 @@ mod tests {
         #[test]
         fn er_rendering_returns_false() {
             let mut state = create_test_state();
-            state.er_preparation.status = ErStatus::Rendering;
+            state.er_preparation.mark_rendering();
 
             assert!(!has_active_spinner(&state));
         }

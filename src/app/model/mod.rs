@@ -7,3 +7,4 @@ pub mod sql_editor;
 
 pub mod app_state;
 pub mod runtime_state;
+pub mod sqlite;

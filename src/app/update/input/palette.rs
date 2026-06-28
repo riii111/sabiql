@@ -1,6 +1,7 @@
 use super::keybindings::{KeyBinding, global};
+use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::settings::KeymapPreset;
-use crate::update::action::Action;
+use crate::update::action::{Action, ModalKind};
 
 // Deliberate opt-in list in display order — not derived from GLOBAL_KEYS, so an
 // entry never appears in the palette by accident. A test forces every global
@@ -15,6 +16,7 @@ const PALETTE_COMMANDS: &[KeyBinding] = &[
     global::SQL,
     global::ER_DIAGRAM,
     global::CONNECTIONS,
+    global::SQLITE_DIAGNOSTICS,
     global::CSV_EXPORT,
     global::READ_ONLY,
     global::EXIT_READ_ONLY,
@@ -31,6 +33,7 @@ const IDE_PALETTE_COMMANDS: &[KeyBinding] = &[
     global::SQL,
     global::ER_DIAGRAM,
     global::CONNECTIONS,
+    global::SQLITE_DIAGNOSTICS_IDE,
     global::CSV_EXPORT_IDE,
     global::READ_ONLY_IDE,
     global::EXIT_READ_ONLY_IDE,
@@ -44,18 +47,38 @@ fn palette_commands_for(preset: KeymapPreset) -> &'static [KeyBinding] {
     }
 }
 
-pub fn palette_command_count(preset: KeymapPreset) -> usize {
-    palette_commands_for(preset).len()
+pub fn palette_command_count(preset: KeymapPreset, db_capabilities: &DbCapabilities) -> usize {
+    palette_commands(preset, db_capabilities).count()
 }
 
-pub fn palette_action_for_index(index: usize, preset: KeymapPreset) -> Action {
-    palette_commands_for(preset)
-        .get(index)
+pub fn palette_action_for_index(
+    index: usize,
+    preset: KeymapPreset,
+    db_capabilities: &DbCapabilities,
+) -> Action {
+    palette_commands(preset, db_capabilities)
+        .nth(index)
         .map_or(Action::None, |kb| kb.action.clone())
 }
 
-pub fn palette_commands(preset: KeymapPreset) -> impl Iterator<Item = &'static KeyBinding> {
-    palette_commands_for(preset).iter()
+pub fn palette_commands(
+    preset: KeymapPreset,
+    db_capabilities: &DbCapabilities,
+) -> impl Iterator<Item = &'static KeyBinding> {
+    palette_commands_for(preset)
+        .iter()
+        .filter(|kb| palette_command_supported(kb, db_capabilities))
+}
+
+fn palette_command_supported(kb: &KeyBinding, db_capabilities: &DbCapabilities) -> bool {
+    !matches!(
+        kb.action,
+        Action::OpenModal(ModalKind::ErTablePicker) if !db_capabilities.supports_er_diagram()
+    ) && !matches!(
+        kb.action,
+        Action::OpenModal(ModalKind::SqliteDiagnostics)
+            if !db_capabilities.supports_sqlite_diagnostics()
+    )
 }
 
 #[cfg(test)]
@@ -136,8 +159,9 @@ mod tests {
 
     #[test]
     fn palette_commands_contains_no_none_actions() {
+        let db_capabilities = DbCapabilities::postgres_like();
         for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
-            let none_entries: Vec<_> = palette_commands(preset)
+            let none_entries: Vec<_> = palette_commands(preset, &db_capabilities)
                 .filter(|kb| matches!(kb.action, Action::None))
                 .collect();
 
@@ -147,5 +171,34 @@ mod tests {
                 none_entries.iter().map(|kb| kb.key).collect::<Vec<_>>()
             );
         }
+    }
+
+    #[test]
+    fn sqlite_palette_omits_er_diagram_command() {
+        let commands = palette_commands(KeymapPreset::Default, &DbCapabilities::sqlite_like())
+            .collect::<Vec<_>>();
+
+        assert!(
+            !commands
+                .iter()
+                .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::ErTablePicker)))
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::SqliteDiagnostics)))
+        );
+    }
+
+    #[test]
+    fn postgres_palette_omits_sqlite_diagnostics_command() {
+        let commands = palette_commands(KeymapPreset::Default, &DbCapabilities::postgres_like())
+            .collect::<Vec<_>>();
+
+        assert!(
+            !commands
+                .iter()
+                .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::SqliteDiagnostics)))
+        );
     }
 }

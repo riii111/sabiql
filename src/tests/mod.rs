@@ -17,7 +17,47 @@ fn no_subcommand_returns_none() {
 #[test]
 fn update_subcommand_is_recognized() {
     let args = Args::parse_from(["sabiql", "update"]);
+    assert!(args.database.is_none());
     assert!(matches!(args.command, Some(Command::Update)));
+}
+
+#[test]
+fn database_positional_is_recognized() {
+    let args = Args::parse_from(["sabiql", "/tmp/app.db"]);
+    assert_eq!(args.database.as_deref(), Some("/tmp/app.db"));
+    assert!(args.command.is_none());
+}
+
+mod cli_sqlite_startup {
+    use std::fs;
+
+    use sabiql_app::cmd::cli_sqlite::resolve_cli_sqlite_target;
+    use sabiql_infra::adapters::FsSqlitePathValidator;
+    use tempfile::tempdir;
+
+    #[test]
+    fn resolves_existing_sqlite_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("app.db");
+        fs::write(&path, b"").unwrap();
+
+        let target =
+            resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap();
+
+        assert_eq!(target.path(), path.to_str().unwrap());
+        assert_eq!(target.dsn(), format!("sqlite://{}", path.display()));
+    }
+
+    #[test]
+    fn rejects_missing_file_before_startup() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("missing.db");
+
+        let error =
+            resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap_err();
+
+        assert!(error.to_string().contains("not found"));
+    }
 }
 
 #[test]
@@ -52,7 +92,7 @@ mod dispatch_overflow_fallback {
 
         assert!(rx.try_recv().is_ok());
         assert!(rx.try_recv().is_ok());
-        let error = state.messages.last_error.as_deref().unwrap();
+        let error = state.messages.last_error().unwrap();
         assert!(error.contains("2 actions deferred"), "got: {error}");
     }
 
@@ -68,7 +108,7 @@ mod dispatch_overflow_fallback {
             Instant::now(),
         );
 
-        let error = state.messages.last_error.as_deref().unwrap();
+        let error = state.messages.last_error().unwrap();
         assert!(error.contains("2 actions dropped"), "got: {error}");
     }
 }

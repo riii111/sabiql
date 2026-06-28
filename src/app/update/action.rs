@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::domain::connection::{ConnectionNameError, ConnectionProfile, ServiceEntry};
+use crate::domain::connection::{
+    ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
+};
+use crate::domain::query_history::QueryHistoryEntry;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::Prefix;
@@ -14,12 +17,15 @@ use crate::ports::outbound::settings_store::SettingsStoreError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
-use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Table};
+use crate::domain::SqliteDiagnosticsSnapshot;
+use crate::domain::{
+    ConnectionId, DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table,
+};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
     #[error("{0}")]
-    Validation(#[from] ConnectionNameError),
+    Validation(#[from] ConnectionProfileError),
     #[error("{0}")]
     Store(#[from] ConnectionStoreError),
     #[error("{0}")]
@@ -62,6 +68,8 @@ pub enum ScrollTarget {
     ExplainConfirm,
     Explorer,
     JsonbDetail,
+    CellDetail,
+    SqliteDiagnostics,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,6 +143,7 @@ pub enum InputTarget {
     QueryHistoryFilter,
     JsonbEdit,
     JsonbSearch,
+    CellDetailSearch,
     HelpFilter,
 }
 
@@ -183,8 +192,10 @@ pub enum ModalKind {
     ErTablePicker,
     QueryHistoryPicker,
     JsonbDetail,
+    CellDetail,
     ConnectionSetup,
     ConnectionSelector,
+    SqliteDiagnostics,
 }
 
 #[derive(Debug, Clone)]
@@ -235,6 +246,7 @@ pub struct ConnectionTarget {
     pub id: ConnectionId,
     pub dsn: String,
     pub name: String,
+    pub database_type: DatabaseType,
 }
 
 // Full Action equality is intentionally unavailable: some payloads carry
@@ -326,12 +338,24 @@ pub enum Action {
     CopyConnectionError,
     ConnectionErrorCopied,
     ReenterConnectionSetup,
-    RetryServiceConnection,
+    RetryConnection,
     RequestDeleteSelectedConnection,
     DeleteConnection(ConnectionId),
     ConnectionDeleted(ConnectionId),
     ConnectionDeleteFailed(ConnectionStoreError),
     RequestEditSelectedConnection,
+
+    // SQLite diagnostics
+    SqliteDiagnosticsCoreLoaded {
+        dsn: String,
+        run_id: u64,
+        snapshot: Box<SqliteDiagnosticsSnapshot>,
+    },
+    SqliteDiagnosticsQuickCheckLoaded {
+        dsn: String,
+        run_id: u64,
+        quick_check: DiagnosticField,
+    },
 
     // Settings
     SettingsSelectNext,
@@ -507,6 +531,7 @@ pub enum Action {
     ClearStagedDeletes,
     RequestDeleteActiveRow,
     ResultEnterCellEdit,
+    ResultOpenCellDetail,
     ResultCancelCellEdit,
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
@@ -517,11 +542,8 @@ pub enum Action {
     ToggleReadOnly,
 
     // Query history
-    QueryHistoryLoaded(
-        crate::domain::ConnectionId,
-        Vec<crate::domain::query_history::QueryHistoryEntry>,
-    ),
-    QueryHistoryLoadFailed(crate::domain::ConnectionId, QueryHistoryError),
+    QueryHistoryLoaded(ConnectionId, Vec<QueryHistoryEntry>),
+    QueryHistoryLoadFailed(ConnectionId, QueryHistoryError),
     QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
@@ -564,6 +586,15 @@ pub enum Action {
     JsonbSearchNext,
     JsonbSearchPrev,
     JsonbSearchSubmit,
+
+    // Cell detail
+    CellDetailYankAll,
+    CellDetailYankSuccess,
+    CellDetailEnterSearch,
+    CellDetailExitSearch,
+    CellDetailSearchNext,
+    CellDetailSearchPrev,
+    CellDetailSearchSubmit,
 
     // ER diagrams
     ErToggleSelection,

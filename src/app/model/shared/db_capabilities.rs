@@ -1,47 +1,186 @@
+use crate::domain::connection::DatabaseType;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::sql_editor::modal::SqlModalTab;
-use crate::ports::outbound::{DatabaseCapabilities, InspectorFeature};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InspectorInfoField {
+    Owner,
+    Comment,
+    RowCount,
+    Schema,
+    TableName,
+    TableKind,
+    TableFlags,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExplainCapability {
+    None,
+    QueryPlanOnly,
+    QueryPlanAndAnalyze,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
-    supports_explain: bool,
+    explain: ExplainCapability,
+    supports_er_diagram: bool,
+    supports_jsonb_detail: bool,
+    database_type: Option<DatabaseType>,
     supported_inspector_tabs: Vec<InspectorTab>,
+    supported_inspector_info_fields: Vec<InspectorInfoField>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CapabilityFlags {
+    explain: ExplainCapability,
+    supports_er_diagram: bool,
+    supports_jsonb_detail: bool,
+}
+
+impl CapabilityFlags {
+    const NONE: Self = Self {
+        explain: ExplainCapability::None,
+        supports_er_diagram: false,
+        supports_jsonb_detail: false,
+    };
+
+    const POSTGRESQL: Self = Self {
+        explain: ExplainCapability::QueryPlanAndAnalyze,
+        supports_er_diagram: true,
+        supports_jsonb_detail: true,
+    };
+
+    const SQLITE: Self = Self {
+        explain: ExplainCapability::QueryPlanOnly,
+        supports_er_diagram: false,
+        supports_jsonb_detail: false,
+    };
 }
 
 impl DbCapabilities {
+    fn new(
+        flags: CapabilityFlags,
+        database_type: Option<DatabaseType>,
+        supported_inspector_tabs: Vec<InspectorTab>,
+        supported_inspector_info_fields: Vec<InspectorInfoField>,
+    ) -> Self {
+        assert!(
+            !supported_inspector_tabs.is_empty(),
+            "DbCapabilities requires at least one supported inspector tab"
+        );
+        assert!(
+            !supported_inspector_info_fields.is_empty(),
+            "DbCapabilities requires at least one supported inspector info field"
+        );
+        assert!(
+            has_unique_items(&supported_inspector_tabs),
+            "DbCapabilities supported inspector tabs must be unique"
+        );
+        assert!(
+            has_unique_items(&supported_inspector_info_fields),
+            "DbCapabilities supported inspector info fields must be unique"
+        );
+        Self {
+            explain: flags.explain,
+            supports_er_diagram: flags.supports_er_diagram,
+            supports_jsonb_detail: flags.supports_jsonb_detail,
+            database_type,
+            supported_inspector_tabs,
+            supported_inspector_info_fields,
+        }
+    }
+
+    pub fn disconnected() -> Self {
+        Self::new(
+            CapabilityFlags::NONE,
+            None,
+            vec![InspectorTab::Info],
+            vec![InspectorInfoField::Schema, InspectorInfoField::TableName],
+        )
+    }
+
     pub fn postgres_like() -> Self {
-        DatabaseCapabilities::new(
-            true,
+        Self::new(
+            CapabilityFlags::POSTGRESQL,
+            Some(DatabaseType::PostgreSQL),
             vec![
-                InspectorFeature::Info,
-                InspectorFeature::Columns,
-                InspectorFeature::Indexes,
-                InspectorFeature::ForeignKeys,
-                InspectorFeature::Rls,
-                InspectorFeature::Triggers,
-                InspectorFeature::Ddl,
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+                InspectorTab::Rls,
+                InspectorTab::Triggers,
+                InspectorTab::Ddl,
+            ],
+            vec![
+                InspectorInfoField::Owner,
+                InspectorInfoField::Comment,
+                InspectorInfoField::RowCount,
+                InspectorInfoField::Schema,
+                InspectorInfoField::TableName,
             ],
         )
-        .into()
+    }
+
+    pub fn sqlite_like() -> Self {
+        Self::new(
+            CapabilityFlags::SQLITE,
+            Some(DatabaseType::SQLite),
+            vec![
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+                InspectorTab::Triggers,
+                InspectorTab::Ddl,
+            ],
+            vec![
+                InspectorInfoField::RowCount,
+                InspectorInfoField::Schema,
+                InspectorInfoField::TableName,
+                InspectorInfoField::TableKind,
+                InspectorInfoField::TableFlags,
+            ],
+        )
+    }
+
+    pub fn for_database_type(database_type: DatabaseType) -> Self {
+        match database_type {
+            DatabaseType::PostgreSQL => Self::postgres_like(),
+            DatabaseType::SQLite => Self::sqlite_like(),
+        }
     }
 
     pub fn supports_explain(&self) -> bool {
-        self.supports_explain
+        !matches!(self.explain, ExplainCapability::None)
+    }
+
+    pub fn supports_explain_analyze(&self) -> bool {
+        matches!(self.explain, ExplainCapability::QueryPlanAndAnalyze)
+    }
+
+    pub fn supports_er_diagram(&self) -> bool {
+        self.supports_er_diagram
+    }
+
+    pub fn supports_jsonb_detail(&self) -> bool {
+        self.supports_jsonb_detail
+    }
+
+    pub fn supports_sqlite_diagnostics(&self) -> bool {
+        self.database_type == Some(DatabaseType::SQLite)
     }
 
     pub fn supported_inspector_tabs(&self) -> &[InspectorTab] {
         &self.supported_inspector_tabs
     }
 
-    pub fn new(supports_explain: bool, supported_inspector_tabs: Vec<InspectorTab>) -> Self {
-        assert!(
-            !supported_inspector_tabs.is_empty(),
-            "DbCapabilities requires at least one supported inspector tab"
-        );
-        Self {
-            supports_explain,
-            supported_inspector_tabs,
-        }
+    pub fn supported_inspector_info_fields(&self) -> &[InspectorInfoField] {
+        &self.supported_inspector_info_fields
+    }
+
+    pub fn inspector_info_line_count(&self) -> usize {
+        self.supported_inspector_info_fields.len()
     }
 
     pub fn supports_inspector_tab(&self, tab: InspectorTab) -> bool {
@@ -108,84 +247,204 @@ impl DbCapabilities {
     }
 }
 
-impl From<DatabaseCapabilities> for DbCapabilities {
-    fn from(capabilities: DatabaseCapabilities) -> Self {
-        Self::new(
-            capabilities.supports_explain(),
-            capabilities
-                .supported_inspector_features()
-                .iter()
-                .copied()
-                .map(|feature| match feature {
-                    InspectorFeature::Info => InspectorTab::Info,
-                    InspectorFeature::Columns => InspectorTab::Columns,
-                    InspectorFeature::Indexes => InspectorTab::Indexes,
-                    InspectorFeature::ForeignKeys => InspectorTab::ForeignKeys,
-                    InspectorFeature::Rls => InspectorTab::Rls,
-                    InspectorFeature::Triggers => InspectorTab::Triggers,
-                    InspectorFeature::Ddl => InspectorTab::Ddl,
-                })
-                .collect(),
-        )
-    }
+fn has_unique_items<T: Eq>(items: &[T]) -> bool {
+    !items
+        .iter()
+        .enumerate()
+        .any(|(idx, item)| items[idx + 1..].contains(item))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn postgres_supports_all_inspector_tabs() {
-        let caps = DbCapabilities::new(
-            true,
-            vec![
-                InspectorTab::Info,
-                InspectorTab::Columns,
-                InspectorTab::Indexes,
-                InspectorTab::ForeignKeys,
-                InspectorTab::Rls,
-                InspectorTab::Triggers,
-                InspectorTab::Ddl,
-            ],
-        );
+    mod factory {
+        use super::*;
 
-        assert!(caps.supports_explain());
-        assert!(caps.supports_inspector_tab(InspectorTab::Ddl));
-        assert_eq!(caps.supported_inspector_tabs().len(), 7);
+        #[test]
+        fn postgresql_enables_full_inspector_surface() {
+            let caps = DbCapabilities::postgres_like();
+
+            assert!(caps.supports_explain());
+            assert!(caps.supports_explain_analyze());
+            assert!(caps.supports_er_diagram());
+            assert!(caps.supports_jsonb_detail());
+            assert!(!caps.supports_sqlite_diagnostics());
+            assert!(caps.supports_inspector_tab(InspectorTab::Ddl));
+            assert_eq!(caps.supported_inspector_tabs().len(), 7);
+            assert_eq!(
+                caps.supported_inspector_info_fields(),
+                &[
+                    InspectorInfoField::Owner,
+                    InspectorInfoField::Comment,
+                    InspectorInfoField::RowCount,
+                    InspectorInfoField::Schema,
+                    InspectorInfoField::TableName,
+                ]
+            );
+        }
+
+        #[test]
+        fn sqlite_omits_postgresql_only_info_fields() {
+            let caps = DbCapabilities::sqlite_like();
+
+            assert!(caps.supports_explain());
+            assert!(!caps.supports_explain_analyze());
+            assert!(!caps.supports_er_diagram());
+            assert!(!caps.supports_jsonb_detail());
+            assert!(caps.supports_sqlite_diagnostics());
+            assert_eq!(
+                caps.supported_inspector_tabs(),
+                &[
+                    InspectorTab::Info,
+                    InspectorTab::Columns,
+                    InspectorTab::Indexes,
+                    InspectorTab::ForeignKeys,
+                    InspectorTab::Triggers,
+                    InspectorTab::Ddl
+                ]
+            );
+            assert_eq!(
+                caps.supported_inspector_info_fields(),
+                &[
+                    InspectorInfoField::RowCount,
+                    InspectorInfoField::Schema,
+                    InspectorInfoField::TableName,
+                    InspectorInfoField::TableKind,
+                    InspectorInfoField::TableFlags,
+                ]
+            );
+            assert_eq!(
+                caps.supported_sql_modal_tabs(),
+                &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
+            );
+        }
+
+        #[test]
+        fn database_type_selects_database_specific_capabilities() {
+            assert_eq!(
+                DbCapabilities::for_database_type(DatabaseType::PostgreSQL),
+                DbCapabilities::postgres_like()
+            );
+            assert_eq!(
+                DbCapabilities::for_database_type(DatabaseType::SQLite),
+                DbCapabilities::sqlite_like()
+            );
+        }
+
+        #[test]
+        fn disconnected_keeps_minimum_info_surface() {
+            let caps = DbCapabilities::disconnected();
+
+            assert!(!caps.supports_explain());
+            assert!(!caps.supports_explain_analyze());
+            assert!(!caps.supports_er_diagram());
+            assert!(!caps.supports_jsonb_detail());
+            assert_eq!(caps.supported_inspector_tabs(), &[InspectorTab::Info]);
+            assert_eq!(
+                caps.supported_inspector_info_fields(),
+                &[InspectorInfoField::Schema, InspectorInfoField::TableName]
+            );
+            assert_eq!(caps.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
+        }
     }
 
-    #[test]
-    fn normalize_unsupported_tab_returns_first_supported_tab() {
-        let caps = DbCapabilities::new(false, vec![InspectorTab::Info, InspectorTab::Columns]);
+    mod normalization {
+        use super::*;
 
-        assert_eq!(
-            caps.normalize_inspector_tab(InspectorTab::Triggers),
-            InspectorTab::Info
-        );
+        #[test]
+        fn unsupported_inspector_tab_returns_first_supported_tab() {
+            let caps = DbCapabilities::new(
+                CapabilityFlags::NONE,
+                None,
+                vec![InspectorTab::Info, InspectorTab::Columns],
+                vec![InspectorInfoField::Owner],
+            );
+
+            assert_eq!(
+                caps.normalize_inspector_tab(InspectorTab::Triggers),
+                InspectorTab::Info
+            );
+        }
+
+        #[test]
+        fn supported_sql_modal_tab_passes_through() {
+            let caps = DbCapabilities::new(
+                CapabilityFlags::POSTGRESQL,
+                Some(DatabaseType::PostgreSQL),
+                vec![InspectorTab::Info],
+                vec![InspectorInfoField::Owner],
+            );
+
+            assert_eq!(
+                caps.normalize_sql_modal_tab(SqlModalTab::Compare),
+                SqlModalTab::Compare
+            );
+        }
+
+        #[test]
+        fn unsupported_sql_modal_tab_returns_sql() {
+            let no_explain_caps = DbCapabilities::new(
+                CapabilityFlags::NONE,
+                None,
+                vec![InspectorTab::Info],
+                vec![InspectorInfoField::Owner],
+            );
+
+            assert_eq!(
+                no_explain_caps.normalize_sql_modal_tab(SqlModalTab::Plan),
+                SqlModalTab::Sql
+            );
+        }
     }
 
-    #[test]
-    fn normalize_supported_sql_modal_tab_passes_through() {
-        let caps = DbCapabilities::new(true, vec![InspectorTab::Info]);
+    mod validation {
+        use super::*;
 
-        assert_eq!(
-            caps.normalize_sql_modal_tab(SqlModalTab::Compare),
-            SqlModalTab::Compare
-        );
-    }
+        #[test]
+        #[should_panic(expected = "DbCapabilities requires at least one supported inspector tab")]
+        fn rejects_empty_supported_inspector_tabs() {
+            let _ = DbCapabilities::new(
+                CapabilityFlags::NONE,
+                None,
+                vec![],
+                vec![InspectorInfoField::Owner],
+            );
+        }
 
-    #[test]
-    fn normalize_unsupported_sql_modal_tab_returns_sql() {
-        let no_explain_caps = DbCapabilities::new(false, vec![InspectorTab::Info]);
-        assert_eq!(
-            no_explain_caps.normalize_sql_modal_tab(SqlModalTab::Plan),
-            SqlModalTab::Sql
-        );
-    }
+        #[test]
+        #[should_panic(
+            expected = "DbCapabilities requires at least one supported inspector info field"
+        )]
+        fn rejects_empty_supported_inspector_info_fields() {
+            let _ = DbCapabilities::new(
+                CapabilityFlags::NONE,
+                None,
+                vec![InspectorTab::Info],
+                vec![],
+            );
+        }
 
-    #[test]
-    #[should_panic(expected = "DbCapabilities requires at least one supported inspector tab")]
-    fn rejects_empty_supported_inspector_tabs() {
-        let _ = DbCapabilities::new(false, vec![]);
+        #[test]
+        #[should_panic(expected = "DbCapabilities supported inspector tabs must be unique")]
+        fn rejects_duplicate_supported_inspector_tabs() {
+            let _ = DbCapabilities::new(
+                CapabilityFlags::NONE,
+                None,
+                vec![InspectorTab::Info, InspectorTab::Info],
+                vec![InspectorInfoField::Schema],
+            );
+        }
+
+        #[test]
+        #[should_panic(expected = "DbCapabilities supported inspector info fields must be unique")]
+        fn rejects_duplicate_supported_inspector_info_fields() {
+            let _ = DbCapabilities::new(
+                CapabilityFlags::NONE,
+                None,
+                vec![InspectorTab::Info],
+                vec![InspectorInfoField::Schema, InspectorInfoField::Schema],
+            );
+        }
     }
 }

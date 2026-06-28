@@ -1,3 +1,4 @@
+use crate::domain::QueryValue;
 use crate::policy::sql::statement_classifier::StatementKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +29,7 @@ impl RiskLevel {
 pub struct TargetSummary {
     pub schema: String,
     pub table: String,
-    pub key_values: Vec<(String, String)>,
+    pub key_values: Vec<(String, QueryValue)>,
 }
 
 impl TargetSummary {
@@ -36,7 +37,7 @@ impl TargetSummary {
         let key_str = self
             .key_values
             .iter()
-            .map(|(k, v)| format!("{k}={v}"))
+            .map(|(k, v)| format!("{k}={}", v.display_value()))
             .collect::<Vec<_>>()
             .join(", ");
         format!("{}.{} ({})", self.schema, self.table, key_str)
@@ -153,7 +154,7 @@ mod tests {
             let target = TargetSummary {
                 schema: "public".to_string(),
                 table: "users".to_string(),
-                key_values: vec![("id".to_string(), "42".to_string())],
+                key_values: vec![("id".to_string(), QueryValue::text("42"))],
             };
             let decision = evaluate_guardrails(true, true, Some(target));
             assert_eq!(decision.risk_level, RiskLevel::Low);
@@ -165,7 +166,7 @@ mod tests {
             let target = TargetSummary {
                 schema: "public".to_string(),
                 table: "users".to_string(),
-                key_values: vec![("id".to_string(), "42".to_string())],
+                key_values: vec![("id".to_string(), QueryValue::text("42"))],
             };
             assert_eq!(target.format_compact(), "public.users (id=42)");
         }

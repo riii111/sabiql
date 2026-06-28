@@ -16,7 +16,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Key sequence FSM: two-key sequences (zz, zt, zb)
     // Must be resolved before Ctrl/global actions so that the second key is
     // never swallowed and the sequence is always cleared.
-    if let Some(prefix) = state.ui.key_sequence.pending_prefix() {
+    if let Some(prefix) = state.ui.key_sequence().pending_prefix() {
         if combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT) {
             return Action::CancelKeySequence;
         }
@@ -66,12 +66,17 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         if matches!(action, Action::RequestCsvExport) && !state.can_request_csv_export() {
             return Action::None;
         }
+        if matches!(action, Action::OpenModal(ModalKind::SqliteDiagnostics))
+            && !state
+                .session
+                .active_db_capabilities()
+                .supports_sqlite_diagnostics()
+        {
+            return Action::None;
+        }
         return action;
     }
-    if combo.key == Key::Enter
-        && combo.modifiers.is_empty()
-        && state.connection_error.error_info.is_some()
-    {
+    if combo.key == Key::Enter && combo.modifiers.is_empty() && state.connection_error.has_error() {
         return Action::ConfirmSelection;
     }
 
@@ -121,8 +126,10 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Action::ResultCellYank
         }
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
-        Key::Char('e') => Action::OpenModal(ModalKind::ErTablePicker),
-        Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
+        Key::Char('e') if state.session.active_db_capabilities().supports_er_diagram() => {
+            Action::OpenModal(ModalKind::ErTablePicker)
+        }
+        Key::Char('c') if state.ui.focused_pane() == FocusedPane::Explorer => {
             Action::OpenModal(ModalKind::ConnectionSelector)
         }
 
@@ -135,6 +142,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::connection::error::ConnectionErrorInfo;
     use crate::model::shared::key_sequence::KeySequenceState;
     use crate::model::shared::settings::KeymapPreset;
@@ -154,8 +162,16 @@ mod tests {
         KeyCombo::ctrl(k)
     }
 
+    fn combo_ctrl_shift(k: Key) -> KeyCombo {
+        KeyCombo::ctrl_shift(k)
+    }
+
     fn browse_state() -> AppState {
         AppState::new("test".to_string())
+    }
+
+    fn sqlite_connected_state() -> AppState {
+        connected_state(DatabaseType::SQLite)
     }
 
     fn browse_state_with_preset(preset: KeymapPreset) -> AppState {
@@ -164,22 +180,35 @@ mod tests {
         state
     }
 
+    fn connected_state(database_type: DatabaseType) -> AppState {
+        let mut state = browse_state();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            database_type,
+            "test://database",
+        );
+        state
+    }
+
     fn focus_mode_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
-        state.ui.focused_pane = FocusedPane::Result;
+        state
+            .ui
+            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+        state.ui.set_focused_pane(FocusedPane::Result);
         state
     }
 
     fn result_focused_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Result;
+        state.ui.set_focused_pane(FocusedPane::Result);
         state
     }
 
     fn inspector_focused_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focused_pane = FocusedPane::Inspector;
+        state.ui.set_focused_pane(FocusedPane::Inspector);
         state
     }
 
@@ -273,6 +302,27 @@ mod tests {
                 let result = handle_normal_mode(input, &state);
 
                 assert!(same_payload_free_action(&result, &expected));
+            }
+
+            #[test]
+            fn er_key_opens_picker_for_postgresql() {
+                let state = connected_state(DatabaseType::PostgreSQL);
+
+                let result = handle_normal_mode(combo(Key::Char('e')), &state);
+
+                assert!(matches!(
+                    result,
+                    Action::OpenModal(ModalKind::ErTablePicker)
+                ));
+            }
+
+            #[test]
+            fn er_key_is_ignored_for_sqlite() {
+                let state = connected_state(DatabaseType::SQLite);
+
+                let result = handle_normal_mode(combo(Key::Char('e')), &state);
+
+                assert!(matches!(result, Action::None));
             }
 
             #[rstest]
@@ -437,7 +487,7 @@ mod tests {
             #[test]
             fn enter_confirms_selection_when_explorer_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
 
                 let result = handle_normal_mode(combo(Key::Enter), &state);
 
@@ -447,7 +497,9 @@ mod tests {
             #[test]
             fn alt_enter_noop_when_connection_error_is_open() {
                 let mut state = browse_state();
-                state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
+                state
+                    .connection_error
+                    .set_error(ConnectionErrorInfo::new("boom"));
 
                 let result = handle_normal_mode(KeyCombo::alt(Key::Enter), &state);
 
@@ -457,7 +509,9 @@ mod tests {
             #[test]
             fn plain_enter_confirms_connection_error() {
                 let mut state = browse_state();
-                state.connection_error.error_info = Some(ConnectionErrorInfo::new("boom"));
+                state
+                    .connection_error
+                    .set_error(ConnectionErrorInfo::new("boom"));
 
                 let result = handle_normal_mode(KeyCombo::plain(Key::Enter), &state);
 
@@ -467,7 +521,7 @@ mod tests {
             #[test]
             fn enter_noop_when_inspector_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
 
                 let result = handle_normal_mode(combo(Key::Enter), &state);
 
@@ -477,11 +531,22 @@ mod tests {
             #[test]
             fn enter_activates_cell_when_result_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Result;
+                state.ui.set_focused_pane(FocusedPane::Result);
 
                 let result = handle_normal_mode(combo(Key::Enter), &state);
 
                 assert!(matches!(result, Action::ResultActivateCell));
+            }
+
+            #[test]
+            fn enter_opens_cell_detail_when_result_cell_is_active() {
+                let mut state = browse_state();
+                state.ui.set_focused_pane(FocusedPane::Result);
+                state.result_interaction.activate_cell(0, 0);
+
+                let result = handle_normal_mode(combo(Key::Enter), &state);
+
+                assert!(matches!(result, Action::ResultOpenCellDetail));
             }
         }
 
@@ -503,7 +568,7 @@ mod tests {
             #[test]
             fn tab_switches_inspector_tab_when_inspector_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
 
                 let result = handle_normal_mode(combo(Key::Tab), &state);
 
@@ -513,7 +578,7 @@ mod tests {
             #[test]
             fn shift_tab_prev_when_inspector_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.set_focused_pane(FocusedPane::Inspector);
 
                 let result = handle_normal_mode(combo(Key::BackTab), &state);
 
@@ -523,7 +588,7 @@ mod tests {
             #[test]
             fn tab_noop_when_explorer_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
 
                 let result = handle_normal_mode(combo(Key::Tab), &state);
 
@@ -533,7 +598,7 @@ mod tests {
             #[test]
             fn tab_noop_when_result_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Result;
+                state.ui.set_focused_pane(FocusedPane::Result);
 
                 let result = handle_normal_mode(combo(Key::Tab), &state);
 
@@ -543,7 +608,7 @@ mod tests {
             #[test]
             fn backtab_noop_when_explorer_focused() {
                 let mut state = browse_state();
-                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.set_focused_pane(FocusedPane::Explorer);
 
                 let result = handle_normal_mode(combo(Key::BackTab), &state);
 
@@ -900,6 +965,77 @@ mod tests {
                 assert!(matches!(result, Action::Select(SelectMotion::HalfPageDown)));
             }
 
+            mod sqlite_connected {
+                use super::*;
+
+                #[test]
+                fn ctrl_d_result_half_page_down() {
+                    let mut state = sqlite_connected_state();
+                    state.ui.set_focused_pane(FocusedPane::Result);
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
+
+                    assert!(matches!(
+                        result,
+                        Action::Scroll {
+                            target: ScrollTarget::Result,
+                            direction: ScrollDirection::Down,
+                            amount: ScrollAmount::HalfPage
+                        }
+                    ));
+                }
+
+                #[test]
+                fn ctrl_d_inspector_half_page_down() {
+                    let mut state = sqlite_connected_state();
+                    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
+
+                    assert!(matches!(
+                        result,
+                        Action::Scroll {
+                            target: ScrollTarget::Inspector,
+                            direction: ScrollDirection::Down,
+                            amount: ScrollAmount::HalfPage
+                        }
+                    ));
+                }
+
+                #[test]
+                fn ctrl_d_explorer_half_page_down() {
+                    let state = sqlite_connected_state();
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
+
+                    assert!(matches!(result, Action::Select(SelectMotion::HalfPageDown)));
+                }
+
+                #[test]
+                fn ctrl_shift_d_opens_diagnostics() {
+                    let state = sqlite_connected_state();
+
+                    let result = handle_normal_mode(combo_ctrl_shift(Key::Char('d')), &state);
+
+                    assert!(matches!(
+                        result,
+                        Action::OpenModal(ModalKind::SqliteDiagnostics)
+                    ));
+                }
+
+                #[test]
+                fn normalized_ctrl_uppercase_d_opens_diagnostics() {
+                    let state = sqlite_connected_state();
+
+                    let result = handle_normal_mode(combo_ctrl(Key::Char('D')), &state);
+
+                    assert!(matches!(
+                        result,
+                        Action::OpenModal(ModalKind::SqliteDiagnostics)
+                    ));
+                }
+            }
+
             #[test]
             fn page_down_explorer_full_page_down() {
                 let state = browse_state();
@@ -1125,8 +1261,7 @@ mod tests {
                     .begin_cell_edit(0, 1, "original".to_string());
                 state
                     .result_interaction
-                    .cell_edit_input_mut()
-                    .set_content("modified".to_string());
+                    .replace_cell_edit_draft("modified".to_string());
 
                 let result = handle_normal_mode(combo(Key::Esc), &state);
 
@@ -1200,7 +1335,9 @@ mod tests {
                 #[case(Key::Char('b'), CursorPosition::Bottom)]
                 fn z_prefix_scrolls_cursor(#[case] key: Key, #[case] position: CursorPosition) {
                     let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(key), &state);
 
@@ -1223,7 +1360,9 @@ mod tests {
                 #[case(Key::Char('b'), CursorPosition::Bottom)]
                 fn z_prefix_scrolls_cursor(#[case] key: Key, #[case] position: CursorPosition) {
                     let mut state = result_focused_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(key), &state);
 
@@ -1243,7 +1382,9 @@ mod tests {
                 #[test]
                 fn zz_cancels_sequence() {
                     let mut state = inspector_focused_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1257,7 +1398,9 @@ mod tests {
                 #[test]
                 fn zz_scrolls_cursor_to_center() {
                     let mut state = focus_mode_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
 
                     let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1276,7 +1419,9 @@ mod tests {
 
                 fn state_waiting_z_prefix() -> AppState {
                     let mut state = browse_state();
-                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+                    state
+                        .ui
+                        .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
                     state
                 }
 
@@ -1521,7 +1666,9 @@ mod tests {
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
-            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state
+                .ui
+                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
             let key_label = format!("{key:?}");
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);

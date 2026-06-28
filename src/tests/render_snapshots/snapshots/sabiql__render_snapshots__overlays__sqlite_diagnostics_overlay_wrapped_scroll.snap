@@ -1,0 +1,27 @@
+---
+source: src/tests/render_snapshots/overlays.rs
+expression: output
+---
+test_project | test_db | - | connected | local    
+┌ [1] Explor┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
+│> public.u │┌ [2] Inspector ────────────────────┐
+│  public.p ││(select a table)                   │
+│  public.c ││                                   │
+│       ╭ SQLite Diagnostics ─────────────╮      │
+│       │                                 │      │
+│       │Effective foreign keys: on       │      │
+│       │                                 │      │
+│       │Journal mode: wal                │      │
+│       │                                 │      │
+│       │Effective query only: off        │──────┘
+│       │                                 │──────┐
+│       │Effective busy timeout (ms): 5000│      │
+│       │                                 │      │
+│       │Attached databases: 0: main @    │      │
+│       │/tmp/app.db                      │      │
+│       │                                 │      │
+│       ╰ Esc: Close │ ↑↓: Scroll ────────╯      │
+│           ││                                   │
+│           ││                                   │
+└───────────┘└───────────────────────────────────┘
+↑↓:Scroll  ?:Help  Esc:Close

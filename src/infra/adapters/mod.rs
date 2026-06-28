@@ -9,8 +9,9 @@ pub mod mysql;
 pub mod pg_service;
 pub mod postgres;
 pub mod query_history;
+pub mod registry;
 pub mod settings_store;
-
+pub mod sqlite;
 pub use clipboard::ArboardClipboard;
 pub use config_writer::FileConfigWriter;
 pub use connection_store::TomlConnectionStore;
@@ -19,4 +20,6 @@ pub use folder_opener::NativeFolderOpener;
 pub use pg_service::PgServiceFileReader;
 pub use postgres::PostgresAdapter;
 pub use query_history::FileQueryHistoryStore;
+pub use registry::DbAdapterRegistry;
 pub use settings_store::TomlSettingsStore;
+pub use sqlite::{FsSqlitePathValidator, SqliteAdapter};

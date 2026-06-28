@@ -4,6 +4,7 @@ mod er_picker;
 mod help;
 mod query_history;
 mod settings;
+mod sqlite_diagnostics;
 
 use std::time::Instant;
 
@@ -15,6 +16,7 @@ pub fn dispatch_modal(state: &mut AppState, action: &Action, now: Instant) -> Di
     base::reduce_base_lifecycle(state, action, now)
         .or_else(|| settings::reduce_settings(state, action, now))
         .or_else(|| help::reduce_help(state, action, now))
+        .or_else(|| sqlite_diagnostics::reduce_sqlite_diagnostics(state, action, now))
         .or_else(|| confirm_dialog::reduce_confirm_dialog(state, action, now))
         .or_else(|| er_picker::reduce_er_picker(state, action, now))
         .or_else(|| query_history::reduce_query_history_picker(state, action, now))
@@ -26,14 +28,15 @@ mod tests {
 
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::model::shared::confirm_dialog::ConfirmIntent;
+    use crate::domain::{ConnectionId, DatabaseType, QueryValue};
+    use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::KeymapPreset;
     use crate::ports::outbound::AppSettings;
     use crate::update::action::{
         InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
-
+    use crate::update::test_fixtures;
     use std::time::Instant;
 
     fn create_test_state() -> AppState {
@@ -84,7 +87,7 @@ mod tests {
         fn escape_returns_to_help_origin_with_filter() {
             let mut state = create_test_state();
             open_help(&mut state);
-            state.ui.help.insert_filter_char('c');
+            state.ui.help_mut().insert_filter_char('c');
 
             let effects = super::dispatch_modal(
                 &mut state,
@@ -94,7 +97,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.input_mode(), InputMode::CommandPalette);
-            assert!(state.ui.help.filter().content().is_empty());
+            assert!(state.ui.help().filter().content().is_empty());
             assert!(effects.is_empty());
         }
 
@@ -137,15 +140,45 @@ mod tests {
             )
             .unwrap();
 
-            assert!(state.ui.help.filter().content().is_empty());
+            assert!(state.ui.help().filter().content().is_empty());
             assert!(input_effects.is_empty());
             assert!(backspace_effects.is_empty());
+        }
+    }
+
+    mod er_picker {
+        use super::*;
+
+        #[test]
+        fn sqlite_connection_rejects_er_picker() {
+            let mut state = create_test_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite://test.db",
+            );
+
+            let effects = super::dispatch_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::ErTablePicker),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("ER diagrams are not available for this connection")
+            );
+            assert!(effects.is_empty());
         }
     }
 
     mod settings {
         use super::*;
         use crate::model::shared::theme_id::ThemeId;
+        use crate::ports::outbound::SettingsStoreError;
 
         mod theme_selection {
             use super::*;
@@ -337,9 +370,9 @@ mod tests {
 
             let effects = super::dispatch_modal(
                 &mut state,
-                &Action::SettingsSaveFailed(crate::ports::outbound::SettingsStoreError::Io(
-                    std::sync::Arc::new(std::io::Error::other("disk full")),
-                )),
+                &Action::SettingsSaveFailed(SettingsStoreError::Io(std::sync::Arc::new(
+                    std::io::Error::other("disk full"),
+                ))),
                 Instant::now(),
             )
             .unwrap();
@@ -359,8 +392,88 @@ mod tests {
             state.modal.push_mode(InputMode::ConfirmDialog);
         }
 
+        const CSV_TEST_DSN: &str = "postgres://localhost/test";
+        const CSV_TEST_FILE: &str = "test.csv";
+
+        fn csv_state_with_current_run() -> (AppState, u64) {
+            let mut state = create_test_state();
+            enter_confirm_dialog(&mut state, InputMode::Normal);
+            test_fixtures::activate_postgres_connection(&mut state, CSV_TEST_DSN);
+            let run_id = state.query.begin_running(Instant::now());
+            (state, run_id)
+        }
+
+        fn csv_state_with_stale_run() -> (AppState, u64, u64) {
+            let (mut state, stale_run_id) = csv_state_with_current_run();
+            let current_run_id = state.query.begin_running(Instant::now());
+            (state, stale_run_id, current_run_id)
+        }
+
+        fn rerunnable_csv_intent(run_id: u64) -> ConfirmIntent {
+            ConfirmIntent::CsvExportRerunnable {
+                dsn: CSV_TEST_DSN.to_string(),
+                run_id,
+                export_query: "SELECT 1".to_string(),
+                file_name: CSV_TEST_FILE.to_string(),
+                row_count: Some(200_000),
+            }
+        }
+
+        fn cached_csv_intent(run_id: u64) -> ConfirmIntent {
+            ConfirmIntent::CsvExportCached {
+                dsn: CSV_TEST_DSN.to_string(),
+                run_id,
+                file_name: CSV_TEST_FILE.to_string(),
+                row_count: Some(2),
+                snapshot: CsvExportCacheSnapshot {
+                    columns: vec!["id".to_string()],
+                    values: vec![vec![QueryValue::text("1")]],
+                },
+            }
+        }
+
+        fn open_confirm_intent(state: &mut AppState, intent: ConfirmIntent) {
+            state.confirm_dialog.open("", "", intent);
+        }
+
+        fn confirm_effects(state: &mut AppState) -> Vec<Effect> {
+            dispatch_modal(state, &Action::ConfirmDialogConfirm, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action")
+        }
+
+        fn cancel_effects(state: &mut AppState) -> Vec<Effect> {
+            dispatch_modal(state, &Action::ConfirmDialogCancel, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action")
+        }
+
+        fn assert_cached_export_effect(effect: &Effect, run_id: u64) {
+            let Effect::ExportCsvFromCache {
+                dsn,
+                run_id: effect_run_id,
+                file_name,
+                columns,
+                values,
+                row_count,
+            } = effect
+            else {
+                panic!("expected cached CSV export effect");
+            };
+
+            assert_eq!(dsn, CSV_TEST_DSN);
+            assert_eq!(*effect_run_id, run_id);
+            assert_eq!(file_name, CSV_TEST_FILE);
+            assert_eq!(columns, &vec!["id".to_string()]);
+            assert_eq!(values, &vec![vec![QueryValue::text("1")]]);
+            assert_eq!(*row_count, Some(2));
+        }
+
         mod confirm {
             use super::*;
+            use crate::policy::write::write_guardrails::{
+                GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+            };
 
             #[test]
             fn quit_no_connection_sets_should_quit() {
@@ -386,7 +499,7 @@ mod tests {
             fn delete_connection_returns_delete_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::ConnectionSelector);
-                let id = crate::domain::ConnectionId::new();
+                let id = ConnectionId::new();
                 state
                     .confirm_dialog
                     .open("", "", ConfirmIntent::DeleteConnection(id));
@@ -407,7 +520,10 @@ mod tests {
             fn execute_write_sets_running_state_and_returns_effect() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::CellEdit);
-                state.session.dsn = Some("postgres://localhost/test".to_string());
+                test_fixtures::activate_postgres_connection(
+                    &mut state,
+                    "postgres://localhost/test",
+                );
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -433,7 +549,7 @@ mod tests {
             fn execute_write_no_dsn_sets_error() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = None;
+                state.session.clear_connection();
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -485,24 +601,22 @@ mod tests {
             fn execute_write_blocked_confirm_clears_preview_state() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.result_interaction.set_write_preview(
-                    crate::policy::write::write_guardrails::WritePreview {
-                        operation: crate::policy::write::write_guardrails::WriteOperation::Update,
-                        sql: "UPDATE t SET x=1".to_string(),
-                        target_summary: crate::policy::write::write_guardrails::TargetSummary {
-                            schema: "public".to_string(),
-                            table: "t".to_string(),
-                            key_values: vec![],
-                        },
-                        diff: vec![],
-                        guardrail: crate::policy::write::write_guardrails::GuardrailDecision {
-                            risk_level: crate::policy::write::write_guardrails::RiskLevel::High,
-                            blocked: true,
-                            reason: Some("too risky".to_string()),
-                            target_summary: None,
-                        },
+                state.result_interaction.set_write_preview(WritePreview {
+                    operation: WriteOperation::Update,
+                    sql: "UPDATE t SET x=1".to_string(),
+                    target_summary: TargetSummary {
+                        schema: "public".to_string(),
+                        table: "t".to_string(),
+                        key_values: vec![],
                     },
-                );
+                    diff: vec![],
+                    guardrail: GuardrailDecision {
+                        risk_level: RiskLevel::High,
+                        blocked: true,
+                        reason: Some("too risky".to_string()),
+                        target_summary: None,
+                    },
+                });
                 state.query.set_delete_refresh_target(0, None, 1);
                 state.confirm_dialog.open(
                     "",
@@ -523,43 +637,36 @@ mod tests {
 
             #[test]
             fn csv_export_returns_export_effect() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = Some("postgres://localhost/test".to_string());
-                let _ = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExport {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id: 1,
-                        export_query: "SELECT 1".to_string(),
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(200_000),
-                    },
-                );
+                let (mut state, run_id) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, rerunnable_csv_intent(run_id));
 
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
-
+                let effects = confirm_effects(&mut state);
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
+            }
+
+            #[test]
+            fn cached_csv_export_returns_export_from_cache_effect() {
+                let (mut state, run_id) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, cached_csv_intent(run_id));
+
+                let effects = confirm_effects(&mut state);
+                assert_eq!(effects.len(), 1);
+                assert_cached_export_effect(&effects[0], run_id);
             }
 
             #[test]
             fn csv_export_ignores_mismatched_dsn() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = Some("postgres://localhost/current".to_string());
+                let _ = state
+                    .session
+                    .begin_connecting("postgres://localhost/current");
                 let _ = state.query.begin_running(Instant::now());
                 state.confirm_dialog.open(
                     "",
                     "",
-                    ConfirmIntent::CsvExport {
+                    ConfirmIntent::CsvExportRerunnable {
                         dsn: "postgres://localhost/stale".to_string(),
                         run_id: 1,
                         export_query: "SELECT 1".to_string(),
@@ -580,36 +687,26 @@ mod tests {
 
             #[test]
             fn csv_export_ignores_mismatched_run_id() {
-                let mut state = create_test_state();
-                enter_confirm_dialog(&mut state, InputMode::Normal);
-                state.session.dsn = Some("postgres://localhost/test".to_string());
-                let _ = state.query.begin_running(Instant::now());
-                state.confirm_dialog.open(
-                    "",
-                    "",
-                    ConfirmIntent::CsvExport {
-                        dsn: "postgres://localhost/test".to_string(),
-                        run_id: 2,
-                        export_query: "SELECT 1".to_string(),
-                        file_name: "test.csv".to_string(),
-                        row_count: Some(200_000),
-                    },
-                );
+                let (mut state, _) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, rerunnable_csv_intent(2));
 
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::ConfirmDialogConfirm,
-                    Instant::now(),
-                )
-                .unwrap();
+                let effects = confirm_effects(&mut state);
+                assert!(effects.is_empty());
+            }
 
+            #[test]
+            fn cached_csv_export_ignores_mismatched_run_id() {
+                let (mut state, _) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, cached_csv_intent(2));
+
+                let effects = confirm_effects(&mut state);
                 assert!(effects.is_empty());
             }
 
             #[test]
             fn disable_read_only_confirm_sets_read_only_false() {
                 let mut state = create_test_state();
-                state.session.read_only = true;
+                state.session.enable_read_only();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
                 state
                     .confirm_dialog
@@ -622,7 +719,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(!state.session.read_only);
+                assert!(!state.session.is_read_only());
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert!(effects.is_empty());
             }
@@ -797,6 +894,48 @@ mod tests {
             }
 
             #[test]
+            fn current_csv_export_cancel_marks_query_idle() {
+                let (mut state, run_id) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, rerunnable_csv_intent(run_id));
+
+                let effects = cancel_effects(&mut state);
+                assert!(effects.is_empty());
+                assert!(!state.query.is_running());
+            }
+
+            #[test]
+            fn current_cached_csv_export_cancel_marks_query_idle() {
+                let (mut state, run_id) = csv_state_with_current_run();
+                open_confirm_intent(&mut state, cached_csv_intent(run_id));
+
+                let effects = cancel_effects(&mut state);
+                assert!(effects.is_empty());
+                assert!(!state.query.is_running());
+            }
+
+            #[test]
+            fn stale_csv_export_cancel_keeps_current_run() {
+                let (mut state, stale_run_id, current_run_id) = csv_state_with_stale_run();
+                open_confirm_intent(&mut state, rerunnable_csv_intent(stale_run_id));
+
+                let effects = cancel_effects(&mut state);
+                assert!(effects.is_empty());
+                assert!(state.query.is_running());
+                assert!(state.query.is_current_run(current_run_id));
+            }
+
+            #[test]
+            fn stale_cached_csv_export_cancel_keeps_current_run() {
+                let (mut state, stale_run_id, current_run_id) = csv_state_with_stale_run();
+                open_confirm_intent(&mut state, cached_csv_intent(stale_run_id));
+
+                let effects = cancel_effects(&mut state);
+                assert!(effects.is_empty());
+                assert!(state.query.is_running());
+                assert!(state.query.is_current_run(current_run_id));
+            }
+
+            #[test]
             fn none_intent_cancel_does_not_panic() {
                 let mut state = create_test_state();
                 enter_confirm_dialog(&mut state, InputMode::Normal);
@@ -813,7 +952,6 @@ mod tests {
 
     mod query_history_picker {
         use super::*;
-        use crate::domain::ConnectionId;
         use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
         use crate::model::shared::text_input::TextInputLike;
         use crate::ports::outbound::query_history::QueryHistoryError;
@@ -830,7 +968,12 @@ mod tests {
 
         fn connected_state() -> AppState {
             let mut state = create_test_state();
-            state.session.active_connection_id = Some(ConnectionId::from_string("test-conn"));
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("test-conn"),
+                "test",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
             state.runtime.project_name = "test-project".to_string();
             state
         }
@@ -846,7 +989,7 @@ mod tests {
             #[test]
             fn open_when_not_connected_is_noop() {
                 let mut state = create_test_state();
-                state.session.active_connection_id = None;
+                state.session.clear_connection();
 
                 let effects = super::dispatch_modal(
                     &mut state,
@@ -994,7 +1137,7 @@ mod tests {
                 super::dispatch_modal(
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
-                        crate::domain::ConnectionId::from_string("test-conn"),
+                        ConnectionId::from_string("test-conn"),
                         QueryHistoryError::Io(Arc::new(std::io::Error::other("disk error"))),
                     ),
                     now,
@@ -1016,7 +1159,7 @@ mod tests {
                 super::dispatch_modal(
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
-                        crate::domain::ConnectionId::from_string("test-conn"),
+                        ConnectionId::from_string("test-conn"),
                         QueryHistoryError::Io(Arc::new(std::io::Error::other("stale error"))),
                     ),
                     now,
@@ -1151,6 +1294,8 @@ mod tests {
 
         mod confirm_selection {
             use super::*;
+            use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+            use crate::model::sql_editor::modal::SqlModalStatus;
 
             #[test]
             fn confirm_sets_cursor_to_char_count_not_byte_len() {
@@ -1193,10 +1338,7 @@ mod tests {
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
                 assert_eq!(state.sql_modal.editor.content(), "SELECT * FROM users");
-                assert!(matches!(
-                    state.sql_modal.status(),
-                    crate::model::sql_editor::modal::SqlModalStatus::Normal
-                ));
+                assert!(matches!(state.sql_modal.status(), SqlModalStatus::Normal));
                 assert!(effects.is_empty());
             }
 
@@ -1205,16 +1347,13 @@ mod tests {
                 let mut state = connected_state();
                 enter_query_history(&mut state, InputMode::SqlModal);
                 state.sql_modal.editor.set_content("old query".to_string());
-                state
-                    .sql_modal
-                    .set_status_for_test(crate::model::sql_editor::modal::SqlModalStatus::Editing);
+                state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
                 state.sql_modal.completion_mut_for_test().visible = true;
-                state.sql_modal.completion_mut_for_test().candidates =
-                    vec![crate::model::sql_editor::completion::CompletionCandidate {
-                        text: "stale".to_string(),
-                        kind: crate::model::sql_editor::completion::CompletionKind::Keyword,
-                        score: 1,
-                    }];
+                state.sql_modal.completion_mut_for_test().candidates = vec![CompletionCandidate {
+                    text: "stale".to_string(),
+                    kind: CompletionKind::Keyword,
+                    score: 1,
+                }];
                 state.sql_modal.completion_mut_for_test().selected_index = 3;
                 let test_conn = ConnectionId::from_string("test-conn");
                 state
@@ -1230,10 +1369,7 @@ mod tests {
 
                 assert_eq!(state.input_mode(), InputMode::SqlModal);
                 assert_eq!(state.sql_modal.editor.content(), "new query");
-                assert!(matches!(
-                    state.sql_modal.status(),
-                    crate::model::sql_editor::modal::SqlModalStatus::Normal
-                ));
+                assert!(matches!(state.sql_modal.status(), SqlModalStatus::Normal));
                 assert!(!state.sql_modal.completion().visible);
                 assert!(state.sql_modal.completion().candidates.is_empty());
                 assert_eq!(state.sql_modal.completion().selected_index, 0);

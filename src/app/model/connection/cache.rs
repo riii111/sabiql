@@ -117,15 +117,15 @@ mod tests {
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
 
-        let metadata = Arc::new(DatabaseMetadata {
-            database_name: "test_db".to_string(),
-            schemas: vec![],
-            table_summaries: vec![TableSummary::new(
+        let metadata = Arc::new({
+            let mut metadata = DatabaseMetadata::new("test_db".to_string());
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 Some(100),
                 false,
-            )],
+            )];
+            metadata
         });
 
         let cache = ConnectionCache {
@@ -166,6 +166,6 @@ mod tests {
         assert!(retrieved.query_result.is_some());
         let retrieved_result = retrieved.query_result.as_ref().unwrap();
         assert_eq!(retrieved_result.query, "SELECT * FROM users");
-        assert_eq!(retrieved_result.row_count, 1);
+        assert_eq!(retrieved_result.row_count(), 1);
     }
 }
