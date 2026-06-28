@@ -135,10 +135,10 @@ fn clipboard_unavailable() -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::Column;
     use crate::domain::Table;
     use crate::ports::outbound::ddl_generator::DdlGenerator;
-    use crate::test_support::column::test_nullable_column;
+    use crate::test_support::column::column_fixture;
+    use crate::test_support::table::table_fixture;
     use std::sync::Arc;
 
     mod cell_yank {
@@ -448,17 +448,18 @@ mod tests {
         fn state_with_ddl_tab() -> AppState {
             let mut state = AppState::new("test".to_string());
             state.ui.set_inspector_tab(InspectorTab::Ddl);
-            state.session.set_table_detail_raw(Some(Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                columns: vec![Column {
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "integer", 1)
-                }],
-                primary_key: Some(vec!["id".to_string()]),
-                row_count_estimate: Some(0),
-                ..crate::test_support::table::minimal("", "")
-            }));
+            state.session.set_table_detail_raw(Some(table_fixture(|t| {
+                t.schema = "public".to_string();
+                t.name = "users".to_string();
+                t.columns = vec![column_fixture(|c| {
+                    c.name = "id".into();
+                    c.data_type = "integer".into();
+                    c.ordinal_position = 1;
+                    c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                })];
+                t.primary_key = Some(vec!["id".to_string()]);
+                t.row_count_estimate = Some(0);
+            })));
             state
         }
 

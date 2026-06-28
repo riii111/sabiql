@@ -148,9 +148,8 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 #[cfg(test)]
 mod tests {
     use super::*;
-    pub use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
-    use crate::test_support::column::test_nullable_column;
+    use crate::test_support::column::column_fixture;
     use crate::update::action::CursorMove;
     use rstest::rstest;
     use std::sync::Arc;
@@ -290,14 +289,18 @@ mod tests {
             let mut state = preview_state_with_selection();
             let mut table = minimal_users_table();
             table.columns = vec![
-                Column {
-                    attributes: ColumnAttributes::PRIMARY_KEY,
-                    ..test_nullable_column("id", "integer", 1)
-                },
-                Column {
-                    attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                    ..test_nullable_column("name", "text", 2)
-                },
+                column_fixture(|c| {
+                    c.name = "id".into();
+                    c.data_type = "integer".into();
+                    c.ordinal_position = 1;
+                    c.attributes = ColumnAttributes::PRIMARY_KEY;
+                }),
+                column_fixture(|c| {
+                    c.name = "name".into();
+                    c.data_type = "text".into();
+                    c.ordinal_position = 2;
+                    c.attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
+                }),
             ];
             state.session.set_table_detail_raw(Some(table));
 
@@ -371,11 +374,17 @@ mod tests {
             );
             let mut table = cell_edit_entry_guardrails::minimal_users_table();
             table.columns = vec![
-                Column {
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "integer", 1)
-                },
-                test_nullable_column("name", "jsonb", 2),
+                column_fixture(|c| {
+                    c.name = "id".into();
+                    c.data_type = "integer".into();
+                    c.ordinal_position = 1;
+                    c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                }),
+                column_fixture(|c| {
+                    c.name = "name".into();
+                    c.data_type = "jsonb".into();
+                    c.ordinal_position = 2;
+                }),
             ];
             state.session.set_table_detail_raw(Some(table));
             state

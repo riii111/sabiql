@@ -95,9 +95,9 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::Column;
-    use crate::domain::{QueryResult, QuerySource, Table};
-    use crate::test_support::column::test_nullable_column;
+    use crate::domain::{QueryResult, QuerySource};
+    use crate::test_support::column::column_fixture;
+    use crate::test_support::table::table_fixture;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -128,16 +128,17 @@ mod tests {
                     1,
                     QuerySource::Preview,
                 )));
-            state.session.set_table_detail_raw(Some(Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                columns: vec![Column {
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "integer", 1)
-                }],
-                primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
-                ..crate::test_support::table::minimal("", "")
-            }));
+            state.session.set_table_detail_raw(Some(table_fixture(|t| {
+                t.schema = "public".to_string();
+                t.name = "users".to_string();
+                t.columns = vec![column_fixture(|c| {
+                    c.name = "id".into();
+                    c.data_type = "integer".into();
+                    c.ordinal_position = 1;
+                    c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                })];
+                t.primary_key = pk.map(|cols| cols.into_iter().map(ToString::to_string).collect());
+            })));
             state
         }
 

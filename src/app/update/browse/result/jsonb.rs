@@ -352,26 +352,31 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    pub use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
     use crate::services::AppServices;
-    use crate::test_support::column::test_nullable_column;
+    use crate::test_support::column::column_fixture;
+    use crate::test_support::table::table_fixture;
     use std::sync::Arc;
 
     fn jsonb_table() -> Table {
-        Table {
-            schema: "public".to_string(),
-            name: "users".to_string(),
-            columns: vec![
-                Column {
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "integer", 1)
-                },
-                test_nullable_column("settings", "jsonb", 2),
-            ],
-            primary_key: Some(vec!["id".to_string()]),
-            ..crate::test_support::table::minimal("", "")
-        }
+        table_fixture(|t| {
+            t.schema = "public".to_string();
+            t.name = "users".to_string();
+            t.columns = vec![
+                column_fixture(|c| {
+                    c.name = "id".into();
+                    c.data_type = "integer".into();
+                    c.ordinal_position = 1;
+                    c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                }),
+                column_fixture(|c| {
+                    c.name = "settings".into();
+                    c.data_type = "jsonb".into();
+                    c.ordinal_position = 2;
+                }),
+            ];
+            t.primary_key = Some(vec!["id".to_string()]);
+        })
     }
 
     fn state_with_jsonb_cell() -> AppState {
@@ -623,18 +628,23 @@ mod tests {
         #[test]
         fn enter_edit_blocks_read_only_column() {
             let mut state = state_with_jsonb_cell();
-            state.session.set_table_detail_raw(Some(Table {
-                columns: vec![
-                    Column {
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "integer", 1)
-                    },
-                    Column {
-                        attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..test_nullable_column("settings", "jsonb", 2)
-                    },
-                ],
-                ..jsonb_table()
+            state.session.set_table_detail_raw(Some({
+                let mut table = jsonb_table();
+                table.columns = vec![
+                    column_fixture(|c| {
+                        c.name = "id".into();
+                        c.data_type = "integer".into();
+                        c.ordinal_position = 1;
+                        c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "settings".into();
+                        c.data_type = "jsonb".into();
+                        c.ordinal_position = 2;
+                        c.attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
+                    }),
+                ];
+                table
             }));
             open_detail(&mut state);
 
@@ -651,18 +661,23 @@ mod tests {
         #[test]
         fn append_insert_blocks_read_only_column() {
             let mut state = state_with_jsonb_cell();
-            state.session.set_table_detail_raw(Some(Table {
-                columns: vec![
-                    Column {
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "integer", 1)
-                    },
-                    Column {
-                        attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..test_nullable_column("settings", "jsonb", 2)
-                    },
-                ],
-                ..jsonb_table()
+            state.session.set_table_detail_raw(Some({
+                let mut table = jsonb_table();
+                table.columns = vec![
+                    column_fixture(|c| {
+                        c.name = "id".into();
+                        c.data_type = "integer".into();
+                        c.ordinal_position = 1;
+                        c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "settings".into();
+                        c.data_type = "jsonb".into();
+                        c.ordinal_position = 2;
+                        c.attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
+                    }),
+                ];
+                table
             }));
             open_detail(&mut state);
 
