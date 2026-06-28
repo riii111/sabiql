@@ -252,6 +252,18 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_entry_rejects_empty_path() {
+        let entry = sqlite_entry(Some(""));
+
+        let result = ConnectionProfile::try_from(&entry);
+
+        assert!(matches!(
+            result,
+            Err(ConnectionProfileError::EmptySqlitePath)
+        ));
+    }
+
+    #[test]
     fn sqlite_entry_rejects_invalid_path() {
         let entry = sqlite_entry(Some("/tmp/app\0.db"));
 

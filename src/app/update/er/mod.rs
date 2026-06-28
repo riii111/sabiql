@@ -51,7 +51,7 @@ mod tests {
 
     fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
         let tables: Vec<TableSummary> = (0..table_count)
-            .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
+            .map(|i| TableSummary::new("public".to_string(), format!("t{i}"), None, false))
             .collect();
         Arc::new({
             let mut metadata = DatabaseMetadata::new("test".to_string());

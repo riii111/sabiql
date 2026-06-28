@@ -107,6 +107,18 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_field_pending_contract() {
+        let field = DiagnosticField::Pending;
+
+        assert!(field.is_pending());
+        assert!(!field.is_ok());
+        assert!(!field.is_err());
+        assert!(field.ok_value().is_none());
+        assert!(field.err_message().is_none());
+        assert_eq!(field.display(), "");
+    }
+
+    #[test]
     fn quick_check_is_ok_detects_ok_summary() {
         let snapshot = SqliteDiagnosticsSnapshot {
             quick_check: DiagnosticField::ok("ok"),

@@ -222,6 +222,19 @@ mod tests {
     }
 
     #[test]
+    fn pending_field_uses_warning_style() {
+        let snapshot = SqliteDiagnosticsSnapshot {
+            quick_check: DiagnosticField::Pending,
+            ..Default::default()
+        };
+        let theme = palette_for(ThemeId::Default);
+
+        let style = field_style(DiagnosticFieldKind::QuickCheck, &snapshot, theme);
+
+        assert_eq!(style.fg, Some(theme.semantic.status.warning));
+    }
+
+    #[test]
     fn multiline_values_produce_separate_render_lines() {
         let snapshot = SqliteDiagnosticsSnapshot {
             database_list: DiagnosticField::ok("main|/tmp/app.db\naux|/tmp/aux.db"),
