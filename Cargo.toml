@@ -132,6 +132,7 @@ used_underscore_binding = "allow"  # rstest #[case] doc params use _prefix conve
 naive_bytecount = "allow"  # bytecount crate would be an unnecessary dependency
 
 # Restriction lints (opt-in)
+absolute_paths = "warn"
 dbg_macro = "deny"
 todo = "deny"
 print_stdout = "deny"
