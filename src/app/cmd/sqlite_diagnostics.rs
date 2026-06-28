@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 use std::sync::Arc;
 
 use crate::cmd::effect::Effect;
-use crate::domain::DiagnosticField;
+use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 use crate::ports::outbound::SqliteDiagnosticsProvider;
 use crate::update::action::Action;
 
@@ -30,11 +30,9 @@ pub fn run(
                     Err(error) => Action::SqliteDiagnosticsCoreLoaded {
                         dsn,
                         run_id,
-                        snapshot: Box::new(
-                            crate::domain::SqliteDiagnosticsSnapshot::core_fetch_failed(
-                                DiagnosticField::err(error.masked_details()),
-                            ),
-                        ),
+                        snapshot: Box::new(SqliteDiagnosticsSnapshot::core_fetch_failed(
+                            DiagnosticField::err(error.masked_details()),
+                        )),
                     },
                 };
                 let _ = action_tx.send(action).await;
@@ -65,7 +63,6 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::sqlite_diagnostics::MockSqliteDiagnosticsProvider;
     use std::sync::Arc;

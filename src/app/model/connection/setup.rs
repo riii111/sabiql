@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::domain::connection::{
-    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SqliteConnectionConfigError,
-    SqlitePathError, SslMode,
+    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, PostgresConnectionConfig,
+    SqliteConnectionConfig, SqliteConnectionConfigError, SqlitePathError, SslMode,
 };
 use crate::model::shared::text_input::TextInputState;
 
@@ -380,8 +380,8 @@ impl ConnectionSetupState {
 
     pub fn to_connection_config(&self) -> Result<ConnectionConfig, SqliteConnectionConfigError> {
         Ok(match self.database_type {
-            DatabaseType::PostgreSQL => ConnectionConfig::PostgreSQL(
-                crate::domain::connection::PostgresConnectionConfig::new(
+            DatabaseType::PostgreSQL => {
+                ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
                     self.host.content().to_string(),
                     self.port
                         .content()
@@ -391,13 +391,11 @@ impl ConnectionSetupState {
                     self.user.content().to_string(),
                     self.password.content().to_string(),
                     self.ssl_mode,
-                ),
-            ),
-            DatabaseType::SQLite => {
-                ConnectionConfig::SQLite(crate::domain::connection::SqliteConnectionConfig::new(
-                    self.sqlite_path.content().to_string(),
-                )?)
+                ))
             }
+            DatabaseType::SQLite => ConnectionConfig::SQLite(SqliteConnectionConfig::new(
+                self.sqlite_path.content().to_string(),
+            )?),
         })
     }
 }
