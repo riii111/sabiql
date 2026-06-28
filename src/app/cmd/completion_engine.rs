@@ -927,32 +927,37 @@ mod tests {
     use super::*;
     pub use crate::domain::Column;
     use crate::domain::Table;
-    use crate::test_support::column::test_nullable_column;
+    use crate::test_support::column::column_fixture;
+    use crate::test_support::table::table_fixture;
 
     fn engine() -> CompletionEngine {
         CompletionEngine::new()
     }
 
     fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
-        Table {
-            schema: schema.to_string(),
-            name: name.to_string(),
-            columns: columns
+        table_fixture(|t| {
+            t.schema = schema.to_string();
+            t.name = name.to_string();
+            t.columns = columns
                 .iter()
                 .enumerate()
-                .map(|(i, col)| test_nullable_column(*col, "text", (i + 1) as i32))
-                .collect(),
-            ..crate::test_support::table::minimal("", "")
-        }
+                .map(|(i, col)| {
+                    column_fixture(|c| {
+                        c.name = (*col).into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = (i + 1) as i32;
+                    })
+                })
+                .collect();
+        })
     }
 
     fn table_with_two_columns(col1: Column, col2: Column) -> Table {
-        Table {
-            schema: "public".to_string(),
-            name: "test".to_string(),
-            columns: vec![col1, col2],
-            ..crate::test_support::table::minimal("", "")
-        }
+        table_fixture(|t| {
+            t.schema = "public".to_string();
+            t.name = "test".to_string();
+            t.columns = vec![col1, col2];
+        })
     }
 
     mod context_detection {
@@ -1213,11 +1218,17 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    test_nullable_column("user_name", "text", 1),
-                    Column {
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("user_id", "int", 2)
-                    },
+                    column_fixture(|c| {
+                        c.name = "user_name".into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = 1;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "user_id".into();
+                        c.data_type = "int".into();
+                        c.ordinal_position = 2;
+                        c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                    }),
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
                 ..crate::test_support::table::minimal("", "")
@@ -1340,11 +1351,17 @@ mod tests {
         fn pk_column_returns_higher_score() {
             let e = engine();
             let table = table_with_two_columns(
-                test_nullable_column("name", "text", 1),
-                Column {
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "int", 2)
-                },
+                column_fixture(|c| {
+                    c.name = "name".into();
+                    c.data_type = "text".into();
+                    c.ordinal_position = 1;
+                }),
+                column_fixture(|c| {
+                    c.name = "id".into();
+                    c.data_type = "int".into();
+                    c.ordinal_position = 2;
+                    c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                }),
             );
 
             let candidates = e.column_candidates(Some(&table), "");
@@ -1357,11 +1374,17 @@ mod tests {
         fn not_null_column_returns_higher_score() {
             let e = engine();
             let table = table_with_two_columns(
-                test_nullable_column("optional_field", "text", 1),
-                Column {
-                    attributes: ColumnAttributes::empty(),
-                    ..test_nullable_column("required_field", "text", 2)
-                },
+                column_fixture(|c| {
+                    c.name = "optional_field".into();
+                    c.data_type = "text".into();
+                    c.ordinal_position = 1;
+                }),
+                column_fixture(|c| {
+                    c.name = "required_field".into();
+                    c.data_type = "text".into();
+                    c.ordinal_position = 2;
+                    c.attributes = ColumnAttributes::empty();
+                }),
             );
 
             let candidates = e.column_candidates(Some(&table), "");
@@ -1559,11 +1582,17 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 columns: vec![
-                    Column {
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "int", 1)
-                    },
-                    test_nullable_column("name", "text", 2),
+                    column_fixture(|c| {
+                        c.name = "id".into();
+                        c.data_type = "int".into();
+                        c.ordinal_position = 1;
+                        c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "name".into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = 2;
+                    }),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 ..crate::test_support::table::minimal("", "")
@@ -1625,12 +1654,22 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 columns: vec![
-                    Column {
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("user_id", "int", 1)
-                    },
-                    test_nullable_column("username", "text", 2),
-                    test_nullable_column("email", "text", 3),
+                    column_fixture(|c| {
+                        c.name = "user_id".into();
+                        c.data_type = "int".into();
+                        c.ordinal_position = 1;
+                        c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "username".into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = 2;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "email".into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = 3;
+                    }),
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
                 ..crate::test_support::table::minimal("", "")
@@ -1674,15 +1713,23 @@ mod tests {
                 schema: "public".to_string(),
                 name: "orders".to_string(),
                 columns: vec![
-                    Column {
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "int", 1)
-                    },
-                    Column {
-                        attributes: ColumnAttributes::empty(),
-                        ..test_nullable_column("user_id", "int", 2)
-                    },
-                    test_nullable_column("status", "text", 3),
+                    column_fixture(|c| {
+                        c.name = "id".into();
+                        c.data_type = "int".into();
+                        c.ordinal_position = 1;
+                        c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "user_id".into();
+                        c.data_type = "int".into();
+                        c.ordinal_position = 2;
+                        c.attributes = ColumnAttributes::empty();
+                    }),
+                    column_fixture(|c| {
+                        c.name = "status".into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = 3;
+                    }),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 foreign_keys: vec![ForeignKey {
@@ -1752,8 +1799,16 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    test_nullable_column("user_id", "int", 1),
-                    test_nullable_column("created_at", "timestamp", 2),
+                    column_fixture(|c| {
+                        c.name = "user_id".into();
+                        c.data_type = "int".into();
+                        c.ordinal_position = 1;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "created_at".into();
+                        c.data_type = "timestamp".into();
+                        c.ordinal_position = 2;
+                    }),
                 ],
                 ..crate::test_support::table::minimal("", "")
             };
@@ -1772,8 +1827,16 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    test_nullable_column("id", "int", 1),
-                    test_nullable_column("user_id", "int", 2),
+                    column_fixture(|c| {
+                        c.name = "id".into();
+                        c.data_type = "int".into();
+                        c.ordinal_position = 1;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "user_id".into();
+                        c.data_type = "int".into();
+                        c.ordinal_position = 2;
+                    }),
                 ],
                 ..crate::test_support::table::minimal("", "")
             };
@@ -1799,8 +1862,16 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    test_nullable_column("name", "text", 1),
-                    test_nullable_column("email", "text", 2),
+                    column_fixture(|c| {
+                        c.name = "name".into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = 1;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "email".into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = 2;
+                    }),
                 ],
                 ..crate::test_support::table::minimal("", "")
             };
@@ -1921,10 +1992,12 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                columns: vec![Column {
-                    attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "int", 1)
-                }],
+                columns: vec![column_fixture(|c| {
+                    c.name = "id".into();
+                    c.data_type = "int".into();
+                    c.ordinal_position = 1;
+                    c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                })],
                 ..crate::test_support::table::minimal("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
@@ -2060,15 +2133,23 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 columns: vec![
-                    Column {
-                        attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "int", 1)
-                    },
-                    test_nullable_column("name", "text", 2),
-                    Column {
-                        attributes: ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("email", "text", 3)
-                    },
+                    column_fixture(|c| {
+                        c.name = "id".into();
+                        c.data_type = "int".into();
+                        c.ordinal_position = 1;
+                        c.attributes = ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "name".into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = 2;
+                    }),
+                    column_fixture(|c| {
+                        c.name = "email".into();
+                        c.data_type = "text".into();
+                        c.ordinal_position = 3;
+                        c.attributes = ColumnAttributes::UNIQUE;
+                    }),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 ..crate::test_support::table::minimal("", "")
@@ -2266,7 +2347,11 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                columns: vec![test_nullable_column("and", "text", 1)],
+                columns: vec![column_fixture(|c| {
+                    c.name = "and".into();
+                    c.data_type = "text".into();
+                    c.ordinal_position = 1;
+                })],
                 ..crate::test_support::table::minimal("", "")
             };
 
