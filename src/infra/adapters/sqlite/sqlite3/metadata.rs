@@ -610,11 +610,9 @@ impl SqliteAdapter {
             .collect();
         let primary_key = (!primary_key.is_empty()).then_some(primary_key);
         let storage = if mode.include_storage() {
-            self.table_storage(path, table)
-                .await?
-                .unwrap_or_else(TableStorage::regular_table)
+            self.table_storage(path, table).await?.unwrap_or_default()
         } else {
-            TableStorage::regular_table()
+            TableStorage::default()
         };
 
         Ok(Table {

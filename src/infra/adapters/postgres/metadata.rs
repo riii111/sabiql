@@ -70,7 +70,7 @@ impl MetadataProvider for PostgresAdapter {
             row_count_estimate: table_info.row_count_estimate,
             comment: table_info.comment,
             source_ddl: None,
-            storage: TableStorage::regular_table(),
+            storage: TableStorage::default(),
         })
     }
 
@@ -98,7 +98,7 @@ impl MetadataProvider for PostgresAdapter {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
-            storage: TableStorage::regular_table(),
+            storage: TableStorage::default(),
         })
     }
 }

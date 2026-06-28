@@ -194,7 +194,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
-                storage: TableStorage::regular_table(),
+                storage: TableStorage::default(),
             }
         }
 

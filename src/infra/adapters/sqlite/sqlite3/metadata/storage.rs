@@ -41,7 +41,7 @@ pub(super) fn table_storage_from_pragma(
 }
 
 pub(super) fn table_storage_from_legacy_sql(sql: Option<&str>) -> TableStorage {
-    let mut storage = TableStorage::regular_table();
+    let mut storage = TableStorage::default();
     enrich_kind_from_legacy_sql(&mut storage, sql);
     if let Some(sql) = sql {
         let (is_strict, without_rowid) = parse_table_tail_options(sql);
