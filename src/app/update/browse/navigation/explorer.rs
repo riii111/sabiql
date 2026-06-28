@@ -202,10 +202,10 @@ mod tests {
         let tables: Vec<TableSummary> = (0..count)
             .map(|i| TableSummary::new("public".to_string(), format!("table_{i}"), Some(0), false))
             .collect();
-        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-            database_name: "test".to_string(),
-            schemas: vec![],
-            table_summaries: tables,
+        state.session.set_metadata(Some(Arc::new({
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = tables;
+            metadata
         })));
         state.ui.set_explorer_selection(Some(0));
         state
@@ -221,10 +221,10 @@ mod tests {
                 TableSummary::new("public".to_string(), (*name).to_string(), Some(0), false)
             })
             .collect();
-        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-            database_name: "test".to_string(),
-            schemas: vec![],
-            table_summaries: tables,
+        state.session.set_metadata(Some(Arc::new({
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = tables;
+            metadata
         })));
         state
     }
@@ -760,10 +760,10 @@ mod tests {
                         without_rowid: true,
                         ..TableStorage::default()
                     });
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![summary],
+            state.session.set_metadata(Some(Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = vec![summary];
+                metadata
             })));
 
             let expected = explorer_table_label_width(state.tables()[0]).saturating_sub(10);

@@ -57,10 +57,10 @@ mod tests {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = tables;
+                metadata
             })
         }
 
@@ -174,11 +174,9 @@ mod tests {
         fn idle_status_returns_generate_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.mark_idle();
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            })));
+            state
+                .session
+                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
             state
                 .er_preparation
                 .set_targets(vec!["public.users".to_string()]);
@@ -219,10 +217,10 @@ mod tests {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = tables;
+                metadata
             })
         }
 
@@ -446,10 +444,10 @@ mod tests {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = tables;
+                metadata
             })
         }
 

@@ -537,15 +537,15 @@ mod tests {
         fn save_completed_clears_previous_browse_state() {
             let mut state = AppState::new("test".to_string());
             activate_postgres_connection(&mut state, "postgres://localhost/old");
-            state.session.mark_connected(Arc::new(DatabaseMetadata {
-                database_name: "old_db".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            state.session.mark_connected(Arc::new({
+                let mut metadata = DatabaseMetadata::new("old_db".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
-                )],
+                )];
+                metadata
             }));
             state.ui.set_explorer_selected_raw(3);
             let _ = state
@@ -588,15 +588,15 @@ mod tests {
                 DatabaseType::PostgreSQL,
                 "postgres://localhost/current",
             );
-            state.session.mark_connected(Arc::new(DatabaseMetadata {
-                database_name: "current".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            state.session.mark_connected(Arc::new({
+                let mut metadata = DatabaseMetadata::new("current".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
-                )],
+                )];
+                metadata
             }));
             state.ui.set_explorer_selected_raw(4);
             fill_valid_form(&mut state);
@@ -615,15 +615,15 @@ mod tests {
             state.connection_caches.save(
                 &saved_id,
                 ConnectionCache {
-                    metadata: Some(Arc::new(DatabaseMetadata {
-                        database_name: "stale".to_string(),
-                        schemas: vec![],
-                        table_summaries: vec![TableSummary::new(
+                    metadata: Some(Arc::new({
+                        let mut metadata = DatabaseMetadata::new("stale".to_string());
+                        metadata.table_summaries = vec![TableSummary::new(
                             "main".to_string(),
                             "old_table".to_string(),
                             None,
                             false,
-                        )],
+                        )];
+                        metadata
                     })),
                     ..Default::default()
                 },

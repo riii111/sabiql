@@ -89,10 +89,10 @@ fn sqlite_explorer_shows_table_storage_suffixes() {
         DatabaseType::SQLite,
         "sqlite:///tmp/app.db",
     );
-    let metadata = DatabaseMetadata {
-        database_name: "app.db".to_string(),
-        schemas: vec![Schema::new("main")],
-        table_summaries: vec![
+    let metadata = {
+        let mut metadata = DatabaseMetadata::new("app.db".to_string());
+        metadata.schemas = vec![Schema::new("main")];
+        metadata.table_summaries = vec![
             TableSummary::new("main".to_string(), "users".to_string(), None, false),
             TableSummary::new("main".to_string(), "settings".to_string(), None, false)
                 .with_storage(TableStorage {
@@ -110,7 +110,8 @@ fn sqlite_explorer_shows_table_storage_suffixes() {
                     is_strict: true,
                     ..TableStorage::default()
                 }),
-        ],
+        ];
+        metadata
     };
     state.session.mark_connected(Arc::new(metadata));
     state.ui.set_explorer_selection(Some(0));

@@ -393,10 +393,10 @@ mod tests {
             let tables: Vec<TableSummary> = (0..count)
                 .map(|i| TableSummary::new("public".to_string(), format!("t{i}"), Some(0), false))
                 .collect();
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
+            state.session.set_metadata(Some(Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = tables;
+                metadata
             })));
             state
         }

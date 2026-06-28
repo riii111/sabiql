@@ -23,20 +23,18 @@ fn minimal_table(schema: &str, name: &str) -> Table {
 }
 
 pub fn sample_metadata() -> DatabaseMetadata {
-    DatabaseMetadata {
-        database_name: "test_db".to_string(),
-        table_summaries: vec![
-            TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-            TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-            TableSummary::new(
-                "public".to_string(),
-                "comments".to_string(),
-                Some(200),
-                false,
-            ),
-        ],
-        schemas: vec![],
-    }
+    let mut metadata = DatabaseMetadata::new("test_db".to_string());
+    metadata.table_summaries = vec![
+        TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
+        TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
+        TableSummary::new(
+            "public".to_string(),
+            "comments".to_string(),
+            Some(200),
+            false,
+        ),
+    ];
+    metadata
 }
 
 pub fn sample_table_detail() -> Table {

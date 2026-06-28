@@ -79,15 +79,15 @@ mod tests {
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         fn metadata_with_users() -> Arc<DatabaseMetadata> {
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
-                )],
+                )];
+                metadata
             })
         }
 
@@ -617,15 +617,15 @@ mod tests {
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = tables
                     .into_iter()
                     .map(|(schema, name)| {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)
                     })
-                    .collect(),
+                    .collect();
+                metadata
             })
         }
 
@@ -724,10 +724,10 @@ mod tests {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = tables;
+                metadata
             })
         }
 
