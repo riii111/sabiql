@@ -261,20 +261,22 @@ impl Footer {
                 }
             }
             InputMode::ConnectionSetup => {
-                let submit_hint = if matches!(
+                let mut hints = if matches!(
                     state.connection_setup.focused_field(),
                     ConnectionField::DatabaseType | ConnectionField::SslMode
                 ) {
-                    connection_setup::ENTER_DROPDOWN.as_hint()
+                    vec![
+                        connection_setup::ENTER_DROPDOWN.as_hint(),
+                        connection_setup::SAVE.as_hint(),
+                    ]
                 } else {
-                    connection_setup_save(state.settings.saved_keymap_preset()).as_hint()
+                    vec![connection_setup_save(state.settings.saved_keymap_preset()).as_hint()]
                 };
-                vec![
-                    submit_hint,
-                    connection_setup::TAB_NEXT.as_hint(),
-                    connection_setup::TAB_PREV.as_hint(),
+                hints.extend([
+                    connection_setup::TAB_NAV.as_hint(),
                     connection_setup::ESC_CANCEL.as_hint(),
-                ]
+                ]);
+                hints
             }
             InputMode::ConnectionError => {
                 let first = if state.session.can_reenter_connection_setup() {
@@ -515,7 +517,7 @@ mod tests {
     }
 
     #[test]
-    fn connection_setup_footer_shows_toggle_on_ssl_field() {
+    fn connection_setup_footer_shows_toggle_and_connect_on_ssl_field() {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::ConnectionSetup);
         focus_connection_field(&mut state, ConnectionField::SslMode);
@@ -523,6 +525,7 @@ mod tests {
         let hints = Footer::get_context_hints(&state);
 
         assert!(hints.contains(&connection_setup::ENTER_DROPDOWN.as_hint()));
+        assert!(hints.contains(&connection_setup::SAVE.as_hint()));
         assert!(!hints.contains(&("Enter", "Connect")));
     }
 }

@@ -13,7 +13,7 @@ pub mod connection_setup {
     pub const TAB_NAV: KeyBinding = KeyBinding {
         key_short: "Tab/⇧Tab",
         key: "Tab/⇧Tab",
-        desc_short: "Next/Prev",
+        desc_short: "Field",
         description: "Next/Previous field",
         action: Action::None,
         combos: &[],
@@ -68,7 +68,7 @@ pub mod connection_setup {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Toggle",
-        description: "Toggle dropdown (SSL field)",
+        description: "Toggle dropdown",
         action: Action::ConnectionSetupToggleDropdown,
         combos: &[KeyCombo::plain(Key::Enter)],
     };

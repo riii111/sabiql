@@ -1,6 +1,7 @@
 use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
+use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::db_capabilities::DbCapabilities;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
@@ -253,15 +254,10 @@ fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> Help
             mode,
             keymap_preset,
         } => sql_current_rows(mode, keymap_preset, db_capabilities),
-        HelpOrigin::ConnectionSetup { keymap_preset } => rows_from_binding_refs(&[
-            &connection_setup::TAB_NAV,
-            &connection_setup::TAB_NEXT,
-            &connection_setup::TAB_PREV,
-            connection_setup_save(keymap_preset),
-            &connection_setup::ESC_CANCEL,
-            &connection_setup::ENTER_DROPDOWN,
-            &connection_setup::DROPDOWN_NAV,
-        ]),
+        HelpOrigin::ConnectionSetup {
+            keymap_preset,
+            focused_field,
+        } => connection_setup_current_rows(keymap_preset, focused_field),
         HelpOrigin::ConnectionError => rows_from_mode_rows(CONNECTION_ERROR_ROWS),
         HelpOrigin::SqliteDiagnostics => rows_from_mode_rows(SQLITE_DIAGNOSTICS_ROWS),
         HelpOrigin::ConfirmDialog => rows_from_bindings(CONFIRM_DIALOG_KEYS),
@@ -474,6 +470,38 @@ fn sql_current_rows(
         }
         SqlHelpMode::Confirm => rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
     }
+}
+
+fn connection_setup_current_rows(
+    keymap_preset: KeymapPreset,
+    focused_field: ConnectionField,
+) -> Vec<HelpRow> {
+    let is_dropdown_field = matches!(
+        focused_field,
+        ConnectionField::DatabaseType | ConnectionField::SslMode
+    );
+    let submit = if is_dropdown_field {
+        &connection_setup::ENTER_DROPDOWN
+    } else {
+        connection_setup_save(keymap_preset)
+    };
+    let mut rows = rows_from_binding_refs(&[
+        &connection_setup::TAB_NAV,
+        &connection_setup::TAB_NEXT,
+        &connection_setup::TAB_PREV,
+        submit,
+    ]);
+    if is_dropdown_field {
+        rows.push(HelpRow::new(
+            connection_setup::SAVE.key,
+            connection_setup::SAVE.description,
+        ));
+    }
+    rows.extend(rows_from_binding_refs(&[
+        &connection_setup::ESC_CANCEL,
+        &connection_setup::DROPDOWN_NAV,
+    ]));
+    rows
 }
 
 fn jsonb_current_rows(mode: JsonbHelpMode) -> Vec<HelpRow> {
@@ -808,5 +836,30 @@ mod tests {
                 .iter()
                 .any(|row| row.key() == ":erd")
         );
+    }
+
+    #[test]
+    fn connection_setup_help_matches_ssl_field_actions() {
+        let document = HelpDocument::new(
+            HelpOrigin::ConnectionSetup {
+                keymap_preset: KeymapPreset::Ide,
+                focused_field: ConnectionField::SslMode,
+            },
+            "",
+        );
+        let current_rows = document.sections()[0].rows();
+
+        assert!(current_rows.iter().any(|row| {
+            row.key() == connection_setup::ENTER_DROPDOWN.key
+                && row.description() == connection_setup::ENTER_DROPDOWN.description
+        }));
+        assert!(current_rows.iter().any(|row| {
+            row.key() == connection_setup::SAVE.key
+                && row.description() == connection_setup::SAVE.description
+        }));
+        assert!(!current_rows.iter().any(|row| {
+            row.key() == connection_setup::SAVE_IDE.key
+                && row.description() == connection_setup::SAVE_IDE.description
+        }));
     }
 }

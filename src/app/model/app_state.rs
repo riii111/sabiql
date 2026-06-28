@@ -2,8 +2,8 @@ use std::time::Instant;
 
 use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
-use crate::domain::TableSummary;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+use crate::domain::{DatabaseType, TableSummary};
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::browse::query_execution::QueryExecution;
@@ -25,6 +25,7 @@ use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
+use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
 
 pub struct AppState {
@@ -285,7 +286,16 @@ impl AppState {
     }
 
     pub fn can_request_csv_export(&self) -> bool {
-        self.query.visible_result().is_some_and(|r| !r.is_error())
+        let Some(result) = self.query.visible_result() else {
+            return false;
+        };
+        if result.is_error() {
+            return false;
+        }
+        if self.session.active_database_type() == Some(DatabaseType::SQLite) {
+            return true;
+        }
+        is_rerunnable_select(&result.query)
     }
 
     /// True when a run-scoped async response no longer belongs to the active
@@ -704,6 +714,21 @@ mod tests {
                 .set_current_result(make_query_result(QuerySource::Preview));
 
             assert!(state.can_request_csv_export());
+        }
+
+        #[test]
+        fn csv_export_blocked_for_mutating_result_query() {
+            let mut state = make_state();
+            let result = QueryResult::success(
+                "UPDATE users SET name = 'b' WHERE id = 1 RETURNING id".to_string(),
+                vec!["id".to_string()],
+                vec![vec!["1".to_string()]],
+                10,
+                QuerySource::Adhoc,
+            );
+            state.query.set_current_result(Arc::new(result));
+
+            assert!(!state.can_request_csv_export());
         }
     }
 

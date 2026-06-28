@@ -1,5 +1,6 @@
 use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
@@ -105,6 +106,7 @@ pub enum HelpOrigin {
     },
     ConnectionSetup {
         keymap_preset: KeymapPreset,
+        focused_field: ConnectionField,
     },
     ConnectionError,
     SqliteDiagnostics,
@@ -128,7 +130,7 @@ impl HelpOrigin {
         match self {
             Self::Normal { keymap_preset, .. }
             | Self::SqlModal { keymap_preset, .. }
-            | Self::ConnectionSetup { keymap_preset }
+            | Self::ConnectionSetup { keymap_preset, .. }
             | Self::ErTablePicker { keymap_preset } => keymap_preset,
             Self::CommandLine
             | Self::CellEdit
@@ -166,6 +168,7 @@ impl HelpOrigin {
             },
             InputMode::ConnectionSetup => Self::ConnectionSetup {
                 keymap_preset: state.settings.saved_keymap_preset(),
+                focused_field: state.connection_setup.focused_field,
             },
             InputMode::ConnectionError => Self::ConnectionError,
             InputMode::SqliteDiagnostics => Self::SqliteDiagnostics,

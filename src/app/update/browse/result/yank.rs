@@ -1,8 +1,6 @@
 use std::time::{Duration, Instant};
 
 use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -135,7 +133,7 @@ fn clipboard_unavailable() -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, DatabaseType, QueryResult, QuerySource, Table};
+    use crate::domain::{Column, ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
     use crate::ports::outbound::ddl_generator::DdlGenerator;
     use std::sync::Arc;
 

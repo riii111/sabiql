@@ -157,6 +157,7 @@ pub fn reduce_connection_setup(
             DispatchResult::handled()
         }
         Action::ConnectionSetupSave => {
+            state.connection_setup.confirm_dropdown();
             validate_all(&mut state.connection_setup);
             if state.connection_setup.has_validation_errors() {
                 return DispatchResult::handled();
@@ -236,7 +237,7 @@ pub fn reduce_connection_setup(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::{ConnectionProfile, SslMode};
+    use crate::domain::connection::{ConnectionConfig, ConnectionProfile, SslMode};
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::er_state::ErStatus;
     use crate::update::test_fixtures;
@@ -512,6 +513,34 @@ mod tests {
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::SaveAndConnect { .. }]
+            ));
+        }
+
+        #[test]
+        fn save_confirms_open_ssl_dropdown_selection() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            state.connection_setup.ssl_mode = SslMode::Prefer;
+            state.connection_setup.focused_field = ConnectionField::SslMode;
+            state.connection_setup.toggle_focused_dropdown();
+            while SslMode::all_variants()[state.connection_setup.ssl_dropdown().selected_index()]
+                != SslMode::Require
+            {
+                state.connection_setup.dropdown_next();
+            }
+
+            let effects =
+                reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now())
+                    .unwrap();
+
+            assert_eq!(state.connection_setup.ssl_mode, SslMode::Require);
+            assert!(!state.connection_setup.ssl_dropdown().is_open());
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SaveAndConnect {
+                    config: ConnectionConfig::PostgreSQL(config),
+                    ..
+                }] if config.ssl_mode == SslMode::Require
             ));
         }
 

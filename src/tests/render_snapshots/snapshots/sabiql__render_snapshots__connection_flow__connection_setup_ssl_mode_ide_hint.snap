@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
-assertion_line: 35
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
@@ -26,7 +25,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
-│                                       ││          │  Host:       [ db.example.com             ]                │                                                  │
+│                                       ││          │  Host:       [ localhost                  ]                │                                                  │
 │                                       │└──────────│  Port:       [ 5432                       ]                │──────────────────────────────────────────────────┘
 │                                       │┌ [3] Resul│  Database:   [                            ]                │──────────────────────────────────────────────────┐
 │                                       ││(select a │  User:       [                            ]                │                                                  │
@@ -35,7 +34,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
+│                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -52,4 +51,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-^S:Connect  Tab/⇧Tab:Field  Esc:Cancel
+Enter:Toggle  ^S:Connect  Tab/⇧Tab:Field  Esc:Cancel

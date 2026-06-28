@@ -1,4 +1,5 @@
 use crate::model::app_state::AppState;
+use crate::model::shared::settings::KeymapPreset;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 
@@ -12,6 +13,19 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
     let ctrl_only = ctrl && !alt && !shift;
 
+    let primary_save = keybindings::connection_setup_save(state.settings.saved_keymap_preset());
+    let auxiliary_save = state.settings.saved_keymap_preset() == KeymapPreset::Ide
+        && keybindings::connection_setup::SAVE.combos.contains(&combo);
+    if (primary_save.combos.contains(&combo) || auxiliary_save)
+        && !(combo.key == Key::Enter
+            && matches!(
+                state.connection_setup.focused_field(),
+                ConnectionField::DatabaseType | ConnectionField::SslMode
+            ))
+    {
+        return Action::ConnectionSetupSave;
+    }
+
     if dropdown_open {
         return match combo.key {
             Key::Up => Action::ConnectionSetupDropdownPrev,
@@ -22,15 +36,6 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
             Key::Esc => Action::ConnectionSetupDropdownCancel,
             _ => Action::None,
         };
-    }
-
-    if keybindings::connection_setup_save(state.settings.saved_keymap_preset())
-        .combos
-        .contains(&combo)
-        && !(combo.key == Key::Enter
-            && state.connection_setup.focused_field() == ConnectionField::SslMode)
-    {
-        return Action::ConnectionSetupSave;
     }
 
     match combo.key {
@@ -94,7 +99,6 @@ pub fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
 mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
-    use crate::model::shared::settings::KeymapPreset;
     use crate::update::action::{
         ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
     };
@@ -182,11 +186,21 @@ mod tests {
 
         #[test]
         fn ide_enter_saves() {
-            let state = setup_state_with_preset(KeymapPreset::Ide);
+            let mut state = setup_state_with_preset(KeymapPreset::Ide);
+            focus_field(&mut state, ConnectionField::Name);
 
             let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
             assert!(matches!(result, Action::ConnectionSetupSave));
+        }
+
+        #[test]
+        fn ide_enter_on_database_type_toggles_dropdown() {
+            let state = setup_state_with_preset(KeymapPreset::Ide);
+
+            let result = handle_connection_setup_keys(combo(Key::Enter), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
         }
 
         #[test]
@@ -200,12 +214,22 @@ mod tests {
         }
 
         #[test]
-        fn ide_ctrl_s_is_ignored() {
+        fn ide_ctrl_s_saves() {
             let state = setup_state_with_preset(KeymapPreset::Ide);
 
             let result = handle_connection_setup_keys(combo_ctrl(Key::Char('s')), &state);
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(result, Action::ConnectionSetupSave));
+        }
+
+        #[test]
+        fn ide_ctrl_s_saves_on_ssl_field() {
+            let mut state = setup_state_with_preset(KeymapPreset::Ide);
+            state.connection_setup.focused_field = ConnectionField::SslMode;
+
+            let result = handle_connection_setup_keys(combo_ctrl(Key::Char('s')), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupSave));
         }
 
         #[test]

@@ -33,6 +33,138 @@ pub fn classify(sql: &str) -> StatementKind {
     classify_inner(&lower, &chars)
 }
 
+pub fn has_executed_data_modifying_cte(sql: &str) -> bool {
+    let lower = sql.trim().to_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+    let chars: Vec<(usize, char)> = lower.char_indices().collect();
+    if matches!(
+        explain_executes_inner_statement(&lower, &chars),
+        Some(false)
+    ) {
+        return false;
+    }
+
+    let mut i = 0;
+    let mut depth: i32 = 0;
+    let mut in_string = false;
+    let mut in_cte = false;
+
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+
+        if let Some(next_i) = skip_line_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = advance_single_quote(&chars, i, ch, &mut in_string) {
+            i = next_i;
+            continue;
+        }
+        if in_string {
+            i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_double_quoted_identifier(&chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_dollar_quoted_string(&lower, &chars, i, byte_pos, ch) {
+            i = next_i;
+            continue;
+        }
+
+        update_parentheses_depth(ch, &mut depth);
+
+        if (ch.is_alphabetic() || ch == '_') && is_word_start(&chars, i) {
+            let rest = &lower[byte_pos..];
+            if depth == 0 && is_keyword(rest, "with") {
+                in_cte = true;
+            } else if in_cte && depth == 0 && match_keyword(rest).is_some() {
+                return false;
+            } else if in_cte && depth > 0 && is_data_modifying_keyword(rest) {
+                return true;
+            }
+        }
+
+        i += 1;
+    }
+
+    false
+}
+
+fn explain_executes_inner_statement(lower: &str, chars: &[(usize, char)]) -> Option<bool> {
+    let mut i = 0;
+    let mut depth: i32 = 0;
+    let mut in_string = false;
+    let mut is_explain = false;
+
+    while i < chars.len() {
+        let (byte_pos, ch) = chars[i];
+
+        if let Some(next_i) = skip_line_comment(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = advance_single_quote(chars, i, ch, &mut in_string) {
+            i = next_i;
+            continue;
+        }
+        if in_string {
+            i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_double_quoted_identifier(chars, i, ch) {
+            i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_dollar_quoted_string(lower, chars, i, byte_pos, ch) {
+            i = next_i;
+            continue;
+        }
+
+        update_parentheses_depth(ch, &mut depth);
+
+        if (ch.is_alphabetic() || ch == '_') && is_word_start(chars, i) {
+            let rest = &lower[byte_pos..];
+            if !is_explain {
+                if depth == 0 && is_keyword(rest, "explain") {
+                    is_explain = true;
+                    i += 1;
+                    continue;
+                }
+                return None;
+            }
+            if (depth == 0 || depth == 1) && is_keyword(rest, "analyze") {
+                return Some(true);
+            }
+            if depth == 0 && match_keyword(rest).is_some() {
+                return Some(false);
+            }
+        }
+
+        i += 1;
+    }
+
+    None
+}
+
+fn is_data_modifying_keyword(rest: &str) -> bool {
+    is_keyword(rest, "insert")
+        || is_keyword(rest, "update")
+        || is_keyword(rest, "delete")
+        || is_keyword(rest, "merge")
+}
+
 pub fn drop_subtype(sql: &str) -> Option<String> {
     let trimmed = sql.trim();
     let chars: Vec<(usize, char)> = trimmed.char_indices().collect();

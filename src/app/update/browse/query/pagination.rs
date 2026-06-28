@@ -580,6 +580,7 @@ mod tests {
         use super::*;
         use crate::domain::QueryResult;
         use crate::ports::outbound::DbOperationError;
+        use rstest::rstest;
 
         fn export_test_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
@@ -641,6 +642,34 @@ mod tests {
                 }
                 other => panic!("expected CountRowsForExport, got {other:?}"),
             }
+        }
+
+        #[rstest]
+        #[case::insert("INSERT INTO users(name) VALUES ('a') RETURNING id")]
+        #[case::update("UPDATE users SET name = 'b' WHERE id = 1 RETURNING id")]
+        #[case::delete("DELETE FROM users WHERE id = 1 RETURNING id")]
+        fn request_with_mutating_returning_result_is_noop(#[case] query: &str) {
+            let mut state = create_test_state();
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    query.to_string(),
+                    vec!["id".to_string()],
+                    vec![vec!["1".to_string()]],
+                    10,
+                    QuerySource::Adhoc,
+                )));
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert!(!state.query.is_running());
         }
 
         #[test]
