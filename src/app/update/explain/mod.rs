@@ -27,7 +27,7 @@ pub fn dispatch_explain(
 
 #[cfg(test)]
 fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-    dispatch_explain(state, action, now, &crate::services::AppServices::stub())
+    dispatch_explain(state, action, now, &AppServices::stub())
 }
 
 #[cfg(test)]
@@ -38,10 +38,7 @@ mod tests {
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
     use crate::services::AppServices;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
-    use crate::update::test_support::{
-        activate_postgres_connection as activate_postgres_connection_with_dsn,
-        activate_sqlite_connection as activate_sqlite_connection_with_dsn,
-    };
+    use crate::update::test_fixtures;
     use std::time::Instant;
 
     fn sql_modal_state() -> AppState {
@@ -51,11 +48,11 @@ mod tests {
     }
 
     fn activate_postgres_connection(state: &mut AppState) {
-        activate_postgres_connection_with_dsn(state, "dsn://test");
+        test_fixtures::activate_postgres_connection(state, "dsn://test");
     }
 
     fn activate_sqlite_connection(state: &mut AppState) {
-        activate_sqlite_connection_with_dsn(state, "sqlite:///tmp/app.db");
+        test_fixtures::activate_sqlite_connection(state, "sqlite:///tmp/app.db");
     }
 
     mod explain_request {
@@ -599,7 +596,7 @@ mod tests {
         fn confirm_from_high_with_matching_table_emits_effect() {
             let mut state = sql_modal_state();
             activate_postgres_connection(&mut state);
-            let mut input = crate::model::shared::text_input::TextInputState::default();
+            let mut input = TextInputState::default();
             for c in "users".chars() {
                 input.insert_char(c);
             }
@@ -624,7 +621,7 @@ mod tests {
         fn confirm_from_high_with_mismatch_is_noop() {
             let mut state = sql_modal_state();
             activate_postgres_connection(&mut state);
-            let mut input = crate::model::shared::text_input::TextInputState::default();
+            let mut input = TextInputState::default();
             input.insert_char('x');
             state
                 .sql_modal
@@ -733,7 +730,7 @@ mod tests {
         #[test]
         fn mismatched_dsn_does_not_replace_plan() {
             let mut state = sql_modal_state();
-            activate_postgres_connection_with_dsn(&mut state, "dsn://current");
+            test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
             state
@@ -795,7 +792,7 @@ mod tests {
         #[test]
         fn mismatched_dsn_does_not_replace_plan_with_error() {
             let mut state = sql_modal_state();
-            activate_postgres_connection_with_dsn(&mut state, "dsn://current");
+            test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
             state
@@ -876,6 +873,7 @@ mod tests {
 
     mod scroll {
         use super::*;
+        use crate::model::explain_context::ExplainContext;
 
         #[test]
         fn plan_scroll_up_saturates_at_zero() {
@@ -927,9 +925,7 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
-            let modal_inner = crate::model::explain_context::ExplainContext::modal_inner_height(
-                state.ui.terminal_height(),
-            );
+            let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height());
             let max = state.explain.line_count().saturating_sub(modal_inner);
             state.explain.scroll_offset = max;
 

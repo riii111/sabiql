@@ -1,7 +1,8 @@
+use crate::cmd::effect::Effect;
 use crate::domain::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 
-pub(super) fn activate_postgres_connection(state: &mut AppState, dsn: &str) {
+pub fn activate_postgres_connection(state: &mut AppState, dsn: &str) {
     state.session.activate_connection_with_dsn(
         &ConnectionId::new(),
         "postgres",
@@ -10,7 +11,7 @@ pub(super) fn activate_postgres_connection(state: &mut AppState, dsn: &str) {
     );
 }
 
-pub(super) fn activate_sqlite_connection(state: &mut AppState, dsn: &str) {
+pub fn activate_sqlite_connection(state: &mut AppState, dsn: &str) {
     state.session.activate_connection_with_dsn(
         &ConnectionId::new(),
         "sqlite",
@@ -19,13 +20,7 @@ pub(super) fn activate_sqlite_connection(state: &mut AppState, dsn: &str) {
     );
 }
 
-#[cfg(test)]
-pub(super) fn assert_connection_save_fetch_effects(
-    effects: &[crate::cmd::effect::Effect],
-    database_type: DatabaseType,
-) {
-    use crate::cmd::effect::Effect;
-
+pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: DatabaseType) {
     match database_type {
         DatabaseType::SQLite => {
             assert_eq!(effects.len(), 1, "sqlite save should emit Sequence");

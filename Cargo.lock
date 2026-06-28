@@ -2597,6 +2597,7 @@ dependencies = [
  "sabiql-app",
  "sabiql-domain",
  "sabiql-infra",
+ "sabiql-test-support",
  "sabiql-ui",
  "self_update",
  "tempfile",
@@ -2616,6 +2617,7 @@ dependencies = [
  "nucleo-matcher",
  "rstest",
  "sabiql-domain",
+ "sabiql-test-support",
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
@@ -2648,6 +2650,7 @@ dependencies = [
  "rstest",
  "sabiql-app",
  "sabiql-domain",
+ "sabiql-test-support",
  "serde",
  "serde_json",
  "tempfile",
@@ -2655,6 +2658,14 @@ dependencies = [
  "tokio",
  "toml",
  "urlencoding",
+]
+
+[[package]]
+name = "sabiql-test-support"
+version = "1.13.0"
+dependencies = [
+ "sabiql-domain",
+ "tempfile",
 ]
 
 [[package]]

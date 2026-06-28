@@ -157,7 +157,6 @@ fn format_database_list_row(row: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::test_support::make_sqlite_db;
     use crate::domain::{QueryResult, QuerySource};
 
     fn empty_query_result() -> QueryResult {
@@ -166,7 +165,9 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_diagnostics_core_reports_pragmas_without_quick_check() {
-        let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
+        );
         let adapter = SqliteAdapter::new();
 
         let snapshot = adapter.fetch_diagnostics_core(&dsn, true).await.unwrap();
@@ -183,7 +184,9 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_quick_check_reports_integrity_summary() {
-        let (_dir, dsn) = make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
+        );
         let adapter = SqliteAdapter::new();
 
         let quick_check = adapter.fetch_quick_check(&dsn, true).await;

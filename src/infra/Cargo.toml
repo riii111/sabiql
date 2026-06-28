@@ -28,6 +28,7 @@ arboard.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true
+sabiql-test-support.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 

@@ -11,7 +11,6 @@ pub mod settings;
 pub mod sql_editor;
 pub mod sqlite_diagnostics;
 pub mod sqlite_path_validate;
-pub mod utility;
-
 #[cfg(test)]
-pub(crate) mod test_support;
+pub(crate) mod test_fixtures;
+pub mod utility;

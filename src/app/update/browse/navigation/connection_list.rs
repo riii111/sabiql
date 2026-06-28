@@ -304,6 +304,7 @@ mod tests {
 
     mod confirm_connection_selection {
         use super::*;
+        use crate::domain::DatabaseType;
 
         fn create_test_profile_with_id(name: &str, id: ConnectionId) -> ConnectionProfile {
             ConnectionProfile::with_id_postgres(
@@ -332,7 +333,7 @@ mod tests {
             state.session.activate_connection_with_dsn(
                 &active_id,
                 "active",
-                crate::domain::DatabaseType::PostgreSQL,
+                DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
             state.ui.set_connection_list_selection(Some(1));
@@ -366,7 +367,7 @@ mod tests {
             state.session.activate_connection_with_dsn(
                 &active_id,
                 "active",
-                crate::domain::DatabaseType::PostgreSQL,
+                DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
             state.ui.set_connection_list_selection(Some(0));
@@ -410,7 +411,7 @@ mod tests {
             state.session.activate_connection_with_dsn(
                 &active_id,
                 "active",
-                crate::domain::DatabaseType::PostgreSQL,
+                DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
             state.modal.set_mode(InputMode::ConnectionSelector);
@@ -442,7 +443,7 @@ mod tests {
             state.session.activate_connection_with_dsn(
                 &active_id,
                 "active",
-                crate::domain::DatabaseType::PostgreSQL,
+                DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
             state.modal.set_mode(InputMode::ConnectionSelector);

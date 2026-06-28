@@ -146,7 +146,7 @@ pub enum Effect {
 
     LoadQueryHistory {
         project_name: String,
-        connection_id: crate::domain::ConnectionId,
+        connection_id: ConnectionId,
     },
 
     SaveSettings {

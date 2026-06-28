@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::cmd::cache::BoundedLruCache;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
-use crate::domain::{DatabaseMetadata, Table};
+use crate::domain::{DatabaseMetadata, Table, TableSummary};
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::policy::sql::lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
 use crate::update::helpers::char_to_byte_index;
@@ -319,8 +319,7 @@ impl CompletionEngine {
                     .map(|t| self.qualified_name_from_ref(t, metadata))
                     .collect();
 
-                let selected_qualified =
-                    table_detail.map(crate::domain::table::Table::qualified_name);
+                let selected_qualified = table_detail.map(Table::qualified_name);
                 let use_all_cache = referenced_tables.is_empty();
                 for (qualified_name, cached_table) in self.table_detail_cache.iter() {
                     if selected_qualified.as_ref() == Some(qualified_name) {
@@ -903,10 +902,7 @@ impl CompletionEngine {
                 .table_summaries
                 .iter()
                 .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
-                .map_or_else(
-                    || table_ref.table.clone(),
-                    crate::domain::table::TableSummary::qualified_name,
-                )
+                .map_or_else(|| table_ref.table.clone(), TableSummary::qualified_name)
         } else {
             table_ref.table.clone()
         }
@@ -927,7 +923,6 @@ mod tests {
     use super::*;
     pub use crate::domain::Column;
     use crate::domain::Table;
-    use crate::test_support::column::test_nullable_column;
 
     fn engine() -> CompletionEngine {
         CompletionEngine::new()
@@ -940,9 +935,11 @@ mod tests {
             columns: columns
                 .iter()
                 .enumerate()
-                .map(|(i, col)| test_nullable_column(*col, "text", (i + 1) as i32))
+                .map(|(i, col)| {
+                    sabiql_test_support::column::test_nullable_column(*col, "text", (i + 1) as i32)
+                })
                 .collect(),
-            ..crate::test_support::table::minimal("", "")
+            ..sabiql_test_support::table::minimal("", "")
         }
     }
 
@@ -951,7 +948,7 @@ mod tests {
             schema: "public".to_string(),
             name: "test".to_string(),
             columns: vec![col1, col2],
-            ..crate::test_support::table::minimal("", "")
+            ..sabiql_test_support::table::minimal("", "")
         }
     }
 
@@ -1213,14 +1210,14 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    test_nullable_column("user_name", "text", 1),
+                    sabiql_test_support::column::test_nullable_column("user_name", "text", 1),
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("user_id", "int", 2)
+                        ..sabiql_test_support::column::test_nullable_column("user_id", "int", 2)
                     },
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             };
 
             let candidates = e.column_candidates(Some(&table), "user");
@@ -1340,10 +1337,10 @@ mod tests {
         fn pk_column_returns_higher_score() {
             let e = engine();
             let table = table_with_two_columns(
-                test_nullable_column("name", "text", 1),
+                sabiql_test_support::column::test_nullable_column("name", "text", 1),
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "int", 2)
+                    ..sabiql_test_support::column::test_nullable_column("id", "int", 2)
                 },
             );
 
@@ -1357,10 +1354,10 @@ mod tests {
         fn not_null_column_returns_higher_score() {
             let e = engine();
             let table = table_with_two_columns(
-                test_nullable_column("optional_field", "text", 1),
+                sabiql_test_support::column::test_nullable_column("optional_field", "text", 1),
                 Column {
                     attributes: ColumnAttributes::empty(),
-                    ..test_nullable_column("required_field", "text", 2)
+                    ..sabiql_test_support::column::test_nullable_column("required_field", "text", 2)
                 },
             );
 
@@ -1506,7 +1503,7 @@ mod tests {
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.table_summaries = vec![crate::domain::TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -1561,12 +1558,12 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "int", 1)
+                        ..sabiql_test_support::column::test_nullable_column("id", "int", 1)
                     },
-                    test_nullable_column("name", "text", 2),
+                    sabiql_test_support::column::test_nullable_column("name", "text", 2),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1627,13 +1624,13 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("user_id", "int", 1)
+                        ..sabiql_test_support::column::test_nullable_column("user_id", "int", 1)
                     },
-                    test_nullable_column("username", "text", 2),
-                    test_nullable_column("email", "text", 3),
+                    sabiql_test_support::column::test_nullable_column("username", "text", 2),
+                    sabiql_test_support::column::test_nullable_column("email", "text", 3),
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1676,13 +1673,13 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "int", 1)
+                        ..sabiql_test_support::column::test_nullable_column("id", "int", 1)
                     },
                     Column {
                         attributes: ColumnAttributes::empty(),
-                        ..test_nullable_column("user_id", "int", 2)
+                        ..sabiql_test_support::column::test_nullable_column("user_id", "int", 2)
                     },
-                    test_nullable_column("status", "text", 3),
+                    sabiql_test_support::column::test_nullable_column("status", "text", 3),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 foreign_keys: vec![ForeignKey {
@@ -1697,7 +1694,7 @@ mod tests {
                     on_update: FkAction::NoAction,
                     reference_resolved: true,
                 }],
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             }
         }
 
@@ -1752,10 +1749,10 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    test_nullable_column("user_id", "int", 1),
-                    test_nullable_column("created_at", "timestamp", 2),
+                    sabiql_test_support::column::test_nullable_column("user_id", "int", 1),
+                    sabiql_test_support::column::test_nullable_column("created_at", "timestamp", 2),
                 ],
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             };
 
             // "id" is contained in "user_id"
@@ -1772,10 +1769,10 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    test_nullable_column("id", "int", 1),
-                    test_nullable_column("user_id", "int", 2),
+                    sabiql_test_support::column::test_nullable_column("id", "int", 1),
+                    sabiql_test_support::column::test_nullable_column("user_id", "int", 2),
                 ],
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             };
 
             let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
@@ -1799,10 +1796,10 @@ mod tests {
                 schema: "public".to_string(),
                 name: "test".to_string(),
                 columns: vec![
-                    test_nullable_column("name", "text", 1),
-                    test_nullable_column("email", "text", 2),
+                    sabiql_test_support::column::test_nullable_column("name", "text", 1),
+                    sabiql_test_support::column::test_nullable_column("email", "text", 2),
                 ],
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             };
 
             let recent = vec!["email".to_string()];
@@ -1923,9 +1920,9 @@ mod tests {
                 name: "users".to_string(),
                 columns: vec![Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "int", 1)
+                    ..sabiql_test_support::column::test_nullable_column("id", "int", 1)
                 }],
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2010,7 +2007,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2022,7 +2019,7 @@ mod tests {
             Table {
                 schema: schema.to_string(),
                 name: name.to_string(),
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             }
         }
 
@@ -2062,16 +2059,16 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("id", "int", 1)
+                        ..sabiql_test_support::column::test_nullable_column("id", "int", 1)
                     },
-                    test_nullable_column("name", "text", 2),
+                    sabiql_test_support::column::test_nullable_column("name", "text", 2),
                     Column {
                         attributes: ColumnAttributes::UNIQUE,
-                        ..test_nullable_column("email", "text", 3)
+                        ..sabiql_test_support::column::test_nullable_column("email", "text", 3)
                     },
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             }
         }
 
@@ -2266,8 +2263,10 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                columns: vec![test_nullable_column("and", "text", 1)],
-                ..crate::test_support::table::minimal("", "")
+                columns: vec![sabiql_test_support::column::test_nullable_column(
+                    "and", "text", 1,
+                )],
+                ..sabiql_test_support::table::minimal("", "")
             };
 
             let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);

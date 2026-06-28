@@ -408,7 +408,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..crate::adapters::test_support::minimal_table("", "")
+            ..sabiql_test_support::infra::minimal_table("", "")
         }
     }
 

@@ -1,5 +1,6 @@
-use crate::domain::{Table, TableKindInfo};
+use sabiql_domain::{Table, TableKindInfo};
 
+#[must_use]
 pub fn minimal(schema: impl Into<String>, name: impl Into<String>) -> Table {
     Table {
         schema: schema.into(),

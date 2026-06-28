@@ -2,6 +2,7 @@ use super::*;
 use harness::connected_state;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::help::HelpOrigin;
 use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
@@ -816,7 +817,7 @@ fn sql_modal_normal_initial() {
     insta::assert_snapshot!(output);
 }
 
-fn sqlite_connected_state() -> sabiql_app::model::app_state::AppState {
+fn sqlite_connected_state() -> AppState {
     let mut state = create_test_state();
     state.session.activate_connection_with_dsn(
         &ConnectionId::new(),

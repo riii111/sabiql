@@ -1,6 +1,40 @@
 msrv = "1.96"
 allow-dbg-in-tests = true
 too-many-arguments-threshold = 8
+# Allow std, third-party crate roots, and the test helper crate; update this list when adding dependencies.
+absolute-paths-allowed-crates = [
+    "alloc",
+    "arboard",
+    "async_trait",
+    "clap",
+    "color_eyre",
+    "core",
+    "crossterm",
+    "csv",
+    "dirs",
+    "dotenvy",
+    "futures",
+    "insta",
+    "lru",
+    "mockall",
+    "nucleo_matcher",
+    "ratatui",
+    "rstest",
+    "sabiql_test_support",
+    "self_update",
+    "serde",
+    "serde_json",
+    "std",
+    "tempfile",
+    "thiserror",
+    "tokio",
+    "tokio_util",
+    "toml",
+    "unicode_casefold",
+    "unicode_width",
+    "urlencoding",
+    "uuid",
+]
 
 disallowed-methods = [
     { path = "std::time::Instant::now", reason = "reducers must receive `now` as a parameter; read the clock only at the runtime boundary (main loop / effect layer)" },

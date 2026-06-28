@@ -54,7 +54,6 @@ pub(super) fn preview_effect_for_current_table(
 #[cfg(test)]
 pub(super) mod tests {
     use crate::domain::Column;
-    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -64,11 +63,11 @@ pub(super) mod tests {
     };
     use crate::model::app_state::AppState;
     use crate::update::action::Action;
-    use crate::update::test_support::activate_postgres_connection;
+    use crate::update::test_fixtures;
 
     pub fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
-        activate_postgres_connection(&mut state, "postgres://localhost/test");
+        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
         state
     }
 
@@ -130,9 +129,9 @@ pub(super) mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..test_nullable_column("id", "int", 1)
+                    ..sabiql_test_support::column::test_nullable_column("id", "int", 1)
                 },
-                test_nullable_column("name", "text", 2),
+                sabiql_test_support::column::test_nullable_column("name", "text", 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
             indexes: vec![Index {
@@ -149,7 +148,7 @@ pub(super) mod tests {
                 function_name: "f".to_string(),
                 security_definer: false,
             }],
-            ..crate::test_support::table::minimal("", "")
+            ..sabiql_test_support::table::minimal("", "")
         }
     }
 
@@ -157,7 +156,9 @@ pub(super) mod tests {
         let mut detail = users_table_detail();
         detail
             .columns
-            .push(test_nullable_column("metadata", "jsonb", 3));
+            .push(sabiql_test_support::column::test_nullable_column(
+                "metadata", "jsonb", 3,
+            ));
         detail
     }
 

@@ -100,6 +100,7 @@ mod tests {
 
     mod mode_dispatch {
         use super::*;
+        use crate::model::sql_editor::modal::SqlModalTab;
 
         fn make_state(mode: InputMode) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -130,9 +131,7 @@ mod tests {
         #[test]
         fn sql_modal_normalizes_unsupported_tab_before_handling_keys() {
             let mut state = make_state(InputMode::SqlModal);
-            state
-                .sql_modal
-                .set_active_tab(crate::model::sql_editor::modal::SqlModalTab::Plan);
+            state.sql_modal.set_active_tab(SqlModalTab::Plan);
 
             let result = handle_key_event(combo(Key::Char('i')), &state);
 

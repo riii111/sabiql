@@ -17,6 +17,7 @@ use crate::cmd::er::handler as cmd_er;
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history as cmd_query_history;
+use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
 use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
@@ -246,11 +247,7 @@ impl EffectRunner {
 
             e @ (Effect::FetchSqliteDiagnosticsCore { .. }
             | Effect::FetchSqliteDiagnosticsQuickCheck { .. }) => {
-                crate::cmd::sqlite_diagnostics::run(
-                    e,
-                    &self.action_tx,
-                    &self.query.sqlite_diagnostics,
-                );
+                sqlite_diagnostics::run(e, &self.action_tx, &self.query.sqlite_diagnostics);
                 Ok(vec![])
             }
 
@@ -269,7 +266,7 @@ impl EffectRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::test_support::*;
+    use crate::cmd::test_fixtures;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
@@ -333,7 +330,7 @@ mod tests {
         #[tokio::test]
         async fn calls_draw() {
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -360,7 +357,7 @@ mod tests {
         #[tokio::test]
         async fn clamps_stale_explorer_horizontal_offset_to_new_maximum() {
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -403,7 +400,7 @@ mod tests {
         #[tokio::test]
         async fn recomputes_jsonb_editor_scroll_when_visible_rows_change() {
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -450,7 +447,7 @@ mod tests {
         #[tokio::test]
         async fn dispatches_all_actions() {
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),

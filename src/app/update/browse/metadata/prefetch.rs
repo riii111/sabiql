@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
 use crate::model::sql_editor::modal::FailedPrefetchEntry;
 use crate::update::action::Action;
@@ -30,7 +31,7 @@ pub(super) fn reduce_prefetch(
                 let qualified_names: Vec<String> = metadata
                     .table_summaries
                     .iter()
-                    .map(crate::domain::TableSummary::qualified_name)
+                    .map(TableSummary::qualified_name)
                     .collect();
                 state
                     .er_preparation

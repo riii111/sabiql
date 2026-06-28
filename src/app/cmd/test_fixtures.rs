@@ -16,8 +16,8 @@ use crate::domain::{
 };
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
-    ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore, DsnBuilder,
-    ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
+    AppSettings, ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore,
+    DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
     MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore,
     ServiceFileError, SettingsStore, SettingsStoreError, SqliteDiagnosticsProvider,
     SqlitePathValidator,
@@ -143,14 +143,11 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
 
 pub struct NoopSettingsStore;
 impl SettingsStore for NoopSettingsStore {
-    fn load(&self) -> Result<crate::ports::outbound::AppSettings, SettingsStoreError> {
-        Ok(crate::ports::outbound::AppSettings::default())
+    fn load(&self) -> Result<AppSettings, SettingsStoreError> {
+        Ok(AppSettings::default())
     }
 
-    fn save(
-        &self,
-        _settings: crate::ports::outbound::AppSettings,
-    ) -> Result<(), SettingsStoreError> {
+    fn save(&self, _settings: AppSettings) -> Result<(), SettingsStoreError> {
         Ok(())
     }
 }

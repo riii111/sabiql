@@ -97,12 +97,12 @@ mod tests {
     use super::*;
     use crate::domain::connection::DatabaseType;
     use crate::domain::{ConnectionId, DiagnosticField, SqliteDiagnosticsSnapshot};
-    use crate::update::test_support::activate_sqlite_connection;
+    use crate::update::test_fixtures;
 
     #[test]
     fn open_starts_split_fetch_for_sqlite_connection() {
         let mut state = AppState::new("test".to_string());
-        activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
 
         let effects = reduce_sqlite_diagnostics(
             &mut state,
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn quick_check_loaded_ignores_stale_run_id() {
         let mut state = AppState::new("test".to_string());
-        activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
         let run_id = state.sqlite_diagnostics.begin_fetch();
         state
             .sqlite_diagnostics
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn quick_check_loaded_before_core_clears_pending_when_core_arrives() {
         let mut state = AppState::new("test".to_string());
-        activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
         let run_id = state.sqlite_diagnostics.begin_fetch();
 
         reduce_sqlite_diagnostics(
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn scroll_down_is_clamped_when_content_fits_viewport() {
         let mut state = AppState::new("test".to_string());
-        activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
         state.sqlite_diagnostics.apply_viewport_metrics(5, 10);
 
         reduce_sqlite_diagnostics(

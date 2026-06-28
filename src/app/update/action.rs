@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::domain::connection::{
     ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
 };
+use crate::domain::query_history::QueryHistoryEntry;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::Prefix;
@@ -541,11 +542,8 @@ pub enum Action {
     ToggleReadOnly,
 
     // Query history
-    QueryHistoryLoaded(
-        crate::domain::ConnectionId,
-        Vec<crate::domain::query_history::QueryHistoryEntry>,
-    ),
-    QueryHistoryLoadFailed(crate::domain::ConnectionId, QueryHistoryError),
+    QueryHistoryLoaded(ConnectionId, Vec<QueryHistoryEntry>),
+    QueryHistoryLoadFailed(ConnectionId, QueryHistoryError),
     QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 

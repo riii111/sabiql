@@ -9,6 +9,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::ConnectionId;
 use crate::domain::QuerySource;
 use crate::domain::QueryValue;
+use crate::domain::command_tag::CommandTag;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{DbOperationError, QueryExecutor, QueryHistoryStore};
@@ -253,7 +254,7 @@ pub async fn run(
                             let rows = result
                                 .command_tag
                                 .as_ref()
-                                .and_then(crate::domain::command_tag::CommandTag::affected_rows);
+                                .and_then(CommandTag::affected_rows);
                             save_query_history(
                                 &history_store,
                                 &history_tx,
@@ -564,7 +565,7 @@ mod tests {
         use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
-        use crate::cmd::test_support::*;
+        use crate::cmd::test_fixtures;
         use crate::domain::QueryValue;
         use crate::model::app_state::AppState;
         use crate::ports::outbound::connection_store::MockConnectionStore;
@@ -594,7 +595,7 @@ mod tests {
         async fn writes_file_and_dispatches_success() {
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -647,7 +648,7 @@ mod tests {
         async fn dispatches_failure_when_file_cannot_be_created() {
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -693,7 +694,7 @@ mod tests {
         use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
-        use crate::cmd::test_support::*;
+        use crate::cmd::test_fixtures;
         use std::time::Instant;
 
         use crate::domain::QuerySource;
@@ -723,11 +724,11 @@ mod tests {
             mock_executor
                 .expect_execute_preview()
                 .once()
-                .returning(|_, _, _, _, _, _| Ok(sample_query_result()));
+                .returning(|_, _, _, _, _, _| Ok(test_fixtures::sample_query_result()));
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(mock_executor),
                 Arc::new(MockConnectionStore::new()),
@@ -782,7 +783,7 @@ mod tests {
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(mock_executor),
                 Arc::new(MockConnectionStore::new()),

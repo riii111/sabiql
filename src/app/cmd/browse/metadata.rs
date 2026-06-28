@@ -284,7 +284,7 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_support::*;
+    use crate::cmd::test_fixtures;
     use std::time::Instant;
 
     use crate::domain::DatabaseMetadata;
@@ -318,11 +318,14 @@ mod tests {
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             cache
-                .set("dsn://test".to_string(), Arc::new(sample_metadata()))
+                .set(
+                    "dsn://test".to_string(),
+                    Arc::new(test_fixtures::sample_metadata()),
+                )
                 .await;
 
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -379,7 +382,7 @@ mod tests {
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -438,11 +441,11 @@ mod tests {
             mock_provider
                 .expect_fetch_metadata()
                 .once()
-                .returning(|_| Ok(sample_metadata()));
+                .returning(|_| Ok(test_fixtures::sample_metadata()));
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -491,11 +494,11 @@ mod tests {
             mock_provider
                 .expect_fetch_metadata()
                 .once()
-                .returning(|_| Ok(sample_metadata()));
+                .returning(|_| Ok(test_fixtures::sample_metadata()));
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -548,7 +551,7 @@ mod tests {
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -600,7 +603,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             }
         }
 
@@ -615,7 +618,7 @@ mod tests {
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -673,7 +676,7 @@ mod tests {
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -719,13 +722,16 @@ mod tests {
         async fn invalidate_removes_cache_entry() {
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             cache
-                .set("dsn://target".to_string(), Arc::new(sample_metadata()))
+                .set(
+                    "dsn://target".to_string(),
+                    Arc::new(test_fixtures::sample_metadata()),
+                )
                 .await;
 
             assert!(cache.get(&"dsn://target".to_string()).await.is_some());
 
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),

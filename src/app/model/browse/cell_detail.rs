@@ -1,1 +1,3 @@
-pub type CellDetailState = crate::model::shared::detail_view::ReadOnlyDetailState;
+use crate::model::shared::detail_view::ReadOnlyDetailState;
+
+pub type CellDetailState = ReadOnlyDetailState;

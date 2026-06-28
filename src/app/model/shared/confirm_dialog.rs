@@ -1,4 +1,5 @@
 use crate::domain::{ConnectionId, QueryValue};
+use crate::update::action::ScrollDirection;
 
 #[derive(Debug, Clone)]
 pub struct CsvExportCacheSnapshot {
@@ -86,7 +87,7 @@ impl ConfirmDialogState {
         self.preview_scroll = scroll.min(self.max_scroll());
     }
 
-    pub fn scroll_preview(&mut self, direction: crate::update::action::ScrollDirection) {
+    pub fn scroll_preview(&mut self, direction: ScrollDirection) {
         let max_scroll = self.max_scroll() as usize;
         self.preview_scroll =
             direction.clamp_vertical_offset(self.preview_scroll as usize, max_scroll, 1) as u16;

@@ -10,7 +10,8 @@ use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::features::browse::detail_view::render_detail_search;
 use crate::primitives::atoms::{
-    CursorKind, ModalTextSurface, build_modal_text_surface_lines, render_modal_text_surface,
+    CursorKind, ModalTextSurface, apply_yank_flash, build_modal_text_surface_lines,
+    render_modal_text_surface,
 };
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
@@ -126,7 +127,7 @@ impl JsonbDetail {
         let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
         let flash_active = state.flash_timers.is_active(FlashId::JsonbDetail, now);
-        crate::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
+        apply_yank_flash(&mut lines, flash_active, theme);
 
         render_modal_text_surface(frame, area, surface, lines);
     }

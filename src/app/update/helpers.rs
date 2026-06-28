@@ -4,6 +4,7 @@ use crate::domain::DatabaseType;
 use crate::domain::connection::SqliteConnectionConfig;
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
+use crate::model::browse::query_execution::QueryStatus;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
 use crate::policy::write::write_guardrails::{
     TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
@@ -159,7 +160,7 @@ pub fn build_bulk_delete_preview(
     if state.session.dsn().is_none() {
         return Err(EditGuardrailError::NoActiveConnection);
     }
-    if state.query.status() != crate::model::browse::query_execution::QueryStatus::Idle {
+    if state.query.status() != QueryStatus::Idle {
         return Err(EditGuardrailError::WriteUnavailableWhileQueryRunning);
     }
 
@@ -437,7 +438,6 @@ pub fn validate_all(state: &mut ConnectionSetupState) {
 mod tests {
     use super::*;
     use crate::domain::Column;
-    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
 
     use crate::domain::connection::ConnectionId;
@@ -670,12 +670,12 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY,
-                        ..test_nullable_column("id", "INTEGER", 1)
+                        ..sabiql_test_support::column::test_nullable_column("id", "INTEGER", 1)
                     },
-                    test_nullable_column("name", "TEXT", 2),
+                    sabiql_test_support::column::test_nullable_column("name", "TEXT", 2),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                ..crate::test_support::table::minimal("", "")
+                ..sabiql_test_support::table::minimal("", "")
             }));
             state.query.pagination.reset_for_table("main", "users");
             state.result_interaction.stage_row(0);

@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 
 use crate::domain::ErTableInfo;
 use crate::ports::outbound::ErDiagramExporter;
-use crate::update::action::{Action, ErDiagramInfo};
+use crate::update::action::{Action, ErDiagramError, ErDiagramInfo};
 
 pub fn spawn_er_diagram_task(
     exporter: Arc<dyn ErDiagramExporter>,
@@ -35,16 +35,16 @@ pub fn spawn_er_diagram_task(
             }
             Ok(Err(e)) => {
                 let _ = tx
-                    .send(Action::ErDiagramFailed(
-                        crate::update::action::ErDiagramError::ExportFailed(e.to_string()),
-                    ))
+                    .send(Action::ErDiagramFailed(ErDiagramError::ExportFailed(
+                        e.to_string(),
+                    )))
                     .await;
             }
             Err(e) => {
                 let _ = tx
-                    .send(Action::ErDiagramFailed(
-                        crate::update::action::ErDiagramError::TaskPanicked(e.to_string()),
-                    ))
+                    .send(Action::ErDiagramFailed(ErDiagramError::TaskPanicked(
+                        e.to_string(),
+                    )))
                     .await;
             }
         }

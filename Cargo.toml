@@ -3,6 +3,7 @@ members = [
     "src/app",
     "src/domain",
     "src/infra",
+    "src/test-support",
     "src/ui",
 ]
 resolver = "3"
@@ -15,9 +16,11 @@ license = "MIT"
 repository = "https://github.com/riii111/sabiql"
 
 [workspace.dependencies]
+# When adding third-party dependencies, update `absolute-paths-allowed-crates` in clippy.toml.
 sabiql-domain = { path = "src/domain", version = "1.13.0" }
 sabiql-app = { path = "src/app", version = "1.13.0" }
 sabiql-infra = { path = "src/infra", version = "1.13.0" }
+sabiql-test-support = { path = "src/test-support", version = "1.13.0" }
 sabiql-ui = { path = "src/ui", version = "1.13.0" }
 arboard = "3"
 async-trait = "0.1"
@@ -79,6 +82,7 @@ self-update = ["dep:self_update"]
 [dev-dependencies]
 sabiql-domain.workspace = true
 sabiql-app = { workspace = true, features = ["test-support"] }
+sabiql-test-support.workspace = true
 sabiql-ui = { workspace = true, features = ["test-support"] }
 ratatui.workspace = true
 insta.workspace = true
@@ -132,6 +136,7 @@ used_underscore_binding = "allow"  # rstest #[case] doc params use _prefix conve
 naive_bytecount = "allow"  # bytecount crate would be an unnecessary dependency
 
 # Restriction lints (opt-in)
+absolute_paths = "warn"
 dbg_macro = "deny"
 todo = "deny"
 print_stdout = "deny"

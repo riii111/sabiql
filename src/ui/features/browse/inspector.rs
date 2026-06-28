@@ -9,7 +9,7 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
-use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::viewport::{
@@ -19,7 +19,7 @@ use crate::app::model::shared::viewport::{
 use crate::app::policy::table_kind::{inspector_flags_label, inspector_kind_label};
 use crate::app::services::AppServices;
 use crate::domain::{ForeignKey, Index, IndexType, Table};
-use crate::primitives::atoms::panel_block;
+use crate::primitives::atoms::{apply_yank_flash, panel_block};
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
 };
@@ -722,7 +722,7 @@ impl Inspector {
         area: Rect,
         ddl: String,
         scroll_offset: usize,
-        flash_timers: &crate::app::model::shared::flash_timer::FlashTimerStore,
+        flash_timers: &FlashTimerStore,
         now: Instant,
         theme: &ThemePalette,
     ) {
@@ -743,7 +743,7 @@ impl Inspector {
             })
             .collect();
 
-        crate::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
+        apply_yank_flash(&mut lines, flash_active, theme);
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
