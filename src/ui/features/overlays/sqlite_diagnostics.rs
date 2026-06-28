@@ -194,6 +194,8 @@ fn field_style(
         } else {
             Style::default().fg(theme.semantic.text.secondary)
         }
+    } else if field.is_pending() {
+        Style::default().fg(theme.semantic.status.warning)
     } else {
         Style::default().fg(theme.semantic.status.error)
     }
@@ -217,6 +219,19 @@ mod tests {
         let style = field_style(DiagnosticFieldKind::QuickCheck, &snapshot, theme);
 
         assert_eq!(style.fg, Some(theme.semantic.status.error));
+    }
+
+    #[test]
+    fn pending_field_uses_warning_style() {
+        let snapshot = SqliteDiagnosticsSnapshot {
+            quick_check: DiagnosticField::Pending,
+            ..Default::default()
+        };
+        let theme = palette_for(ThemeId::Default);
+
+        let style = field_style(DiagnosticFieldKind::QuickCheck, &snapshot, theme);
+
+        assert_eq!(style.fg, Some(theme.semantic.status.warning));
     }
 
     #[test]

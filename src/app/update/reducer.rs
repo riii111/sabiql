@@ -939,11 +939,7 @@ mod tests {
         fn metadata_loaded_with_empty_tables_selects_none() {
             let mut state = create_test_state();
             state.ui.set_explorer_selected_raw(5);
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            };
+            let metadata = DatabaseMetadata::new("test".to_string());
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state, metadata);
 
@@ -957,15 +953,15 @@ mod tests {
         fn metadata_loaded_with_tables_selects_first() {
             let mut state = create_test_state();
             state.ui.set_explorer_selected_raw(3);
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            let metadata = {
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
-                )],
+                )];
+                metadata
             };
             let now = Instant::now();
             let action = metadata_loaded_action(&mut state, metadata);
@@ -980,15 +976,15 @@ mod tests {
         fn metadata_failed_clears_stale_browse_state_on_initial_connect() {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.mark_connected(Arc::new(DatabaseMetadata {
-                database_name: "stale".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            state.session.mark_connected(Arc::new({
+                let mut metadata = DatabaseMetadata::new("stale".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
                     false,
-                )],
+                )];
+                metadata
             }));
             state.ui.set_explorer_selected_raw(2);
             let _ = state
@@ -1222,15 +1218,15 @@ mod tests {
         }
 
         fn users_metadata() -> Arc<DatabaseMetadata> {
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     Some(100),
                     false,
-                )],
+                )];
+                metadata
             })
         }
 
@@ -1370,11 +1366,7 @@ mod tests {
             assert!(state.session.is_reloading());
 
             // Metadata loaded
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            };
+            let metadata = DatabaseMetadata::new("test".to_string());
             let action = Action::MetadataLoaded {
                 dsn: "postgres://localhost/test".to_string(),
                 run_id: 1,
@@ -1425,11 +1417,9 @@ mod tests {
         fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            })));
+            state
+                .session
+                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
             let _ = state.sql_modal.begin_prefetch();
             state
                 .er_preparation
@@ -1448,11 +1438,9 @@ mod tests {
         fn prefetch_started_true_emits_smart_refresh() {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            })));
+            state
+                .session
+                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
             let _ = state.sql_modal.begin_prefetch();
             let now = Instant::now();
 
@@ -1467,11 +1455,9 @@ mod tests {
         fn no_prefetch_emits_smart_refresh() {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            })));
+            state
+                .session
+                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -2079,11 +2065,7 @@ mod tests {
                 .set_connection_state(ConnectionState::Connecting);
             activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.session.begin_metadata_refresh();
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            };
+            let metadata = DatabaseMetadata::new("test".to_string());
             let now = Instant::now();
 
             reduce(
@@ -2322,11 +2304,7 @@ mod tests {
             let cached = crate::model::connection::cache::ConnectionCache {
                 explorer_selected: 10,
                 inspector_tab: InspectorTab::Indexes,
-                metadata: Some(Arc::new(DatabaseMetadata {
-                    database_name: "cached_db".to_string(),
-                    schemas: vec![],
-                    table_summaries: vec![],
-                })),
+                metadata: Some(Arc::new(DatabaseMetadata::new("cached_db".to_string()))),
                 ..Default::default()
             };
             state.connection_caches.save(&conn_b, cached);
@@ -2364,13 +2342,13 @@ mod tests {
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![
+            state.session.set_metadata(Some(Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = vec![
                     TableSummary::new("public".to_string(), "users".to_string(), None, false),
                     TableSummary::new("public".to_string(), "posts".to_string(), None, false),
-                ],
+                ];
+                metadata
             })));
             state
         }
@@ -2417,15 +2395,15 @@ mod tests {
         }
 
         fn sample_metadata() -> Arc<DatabaseMetadata> {
-            Arc::new(DatabaseMetadata {
-                database_name: "test_db".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test_db".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     Some(100),
                     false,
-                )],
+                )];
+                metadata
             })
         }
 
@@ -2652,15 +2630,15 @@ mod tests {
             let now = Instant::now();
 
             // Load metadata with a table
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            let metadata = {
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     Some(1200),
                     false,
-                )],
+                )];
+                metadata
             };
             let run_id = state.session.begin_metadata_refresh();
             reduce(

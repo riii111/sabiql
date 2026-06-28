@@ -449,13 +449,13 @@ mod tests {
     use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
 
     fn make_metadata(db_name: &str) -> Arc<DatabaseMetadata> {
-        Arc::new(DatabaseMetadata {
-            database_name: db_name.to_string(),
-            schemas: vec![],
-            table_summaries: vec![
+        Arc::new({
+            let mut metadata = DatabaseMetadata::new(db_name.to_string());
+            metadata.table_summaries = vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-            ],
+            ];
+            metadata
         })
     }
 
@@ -855,6 +855,21 @@ mod tests {
             assert!(!session.is_reloading());
             assert_eq!(query.pagination.current_page(), 0);
             assert!(query.current_result().is_none());
+        }
+
+        #[test]
+        fn preserves_metadata_run_counter_after_reset() {
+            let mut session = BrowseSession::default();
+            let first_run_id = session.begin_connecting("postgres://localhost/test");
+            assert_eq!(first_run_id, 1);
+
+            let mut query = QueryExecution::default();
+            session.reset(&mut query);
+
+            let second_run_id = session.begin_connecting("postgres://localhost/test");
+            assert_eq!(second_run_id, 2);
+            assert!(!session.is_current_metadata_run(first_run_id));
+            assert!(session.is_current_metadata_run(second_run_id));
         }
     }
 

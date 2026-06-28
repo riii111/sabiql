@@ -135,8 +135,10 @@ fn clipboard_unavailable() -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, Table};
+    use crate::domain::Column;
+    use crate::domain::Table;
     use crate::ports::outbound::ddl_generator::DdlGenerator;
+    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
 
     mod cell_yank {
@@ -450,12 +452,8 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 columns: vec![Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
+                    ..test_nullable_column("id", "integer", 1)
                 }],
                 primary_key: Some(vec!["id".to_string()]),
                 row_count_estimate: Some(0),

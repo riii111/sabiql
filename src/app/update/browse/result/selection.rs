@@ -95,7 +95,9 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, QueryResult, QuerySource, Table};
+    use crate::domain::Column;
+    use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -130,12 +132,8 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 columns: vec![Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
+                    ..test_nullable_column("id", "integer", 1)
                 }],
                 primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
                 ..crate::test_support::table::minimal("", "")

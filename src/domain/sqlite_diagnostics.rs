@@ -2,6 +2,7 @@
 pub enum DiagnosticField {
     #[default]
     Unavailable,
+    Pending,
     Ok(String),
     Err(String),
 }
@@ -18,14 +19,14 @@ impl DiagnosticField {
     pub fn ok_value(&self) -> Option<&str> {
         match self {
             Self::Ok(value) => Some(value.as_str()),
-            Self::Unavailable | Self::Err(_) => None,
+            Self::Unavailable | Self::Pending | Self::Err(_) => None,
         }
     }
 
     pub fn err_message(&self) -> Option<&str> {
         match self {
             Self::Err(message) => Some(message.as_str()),
-            Self::Unavailable | Self::Ok(_) => None,
+            Self::Unavailable | Self::Pending | Self::Ok(_) => None,
         }
     }
 
@@ -33,6 +34,7 @@ impl DiagnosticField {
         match self {
             Self::Ok(value) => value.clone(),
             Self::Err(error) => format!("(failed: {error})"),
+            Self::Pending => String::new(),
             Self::Unavailable => "(unavailable)".to_string(),
         }
     }
@@ -43,6 +45,10 @@ impl DiagnosticField {
 
     pub fn is_err(&self) -> bool {
         matches!(self, Self::Err(_))
+    }
+
+    pub fn is_pending(&self) -> bool {
+        matches!(self, Self::Pending)
     }
 }
 
@@ -59,6 +65,20 @@ pub struct SqliteDiagnosticsSnapshot {
 }
 
 impl SqliteDiagnosticsSnapshot {
+    #[must_use]
+    pub fn core_fetch_failed(db_file: DiagnosticField) -> Self {
+        Self {
+            db_file,
+            sqlite_version: DiagnosticField::Unavailable,
+            foreign_keys: DiagnosticField::Unavailable,
+            journal_mode: DiagnosticField::Unavailable,
+            query_only: DiagnosticField::Unavailable,
+            busy_timeout: DiagnosticField::Unavailable,
+            database_list: DiagnosticField::Unavailable,
+            quick_check: DiagnosticField::Unavailable,
+        }
+    }
+
     pub fn quick_check_is_ok(&self) -> Option<bool> {
         self.quick_check
             .ok_value()
@@ -87,6 +107,18 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_field_pending_contract() {
+        let field = DiagnosticField::Pending;
+
+        assert!(field.is_pending());
+        assert!(!field.is_ok());
+        assert!(!field.is_err());
+        assert!(field.ok_value().is_none());
+        assert!(field.err_message().is_none());
+        assert_eq!(field.display(), "");
+    }
+
+    #[test]
     fn quick_check_is_ok_detects_ok_summary() {
         let snapshot = SqliteDiagnosticsSnapshot {
             quick_check: DiagnosticField::ok("ok"),
@@ -104,5 +136,24 @@ mod tests {
         };
 
         assert_eq!(snapshot.quick_check_is_ok(), Some(false));
+    }
+
+    #[test]
+    fn core_fetch_failed_marks_non_db_file_fields_unavailable() {
+        let db_file = DiagnosticField::err("boom");
+        let snapshot = SqliteDiagnosticsSnapshot::core_fetch_failed(db_file.clone());
+
+        assert_eq!(snapshot.db_file, db_file);
+        for field in [
+            &snapshot.sqlite_version,
+            &snapshot.foreign_keys,
+            &snapshot.journal_mode,
+            &snapshot.query_only,
+            &snapshot.busy_timeout,
+            &snapshot.database_list,
+            &snapshot.quick_check,
+        ] {
+            assert_eq!(*field, DiagnosticField::Unavailable);
+        }
     }
 }

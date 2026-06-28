@@ -21,7 +21,7 @@ mod tests {
 
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
     use crate::update::action::{SmartErRefreshError, SmartErRefreshResult};
@@ -49,20 +49,19 @@ mod tests {
         state.er_preparation.mark_idle();
     }
 
+    fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
+        let tables: Vec<TableSummary> = (0..table_count)
+            .map(|i| TableSummary::new("public".to_string(), format!("t{i}"), None, false))
+            .collect();
+        Arc::new({
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = tables;
+            metadata
+        })
+    }
+
     mod er_open_diagram {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
-
-        fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
-            let tables: Vec<TableSummary> = (0..table_count)
-                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
-                .collect();
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
-            })
-        }
 
         #[test]
         fn emits_smart_refresh() {
@@ -174,11 +173,9 @@ mod tests {
         fn idle_status_returns_generate_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.mark_idle();
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![],
-            })));
+            state
+                .session
+                .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
             state
                 .er_preparation
                 .set_targets(vec!["public.users".to_string()]);
@@ -212,19 +209,6 @@ mod tests {
     mod smart_er_refresh_completed {
         use super::*;
         use std::collections::HashMap;
-
-        use crate::domain::{DatabaseMetadata, TableSummary};
-
-        fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
-            let tables: Vec<TableSummary> = (0..table_count)
-                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
-                .collect();
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
-            })
-        }
 
         #[test]
         fn no_changes_dispatches_generate_from_cache() {
@@ -439,19 +423,7 @@ mod tests {
 
     mod smart_er_refresh_failed {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
         use crate::ports::outbound::DbOperationError;
-
-        fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
-            let tables: Vec<TableSummary> = (0..table_count)
-                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
-                .collect();
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
-            })
-        }
 
         #[test]
         fn falls_back_to_full_prefetch() {

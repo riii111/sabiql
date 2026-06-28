@@ -369,15 +369,15 @@ mod tests {
             );
 
             let state = &mut AppState::new("test".to_string());
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: vec![TableSummary::new(
+            state.session.set_metadata(Some(Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
                     "public".to_string(),
                     "abcdefghij".to_string(),
                     Some(0),
                     false,
-                )],
+                )];
+                metadata
             })));
             state.ui.set_explorer_horizontal_offset(20);
 

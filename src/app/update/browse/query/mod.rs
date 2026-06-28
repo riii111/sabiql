@@ -53,12 +53,14 @@ pub(super) fn preview_effect_for_current_table(
 
 #[cfg(test)]
 pub(super) mod tests {
+    use crate::domain::Column;
+    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
     use std::time::Instant;
 
     use crate::domain::{
-        Column, ColumnAttributes, CommandTag, Index, IndexAttributes, IndexType, QueryResult,
-        QuerySource, Table, Trigger, TriggerEvent, TriggerTiming,
+        ColumnAttributes, CommandTag, Index, IndexAttributes, IndexType, QueryResult, QuerySource,
+        Table, Trigger, TriggerEvent, TriggerTiming,
     };
     use crate::model::app_state::AppState;
     use crate::update::action::Action;
@@ -127,21 +129,10 @@ pub(super) mod tests {
             name: "users".to_string(),
             columns: vec![
                 Column {
-                    name: "id".to_string(),
-                    data_type: "int".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
+                    ..test_nullable_column("id", "int", 1)
                 },
-                Column {
-                    name: "name".to_string(),
-                    data_type: "text".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 2,
-                },
+                test_nullable_column("name", "text", 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
             indexes: vec![Index {
@@ -164,14 +155,9 @@ pub(super) mod tests {
 
     pub fn jsonb_table_detail() -> Table {
         let mut detail = users_table_detail();
-        detail.columns.push(Column {
-            name: "metadata".to_string(),
-            data_type: "jsonb".to_string(),
-            default: None,
-            attributes: ColumnAttributes::NULLABLE,
-            comment: None,
-            ordinal_position: 3,
-        });
+        detail
+            .columns
+            .push(test_nullable_column("metadata", "jsonb", 3));
         detail
     }
 

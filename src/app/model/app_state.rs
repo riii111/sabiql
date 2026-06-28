@@ -23,7 +23,7 @@ use crate::model::shared::settings::SettingsState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
-use crate::policy::table_storage::max_explorer_table_label_width;
+use crate::policy::table_kind::max_explorer_table_label_width;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -332,11 +332,9 @@ mod tests {
     }
 
     fn make_metadata(table_summaries: Vec<TableSummary>) -> Arc<DatabaseMetadata> {
-        Arc::new(DatabaseMetadata {
-            database_name: "test".to_string(),
-            schemas: vec![],
-            table_summaries,
-        })
+        let mut metadata = DatabaseMetadata::new("test".to_string());
+        metadata.table_summaries = table_summaries;
+        Arc::new(metadata)
     }
 
     fn make_table_detail() -> Table {

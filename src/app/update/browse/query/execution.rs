@@ -83,9 +83,12 @@ pub fn reduce_execution(
                 // Adhoc errors stay inside the SQL modal; the existing preview
                 // result and its view state are kept untouched.
                 (QuerySource::Adhoc, true) => {
-                    state
-                        .sql_modal
-                        .finish_adhoc_error(result.error.clone().unwrap_or_default());
+                    state.sql_modal.finish_adhoc_error(
+                        result
+                            .error
+                            .clone()
+                            .unwrap_or_else(|| "Query failed".to_string()),
+                    );
                 }
                 (QuerySource::Adhoc, false) => {
                     reset_view_for_new_result(state, now);
@@ -868,15 +871,15 @@ mod tests {
         use crate::update::browse::metadata::dispatch_metadata;
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
-            Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = tables
                     .into_iter()
                     .map(|(schema, name)| {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)
                     })
-                    .collect(),
+                    .collect();
+                metadata
             })
         }
 

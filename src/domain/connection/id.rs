@@ -5,6 +5,10 @@ use std::fmt;
 pub struct ConnectionId(String);
 
 impl ConnectionId {
+    #[allow(
+        clippy::new_without_default,
+        reason = "ConnectionId has no meaningful empty value; callers must use new() or from_string()"
+    )]
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
     }
@@ -21,12 +25,6 @@ impl ConnectionId {
 impl AsRef<str> for ConnectionId {
     fn as_ref(&self) -> &str {
         self.as_str()
-    }
-}
-
-impl Default for ConnectionId {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

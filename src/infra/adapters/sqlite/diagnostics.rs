@@ -47,7 +47,7 @@ impl SqliteDiagnosticsProvider for SqliteAdapter {
             query_only,
             busy_timeout,
             database_list,
-            quick_check: DiagnosticField::default(),
+            quick_check: DiagnosticField::Pending,
         })
     }
 
@@ -178,7 +178,7 @@ mod tests {
         assert!(snapshot.query_only.is_ok());
         assert!(snapshot.busy_timeout.is_ok());
         assert!(snapshot.database_list.is_ok());
-        assert!(matches!(snapshot.quick_check, DiagnosticField::Unavailable));
+        assert!(matches!(snapshot.quick_check, DiagnosticField::Pending));
     }
 
     #[tokio::test]

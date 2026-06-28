@@ -436,10 +436,12 @@ pub fn validate_all(state: &mut ConnectionSetupState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::Column;
+    use crate::test_support::column::test_nullable_column;
     use std::sync::Arc;
 
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{Column, ColumnAttributes, DatabaseType, QuerySource, Table};
+    use crate::domain::{ColumnAttributes, DatabaseType, QuerySource, Table};
     use rstest::rstest;
 
     mod validate_field_name {
@@ -667,21 +669,10 @@ mod tests {
                 name: "users".to_string(),
                 columns: vec![
                     Column {
-                        name: "id".to_string(),
-                        data_type: "INTEGER".to_string(),
-                        default: None,
                         attributes: ColumnAttributes::PRIMARY_KEY,
-                        comment: None,
-                        ordinal_position: 1,
+                        ..test_nullable_column("id", "INTEGER", 1)
                     },
-                    Column {
-                        name: "name".to_string(),
-                        data_type: "TEXT".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
+                    test_nullable_column("name", "TEXT", 2),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 ..crate::test_support::table::minimal("", "")

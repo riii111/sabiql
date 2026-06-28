@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::domain::connection::{
-    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, SqliteConnectionConfigError,
-    SqlitePathError, SslMode,
+    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, PostgresConnectionConfig,
+    SqliteConnectionConfig, SqliteConnectionConfigError, SqlitePathError, SslMode,
 };
 use crate::model::shared::text_input::TextInputState;
 
@@ -380,8 +380,8 @@ impl ConnectionSetupState {
 
     pub fn to_connection_config(&self) -> Result<ConnectionConfig, SqliteConnectionConfigError> {
         Ok(match self.database_type {
-            DatabaseType::PostgreSQL => ConnectionConfig::PostgreSQL(
-                crate::domain::connection::PostgresConnectionConfig::new(
+            DatabaseType::PostgreSQL => {
+                ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
                     self.host.content().to_string(),
                     self.port
                         .content()
@@ -391,17 +391,16 @@ impl ConnectionSetupState {
                     self.user.content().to_string(),
                     self.password.content().to_string(),
                     self.ssl_mode,
-                ),
-            ),
-            DatabaseType::SQLite => {
-                ConnectionConfig::SQLite(crate::domain::connection::SqliteConnectionConfig::new(
-                    self.sqlite_path.content().to_string(),
-                )?)
+                ))
             }
+            DatabaseType::SQLite => ConnectionConfig::SQLite(SqliteConnectionConfig::new(
+                self.sqlite_path.content().to_string(),
+            )?),
         })
     }
 }
 
+// UI form baseline: inherit ConnectionSetupState::default() and override profile identity only.
 fn base_from_profile(profile: &ConnectionProfile) -> ConnectionSetupState {
     let name = profile.name.as_str();
     ConnectionSetupState {
@@ -539,6 +538,21 @@ mod tests {
                 .insert(ConnectionField::Port, "Invalid".to_string());
             state.clear_errors();
             assert!(!state.has_validation_errors());
+        }
+
+        #[test]
+        fn from_sqlite_profile_inherits_default_field_baselines() {
+            let profile = ConnectionProfile::new_sqlite("Local", "/tmp/app.db").unwrap();
+
+            let state = ConnectionSetupState::from(&profile);
+
+            assert_eq!(state.database_type, DatabaseType::SQLite);
+            assert_eq!(state.sqlite_path.content(), "/tmp/app.db");
+            assert_eq!(state.host.content(), "localhost");
+            assert_eq!(state.port.content(), "5432");
+            assert_eq!(state.ssl_mode, SslMode::Prefer);
+            assert_eq!(state.editing_id, Some(profile.id));
+            assert!(!state.is_first_run());
         }
 
         #[test]

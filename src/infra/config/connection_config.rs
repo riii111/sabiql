@@ -122,19 +122,28 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                     entry.port.unwrap_or(5432),
                     required_postgres_field(entry.database.as_ref(), "database")?,
                     required_postgres_field(entry.username.as_ref(), "username")?,
-                    entry.password.clone().unwrap_or_default(),
-                    entry.ssl_mode.unwrap_or_default(),
+                    match &entry.password {
+                        Some(password) => password.clone(),
+                        None => String::new(),
+                    },
+                    entry.ssl_mode.unwrap_or(SslMode::Prefer),
                 )),
             ),
             DatabaseType::SQLite => Self::with_id_and_config(
                 id,
                 name.as_str().to_string(),
-                ConnectionConfig::SQLite(SqliteConnectionConfig::new(
-                    entry.path.clone().unwrap_or_default(),
-                )?),
+                ConnectionConfig::SQLite(SqliteConnectionConfig::new(required_sqlite_path(
+                    entry.path.as_ref(),
+                )?)?),
             ),
         }
     }
+}
+
+fn required_sqlite_path(value: Option<&String>) -> Result<String, ConnectionProfileError> {
+    value
+        .cloned()
+        .ok_or(ConnectionProfileError::EmptySqlitePath)
 }
 
 fn required_postgres_field(
@@ -181,6 +190,21 @@ mod tests {
         }
     }
 
+    fn sqlite_entry(path: Option<&str>) -> ConnectionConfigEntry {
+        ConnectionConfigEntry {
+            id: "sqlite-id".to_string(),
+            name: "Local".to_string(),
+            db_type: DatabaseType::SQLite,
+            host: None,
+            port: None,
+            database: None,
+            username: None,
+            password: None,
+            ssl_mode: None,
+            path: path.map(str::to_string),
+        }
+    }
+
     #[test]
     fn postgres_entry_rejects_missing_required_field() {
         let mut entry = postgres_entry();
@@ -216,19 +240,32 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_entry_rejects_missing_path() {
+        let entry = sqlite_entry(None);
+
+        let result = ConnectionProfile::try_from(&entry);
+
+        assert!(matches!(
+            result,
+            Err(ConnectionProfileError::EmptySqlitePath)
+        ));
+    }
+
+    #[test]
+    fn sqlite_entry_rejects_empty_path() {
+        let entry = sqlite_entry(Some(""));
+
+        let result = ConnectionProfile::try_from(&entry);
+
+        assert!(matches!(
+            result,
+            Err(ConnectionProfileError::EmptySqlitePath)
+        ));
+    }
+
+    #[test]
     fn sqlite_entry_rejects_invalid_path() {
-        let entry = ConnectionConfigEntry {
-            id: "sqlite-id".to_string(),
-            name: "Local".to_string(),
-            db_type: DatabaseType::SQLite,
-            host: None,
-            port: None,
-            database: None,
-            username: None,
-            password: None,
-            ssl_mode: None,
-            path: Some("/tmp/app\0.db".to_string()),
-        };
+        let entry = sqlite_entry(Some("/tmp/app\0.db"));
 
         let result = ConnectionProfile::try_from(&entry);
 
@@ -240,18 +277,7 @@ mod tests {
 
     #[test]
     fn sqlite_entry_rejects_in_memory_database() {
-        let entry = ConnectionConfigEntry {
-            id: "sqlite-id".to_string(),
-            name: "Local".to_string(),
-            db_type: DatabaseType::SQLite,
-            host: None,
-            port: None,
-            database: None,
-            username: None,
-            password: None,
-            ssl_mode: None,
-            path: Some(":memory:".to_string()),
-        };
+        let entry = sqlite_entry(Some(":memory:"));
 
         let result = ConnectionProfile::try_from(&entry);
 
@@ -263,18 +289,7 @@ mod tests {
 
     #[test]
     fn sqlite_entry_rejects_uri_filename() {
-        let entry = ConnectionConfigEntry {
-            id: "sqlite-id".to_string(),
-            name: "Local".to_string(),
-            db_type: DatabaseType::SQLite,
-            host: None,
-            port: None,
-            database: None,
-            username: None,
-            password: None,
-            ssl_mode: None,
-            path: Some("file:/tmp/app.db?mode=ro".to_string()),
-        };
+        let entry = sqlite_entry(Some("file:/tmp/app.db?mode=ro"));
 
         let result = ConnectionProfile::try_from(&entry);
 

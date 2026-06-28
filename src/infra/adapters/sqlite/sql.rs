@@ -204,7 +204,7 @@ pub(super) fn table_info_query(table: &str) -> String {
     format!("PRAGMA table_info({})", quote_ident(table))
 }
 
-pub(super) fn table_storage_query(table: &str) -> String {
+pub(super) fn table_kind_info_query(table: &str) -> String {
     format!(
         r"
         SELECT tl.type, tl.wr, tl.strict, m.sql
