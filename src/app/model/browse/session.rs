@@ -308,7 +308,17 @@ impl BrowseSession {
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn reset(&mut self, query: &mut QueryExecution) {
-        *self = Self::default();
+        self.metadata = None;
+        self.table_detail = None;
+        self.selected_table_key = None;
+        self.selection_generation = 0;
+        self.connection_state = ConnectionState::default();
+        self.metadata_state = MetadataState::default();
+        self.metadata_run.clear_active();
+        self.table_detail_run.clear_active();
+        self.clear_connection();
+        self.read_only = false;
+        self.is_reloading = false;
         query.pagination.reset();
         query.clear_current_result();
         query.restore_history(ResultHistory::default());
@@ -845,6 +855,21 @@ mod tests {
             assert!(!session.is_reloading());
             assert_eq!(query.pagination.current_page(), 0);
             assert!(query.current_result().is_none());
+        }
+
+        #[test]
+        fn preserves_metadata_run_counter_after_reset() {
+            let mut session = BrowseSession::default();
+            let first_run_id = session.begin_connecting("postgres://localhost/test");
+            assert_eq!(first_run_id, 1);
+
+            let mut query = QueryExecution::default();
+            session.reset(&mut query);
+
+            let second_run_id = session.begin_connecting("postgres://localhost/test");
+            assert_eq!(second_run_id, 2);
+            assert!(!session.is_current_metadata_run(first_run_id));
+            assert!(session.is_current_metadata_run(second_run_id));
         }
     }
 
