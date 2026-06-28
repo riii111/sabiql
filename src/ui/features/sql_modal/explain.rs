@@ -8,6 +8,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::update::input::keybindings::sql_modal_plan_explain;
@@ -134,7 +135,7 @@ fn render_scrolled(frame: &mut Frame, area: Rect, lines: Vec<Line>, scroll_offse
 fn build_analyze_confirm_lines<'a>(
     area: Rect,
     query: &'a str,
-    input: &'a crate::app::model::shared::text_input::TextInputState,
+    input: &'a TextInputState,
     name: &'a str,
     theme: &ThemePalette,
 ) -> Vec<Line<'a>> {

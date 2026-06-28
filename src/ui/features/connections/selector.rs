@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::connection::list::ConnectionListItem;
+use crate::app::model::connection::list::{ConnectionListItem, is_service_selected};
 use crate::app::update::input::keybindings::connection_selector;
 use crate::domain::connection::ConnectionId;
 use crate::primitives::atoms::scroll_indicator::{
@@ -22,7 +22,7 @@ pub struct ConnectionSelector;
 
 impl ConnectionSelector {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> u16 {
-        let is_service_selected = crate::app::model::connection::list::is_service_selected(
+        let is_service_selected = is_service_selected(
             state.connection_list_items(),
             state.ui.connection_list_selected(),
         );

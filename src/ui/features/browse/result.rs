@@ -11,6 +11,7 @@ use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
@@ -79,8 +80,7 @@ impl ResultPane {
                     row: cell_edit.row().unwrap_or_default(),
                     col: cell_edit.col().unwrap_or_default(),
                     draft: cell_edit.draft_value(),
-                    actively_editing: state.input_mode()
-                        == crate::app::model::shared::input_mode::InputMode::CellEdit,
+                    actively_editing: state.input_mode() == InputMode::CellEdit,
                     cursor: cell_edit.input().cursor(),
                 });
                 Self::render_table(

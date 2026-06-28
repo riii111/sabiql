@@ -8,6 +8,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::connection::error_state::ConnectionErrorState;
 use crate::primitives::atoms::key_chip;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
@@ -114,7 +115,7 @@ impl ConnectionError {
     fn render_details_section(
         frame: &mut Frame,
         area: Rect,
-        error_state: &crate::app::model::connection::error_state::ConnectionErrorState,
+        error_state: &ConnectionErrorState,
         expanded: bool,
         theme: &ThemePalette,
     ) {

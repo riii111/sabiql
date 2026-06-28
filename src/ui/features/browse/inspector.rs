@@ -9,7 +9,7 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
-use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::viewport::{
@@ -722,7 +722,7 @@ impl Inspector {
         area: Rect,
         ddl: String,
         scroll_offset: usize,
-        flash_timers: &crate::app::model::shared::flash_timer::FlashTimerStore,
+        flash_timers: &FlashTimerStore,
         now: Instant,
         theme: &ThemePalette,
     ) {
