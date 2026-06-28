@@ -402,6 +402,7 @@ impl ConnectionSetupState {
     }
 }
 
+// UI form baseline: inherit ConnectionSetupState::default() and override profile identity only.
 fn base_from_profile(profile: &ConnectionProfile) -> ConnectionSetupState {
     let name = profile.name.as_str();
     ConnectionSetupState {
@@ -539,6 +540,21 @@ mod tests {
                 .insert(ConnectionField::Port, "Invalid".to_string());
             state.clear_errors();
             assert!(!state.has_validation_errors());
+        }
+
+        #[test]
+        fn from_sqlite_profile_inherits_default_field_baselines() {
+            let profile = ConnectionProfile::new_sqlite("Local", "/tmp/app.db").unwrap();
+
+            let state = ConnectionSetupState::from(&profile);
+
+            assert_eq!(state.database_type, DatabaseType::SQLite);
+            assert_eq!(state.sqlite_path.content(), "/tmp/app.db");
+            assert_eq!(state.host.content(), "localhost");
+            assert_eq!(state.port.content(), "5432");
+            assert_eq!(state.ssl_mode, SslMode::Prefer);
+            assert_eq!(state.editing_id, Some(profile.id));
+            assert!(!state.is_first_run());
         }
 
         #[test]
