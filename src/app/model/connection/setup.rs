@@ -405,21 +405,10 @@ impl ConnectionSetupState {
 fn base_from_profile(profile: &ConnectionProfile) -> ConnectionSetupState {
     let name = profile.name.as_str();
     ConnectionSetupState {
-        database_type: DatabaseType::PostgreSQL,
         name: TextInputState::new(name, name.chars().count()),
-        sqlite_path: TextInputState::default(),
-        host: TextInputState::new("localhost", 9),
-        port: TextInputState::new("5432", 4),
-        database: TextInputState::default(),
-        user: TextInputState::default(),
-        password: TextInputState::default(),
-        ssl_mode: SslMode::Prefer,
-        focused_field: ConnectionField::DatabaseType,
-        database_type_dropdown: DatabaseTypeDropdown::default(),
-        ssl_dropdown: SslModeDropdown::default(),
-        validation_errors: HashMap::new(),
         is_first_run: false,
         editing_id: Some(profile.id.clone()),
+        ..ConnectionSetupState::default()
     }
 }
 
