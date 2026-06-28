@@ -190,6 +190,21 @@ mod tests {
         }
     }
 
+    fn sqlite_entry(path: Option<&str>) -> ConnectionConfigEntry {
+        ConnectionConfigEntry {
+            id: "sqlite-id".to_string(),
+            name: "Local".to_string(),
+            db_type: DatabaseType::SQLite,
+            host: None,
+            port: None,
+            database: None,
+            username: None,
+            password: None,
+            ssl_mode: None,
+            path: path.map(str::to_string),
+        }
+    }
+
     #[test]
     fn postgres_entry_rejects_missing_required_field() {
         let mut entry = postgres_entry();
@@ -226,18 +241,7 @@ mod tests {
 
     #[test]
     fn sqlite_entry_rejects_missing_path() {
-        let entry = ConnectionConfigEntry {
-            id: "sqlite-id".to_string(),
-            name: "Local".to_string(),
-            db_type: DatabaseType::SQLite,
-            host: None,
-            port: None,
-            database: None,
-            username: None,
-            password: None,
-            ssl_mode: None,
-            path: None,
-        };
+        let entry = sqlite_entry(None);
 
         let result = ConnectionProfile::try_from(&entry);
 
@@ -249,18 +253,7 @@ mod tests {
 
     #[test]
     fn sqlite_entry_rejects_invalid_path() {
-        let entry = ConnectionConfigEntry {
-            id: "sqlite-id".to_string(),
-            name: "Local".to_string(),
-            db_type: DatabaseType::SQLite,
-            host: None,
-            port: None,
-            database: None,
-            username: None,
-            password: None,
-            ssl_mode: None,
-            path: Some("/tmp/app\0.db".to_string()),
-        };
+        let entry = sqlite_entry(Some("/tmp/app\0.db"));
 
         let result = ConnectionProfile::try_from(&entry);
 
@@ -272,18 +265,7 @@ mod tests {
 
     #[test]
     fn sqlite_entry_rejects_in_memory_database() {
-        let entry = ConnectionConfigEntry {
-            id: "sqlite-id".to_string(),
-            name: "Local".to_string(),
-            db_type: DatabaseType::SQLite,
-            host: None,
-            port: None,
-            database: None,
-            username: None,
-            password: None,
-            ssl_mode: None,
-            path: Some(":memory:".to_string()),
-        };
+        let entry = sqlite_entry(Some(":memory:"));
 
         let result = ConnectionProfile::try_from(&entry);
 
@@ -295,18 +277,7 @@ mod tests {
 
     #[test]
     fn sqlite_entry_rejects_uri_filename() {
-        let entry = ConnectionConfigEntry {
-            id: "sqlite-id".to_string(),
-            name: "Local".to_string(),
-            db_type: DatabaseType::SQLite,
-            host: None,
-            port: None,
-            database: None,
-            username: None,
-            password: None,
-            ssl_mode: None,
-            path: Some("file:/tmp/app.db?mode=ro".to_string()),
-        };
+        let entry = sqlite_entry(Some("file:/tmp/app.db?mode=ro"));
 
         let result = ConnectionProfile::try_from(&entry);
 

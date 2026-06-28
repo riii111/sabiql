@@ -194,6 +194,8 @@ fn field_style(
         } else {
             Style::default().fg(theme.semantic.text.secondary)
         }
+    } else if field.is_pending() {
+        Style::default().fg(theme.semantic.status.warning)
     } else {
         Style::default().fg(theme.semantic.status.error)
     }
