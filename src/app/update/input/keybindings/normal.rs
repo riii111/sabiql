@@ -497,7 +497,7 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
 ];
 
 pub mod result_active {
-    use crate::update::action::Action;
+    use crate::update::action::{Action, ModalKind};
     use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
 
     pub const ENTER_DEEPEN: KeyBinding = KeyBinding {
@@ -598,11 +598,21 @@ pub mod result_active {
         action: Action::ResultRowYank,
         combos: &[],
     };
+
+    pub const ROW_JSON: KeyBinding = KeyBinding {
+        key_short: "J",
+        key: "J",
+        desc_short: "Row JSON",
+        description: "Open the selected row as a JSON object",
+        action: Action::OpenModal(ModalKind::RowJson),
+        combos: &[KeyCombo::plain(Key::Char('J'))],
+    };
 }
 
 pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
     result_active::ENTER_DEEPEN,
     result_active::YANK,
+    result_active::ROW_JSON,
     result_active::STAGE_DELETE,
     result_active::UNSTAGE_DELETE,
     result_active::CELL_NAV,

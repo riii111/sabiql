@@ -62,6 +62,7 @@ pub enum ScrollTarget {
     ExplainConfirm,
     Explorer,
     JsonbDetail,
+    RowJson,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,6 +184,7 @@ pub enum ModalKind {
     ErTablePicker,
     QueryHistoryPicker,
     JsonbDetail,
+    RowJson,
     ConnectionSetup,
     ConnectionSelector,
 }
@@ -564,6 +566,10 @@ pub enum Action {
     JsonbSearchNext,
     JsonbSearchPrev,
     JsonbSearchSubmit,
+
+    // Row JSON
+    RowJsonYank,
+    RowJsonYankSuccess,
 
     // ER diagrams
     ErToggleSelection,

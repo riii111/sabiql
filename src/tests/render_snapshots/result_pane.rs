@@ -49,6 +49,36 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     (state, now)
 }
 
+fn row_json_state() -> (AppState, std::time::Instant) {
+    let now = test_instant();
+    let mut state = create_test_state();
+    state
+        .session
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT id, name, email, active FROM users LIMIT 100".to_string(),
+            vec![
+                "id".to_string(),
+                "name".to_string(),
+                "email".to_string(),
+                "active".to_string(),
+            ],
+            vec![vec![
+                "1".to_string(),
+                "Alice".to_string(),
+                "alice@example.com".to_string(),
+                "true".to_string(),
+            ]],
+            1,
+            QuerySource::Preview,
+        )));
+    state.ui.focused_pane = FocusedPane::Result;
+    state.result_interaction.activate_cell(0, 0);
+    (state, now)
+}
+
 #[test]
 fn result_pane_scrolled_past_wide_column_fills_width() {
     let mut state = table_detail_loaded_state();
@@ -380,6 +410,24 @@ fn result_pane_jsonb_edit_mode() {
         now,
     );
     assert_eq!(state.input_mode(), InputMode::JsonbEdit);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_row_json_mode() {
+    let (mut state, now) = row_json_state();
+    let mut terminal = create_test_terminal();
+
+    dispatch_result(
+        &mut state,
+        &Action::OpenModal(ModalKind::RowJson),
+        &AppServices::stub(),
+        now,
+    );
+    assert_eq!(state.input_mode(), InputMode::RowJson);
 
     let output = render_to_string(&mut terminal, &mut state);
 

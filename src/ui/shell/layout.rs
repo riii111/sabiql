@@ -13,6 +13,7 @@ use crate::features::browse::explorer::Explorer;
 use crate::features::browse::inspector::Inspector;
 use crate::features::browse::jsonb_detail::{JsonbDetail, JsonbDetailRenderMetrics};
 use crate::features::browse::result::ResultPane;
+use crate::features::browse::row_json::RowJson;
 use crate::features::connections::error::ConnectionError;
 use crate::features::connections::selector::ConnectionSelector;
 use crate::features::connections::setup::ConnectionSetup;
@@ -151,6 +152,11 @@ impl MainLayout {
             _ => None,
         };
 
+        let row_json_content_visible_rows = match state.input_mode() {
+            InputMode::RowJson => RowJson::render(frame, state, now, theme),
+            _ => None,
+        };
+
         match state.input_mode() {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
@@ -170,6 +176,7 @@ impl MainLayout {
             query_history_picker_pane_height,
             query_history_picker_filter_visible_width,
             jsonb_detail_editor_visible_rows,
+            row_json_content_visible_rows,
             confirm_preview_viewport_height,
             confirm_preview_content_height,
             confirm_preview_scroll,

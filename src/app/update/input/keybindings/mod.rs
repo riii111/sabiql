@@ -89,6 +89,9 @@ pub const JSONB_DETAIL: ModeBindings = ModeBindings {
 pub const JSONB_EDIT: ModeBindings = ModeBindings {
     rows: JSONB_EDIT_ROWS,
 };
+pub const ROW_JSON: ModeBindings = ModeBindings {
+    rows: ROW_JSON_ROWS,
+};
 
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("HELP", &HELP),
@@ -101,6 +104,7 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
     ("JSONB_DETAIL", &JSONB_DETAIL),
     ("JSONB_EDIT", &JSONB_EDIT),
+    ("ROW_JSON", &ROW_JSON),
 ];
 
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;

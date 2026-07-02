@@ -1080,6 +1080,94 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
 ];
 
 // =============================================================================
+// Row JSON
+// =============================================================================
+
+pub mod row_json {
+    use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
+
+    pub const YANK: ModeRow = ModeRow {
+        key_short: "y",
+        key: "y",
+        desc_short: "Copy",
+        description: "Copy row JSON to clipboard",
+        bindings: &[ExecBinding {
+            action: Action::RowJsonYank,
+            combos: &[KeyCombo::plain(Key::Char('y'))],
+        }],
+    };
+
+    pub const SCROLL: ModeRow = ModeRow {
+        key_short: "j/k",
+        key: "j / k",
+        desc_short: "Scroll",
+        description: "Scroll up/down one line",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowJson,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowJson,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+            },
+        ],
+    };
+
+    pub const JUMP: ModeRow = ModeRow {
+        key_short: "g/G",
+        key: "g / G",
+        desc_short: "Jump",
+        description: "Jump to top/bottom",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowJson,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart,
+                },
+                combos: &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowJson,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd,
+                },
+                combos: &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
+            },
+        ],
+    };
+
+    pub const CLOSE: ModeRow = ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close Row JSON modal",
+        bindings: &[ExecBinding {
+            action: Action::CloseModal(ModalKind::RowJson),
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    };
+}
+
+pub const ROW_JSON_ROWS: &[ModeRow] = &[
+    row_json::YANK,
+    row_json::SCROLL,
+    row_json::JUMP,
+    row_json::CLOSE,
+];
+
+// =============================================================================
 // JSONB Search (active search input)
 // =============================================================================
 

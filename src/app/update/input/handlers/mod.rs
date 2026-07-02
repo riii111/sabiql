@@ -4,6 +4,7 @@ mod jsonb;
 mod normal;
 mod overlays;
 mod pickers;
+mod row_json;
 mod sql_modal;
 
 use crate::model::app_state::AppState;
@@ -74,6 +75,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
             )
         }
         InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),
+        InputMode::RowJson => row_json::handle_row_json_keys(combo),
     }
 }
 

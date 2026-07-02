@@ -17,8 +17,8 @@ use crate::app::update::input::keybindings::{
     connection_selector, connection_setup, connection_setup_save, csv_export, er_picker,
     er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail,
     jsonb_edit, jsonb_search, overlay, query_history, query_history_picker, read_only,
-    result_active, settings, sql_modal, sql_modal_confirming, sql_modal_plan, table_picker,
-    table_picker as table_picker_key,
+    result_active, row_json, settings, sql_modal, sql_modal_confirming, sql_modal_plan,
+    table_picker, table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
@@ -328,6 +328,12 @@ impl Footer {
                 jsonb_edit::ESC_NORMAL.as_hint(),
                 jsonb_edit::MOVE.as_hint(),
                 jsonb_edit::HOME_END.as_hint(),
+            ],
+            InputMode::RowJson => vec![
+                row_json::YANK.as_hint(),
+                row_json::SCROLL.as_hint(),
+                row_json::JUMP.as_hint(),
+                row_json::CLOSE.as_hint(),
             ],
             InputMode::ConnectionSelector => {
                 use connection_selector as cs;

@@ -119,6 +119,7 @@ pub enum HelpOrigin {
         mode: JsonbHelpMode,
     },
     JsonbEdit,
+    RowJson,
 }
 
 impl HelpOrigin {
@@ -139,7 +140,8 @@ impl HelpOrigin {
             | Self::ConnectionSelector
             | Self::QueryHistoryPicker
             | Self::JsonbDetail { .. }
-            | Self::JsonbEdit => KeymapPreset::Default,
+            | Self::JsonbEdit
+            | Self::RowJson => KeymapPreset::Default,
         }
     }
 
@@ -175,6 +177,7 @@ impl HelpOrigin {
                 mode: JsonbHelpMode::from_state(state),
             },
             InputMode::JsonbEdit => Self::JsonbEdit,
+            InputMode::RowJson => Self::RowJson,
         }
     }
 
@@ -207,6 +210,7 @@ impl HelpOrigin {
             Self::QueryHistoryPicker => "Query History Picker",
             Self::JsonbDetail { mode } => mode.label(),
             Self::JsonbEdit => "JSONB Edit",
+            Self::RowJson => "Row JSON",
         }
     }
 }

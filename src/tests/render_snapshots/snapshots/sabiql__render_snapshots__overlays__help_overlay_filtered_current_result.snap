@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 383
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -30,7 +29,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │▸ Advanced                                                                                                       │────────────────────────┘
 │                        │  y     Copy to clipboard                                                                                        │────────────────────────┐
 │                        │  y     Copy full JSON                                                                                           │                        │
-│                        │                                                                                                                 │                        │
+│                        │  y     Copy row JSON to clipboard                                                                               │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │

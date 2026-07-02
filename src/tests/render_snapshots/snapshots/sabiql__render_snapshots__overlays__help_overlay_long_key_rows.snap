@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 429
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -33,7 +32,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  Ctrl+D / Ctrl+U                      Scroll half page down / up                                               ┃│                        │
 │                        │  Ctrl+F / Ctrl+B / PageDown / PageUp  Scroll full page down / up                                               ┃│                        │
 │                        │  ← / →                                Scroll left / right                                                      ┃│                        │
-│                        │  type                                 Filter help                                                              ┃│                        │
+│                        │  type                                 Filter help                                                              ││                        │
 │                        │  Backspace                            Edit filter                                                              ││                        │
 │                        │  Esc                                  Close help                                                               ││                        │
 │                        │  ?                                    Close help                                                               ││                        │
