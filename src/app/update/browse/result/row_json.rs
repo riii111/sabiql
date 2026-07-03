@@ -411,9 +411,10 @@ mod tests {
     #[test]
     fn scroll_half_page_up_from_bottom_stops_at_top() {
         let mut state = state_with_row_json();
-        state.ui.row_json_content_visible_rows = 3;
-        let line_count = state.row_json.line_count();
-        *state.row_json.scroll_offset_mut() = line_count.saturating_sub(3);
+        // Make the half-page delta (visible / 2 = 5) larger than the starting
+        // offset so the test actually exercises saturating_sub clamping.
+        state.ui.row_json_content_visible_rows = 10;
+        *state.row_json.scroll_offset_mut() = 2;
 
         reduce_row_json(
             &mut state,
