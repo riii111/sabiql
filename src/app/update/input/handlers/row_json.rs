@@ -35,7 +35,6 @@ pub fn handle_row_json_keys(combo: KeyCombo) -> Action {
             direction: ScrollDirection::Down,
             amount: ScrollAmount::ToEnd,
         },
-        (Key::Char(':'), _) => Action::EnterCommandLine,
         _ => Action::None,
     }
 }
@@ -174,11 +173,5 @@ mod tests {
                 amount: ScrollAmount::FullPage,
             }
         ));
-    }
-
-    #[test]
-    fn colon_opens_command_line() {
-        let result = handle_row_json_keys(combo(Key::Char(':')));
-        assert!(matches!(result, Action::EnterCommandLine));
     }
 }

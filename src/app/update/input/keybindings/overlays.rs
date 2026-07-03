@@ -1143,10 +1143,10 @@ pub mod row_json {
     };
 
     pub const JUMP: ModeRow = ModeRow {
-        key_short: "g/G/:",
-        key: "g / G / :",
-        desc_short: "Jump",
-        description: "Jump to top/bottom or to a line",
+        key_short: "g/G",
+        key: "g / G / Home / End",
+        desc_short: "Top/Btm",
+        description: "Jump to top / bottom",
         bindings: &[
             ExecBinding {
                 action: Action::Scroll {
@@ -1163,10 +1163,6 @@ pub mod row_json {
                     amount: ScrollAmount::ToEnd,
                 },
                 combos: &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
-            },
-            ExecBinding {
-                action: Action::EnterCommandLine,
-                combos: &[KeyCombo::plain(Key::Char(':'))],
             },
         ],
     };

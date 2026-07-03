@@ -142,16 +142,6 @@ pub fn reduce_row_json(state: &mut AppState, action: &Action, now: Instant) -> D
             DispatchResult::handled()
         }
 
-        Action::RowJsonJumpToLine(line) => {
-            if !state.row_json.is_active() {
-                return DispatchResult::pass();
-            }
-            let visible = state.row_json_content_visible_rows().max(1);
-            let max_scroll = state.row_json.line_count().saturating_sub(visible);
-            *state.row_json.scroll_offset_mut() = line.saturating_sub(1).min(max_scroll);
-            DispatchResult::handled()
-        }
-
         _ => DispatchResult::pass(),
     }
 }
@@ -430,35 +420,22 @@ mod tests {
     }
 
     #[test]
-    fn jump_to_line_clamps_to_zero_indexed_offset() {
+    fn scroll_half_page_up_from_bottom_stops_at_top() {
         let mut state = state_with_row_json();
         state.ui.row_json_content_visible_rows = 3;
         let line_count = state.row_json.line_count();
-        assert!(line_count > 3);
+        *state.row_json.scroll_offset_mut() = line_count.saturating_sub(3);
 
-        reduce_row_json(&mut state, &Action::RowJsonJumpToLine(2), Instant::now());
+        reduce_row_json(
+            &mut state,
+            &Action::Scroll {
+                target: ScrollTarget::RowJson,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::HalfPage,
+            },
+            Instant::now(),
+        );
 
-        assert_eq!(state.row_json.scroll_offset(), 1);
-    }
-
-    #[test]
-    fn jump_to_line_clamps_to_max_scroll() {
-        let mut state = state_with_row_json();
-        state.ui.row_json_content_visible_rows = 3;
-        let line_count = state.row_json.line_count();
-        let max_scroll = line_count.saturating_sub(3);
-
-        reduce_row_json(&mut state, &Action::RowJsonJumpToLine(1000), Instant::now());
-
-        assert_eq!(state.row_json.scroll_offset(), max_scroll);
-    }
-
-    #[test]
-    fn jump_to_line_when_inactive_is_passed() {
-        let mut state = AppState::new("test".to_string());
-
-        let result = reduce_row_json(&mut state, &Action::RowJsonJumpToLine(5), Instant::now());
-
-        assert!(result.is_pass());
+        assert_eq!(state.row_json.scroll_offset(), 0);
     }
 }
