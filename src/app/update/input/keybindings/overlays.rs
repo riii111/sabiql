@@ -1099,7 +1099,7 @@ pub mod row_json {
     };
 
     pub const SCROLL: ModeRow = ModeRow {
-        key_short: "j/k/⇞/⇟/\u{2303}F/\u{2303}B",
+        key_short: "j/k/⇟/⇞/\u{2303}F/\u{2303}B",
         key: "j / k / PageDown / PageUp / Ctrl+F / Ctrl+B",
         desc_short: "Scroll",
         description: "Scroll by line or page",
