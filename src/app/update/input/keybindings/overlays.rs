@@ -1099,10 +1099,10 @@ pub mod row_json {
     };
 
     pub const SCROLL: ModeRow = ModeRow {
-        key_short: "j/k",
-        key: "j / k",
+        key_short: "j/k/⇞/⇟/\u{2303}F/\u{2303}B",
+        key: "j / k / PageDown / PageUp / Ctrl+F / Ctrl+B",
         desc_short: "Scroll",
-        description: "Scroll up/down one line",
+        description: "Scroll by line or page",
         bindings: &[
             ExecBinding {
                 action: Action::Scroll {
@@ -1120,14 +1120,33 @@ pub mod row_json {
                 },
                 combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
             },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowJson,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage,
+                },
+                combos: &[
+                    KeyCombo::plain(Key::PageDown),
+                    KeyCombo::ctrl(Key::Char('f')),
+                ],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowJson,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::FullPage,
+                },
+                combos: &[KeyCombo::plain(Key::PageUp), KeyCombo::ctrl(Key::Char('b'))],
+            },
         ],
     };
 
     pub const JUMP: ModeRow = ModeRow {
-        key_short: "g/G",
-        key: "g / G",
+        key_short: "g/G/:",
+        key: "g / G / :",
         desc_short: "Jump",
-        description: "Jump to top/bottom",
+        description: "Jump to top/bottom or to a line",
         bindings: &[
             ExecBinding {
                 action: Action::Scroll {
@@ -1144,6 +1163,10 @@ pub mod row_json {
                     amount: ScrollAmount::ToEnd,
                 },
                 combos: &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
+            },
+            ExecBinding {
+                action: Action::EnterCommandLine,
+                combos: &[KeyCombo::plain(Key::Char(':'))],
             },
         ],
     };

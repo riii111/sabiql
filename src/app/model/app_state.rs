@@ -159,6 +159,9 @@ impl AppState {
         }
         if let Some(visible_rows) = output.row_json_content_visible_rows {
             self.ui.row_json_content_visible_rows = visible_rows;
+            let max_scroll = self.row_json.line_count().saturating_sub(visible_rows);
+            let offset = self.row_json.scroll_offset_mut();
+            *offset = (*offset).min(max_scroll);
         }
         self.confirm_dialog.preview_viewport_height = output.confirm_preview_viewport_height;
         self.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
@@ -290,6 +293,7 @@ mod tests {
 
     use super::*;
     use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, Table};
+    use crate::model::browse::row_json::RowJsonState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::update::action::Action;
@@ -422,6 +426,24 @@ mod tests {
             let visible = state.inspector_ddl_visible_rows();
 
             assert_eq!(visible, 0);
+        }
+
+        #[test]
+        fn row_json_scroll_offset_clamps_on_resize() {
+            let mut state = make_state();
+            state.row_json = RowJsonState::open(0, &["id".to_string()], &["1".to_string()]);
+            *state.row_json.scroll_offset_mut() = 10;
+            let output = RenderOutput {
+                row_json_content_visible_rows: Some(1),
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(output);
+
+            assert_eq!(
+                state.row_json.scroll_offset(),
+                state.row_json.line_count().saturating_sub(1)
+            );
         }
     }
 

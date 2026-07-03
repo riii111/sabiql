@@ -27,7 +27,8 @@ impl RowJson {
         let hints = vec![
             ("y", "Copy"),
             ("j/k", "Scroll"),
-            ("g/G", "Top/Bottom"),
+            ("g/G", "Jump"),
+            (":", "Jump line"),
             ("Esc", "Close"),
         ];
 

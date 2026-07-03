@@ -10,11 +10,16 @@ pub enum Command {
     Theme,
     Palette,
     Write,
+    RowJsonJumpToLine(usize),
     Unknown(String),
 }
 
 pub fn parse_command(input: &str) -> Command {
-    match input.trim() {
+    let trimmed = input.trim();
+    if let Ok(line) = trimmed.parse::<usize>() {
+        return Command::RowJsonJumpToLine(line);
+    }
+    match trimmed {
         "q" | "quit" => Command::Quit,
         "?" | "help" => Command::Help,
         "sql" => Command::Sql,
@@ -36,6 +41,7 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Settings | Command::Theme => Action::OpenModal(ModalKind::Settings),
         Command::Palette => Action::OpenModal(ModalKind::CommandPalette),
         Command::Write => Action::SubmitCellEditWrite,
+        Command::RowJsonJumpToLine(line) => Action::RowJsonJumpToLine(line),
         Command::Unknown(_) => Action::None,
     }
 }
@@ -125,6 +131,27 @@ mod tests {
         }
 
         #[test]
+        fn numeric_string_returns_row_json_jump_to_line() {
+            let result = parse_command("5");
+
+            assert_eq!(result, Command::RowJsonJumpToLine(5));
+        }
+
+        #[test]
+        fn numeric_string_with_whitespace_is_trimmed() {
+            let result = parse_command("  42  ");
+
+            assert_eq!(result, Command::RowJsonJumpToLine(42));
+        }
+
+        #[test]
+        fn non_numeric_string_returns_unknown() {
+            let result = parse_command("42foo");
+
+            assert_eq!(result, Command::Unknown("42foo".to_string()));
+        }
+
+        #[test]
         fn empty_string_returns_unknown() {
             let result = parse_command("");
 
@@ -134,6 +161,13 @@ mod tests {
 
     mod command_to_action {
         use super::*;
+
+        #[test]
+        fn row_json_jump_to_line_returns_action() {
+            let result = command_to_action(Command::RowJsonJumpToLine(7));
+
+            assert!(matches!(result, Action::RowJsonJumpToLine(7)));
+        }
 
         #[test]
         fn quit_returns_quit_action() {

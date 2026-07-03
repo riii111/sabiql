@@ -570,6 +570,7 @@ pub enum Action {
     // Row JSON
     RowJsonYank,
     RowJsonYankSuccess,
+    RowJsonJumpToLine(usize),
 
     // ER diagrams
     ErToggleSelection,
