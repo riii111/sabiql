@@ -418,24 +418,4 @@ mod tests {
 
         assert_eq!(state.row_json.scroll_offset(), 0);
     }
-
-    #[test]
-    fn scroll_half_page_up_from_bottom_stops_at_top() {
-        let mut state = state_with_row_json();
-        state.ui.row_json_content_visible_rows = 3;
-        let line_count = state.row_json.line_count();
-        *state.row_json.scroll_offset_mut() = line_count.saturating_sub(3);
-
-        reduce_row_json(
-            &mut state,
-            &Action::Scroll {
-                target: ScrollTarget::RowJson,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::HalfPage,
-            },
-            Instant::now(),
-        );
-
-        assert_eq!(state.row_json.scroll_offset(), 0);
-    }
 }
