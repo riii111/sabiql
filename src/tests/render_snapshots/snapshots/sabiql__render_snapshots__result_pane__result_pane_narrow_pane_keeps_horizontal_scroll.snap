@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/result_pane.rs
+assertion_line: 207
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                     
@@ -40,4 +41,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                          ││                                                                                │
 │                          ││ col   0% ◀︎══════════════════════════════════════════════════════════════════─▶︎ │
 └──────────────────────────┘└────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ^E:Export  Enter:Select  ]/[:Page
+r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ^E:Export  Enter:Select  K:Row De

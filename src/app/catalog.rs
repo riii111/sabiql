@@ -208,7 +208,7 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
         } => rows_from_binding_refs(&[
             &result_active::YANK,
             &result_active::ROW_YANK,
-            &result_active::ROW_JSON,
+            &result_active::ROW_DETAIL,
             &result_active::STAGE_DELETE,
             &result_active::EDIT,
             &result_active::ESC_BACK,
@@ -219,7 +219,7 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
             ..
         } => rows_from_binding_refs(&[
             &result_active::ENTER_DEEPEN,
-            &result_active::ROW_JSON,
+            &result_active::ROW_DETAIL,
             &footer_nav::PAGE_NAV,
             csv_export(keymap_preset),
         ]),
@@ -259,7 +259,7 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
         HelpOrigin::QueryHistoryPicker => rows_from_mode_rows(QUERY_HISTORY_PICKER_ROWS),
         HelpOrigin::JsonbDetail { mode } => jsonb_current_rows(mode),
         HelpOrigin::JsonbEdit => rows_from_mode_rows(JSONB_EDIT_ROWS),
-        HelpOrigin::RowJson => rows_from_mode_rows(ROW_JSON_ROWS),
+        HelpOrigin::RowDetail => rows_from_mode_rows(ROW_DETAIL_ROWS),
     };
 
     HelpSection {
@@ -363,7 +363,7 @@ fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
                 sql_current_rows(SqlHelpMode::Compare, keymap_preset),
                 rows_from_mode_rows(er_picker_rows(keymap_preset)),
                 rows_from_mode_rows(JSONB_DETAIL_ROWS),
-                rows_from_mode_rows(ROW_JSON_ROWS),
+                rows_from_mode_rows(ROW_DETAIL_ROWS),
             ]),
         ),
     ]

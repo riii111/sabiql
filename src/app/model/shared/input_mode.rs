@@ -17,5 +17,5 @@ pub enum InputMode {
     QueryHistoryPicker,
     JsonbDetail,
     JsonbEdit,
-    RowJson,
+    RowDetail,
 }

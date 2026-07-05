@@ -8,7 +8,7 @@ pub enum FlashId {
     SqlModal,
     Ddl,
     JsonbDetail,
-    RowJson,
+    RowDetail,
 }
 
 #[derive(Debug, Clone, Default)]

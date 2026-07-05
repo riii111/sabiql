@@ -49,7 +49,7 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     (state, now)
 }
 
-fn row_json_state() -> (AppState, std::time::Instant) {
+fn row_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
     let mut state = create_test_state();
     state
@@ -417,17 +417,17 @@ fn result_pane_jsonb_edit_mode() {
 }
 
 #[test]
-fn result_pane_row_json_mode() {
-    let (mut state, now) = row_json_state();
+fn result_pane_row_detail_mode() {
+    let (mut state, now) = row_detail_state();
     let mut terminal = create_test_terminal();
 
     dispatch_result(
         &mut state,
-        &Action::OpenModal(ModalKind::RowJson),
+        &Action::OpenModal(ModalKind::RowDetail),
         &AppServices::stub(),
         now,
     );
-    assert_eq!(state.input_mode(), InputMode::RowJson);
+    assert_eq!(state.input_mode(), InputMode::RowDetail);
 
     let output = render_to_string(&mut terminal, &mut state);
 

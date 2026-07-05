@@ -1080,10 +1080,10 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
 ];
 
 // =============================================================================
-// Row JSON
+// Row Detail
 // =============================================================================
 
-pub mod row_json {
+pub mod row_detail {
     use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
 
@@ -1091,9 +1091,9 @@ pub mod row_json {
         key_short: "y",
         key: "y",
         desc_short: "Copy",
-        description: "Copy row JSON to clipboard",
+        description: "Copy Row Detail to clipboard",
         bindings: &[ExecBinding {
-            action: Action::RowJsonYank,
+            action: Action::RowDetailYank,
             combos: &[KeyCombo::plain(Key::Char('y'))],
         }],
     };
@@ -1106,7 +1106,7 @@ pub mod row_json {
         bindings: &[
             ExecBinding {
                 action: Action::Scroll {
-                    target: ScrollTarget::RowJson,
+                    target: ScrollTarget::RowDetail,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::Line,
                 },
@@ -1114,7 +1114,7 @@ pub mod row_json {
             },
             ExecBinding {
                 action: Action::Scroll {
-                    target: ScrollTarget::RowJson,
+                    target: ScrollTarget::RowDetail,
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
                 },
@@ -1122,7 +1122,7 @@ pub mod row_json {
             },
             ExecBinding {
                 action: Action::Scroll {
-                    target: ScrollTarget::RowJson,
+                    target: ScrollTarget::RowDetail,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::FullPage,
                 },
@@ -1133,7 +1133,7 @@ pub mod row_json {
             },
             ExecBinding {
                 action: Action::Scroll {
-                    target: ScrollTarget::RowJson,
+                    target: ScrollTarget::RowDetail,
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::FullPage,
                 },
@@ -1150,7 +1150,7 @@ pub mod row_json {
         bindings: &[
             ExecBinding {
                 action: Action::Scroll {
-                    target: ScrollTarget::RowJson,
+                    target: ScrollTarget::RowDetail,
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::ToStart,
                 },
@@ -1158,7 +1158,7 @@ pub mod row_json {
             },
             ExecBinding {
                 action: Action::Scroll {
-                    target: ScrollTarget::RowJson,
+                    target: ScrollTarget::RowDetail,
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::ToEnd,
                 },
@@ -1171,19 +1171,19 @@ pub mod row_json {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Close",
-        description: "Close Row JSON modal",
+        description: "Close Row Detail modal",
         bindings: &[ExecBinding {
-            action: Action::CloseModal(ModalKind::RowJson),
+            action: Action::CloseModal(ModalKind::RowDetail),
             combos: &[KeyCombo::plain(Key::Esc)],
         }],
     };
 }
 
-pub const ROW_JSON_ROWS: &[ModeRow] = &[
-    row_json::YANK,
-    row_json::SCROLL,
-    row_json::JUMP,
-    row_json::CLOSE,
+pub const ROW_DETAIL_ROWS: &[ModeRow] = &[
+    row_detail::YANK,
+    row_detail::SCROLL,
+    row_detail::JUMP,
+    row_detail::CLOSE,
 ];
 
 // =============================================================================

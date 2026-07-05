@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -10,20 +10,20 @@ use crate::primitives::atoms::apply_yank_flash;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
-pub struct RowJson;
+pub struct RowDetail;
 
-impl RowJson {
+impl RowDetail {
     pub fn render(
         frame: &mut Frame,
         state: &AppState,
         now: std::time::Instant,
         theme: &ThemePalette,
     ) -> Option<usize> {
-        if !state.row_json.is_active() {
+        if !state.row_detail.is_active() {
             return None;
         }
 
-        let title = " Row JSON ";
+        let title = " Row Detail ";
         let hints = vec![
             ("y", "Copy"),
             ("j/k", "Scroll"),
@@ -40,19 +40,33 @@ impl RowJson {
             theme,
         );
 
-        let content = state.row_json.content();
-        let scroll_offset = state.row_json.scroll_offset();
+        let content = state.row_detail.content();
+        let scroll_offset = state.row_detail.scroll_offset();
         let mut lines: Vec<Line> = content
             .lines()
             .map(|line| {
-                Line::from(Span::styled(
-                    line.to_string(),
-                    Style::default().fg(theme.semantic.text.primary),
-                ))
+                if line.starts_with("  ") {
+                    Line::from(Span::styled(
+                        line.to_string(),
+                        Style::default().fg(theme.semantic.text.primary),
+                    ))
+                } else if line.is_empty() {
+                    Line::from(Span::styled(
+                        line.to_string(),
+                        Style::default().fg(theme.semantic.text.secondary),
+                    ))
+                } else {
+                    Line::from(Span::styled(
+                        line.to_string(),
+                        Style::default()
+                            .fg(theme.semantic.text.primary)
+                            .add_modifier(Modifier::BOLD),
+                    ))
+                }
             })
             .collect();
 
-        let flash_active = state.flash_timers.is_active(FlashId::RowJson, now);
+        let flash_active = state.flash_timers.is_active(FlashId::RowDetail, now);
         apply_yank_flash(&mut lines, flash_active, theme);
 
         let paragraph = Paragraph::new(lines)

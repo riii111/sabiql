@@ -1,6 +1,6 @@
 mod edit;
 mod jsonb;
-mod row_json;
+mod row_detail;
 mod scroll;
 mod selection;
 mod yank;
@@ -23,7 +23,7 @@ pub fn dispatch_result(
         .or_else(|| edit::reduce_edit(state, action, now))
         .or_else(|| yank::reduce_yank(state, action, services, now))
         .or_else(|| jsonb::reduce_jsonb(state, action, now))
-        .or_else(|| row_json::reduce_row_json(state, action, now))
+        .or_else(|| row_detail::reduce_row_detail(state, action, now))
 }
 
 #[cfg(test)]

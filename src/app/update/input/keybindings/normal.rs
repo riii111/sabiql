@@ -599,20 +599,20 @@ pub mod result_active {
         combos: &[],
     };
 
-    pub const ROW_JSON: KeyBinding = KeyBinding {
-        key_short: "J",
-        key: "J",
-        desc_short: "Row JSON",
-        description: "Open the selected row as a JSON object",
-        action: Action::OpenModal(ModalKind::RowJson),
-        combos: &[KeyCombo::plain(Key::Char('J'))],
+    pub const ROW_DETAIL: KeyBinding = KeyBinding {
+        key_short: "K",
+        key: "K",
+        desc_short: "Row Detail",
+        description: "Open Row Detail",
+        action: Action::OpenModal(ModalKind::RowDetail),
+        combos: &[KeyCombo::plain(Key::Char('K'))],
     };
 }
 
 pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
     result_active::ENTER_DEEPEN,
     result_active::YANK,
-    result_active::ROW_JSON,
+    result_active::ROW_DETAIL,
     result_active::STAGE_DELETE,
     result_active::UNSTAGE_DELETE,
     result_active::CELL_NAV,

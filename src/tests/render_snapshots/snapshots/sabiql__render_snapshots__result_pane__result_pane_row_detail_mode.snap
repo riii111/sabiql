@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/result_pane.rs
+assertion_line: 434
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -10,18 +11,18 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                ╭ Row JSON ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮               │
-│                │{                                                                                                                                 │               │
-│                │  "active": true,                                                                                                                 │               │
-│                │  "email": "alice@example.com",                                                                                                   │               │
-│                │  "id": 1,                                                                                                                        │               │
-│                │  "name": "Alice"                                                                                                                 │               │
-│                │}                                                                                                                                 │               │
+│                ╭ Row Detail ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮               │
+│                │id                                                                                                                                │               │
+│                │  1                                                                                                                               │               │
 │                │                                                                                                                                  │               │
+│                │name                                                                                                                              │               │
+│                │  Alice                                                                                                                           │               │
 │                │                                                                                                                                  │               │
+│                │email                                                                                                                             │               │
+│                │  alice@example.com                                                                                                               │               │
 │                │                                                                                                                                  │               │
-│                │                                                                                                                                  │               │
-│                │                                                                                                                                  │               │
+│                │active                                                                                                                            │               │
+│                │  true                                                                                                                            │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │

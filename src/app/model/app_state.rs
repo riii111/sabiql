@@ -7,7 +7,7 @@ use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::browse::query_execution::QueryExecution;
 use crate::model::browse::result_interaction::ResultInteraction;
-use crate::model::browse::row_json::RowJsonState;
+use crate::model::browse::row_detail::RowDetailState;
 use crate::model::browse::session::BrowseSession;
 use crate::model::connection::cache::ConnectionCacheStore;
 use crate::model::connection::error_state::ConnectionErrorState;
@@ -44,7 +44,7 @@ pub struct AppState {
     pub confirm_dialog: ConfirmDialogState,
     pub result_interaction: ResultInteraction,
     pub jsonb_detail: JsonbDetailState,
-    pub row_json: RowJsonState,
+    pub row_detail: RowDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub settings: SettingsState,
     pub explain: ExplainContext,
@@ -75,7 +75,7 @@ impl AppState {
             confirm_dialog: ConfirmDialogState::default(),
             result_interaction: ResultInteraction::default(),
             jsonb_detail: JsonbDetailState::default(),
-            row_json: RowJsonState::default(),
+            row_detail: RowDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             settings: SettingsState::default(),
             explain: ExplainContext::default(),
@@ -157,10 +157,10 @@ impl AppState {
             self.ui.jsonb_detail_editor_visible_rows = visible_rows;
             self.jsonb_detail.editor_mut().update_scroll(visible_rows);
         }
-        if let Some(visible_rows) = output.row_json_content_visible_rows {
-            self.ui.row_json_content_visible_rows = visible_rows;
-            let max_scroll = self.row_json.line_count().saturating_sub(visible_rows);
-            let offset = self.row_json.scroll_offset_mut();
+        if let Some(visible_rows) = output.row_detail_content_visible_rows {
+            self.ui.row_detail_content_visible_rows = visible_rows;
+            let max_scroll = self.row_detail.line_count().saturating_sub(visible_rows);
+            let offset = self.row_detail.scroll_offset_mut();
             *offset = (*offset).min(max_scroll);
         }
         self.confirm_dialog.preview_viewport_height = output.confirm_preview_viewport_height;
@@ -187,8 +187,8 @@ impl AppState {
         self.ui.jsonb_detail_editor_visible_rows
     }
 
-    pub fn row_json_content_visible_rows(&self) -> usize {
-        self.ui.row_json_content_visible_rows
+    pub fn row_detail_content_visible_rows(&self) -> usize {
+        self.ui.row_detail_content_visible_rows
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
@@ -293,7 +293,7 @@ mod tests {
 
     use super::*;
     use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, Table};
-    use crate::model::browse::row_json::RowJsonState;
+    use crate::model::browse::row_detail::RowDetailState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::update::action::Action;
@@ -429,20 +429,20 @@ mod tests {
         }
 
         #[test]
-        fn row_json_scroll_offset_clamps_on_resize() {
+        fn row_detail_scroll_offset_clamps_on_resize() {
             let mut state = make_state();
-            state.row_json = RowJsonState::open(0, &["id".to_string()], &["1".to_string()]);
-            *state.row_json.scroll_offset_mut() = 10;
+            state.row_detail = RowDetailState::open(0, &["id".to_string()], &["1".to_string()]);
+            *state.row_detail.scroll_offset_mut() = 10;
             let output = RenderOutput {
-                row_json_content_visible_rows: Some(1),
+                row_detail_content_visible_rows: Some(1),
                 ..RenderOutput::default()
             };
 
             state.apply_render_output(output);
 
             assert_eq!(
-                state.row_json.scroll_offset(),
-                state.row_json.line_count().saturating_sub(1)
+                state.row_detail.scroll_offset(),
+                state.row_detail.line_count().saturating_sub(1)
             );
         }
     }

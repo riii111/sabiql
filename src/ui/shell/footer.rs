@@ -17,7 +17,7 @@ use crate::app::update::input::keybindings::{
     connection_selector, connection_setup, connection_setup_save, csv_export, er_picker,
     er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail,
     jsonb_edit, jsonb_search, overlay, query_history, query_history_picker, read_only,
-    result_active, row_json, settings, sql_modal, sql_modal_confirming, sql_modal_plan,
+    result_active, row_detail, settings, sql_modal, sql_modal_confirming, sql_modal_plan,
     table_picker, table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
@@ -109,6 +109,7 @@ impl Footer {
                             result_active::EDIT.as_hint(),
                             result_active::YANK.as_hint(),
                             result_active::ROW_YANK.as_hint(),
+                            result_active::ROW_DETAIL.as_hint(),
                             result_active::STAGE_DELETE.as_hint(),
                             global::HELP.as_hint(),
                             result_active::ESC_BACK.as_hint(),
@@ -126,7 +127,10 @@ impl Footer {
                     }
                 } else if state.ui.is_focus_mode() {
                     // Actions → Navigation → Help → Close/Cancel → Quit
-                    let mut list = vec![result_active::ENTER_DEEPEN.as_hint()];
+                    let mut list = vec![
+                        result_active::ENTER_DEEPEN.as_hint(),
+                        result_active::ROW_DETAIL.as_hint(),
+                    ];
                     if !state.result_interaction.staged_delete_rows().is_empty() {
                         list.push(result_active::UNSTAGE_DELETE.as_hint());
                         list.push(cell_edit::WRITE.as_hint());
@@ -178,6 +182,7 @@ impl Footer {
                     // Navigation
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(result_active::ENTER_DEEPEN.as_hint());
+                        list.push(result_active::ROW_DETAIL.as_hint());
                         if !state.result_interaction.staged_delete_rows().is_empty() {
                             list.push(result_active::UNSTAGE_DELETE.as_hint());
                             list.push(cell_edit::WRITE.as_hint());
@@ -329,11 +334,11 @@ impl Footer {
                 jsonb_edit::MOVE.as_hint(),
                 jsonb_edit::HOME_END.as_hint(),
             ],
-            InputMode::RowJson => vec![
-                row_json::YANK.as_hint(),
-                row_json::SCROLL.as_hint(),
-                row_json::JUMP.as_hint(),
-                row_json::CLOSE.as_hint(),
+            InputMode::RowDetail => vec![
+                row_detail::YANK.as_hint(),
+                row_detail::SCROLL.as_hint(),
+                row_detail::JUMP.as_hint(),
+                row_detail::CLOSE.as_hint(),
             ],
             InputMode::ConnectionSelector => {
                 use connection_selector as cs;
