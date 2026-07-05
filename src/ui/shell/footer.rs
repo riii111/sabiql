@@ -336,6 +336,7 @@ impl Footer {
             ],
             InputMode::RowDetail => vec![
                 row_detail::YANK.as_hint(),
+                row_detail::YANK_JSON.as_hint(),
                 row_detail::SCROLL.as_hint(),
                 row_detail::JUMP.as_hint(),
                 row_detail::CLOSE.as_hint(),

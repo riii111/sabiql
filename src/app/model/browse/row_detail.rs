@@ -3,8 +3,8 @@ use serde_json::Value;
 #[derive(Debug, Clone, Default)]
 pub struct RowDetailState {
     row: usize,
-    content: String,
-    json_for_yank: String,
+    display_text: String,
+    json_text: String,
     scroll_offset: usize,
     active: bool,
 }
@@ -19,19 +19,19 @@ impl RowDetailState {
             }
             display_lines.push(String::new());
         }
-        let content = display_lines.join("\n");
+        let display_text = display_lines.join("\n") + "\n";
 
         let mut obj = serde_json::Map::new();
         for (col, cell) in columns.iter().zip(cells.iter()) {
             obj.insert(col.clone(), infer_json_value(cell));
         }
-        let json_for_yank =
+        let json_text =
             serde_json::to_string_pretty(&Value::Object(obj)).unwrap_or_else(|_| "{}".to_string());
 
         Self {
             row,
-            content,
-            json_for_yank,
+            display_text,
+            json_text,
             scroll_offset: 0,
             active: true,
         }
@@ -50,7 +50,7 @@ impl RowDetailState {
     }
 
     pub fn content(&self) -> &str {
-        &self.content
+        &self.display_text
     }
 
     pub fn scroll_offset(&self) -> usize {
@@ -62,11 +62,15 @@ impl RowDetailState {
     }
 
     pub fn line_count(&self) -> usize {
-        self.content.lines().count().max(1)
+        self.display_text.lines().count().max(1)
     }
 
     pub fn content_for_yank(&self) -> String {
-        self.json_for_yank.clone()
+        self.display_text.clone()
+    }
+
+    pub fn json_for_yank(&self) -> String {
+        self.json_text.clone()
     }
 }
 
@@ -89,15 +93,24 @@ mod tests {
         let state = RowDetailState::open(0, &["name".to_string()], &[String::new()]);
 
         assert!(state.content().contains("name"));
-        assert!(state.content_for_yank().contains("\"name\": null"));
+        assert!(state.json_for_yank().contains("\"name\": null"));
+        assert!(state.content_for_yank().contains("name"));
     }
 
     #[test]
-    fn number_string_yanks_as_number() {
+    fn number_string_yanks_as_number_json() {
         let state = RowDetailState::open(0, &["count".to_string()], &["42".to_string()]);
 
         assert!(state.content().contains("count\n  42"));
-        assert!(state.content_for_yank().contains("\"count\": 42"));
+        assert!(state.json_for_yank().contains("\"count\": 42"));
+    }
+
+    #[test]
+    fn number_string_yanks_display_text() {
+        let state = RowDetailState::open(0, &["count".to_string()], &["42".to_string()]);
+
+        let yank = state.content_for_yank();
+        assert!(yank.contains("count\n  42"));
     }
 
     #[test]
@@ -105,7 +118,7 @@ mod tests {
         let state = RowDetailState::open(0, &["active".to_string()], &["true".to_string()]);
 
         assert!(state.content().contains("active\n  true"));
-        assert!(state.content_for_yank().contains("\"active\": true"));
+        assert!(state.json_for_yank().contains("\"active\": true"));
     }
 
     #[test]
@@ -113,11 +126,14 @@ mod tests {
         let state = RowDetailState::open(0, &["title".to_string()], &["hello world".to_string()]);
 
         assert!(state.content().contains("title\n  hello world"));
-        assert!(
-            state
-                .content_for_yank()
-                .contains("\"title\": \"hello world\"")
-        );
+        assert!(state.json_for_yank().contains("\"title\": \"hello world\""));
+    }
+
+    #[test]
+    fn display_text_yank_matches_vertical_render() {
+        let state = RowDetailState::open(0, &["title".to_string()], &["hello world".to_string()]);
+
+        assert_eq!(state.content_for_yank(), state.content());
     }
 
     #[test]
@@ -135,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_columns_build_vertical_display() {
+    fn multiple_columns_build_vertical_display_and_json() {
         let state = RowDetailState::open(
             0,
             &["id".to_string(), "name".to_string()],
@@ -145,9 +161,11 @@ mod tests {
         let content = state.content();
         assert!(content.contains("id\n  1"));
         assert!(content.contains("name\n  alice"));
-        let yank = state.content_for_yank();
-        assert!(yank.contains("\"id\": 1"));
-        assert!(yank.contains("\"name\": \"alice\""));
+        let json = state.json_for_yank();
+        assert!(json.contains("\"id\": 1"));
+        assert!(json.contains("\"name\": \"alice\""));
+
+        assert_eq!(state.content_for_yank(), content);
     }
 
     #[test]

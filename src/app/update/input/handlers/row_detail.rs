@@ -5,6 +5,7 @@ pub fn handle_row_detail_keys(combo: KeyCombo) -> Action {
     match (combo.key, combo.modifiers) {
         (Key::Esc, _) => Action::CloseModal(ModalKind::RowDetail),
         (Key::Char('y'), _) => Action::RowDetailYank,
+        (Key::Char('Y'), _) => Action::RowDetailYankJson,
         (Key::Char('j') | Key::Down, _) => Action::Scroll {
             target: ScrollTarget::RowDetail,
             direction: ScrollDirection::Down,
@@ -60,9 +61,15 @@ mod tests {
     }
 
     #[test]
-    fn y_yanks() {
+    fn y_yanks_display_text() {
         let result = handle_row_detail_keys(combo(Key::Char('y')));
         assert!(matches!(result, Action::RowDetailYank));
+    }
+
+    #[test]
+    fn shift_y_yanks_json() {
+        let result = handle_row_detail_keys(combo(Key::Char('Y')));
+        assert!(matches!(result, Action::RowDetailYankJson));
     }
 
     #[test]

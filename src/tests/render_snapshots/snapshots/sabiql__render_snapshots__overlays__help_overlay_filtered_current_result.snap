@@ -30,8 +30,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │▸ Advanced                                                                                                       │────────────────────────┘
 │                        │  y     Copy to clipboard                                                                                        │────────────────────────┐
 │                        │  y     Copy full JSON                                                                                           │                        │
-│                        │  y     Copy Row Detail to clipboard                                                                             │                        │
-│                        │                                                                                                                 │                        │
+│                        │  y     Copy displayed text to clipboard                                                                         │                        │
+│                        │  Y     Copy row as JSON to clipboard                                                                            │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │

@@ -26,6 +26,7 @@ impl RowDetail {
         let title = " Row Detail ";
         let hints = vec![
             ("y", "Copy"),
+            ("Y", "Copy JSON"),
             ("j/k", "Scroll"),
             ("g/G", "Top/Btm"),
             ("Esc", "Close"),

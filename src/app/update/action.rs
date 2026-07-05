@@ -569,6 +569,7 @@ pub enum Action {
 
     // Row Detail
     RowDetailYank,
+    RowDetailYankJson,
     RowDetailYankSuccess,
 
     // ER diagrams

@@ -1091,10 +1091,21 @@ pub mod row_detail {
         key_short: "y",
         key: "y",
         desc_short: "Copy",
-        description: "Copy Row Detail to clipboard",
+        description: "Copy displayed text to clipboard",
         bindings: &[ExecBinding {
             action: Action::RowDetailYank,
             combos: &[KeyCombo::plain(Key::Char('y'))],
+        }],
+    };
+
+    pub const YANK_JSON: ModeRow = ModeRow {
+        key_short: "Y",
+        key: "Y",
+        desc_short: "Copy JSON",
+        description: "Copy row as JSON to clipboard",
+        bindings: &[ExecBinding {
+            action: Action::RowDetailYankJson,
+            combos: &[KeyCombo::plain(Key::Char('Y'))],
         }],
     };
 
@@ -1181,6 +1192,7 @@ pub mod row_detail {
 
 pub const ROW_DETAIL_ROWS: &[ModeRow] = &[
     row_detail::YANK,
+    row_detail::YANK_JSON,
     row_detail::SCROLL,
     row_detail::JUMP,
     row_detail::CLOSE,

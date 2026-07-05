@@ -47,6 +47,17 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             }])
         }
 
+        Action::RowDetailYankJson => {
+            let content = state.row_detail.json_for_yank();
+            DispatchResult::handled_with(vec![Effect::CopyToClipboard {
+                content,
+                on_success: Some(Box::new(Action::RowDetailYankSuccess)),
+                on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
+                    "Clipboard unavailable".into(),
+                )))),
+            }])
+        }
+
         Action::RowDetailYankSuccess => {
             state.flash_timers.set(FlashId::RowDetail, now);
             DispatchResult::handled()
@@ -193,11 +204,11 @@ mod tests {
         assert_eq!(state.input_mode(), InputMode::RowDetail);
         assert!(state.row_detail.content().contains("id\n  1"));
         assert!(state.row_detail.content().contains("name\n  alice"));
-        assert!(state.row_detail.content_for_yank().contains("\"id\": 1"));
+        assert!(state.row_detail.json_for_yank().contains("\"id\": 1"));
         assert!(
             state
                 .row_detail
-                .content_for_yank()
+                .json_for_yank()
                 .contains("\"name\": \"alice\"")
         );
     }
@@ -246,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn yank_returns_clipboard_effect() {
+    fn yank_display_text_returns_clipboard_effect() {
         let mut state = state_with_row_detail();
 
         let effects = reduce_row_detail(&mut state, &Action::RowDetailYank, Instant::now())
@@ -257,7 +268,23 @@ mod tests {
         assert!(matches!(
             &effects[0],
             Effect::CopyToClipboard { content, on_success, .. }
-            if content.contains("alice") && matches!(on_success.as_deref(), Some(Action::RowDetailYankSuccess))
+            if content.contains("id\n  1") && matches!(on_success.as_deref(), Some(Action::RowDetailYankSuccess))
+        ));
+    }
+
+    #[test]
+    fn yank_json_returns_clipboard_effect() {
+        let mut state = state_with_row_detail();
+
+        let effects = reduce_row_detail(&mut state, &Action::RowDetailYankJson, Instant::now())
+            .into_effects()
+            .expect("should return effects");
+
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(
+            &effects[0],
+            Effect::CopyToClipboard { content, on_success, .. }
+            if content.contains("\"name\": \"alice\"") && matches!(on_success.as_deref(), Some(Action::RowDetailYankSuccess))
         ));
     }
 
