@@ -60,7 +60,7 @@ impl RowDetail {
                     Line::from(Span::styled(
                         line.to_string(),
                         Style::default()
-                            .fg(theme.semantic.text.primary)
+                            .fg(theme.semantic.text.accent)
                             .add_modifier(Modifier::BOLD),
                     ))
                 }
