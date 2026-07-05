@@ -1,0 +1,7 @@
+# `self_update` currently pulls `quick-xml` for its S3 backend.
+# sabiql only uses the GitHub backend for self-update.
+[advisories]
+ignore = [
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
+]
