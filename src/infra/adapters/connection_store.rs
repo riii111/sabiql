@@ -212,7 +212,7 @@ ssl_mode = "prefer"
         }
 
         #[test]
-        fn missing_username_loads_as_empty_string() {
+        fn missing_username_and_blank_host_load_as_empty_strings() {
             let temp_dir = TempDir::new().unwrap();
             let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
 
