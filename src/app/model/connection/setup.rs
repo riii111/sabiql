@@ -55,10 +55,15 @@ impl ConnectionField {
     }
 
     pub fn is_required(self) -> bool {
-        matches!(
-            self,
-            Self::Name | Self::Host | Self::Port | Self::Database | Self::User
-        )
+        matches!(self, Self::Name | Self::Port | Self::Database)
+    }
+
+    pub fn placeholder(self) -> &'static str {
+        match self {
+            Self::Host => "libpq default/socket",
+            Self::User => "OS user default",
+            _ => "",
+        }
     }
 
     pub fn label(self) -> &'static str {
@@ -246,10 +251,10 @@ mod tests {
 
         #[rstest]
         #[case(ConnectionField::Name, true)]
-        #[case(ConnectionField::Host, true)]
+        #[case(ConnectionField::Host, false)]
         #[case(ConnectionField::Port, true)]
         #[case(ConnectionField::Database, true)]
-        #[case(ConnectionField::User, true)]
+        #[case(ConnectionField::User, false)]
         #[case(ConnectionField::Password, false)]
         #[case(ConnectionField::SslMode, false)]
         fn is_required_returns_correct_value(

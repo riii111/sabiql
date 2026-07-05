@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
-assertion_line: 107
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
@@ -25,10 +24,10 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
-│                                       ││          │  Host:       [                            ] Required       │                                                  │
+│                                       ││          │  Host:       [ libpq default/socket       ]                │                                                  │
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
 │                                       │└──────────│  Database:   [                            ] Required       │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [                            ] Required       │──────────────────────────────────────────────────┐
+│                                       │┌ [3] Resul│  User:       [ OS user default            ]                │──────────────────────────────────────────────────┐
 │                                       ││(select a │  Password:   [                            ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
