@@ -95,6 +95,7 @@ jobs:
       - uses: taiki-e/install-action@c93ccc03e00cd0e08e494f5fd058a6c55a6a1907 # v2
         with:
           tool: cargo-audit
+      - run: bash ./scripts/assert_self_update_backend.sh
       - run: cargo audit
 
   machete:
