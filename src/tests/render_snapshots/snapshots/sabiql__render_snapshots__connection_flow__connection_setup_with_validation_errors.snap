@@ -24,10 +24,10 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
-│                                       ││          │  Host:       [ libpq default/socket       ]                │                                                  │
+│                                       ││          │  Host:       [ default host/socket        ]                │                                                  │
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
 │                                       │└──────────│  Database:   [                            ] Required       │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [ OS user default            ]                │──────────────────────────────────────────────────┐
+│                                       │┌ [3] Resul│  User:       [ psql default user          ]                │──────────────────────────────────────────────────┐
 │                                       ││(select a │  Password:   [                            ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │

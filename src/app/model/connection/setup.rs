@@ -60,8 +60,8 @@ impl ConnectionField {
 
     pub fn placeholder(self) -> &'static str {
         match self {
-            Self::Host => "libpq default/socket",
-            Self::User => "OS user default",
+            Self::Host => "default host/socket",
+            Self::User => "psql default user",
             _ => "",
         }
     }
