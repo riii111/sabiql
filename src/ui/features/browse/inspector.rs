@@ -405,6 +405,7 @@ impl Inspector {
                 position: clamped_offset,
                 viewport_size: plan.indicator_viewport_size(),
                 total_items: headers.len(),
+                label: "col",
             },
             theme,
         );

@@ -105,6 +105,26 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
 
         Action::Scroll {
             target: ScrollTarget::RowDetail,
+            direction: ScrollDirection::Left,
+            amount: ScrollAmount::Line,
+        } => {
+            state.row_detail.scroll_left_by(1);
+            DispatchResult::handled()
+        }
+
+        Action::Scroll {
+            target: ScrollTarget::RowDetail,
+            direction: ScrollDirection::Right,
+            amount: ScrollAmount::Line,
+        } => {
+            state
+                .row_detail
+                .scroll_right_by(1, state.row_detail_content_visible_columns());
+            DispatchResult::handled()
+        }
+
+        Action::Scroll {
+            target: ScrollTarget::RowDetail,
             direction,
             amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
@@ -297,6 +317,44 @@ mod tests {
         assert_eq!(
             state.row_detail.scroll_offset(),
             line_count.saturating_sub(3)
+        );
+    }
+
+    #[test]
+    fn horizontal_scroll_right_clamps_to_content_width() {
+        let mut state = AppState::new("test".to_string());
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                "SELECT * FROM users".to_string(),
+                vec!["note".to_string()],
+                vec![vec!["abcdefghijklmnopqrstuvwxyz".to_string()]],
+                1,
+                QuerySource::Preview,
+            )));
+        state.result_interaction.activate_cell(0, 0);
+        reduce_row_detail(
+            &mut state,
+            &Action::OpenModal(ModalKind::RowDetail),
+            Instant::now(),
+        );
+        state.ui.row_detail_content_visible_columns = 10;
+
+        for _ in 0..100 {
+            reduce_row_detail(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+        }
+
+        assert_eq!(
+            state.row_detail.horizontal_offset(),
+            state.row_detail.content_width().saturating_sub(10)
         );
     }
 

@@ -1,10 +1,12 @@
 use serde_json::Value;
+use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Clone, Default)]
 pub struct RowDetailState {
     display_text: String,
     json_text: String,
     scroll_offset: usize,
+    horizontal_offset: usize,
     active: bool,
 }
 
@@ -31,6 +33,7 @@ impl RowDetailState {
             display_text,
             json_text,
             scroll_offset: 0,
+            horizontal_offset: 0,
             active: true,
         }
     }
@@ -51,8 +54,16 @@ impl RowDetailState {
         self.scroll_offset
     }
 
+    pub fn horizontal_offset(&self) -> usize {
+        self.horizontal_offset
+    }
+
     pub fn max_scroll(&self, visible_rows: usize) -> usize {
         self.line_count().saturating_sub(visible_rows.max(1))
+    }
+
+    pub fn max_horizontal_scroll(&self, visible_columns: usize) -> usize {
+        self.content_width().saturating_sub(visible_columns.max(1))
     }
 
     pub fn scroll_up_by(&mut self, delta: usize) {
@@ -71,12 +82,33 @@ impl RowDetailState {
         self.scroll_offset = self.max_scroll(visible_rows);
     }
 
-    pub fn clamp_scroll(&mut self, visible_rows: usize) {
+    pub fn scroll_left_by(&mut self, delta: usize) {
+        self.horizontal_offset = self.horizontal_offset.saturating_sub(delta);
+    }
+
+    pub fn scroll_right_by(&mut self, delta: usize, visible_columns: usize) {
+        self.horizontal_offset =
+            (self.horizontal_offset + delta).min(self.max_horizontal_scroll(visible_columns));
+    }
+
+    pub fn clamp_scroll(&mut self, visible_rows: usize, visible_columns: usize) {
         self.scroll_offset = self.scroll_offset.min(self.max_scroll(visible_rows));
+        self.horizontal_offset = self
+            .horizontal_offset
+            .min(self.max_horizontal_scroll(visible_columns));
     }
 
     pub fn line_count(&self) -> usize {
         self.display_text.lines().count().max(1)
+    }
+
+    pub fn content_width(&self) -> usize {
+        self.display_text
+            .lines()
+            .map(UnicodeWidthStr::width)
+            .max()
+            .unwrap_or(1)
+            .max(1)
     }
 
     pub fn content_for_yank(&self) -> String {

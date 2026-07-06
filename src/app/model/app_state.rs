@@ -159,7 +159,17 @@ impl AppState {
         }
         if let Some(visible_rows) = output.row_detail_content_visible_rows {
             self.ui.row_detail_content_visible_rows = visible_rows;
-            self.row_detail.clamp_scroll(visible_rows);
+        }
+        if let Some(visible_columns) = output.row_detail_content_visible_columns {
+            self.ui.row_detail_content_visible_columns = visible_columns;
+        }
+        if output.row_detail_content_visible_rows.is_some()
+            || output.row_detail_content_visible_columns.is_some()
+        {
+            self.row_detail.clamp_scroll(
+                self.ui.row_detail_content_visible_rows,
+                self.ui.row_detail_content_visible_columns,
+            );
         }
         self.confirm_dialog.preview_viewport_height = output.confirm_preview_viewport_height;
         self.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
@@ -187,6 +197,10 @@ impl AppState {
 
     pub fn row_detail_content_visible_rows(&self) -> usize {
         self.ui.row_detail_content_visible_rows
+    }
+
+    pub fn row_detail_content_visible_columns(&self) -> usize {
+        self.ui.row_detail_content_visible_columns
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {

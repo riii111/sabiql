@@ -1153,6 +1153,31 @@ pub mod row_detail {
         ],
     };
 
+    pub const H_SCROLL: ModeRow = ModeRow {
+        key_short: "h/l/←/→",
+        key: "h / l / ← / →",
+        desc_short: "H-Scroll",
+        description: "Scroll left / right",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Left,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
+            },
+        ],
+    };
+
     pub const HALF_PAGE: ModeRow = ModeRow {
         key_short: "\u{2303}D/\u{2303}U",
         key: "Ctrl+D / Ctrl+U",
@@ -1219,6 +1244,7 @@ pub const ROW_DETAIL_ROWS: &[ModeRow] = &[
     row_detail::YANK,
     row_detail::YANK_JSON,
     row_detail::SCROLL,
+    row_detail::H_SCROLL,
     row_detail::HALF_PAGE,
     row_detail::JUMP,
     row_detail::CLOSE,

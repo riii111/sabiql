@@ -79,6 +79,36 @@ mod tests {
         ));
     }
 
+    #[rstest]
+    #[case(combo(Key::Char('h')))]
+    #[case(combo(Key::Left))]
+    fn horizontal_left_scrolls_left(#[case] input: KeyCombo) {
+        let result = handle_row_detail_keys(input);
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Left,
+                amount: ScrollAmount::Line,
+            }
+        ));
+    }
+
+    #[rstest]
+    #[case(combo(Key::Char('l')))]
+    #[case(combo(Key::Right))]
+    fn horizontal_right_scrolls_right(#[case] input: KeyCombo) {
+        let result = handle_row_detail_keys(input);
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Right,
+                amount: ScrollAmount::Line,
+            }
+        ));
+    }
+
     #[test]
     fn g_scrolls_to_start() {
         let result = handle_row_detail_keys(combo(Key::Char('g')));

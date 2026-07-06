@@ -72,6 +72,15 @@ pub fn render_and_get_buffer_at_with_theme(
             state.ui.result_widths_cache = output.result_widths_cache;
             state.ui.inspector_pane_height = output.inspector_pane_height;
             state.ui.result_pane_height = output.result_pane_height;
+            if let Some(rows) = output.jsonb_detail_editor_visible_rows {
+                state.ui.jsonb_detail_editor_visible_rows = rows;
+            }
+            if let Some(rows) = output.row_detail_content_visible_rows {
+                state.ui.row_detail_content_visible_rows = rows;
+            }
+            if let Some(columns) = output.row_detail_content_visible_columns {
+                state.ui.row_detail_content_visible_columns = columns;
+            }
         })
         .unwrap();
 
