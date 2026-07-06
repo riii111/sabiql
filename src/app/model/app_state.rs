@@ -159,9 +159,7 @@ impl AppState {
         }
         if let Some(visible_rows) = output.row_detail_content_visible_rows {
             self.ui.row_detail_content_visible_rows = visible_rows;
-            let max_scroll = self.row_detail.line_count().saturating_sub(visible_rows);
-            let offset = self.row_detail.scroll_offset_mut();
-            *offset = (*offset).min(max_scroll);
+            self.row_detail.clamp_scroll(visible_rows);
         }
         self.confirm_dialog.preview_viewport_height = output.confirm_preview_viewport_height;
         self.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
@@ -431,8 +429,8 @@ mod tests {
         #[test]
         fn row_detail_scroll_offset_clamps_on_resize() {
             let mut state = make_state();
-            state.row_detail = RowDetailState::open(0, &["id".to_string()], &["1".to_string()]);
-            *state.row_detail.scroll_offset_mut() = 10;
+            state.row_detail = RowDetailState::open(&["id".to_string()], &["1".to_string()]);
+            state.row_detail.scroll_down_by(10, 0);
             let output = RenderOutput {
                 row_detail_content_visible_rows: Some(1),
                 ..RenderOutput::default()

@@ -25,7 +25,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
                 return DispatchResult::handled();
             };
 
-            state.row_detail = RowDetailState::open(row_idx, &result.columns, cells);
+            state.row_detail = RowDetailState::open(&result.columns, cells);
             state.modal.push_mode(InputMode::RowDetail);
             DispatchResult::handled()
         }
@@ -259,7 +259,7 @@ mod tests {
         state.ui.row_detail_content_visible_rows = 3;
         let line_count = state.row_detail.line_count();
         assert!(line_count > 3, "test content should span more than 3 lines");
-        *state.row_detail.scroll_offset_mut() = line_count - 2;
+        state.row_detail.scroll_down_by(line_count - 2, 1);
 
         reduce_row_detail(
             &mut state,
@@ -371,7 +371,9 @@ mod tests {
         let mut state = state_with_row_detail();
         state.ui.row_detail_content_visible_rows = 3;
         let line_count = state.row_detail.line_count();
-        *state.row_detail.scroll_offset_mut() = line_count.saturating_sub(3);
+        state
+            .row_detail
+            .scroll_down_by(line_count.saturating_sub(3), 3);
 
         reduce_row_detail(
             &mut state,
@@ -392,7 +394,7 @@ mod tests {
         state.ui.row_detail_content_visible_rows = 3;
         let line_count = state.row_detail.line_count();
         let max_scroll = line_count.saturating_sub(3);
-        *state.row_detail.scroll_offset_mut() = max_scroll;
+        state.row_detail.scroll_down_by(max_scroll, 3);
 
         reduce_row_detail(
             &mut state,
@@ -412,8 +414,8 @@ mod tests {
         let mut state = state_with_row_detail();
         // Make the half-page delta (visible / 2 = 5) larger than the starting
         // offset so the test actually exercises saturating_sub clamping.
+        state.row_detail.scroll_down_by(2, 1);
         state.ui.row_detail_content_visible_rows = 10;
-        *state.row_detail.scroll_offset_mut() = 2;
 
         reduce_row_detail(
             &mut state,
