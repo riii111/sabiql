@@ -203,14 +203,26 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
     let rows = match origin {
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
-            result_active: true,
             staged_delete_in_progress: true,
+            result_active: true,
             ..
         } => rows_from_binding_refs(&[
             &result_active::STAGE_DELETE,
             &result_active::UNSTAGE_DELETE,
             &cell_edit::WRITE,
             &result_active::ESC_BACK,
+        ]),
+        HelpOrigin::Normal {
+            focused_pane: FocusedPane::Result,
+            staged_delete_in_progress: true,
+            result_active: false,
+            keymap_preset,
+        } => rows_from_binding_refs(&[
+            &result_active::ENTER_DEEPEN,
+            &result_active::UNSTAGE_DELETE,
+            &cell_edit::WRITE,
+            &footer_nav::PAGE_NAV,
+            csv_export(keymap_preset),
         ]),
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
@@ -641,6 +653,31 @@ mod tests {
             current_rows
                 .iter()
                 .any(|row| row.description() == "Unstage the last staged row deletion")
+        );
+    }
+
+    #[test]
+    fn staged_delete_result_scroll_help_includes_unstage() {
+        let document = HelpDocument::new(
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Result,
+                result_active: false,
+                staged_delete_in_progress: true,
+                keymap_preset: KeymapPreset::default(),
+            },
+            "",
+        );
+        let current_rows = document.sections()[0].rows();
+
+        assert!(
+            current_rows
+                .iter()
+                .any(|row| row.description() == "Unstage the last staged row deletion")
+        );
+        assert!(
+            !current_rows
+                .iter()
+                .any(|row| row.description() == "Open Row Detail")
         );
     }
 

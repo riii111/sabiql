@@ -196,6 +196,18 @@ mod tests {
     }
 
     #[test]
+    fn content_width_accounts_for_wide_characters_and_clamps_horizontal_scroll() {
+        let mut state = RowDetailState::open(&["name".to_string()], &["日本語".to_string()]);
+
+        assert_eq!(state.content_width(), 8);
+        assert_eq!(state.max_horizontal_scroll(5), 3);
+
+        state.scroll_right_by(usize::MAX, 5);
+
+        assert_eq!(state.horizontal_offset(), 3);
+    }
+
+    #[test]
     fn multiple_columns_build_vertical_display_and_json() {
         let state = RowDetailState::open(
             &["id".to_string(), "name".to_string()],
