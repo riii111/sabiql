@@ -81,6 +81,14 @@ pub fn render_and_get_buffer_at_with_theme(
             if let Some(columns) = output.row_detail_content_visible_columns {
                 state.ui.row_detail_content_visible_columns = columns;
             }
+            if output.row_detail_content_visible_rows.is_some()
+                || output.row_detail_content_visible_columns.is_some()
+            {
+                state.row_detail.clamp_scroll(
+                    state.ui.row_detail_content_visible_rows,
+                    state.ui.row_detail_content_visible_columns,
+                );
+            }
         })
         .unwrap();
 

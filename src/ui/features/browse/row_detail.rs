@@ -139,6 +139,8 @@ fn detail_viewport(area: Rect, total_lines: usize, content_width: usize) -> Deta
     let mut has_horizontal_scrollbar = false;
     let mut has_vertical_scrollbar = false;
 
+    // Scrollbar visibility is mutually dependent through content_area shrinkage.
+    // Two monotonic passes are enough because each flag can only move toward true.
     for _ in 0..2 {
         has_horizontal_scrollbar = content_width > content_area.width as usize;
         has_vertical_scrollbar = total_lines > content_area.height as usize;
