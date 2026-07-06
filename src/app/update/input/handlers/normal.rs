@@ -127,9 +127,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Tab if inspector_navigation => Action::InspectorNextTab,
         Key::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
-        Key::Char('u')
-            if result_navigation && !state.result_interaction.staged_delete_rows().is_empty() =>
-        {
+        Key::Char('u') if result_navigation && staged_delete_in_progress => {
             Action::UnstageLastStagedRow
         }
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
