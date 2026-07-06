@@ -210,6 +210,33 @@ ssl_mode = "prefer"
                 Err(ConnectionStoreError::TomlDeserialize(_))
             ));
         }
+
+        #[test]
+        fn missing_username_and_blank_host_load_as_empty_strings() {
+            let temp_dir = TempDir::new().unwrap();
+            let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
+
+            let content = r#"
+version = 2
+
+[[connections]]
+id = "test-id"
+name = "Local"
+host = ""
+port = 5432
+database = "testdb"
+password = ""
+ssl_mode = "prefer"
+"#;
+            fs::write(&config_path, content).unwrap();
+
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let profiles = store.load_all().unwrap();
+
+            assert_eq!(profiles.len(), 1);
+            assert_eq!(profiles[0].username, "");
+            assert_eq!(profiles[0].host, "");
+        }
     }
 
     mod save {

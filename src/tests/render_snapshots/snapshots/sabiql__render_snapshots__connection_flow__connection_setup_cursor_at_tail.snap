@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
-assertion_line: 66
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
@@ -28,7 +27,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          │  Host:       [ db.example.com             ]                │                                                  │
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
 │                                       │└──────────│  Database:   [                            ]                │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [                            ]                │──────────────────────────────────────────────────┐
+│                                       │┌ [3] Resul│  User:       [ psql default user          ]                │──────────────────────────────────────────────────┐
 │                                       ││(select a │  Password:   [                            ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │

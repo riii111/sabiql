@@ -201,13 +201,6 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
     state.validation_errors.remove(&field);
 
     match field {
-        ConnectionField::Host => {
-            if state.host.content().trim().is_empty() {
-                state
-                    .validation_errors
-                    .insert(field, "Required".to_string());
-            }
-        }
         ConnectionField::Port => {
             if state.port.content().trim().is_empty() {
                 state
@@ -236,13 +229,6 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                     .insert(field, "Required".to_string());
             }
         }
-        ConnectionField::User => {
-            if state.user.content().trim().is_empty() {
-                state
-                    .validation_errors
-                    .insert(field, "Required".to_string());
-            }
-        }
         ConnectionField::Name => {
             let name = state.name.content().trim().to_string();
             if name.is_empty() {
@@ -255,9 +241,10 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                     .insert(field, "Name must be 50 characters or less".to_string());
             }
         }
-        ConnectionField::Password | ConnectionField::SslMode => {
-            // Optional fields, no validation needed
-        }
+        ConnectionField::Host
+        | ConnectionField::User
+        | ConnectionField::Password
+        | ConnectionField::SslMode => {}
     }
 }
 
