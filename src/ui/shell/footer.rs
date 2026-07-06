@@ -13,11 +13,11 @@ use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
-    cell_edit, command_palette, command_palette as command_palette_key, connection_error,
-    connection_selector, connection_setup, connection_setup_save, csv_export, er_picker,
-    er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail,
-    jsonb_edit, jsonb_search, overlay, query_history, query_history_picker, read_only,
-    result_active, row_detail, settings, sql_modal, sql_modal_confirming, sql_modal_plan,
+    ModeRow, ROW_DETAIL_ROWS, cell_edit, command_palette, command_palette as command_palette_key,
+    connection_error, connection_selector, connection_setup, connection_setup_save, csv_export,
+    er_picker, er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl,
+    jsonb_detail, jsonb_edit, jsonb_search, overlay, query_history, query_history_picker,
+    read_only, result_active, settings, sql_modal, sql_modal_confirming, sql_modal_plan,
     table_picker, table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
@@ -127,10 +127,7 @@ impl Footer {
                     }
                 } else if state.ui.is_focus_mode() {
                     // Actions → Navigation → Help → Close/Cancel → Quit
-                    let mut list = vec![
-                        result_active::ENTER_DEEPEN.as_hint(),
-                        result_active::ROW_DETAIL.as_hint(),
-                    ];
+                    let mut list = vec![result_active::ENTER_DEEPEN.as_hint()];
                     if !state.result_interaction.staged_delete_rows().is_empty() {
                         list.push(result_active::UNSTAGE_DELETE.as_hint());
                         list.push(cell_edit::WRITE.as_hint());
@@ -182,7 +179,6 @@ impl Footer {
                     // Navigation
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(result_active::ENTER_DEEPEN.as_hint());
-                        list.push(result_active::ROW_DETAIL.as_hint());
                         if !state.result_interaction.staged_delete_rows().is_empty() {
                             list.push(result_active::UNSTAGE_DELETE.as_hint());
                             list.push(cell_edit::WRITE.as_hint());
@@ -334,13 +330,7 @@ impl Footer {
                 jsonb_edit::MOVE.as_hint(),
                 jsonb_edit::HOME_END.as_hint(),
             ],
-            InputMode::RowDetail => vec![
-                row_detail::YANK.as_hint(),
-                row_detail::YANK_JSON.as_hint(),
-                row_detail::SCROLL.as_hint(),
-                row_detail::JUMP.as_hint(),
-                row_detail::CLOSE.as_hint(),
-            ],
+            InputMode::RowDetail => ROW_DETAIL_ROWS.iter().map(ModeRow::as_hint).collect(),
             InputMode::ConnectionSelector => {
                 use connection_selector as cs;
                 let is_service_selected = crate::app::model::connection::list::is_service_selected(
@@ -394,15 +384,23 @@ mod tests {
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::inspector_tab::InspectorTab;
     use crate::app::model::shared::settings::KeymapPreset;
+    use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
     use crate::app::services::AppServices;
-    use crate::app::update::input::keybindings::{connection_setup, global};
+    use crate::app::update::input::keybindings::{connection_setup, global, result_active};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
         state.ui.focused_pane = FocusedPane::Inspector;
+        state
+    }
+
+    fn result_focused_state() -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::Normal);
+        state.ui.focused_pane = FocusedPane::Result;
         state
     }
 
@@ -426,6 +424,38 @@ mod tests {
             hints.contains(&global::INSPECTOR_TABS.as_hint()),
             expected_visible
         );
+    }
+
+    #[test]
+    fn row_detail_hint_is_hidden_in_result_scroll_mode() {
+        let state = result_focused_state();
+        let services = AppServices::stub();
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
+    }
+
+    #[test]
+    fn row_detail_hint_is_hidden_in_result_focus_scroll_mode() {
+        let mut state = result_focused_state();
+        let services = AppServices::stub();
+        state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
+    }
+
+    #[test]
+    fn row_detail_hint_is_visible_in_cell_active_mode() {
+        let mut state = result_focused_state();
+        let services = AppServices::stub();
+        state.result_interaction.activate_cell(0, 0);
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(hints.contains(&result_active::ROW_DETAIL.as_hint()));
     }
 
     #[test]

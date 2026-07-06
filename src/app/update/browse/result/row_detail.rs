@@ -25,7 +25,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
                 return DispatchResult::handled();
             };
 
-            state.row_detail = RowDetailState::open(row_idx, &result.columns, cells);
+            state.row_detail = RowDetailState::open(&result.columns, cells);
             state.modal.push_mode(InputMode::RowDetail);
             DispatchResult::handled()
         }
@@ -68,8 +68,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             direction: ScrollDirection::Up,
             amount: ScrollAmount::Line,
         } => {
-            *state.row_detail.scroll_offset_mut() =
-                state.row_detail.scroll_offset().saturating_sub(1);
+            state.row_detail.scroll_up_by(1);
             DispatchResult::handled()
         }
 
@@ -78,12 +77,9 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            let max_scroll = state
+            state
                 .row_detail
-                .line_count()
-                .saturating_sub(state.row_detail_content_visible_rows().max(1));
-            *state.row_detail.scroll_offset_mut() =
-                (*state.row_detail.scroll_offset_mut() + 1).min(max_scroll);
+                .scroll_down_by(1, state.row_detail_content_visible_rows());
             DispatchResult::handled()
         }
 
@@ -92,7 +88,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             direction: ScrollDirection::Up,
             amount: ScrollAmount::ToStart,
         } => {
-            *state.row_detail.scroll_offset_mut() = 0;
+            state.row_detail.scroll_to_start();
             DispatchResult::handled()
         }
 
@@ -101,56 +97,45 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             direction: ScrollDirection::Down,
             amount: ScrollAmount::ToEnd,
         } => {
-            *state.row_detail.scroll_offset_mut() = state
+            state
                 .row_detail
-                .line_count()
-                .saturating_sub(state.row_detail_content_visible_rows().max(1));
+                .scroll_to_end(state.row_detail_content_visible_rows());
             DispatchResult::handled()
         }
 
         Action::Scroll {
             target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::FullPage,
+            direction: ScrollDirection::Left,
+            amount: ScrollAmount::Line,
         } => {
-            let visible = state.row_detail_content_visible_rows().max(1);
-            let max_scroll = state.row_detail.line_count().saturating_sub(visible);
-            *state.row_detail.scroll_offset_mut() =
-                (*state.row_detail.scroll_offset_mut() + visible).min(max_scroll);
+            state.row_detail.scroll_left_by(1);
             DispatchResult::handled()
         }
 
         Action::Scroll {
             target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::FullPage,
+            direction: ScrollDirection::Right,
+            amount: ScrollAmount::Line,
         } => {
-            let visible = state.row_detail_content_visible_rows().max(1);
-            *state.row_detail.scroll_offset_mut() =
-                state.row_detail.scroll_offset().saturating_sub(visible);
+            state
+                .row_detail
+                .scroll_right_by(1, state.row_detail_content_visible_columns());
             DispatchResult::handled()
         }
 
         Action::Scroll {
             target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::HalfPage,
+            direction,
+            amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
-            let visible = state.row_detail_content_visible_rows().max(1);
-            let max_scroll = state.row_detail.line_count().saturating_sub(visible);
-            *state.row_detail.scroll_offset_mut() =
-                (*state.row_detail.scroll_offset_mut() + visible / 2).min(max_scroll);
-            DispatchResult::handled()
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::HalfPage,
-        } => {
-            let visible = state.row_detail_content_visible_rows().max(1);
-            *state.row_detail.scroll_offset_mut() =
-                state.row_detail.scroll_offset().saturating_sub(visible / 2);
+            let visible = state.row_detail_content_visible_rows();
+            if let Some(delta) = (*amount).page_delta(visible) {
+                match *direction {
+                    ScrollDirection::Up => state.row_detail.scroll_up_by(delta),
+                    ScrollDirection::Down => state.row_detail.scroll_down_by(delta, visible),
+                    ScrollDirection::Left | ScrollDirection::Right => {}
+                }
+            }
             DispatchResult::handled()
         }
 
@@ -294,7 +279,7 @@ mod tests {
         state.ui.row_detail_content_visible_rows = 3;
         let line_count = state.row_detail.line_count();
         assert!(line_count > 3, "test content should span more than 3 lines");
-        *state.row_detail.scroll_offset_mut() = line_count - 2;
+        state.row_detail.scroll_down_by(line_count - 2, 1);
 
         reduce_row_detail(
             &mut state,
@@ -332,6 +317,44 @@ mod tests {
         assert_eq!(
             state.row_detail.scroll_offset(),
             line_count.saturating_sub(3)
+        );
+    }
+
+    #[test]
+    fn horizontal_scroll_right_clamps_to_content_width() {
+        let mut state = AppState::new("test".to_string());
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                "SELECT * FROM users".to_string(),
+                vec!["note".to_string()],
+                vec![vec!["abcdefghijklmnopqrstuvwxyz".to_string()]],
+                1,
+                QuerySource::Preview,
+            )));
+        state.result_interaction.activate_cell(0, 0);
+        reduce_row_detail(
+            &mut state,
+            &Action::OpenModal(ModalKind::RowDetail),
+            Instant::now(),
+        );
+        state.ui.row_detail_content_visible_columns = 10;
+
+        for _ in 0..100 {
+            reduce_row_detail(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+        }
+
+        assert_eq!(
+            state.row_detail.horizontal_offset(),
+            state.row_detail.content_width().saturating_sub(10)
         );
     }
 
@@ -406,7 +429,9 @@ mod tests {
         let mut state = state_with_row_detail();
         state.ui.row_detail_content_visible_rows = 3;
         let line_count = state.row_detail.line_count();
-        *state.row_detail.scroll_offset_mut() = line_count.saturating_sub(3);
+        state
+            .row_detail
+            .scroll_down_by(line_count.saturating_sub(3), 3);
 
         reduce_row_detail(
             &mut state,
@@ -427,7 +452,7 @@ mod tests {
         state.ui.row_detail_content_visible_rows = 3;
         let line_count = state.row_detail.line_count();
         let max_scroll = line_count.saturating_sub(3);
-        *state.row_detail.scroll_offset_mut() = max_scroll;
+        state.row_detail.scroll_down_by(max_scroll, 3);
 
         reduce_row_detail(
             &mut state,
@@ -443,12 +468,30 @@ mod tests {
     }
 
     #[test]
+    fn scroll_half_page_down_moves_by_half_visible_rows() {
+        let mut state = state_with_row_detail();
+        state.ui.row_detail_content_visible_rows = 2;
+
+        reduce_row_detail(
+            &mut state,
+            &Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::HalfPage,
+            },
+            Instant::now(),
+        );
+
+        assert_eq!(state.row_detail.scroll_offset(), 1);
+    }
+
+    #[test]
     fn scroll_half_page_up_from_bottom_stops_at_top() {
         let mut state = state_with_row_detail();
         // Make the half-page delta (visible / 2 = 5) larger than the starting
         // offset so the test actually exercises saturating_sub clamping.
+        state.row_detail.scroll_down_by(2, 1);
         state.ui.row_detail_content_visible_rows = 10;
-        *state.row_detail.scroll_offset_mut() = 2;
 
         reduce_row_detail(
             &mut state,

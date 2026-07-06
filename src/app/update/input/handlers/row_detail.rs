@@ -1,50 +1,16 @@
-use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::update::input::keybindings::{Key, KeyCombo, Modifiers};
+use crate::update::action::Action;
+use crate::update::input::keybindings::{KeyCombo, ROW_DETAIL};
 
 pub fn handle_row_detail_keys(combo: KeyCombo) -> Action {
-    match (combo.key, combo.modifiers) {
-        (Key::Esc, _) => Action::CloseModal(ModalKind::RowDetail),
-        (Key::Char('y'), _) => Action::RowDetailYank,
-        (Key::Char('Y'), _) => Action::RowDetailYankJson,
-        (Key::Char('j') | Key::Down, _) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        },
-        (Key::Char('k') | Key::Up, _) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::Line,
-        },
-        (Key::PageDown, _) | (Key::Char('f'), Modifiers::CTRL) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::FullPage,
-        },
-        (Key::PageUp, _) | (Key::Char('b'), Modifiers::CTRL) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::FullPage,
-        },
-        (Key::Char('g') | Key::Home, _) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::ToStart,
-        },
-        (Key::Char('G') | Key::End, _) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::ToEnd,
-        },
-        _ => Action::None,
-    }
+    ROW_DETAIL.resolve(&combo).unwrap_or(Action::None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::action::Action;
+    use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::{Key, KeyCombo};
+    use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -52,6 +18,10 @@ mod tests {
 
     fn combo_ctrl(k: Key) -> KeyCombo {
         KeyCombo::ctrl(k)
+    }
+
+    fn combo_alt(k: Key) -> KeyCombo {
+        KeyCombo::alt(k)
     }
 
     #[test]
@@ -70,6 +40,17 @@ mod tests {
     fn shift_y_yanks_json() {
         let result = handle_row_detail_keys(combo(Key::Char('Y')));
         assert!(matches!(result, Action::RowDetailYankJson));
+    }
+
+    #[rstest]
+    #[case(combo_ctrl(Key::Char('y')))]
+    #[case(combo_ctrl(Key::Char('Y')))]
+    #[case(combo_alt(Key::Char('y')))]
+    #[case(combo_alt(Key::Char('Y')))]
+    fn modified_y_keys_do_not_copy(#[case] input: KeyCombo) {
+        let result = handle_row_detail_keys(input);
+
+        assert!(matches!(result, Action::None));
     }
 
     #[test]
@@ -93,6 +74,36 @@ mod tests {
             Action::Scroll {
                 target: ScrollTarget::RowDetail,
                 direction: ScrollDirection::Up,
+                amount: ScrollAmount::Line,
+            }
+        ));
+    }
+
+    #[rstest]
+    #[case(combo(Key::Char('h')))]
+    #[case(combo(Key::Left))]
+    fn horizontal_left_scrolls_left(#[case] input: KeyCombo) {
+        let result = handle_row_detail_keys(input);
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Left,
+                amount: ScrollAmount::Line,
+            }
+        ));
+    }
+
+    #[rstest]
+    #[case(combo(Key::Char('l')))]
+    #[case(combo(Key::Right))]
+    fn horizontal_right_scrolls_right(#[case] input: KeyCombo) {
+        let result = handle_row_detail_keys(input);
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Right,
                 amount: ScrollAmount::Line,
             }
         ));
@@ -165,6 +176,32 @@ mod tests {
                 target: ScrollTarget::RowDetail,
                 direction: ScrollDirection::Down,
                 amount: ScrollAmount::FullPage,
+            }
+        ));
+    }
+
+    #[test]
+    fn ctrl_d_scrolls_half_page_down() {
+        let result = handle_row_detail_keys(combo_ctrl(Key::Char('d')));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::HalfPage,
+            }
+        ));
+    }
+
+    #[test]
+    fn ctrl_u_scrolls_half_page_up() {
+        let result = handle_row_detail_keys(combo_ctrl(Key::Char('u')));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::HalfPage,
             }
         ));
     }

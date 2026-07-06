@@ -374,6 +374,51 @@ fn result_pane_jsonb_detail_mode() {
 }
 
 #[test]
+fn result_pane_jsonb_detail_shows_vertical_scrollbar() {
+    let (mut state, now) = jsonb_detail_state();
+    let mut terminal = create_test_terminal_sized(100, 25);
+    let long_json = format!(
+        "{{{}}}",
+        (0..40)
+            .map(|i| format!(r#""key_{i}":"value_{i}""#))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT id, name, email, settings FROM users LIMIT 1".to_string(),
+            vec![
+                "id".to_string(),
+                "name".to_string(),
+                "email".to_string(),
+                "settings".to_string(),
+            ],
+            vec![vec![
+                "1".to_string(),
+                "Alice".to_string(),
+                "alice@example.com".to_string(),
+                long_json,
+            ]],
+            1,
+            QuerySource::Preview,
+        )));
+    state.result_interaction.activate_cell(0, 3);
+
+    dispatch_result(
+        &mut state,
+        &Action::OpenModal(ModalKind::JsonbDetail),
+        &AppServices::stub(),
+        now,
+    );
+    assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn result_pane_jsonb_edit_mode() {
     let (mut state, now) = jsonb_detail_state();
     let mut terminal = create_test_terminal();
@@ -410,6 +455,38 @@ fn result_pane_jsonb_edit_mode() {
         now,
     );
     assert_eq!(state.input_mode(), InputMode::JsonbEdit);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_row_detail_shows_scrollbars() {
+    let (mut state, now) = row_detail_state();
+    let mut terminal = create_test_terminal_sized(100, 25);
+    let body = (0..40)
+        .map(|i| format!("line {i}: {}", "x".repeat(120)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT body FROM logs LIMIT 1".to_string(),
+            vec!["body".to_string()],
+            vec![vec![body]],
+            1,
+            QuerySource::Preview,
+        )));
+    state.result_interaction.activate_cell(0, 0);
+
+    dispatch_result(
+        &mut state,
+        &Action::OpenModal(ModalKind::RowDetail),
+        &AppServices::stub(),
+        now,
+    );
+    assert_eq!(state.input_mode(), InputMode::RowDetail);
 
     let output = render_to_string(&mut terminal, &mut state);
 

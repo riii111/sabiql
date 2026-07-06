@@ -203,7 +203,31 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
     let rows = match origin {
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
+            staged_delete_in_progress: true,
             result_active: true,
+            ..
+        } => rows_from_binding_refs(&[
+            &result_active::STAGE_DELETE,
+            &result_active::UNSTAGE_DELETE,
+            &cell_edit::WRITE,
+            &result_active::ESC_BACK,
+        ]),
+        HelpOrigin::Normal {
+            focused_pane: FocusedPane::Result,
+            staged_delete_in_progress: true,
+            result_active: false,
+            keymap_preset,
+        } => rows_from_binding_refs(&[
+            &result_active::ENTER_DEEPEN,
+            &result_active::UNSTAGE_DELETE,
+            &cell_edit::WRITE,
+            &footer_nav::PAGE_NAV,
+            csv_export(keymap_preset),
+        ]),
+        HelpOrigin::Normal {
+            focused_pane: FocusedPane::Result,
+            result_active: true,
+            staged_delete_in_progress: false,
             ..
         } => rows_from_binding_refs(&[
             &result_active::YANK,
@@ -219,7 +243,6 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
             ..
         } => rows_from_binding_refs(&[
             &result_active::ENTER_DEEPEN,
-            &result_active::ROW_DETAIL,
             &footer_nav::PAGE_NAV,
             csv_export(keymap_preset),
         ]),
@@ -548,6 +571,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
+                staged_delete_in_progress: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -563,11 +587,107 @@ mod tests {
     }
 
     #[test]
+    fn result_scroll_help_omits_row_detail() {
+        let document = HelpDocument::new(
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Result,
+                result_active: false,
+                staged_delete_in_progress: false,
+                keymap_preset: KeymapPreset::default(),
+            },
+            "",
+        );
+
+        assert!(
+            !document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Open Row Detail")
+        );
+    }
+
+    #[test]
+    fn result_active_help_includes_row_detail() {
+        let document = HelpDocument::new(
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Result,
+                result_active: true,
+                staged_delete_in_progress: false,
+                keymap_preset: KeymapPreset::default(),
+            },
+            "",
+        );
+
+        assert!(
+            document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Open Row Detail")
+        );
+    }
+
+    #[test]
+    fn staged_delete_result_help_omits_disabled_result_actions() {
+        let document = HelpDocument::new(
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Result,
+                result_active: true,
+                staged_delete_in_progress: true,
+                keymap_preset: KeymapPreset::default(),
+            },
+            "",
+        );
+        let current_rows = document.sections()[0].rows();
+
+        assert!(
+            !current_rows
+                .iter()
+                .any(|row| row.description() == "Open Row Detail")
+        );
+        assert!(
+            !current_rows
+                .iter()
+                .any(|row| row.description() == "Copy the active cell value to clipboard")
+        );
+        assert!(
+            current_rows
+                .iter()
+                .any(|row| row.description() == "Unstage the last staged row deletion")
+        );
+    }
+
+    #[test]
+    fn staged_delete_result_scroll_help_includes_unstage() {
+        let document = HelpDocument::new(
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Result,
+                result_active: false,
+                staged_delete_in_progress: true,
+                keymap_preset: KeymapPreset::default(),
+            },
+            "",
+        );
+        let current_rows = document.sections()[0].rows();
+
+        assert!(
+            current_rows
+                .iter()
+                .any(|row| row.description() == "Unstage the last staged row deletion")
+        );
+        assert!(
+            !current_rows
+                .iter()
+                .any(|row| row.description() == "Open Row Detail")
+        );
+    }
+
+    #[test]
     fn filter_matches_key_description_and_section_title() {
         let copy = HelpDocument::new(
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
+                staged_delete_in_progress: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "copy",
@@ -590,6 +710,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
+                staged_delete_in_progress: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "navigation",
@@ -609,6 +730,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
+                staged_delete_in_progress: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "zz-no-match",
@@ -627,6 +749,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
+                staged_delete_in_progress: false,
                 keymap_preset: KeymapPreset::default(),
             },
             "",

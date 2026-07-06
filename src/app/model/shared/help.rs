@@ -21,6 +21,7 @@ impl Default for HelpState {
             origin: HelpOrigin::Normal {
                 focused_pane: FocusedPane::default(),
                 result_active: false,
+                staged_delete_in_progress: false,
                 keymap_preset: KeymapPreset::Default,
             },
             filter: TextInputState::default(),
@@ -92,6 +93,7 @@ pub enum HelpOrigin {
     Normal {
         focused_pane: FocusedPane,
         result_active: bool,
+        staged_delete_in_progress: bool,
         keymap_preset: KeymapPreset,
     },
     CommandLine,
@@ -150,6 +152,10 @@ impl HelpOrigin {
             InputMode::Normal => Self::Normal {
                 focused_pane: state.ui.focused_pane,
                 result_active: state.result_interaction.selection().cell().is_some(),
+                staged_delete_in_progress: !state
+                    .result_interaction
+                    .staged_delete_rows()
+                    .is_empty(),
                 keymap_preset: state.settings.saved_keymap_preset(),
             },
             InputMode::CommandLine => Self::CommandLine,
@@ -301,6 +307,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Inspector,
                 result_active: false,
+                staged_delete_in_progress: false,
                 keymap_preset: KeymapPreset::Default,
             }
         ));
@@ -317,6 +324,22 @@ mod tests {
             origin,
             HelpOrigin::Normal {
                 result_active: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn normal_origin_captures_staged_delete_state() {
+        let mut state = AppState::new("test".to_string());
+        state.result_interaction.stage_row(1);
+
+        let origin = HelpOrigin::from_state(&state);
+
+        assert!(matches!(
+            origin,
+            HelpOrigin::Normal {
+                staged_delete_in_progress: true,
                 ..
             }
         ));

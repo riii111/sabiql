@@ -31,6 +31,7 @@ pub const HELP_HORIZONTAL_SCROLLBAR_HEIGHT: usize = 1;
 pub const HELP_VERTICAL_SCROLLBAR_WIDTH: usize = 1;
 pub const DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS: usize = 8;
 pub const DEFAULT_ROW_DETAIL_CONTENT_VISIBLE_ROWS: usize = 8;
+pub const DEFAULT_ROW_DETAIL_CONTENT_VISIBLE_COLUMNS: usize = 40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HelpViewportLayout {
@@ -196,6 +197,7 @@ pub struct UiState {
     pub result_pane_height: u16,
     pub jsonb_detail_editor_visible_rows: usize,
     pub row_detail_content_visible_rows: usize,
+    pub row_detail_content_visible_columns: usize,
 
     pub help: HelpState,
 
@@ -212,6 +214,7 @@ impl UiState {
             terminal_height: 24,
             jsonb_detail_editor_visible_rows: DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS,
             row_detail_content_visible_rows: DEFAULT_ROW_DETAIL_CONTENT_VISIBLE_ROWS,
+            row_detail_content_visible_columns: DEFAULT_ROW_DETAIL_CONTENT_VISIBLE_COLUMNS,
             ..Default::default()
         }
     }

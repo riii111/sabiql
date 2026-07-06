@@ -159,9 +159,17 @@ impl AppState {
         }
         if let Some(visible_rows) = output.row_detail_content_visible_rows {
             self.ui.row_detail_content_visible_rows = visible_rows;
-            let max_scroll = self.row_detail.line_count().saturating_sub(visible_rows);
-            let offset = self.row_detail.scroll_offset_mut();
-            *offset = (*offset).min(max_scroll);
+        }
+        if let Some(visible_columns) = output.row_detail_content_visible_columns {
+            self.ui.row_detail_content_visible_columns = visible_columns;
+        }
+        if output.row_detail_content_visible_rows.is_some()
+            || output.row_detail_content_visible_columns.is_some()
+        {
+            self.row_detail.clamp_scroll(
+                self.ui.row_detail_content_visible_rows,
+                self.ui.row_detail_content_visible_columns,
+            );
         }
         self.confirm_dialog.preview_viewport_height = output.confirm_preview_viewport_height;
         self.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
@@ -189,6 +197,10 @@ impl AppState {
 
     pub fn row_detail_content_visible_rows(&self) -> usize {
         self.ui.row_detail_content_visible_rows
+    }
+
+    pub fn row_detail_content_visible_columns(&self) -> usize {
+        self.ui.row_detail_content_visible_columns
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
@@ -431,10 +443,10 @@ mod tests {
         #[test]
         fn row_detail_scroll_offset_clamps_on_resize() {
             let mut state = make_state();
-            state.row_detail = RowDetailState::open(0, &["id".to_string()], &["1".to_string()]);
-            *state.row_detail.scroll_offset_mut() = 10;
+            state.row_detail = RowDetailState::open(&["id".to_string()], &["1".to_string()]);
+            state.row_detail.scroll_down_by(10, 1);
             let output = RenderOutput {
-                row_detail_content_visible_rows: Some(1),
+                row_detail_content_visible_rows: Some(3),
                 ..RenderOutput::default()
             };
 
@@ -442,7 +454,7 @@ mod tests {
 
             assert_eq!(
                 state.row_detail.scroll_offset(),
-                state.row_detail.line_count().saturating_sub(1)
+                state.row_detail.line_count().saturating_sub(3)
             );
         }
     }

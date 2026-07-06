@@ -1,16 +1,17 @@
 use serde_json::Value;
+use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Clone, Default)]
 pub struct RowDetailState {
-    row: usize,
     display_text: String,
     json_text: String,
     scroll_offset: usize,
+    horizontal_offset: usize,
     active: bool,
 }
 
 impl RowDetailState {
-    pub fn open(row: usize, columns: &[String], cells: &[String]) -> Self {
+    pub fn open(columns: &[String], cells: &[String]) -> Self {
         let mut display_lines = Vec::new();
         for (col, cell) in columns.iter().zip(cells.iter()) {
             display_lines.push(col.clone());
@@ -29,10 +30,10 @@ impl RowDetailState {
             serde_json::to_string_pretty(&Value::Object(obj)).unwrap_or_else(|_| "{}".to_string());
 
         Self {
-            row,
             display_text,
             json_text,
             scroll_offset: 0,
+            horizontal_offset: 0,
             active: true,
         }
     }
@@ -45,10 +46,6 @@ impl RowDetailState {
         self.active
     }
 
-    pub fn row(&self) -> usize {
-        self.row
-    }
-
     pub fn content(&self) -> &str {
         &self.display_text
     }
@@ -57,12 +54,61 @@ impl RowDetailState {
         self.scroll_offset
     }
 
-    pub fn scroll_offset_mut(&mut self) -> &mut usize {
-        &mut self.scroll_offset
+    pub fn horizontal_offset(&self) -> usize {
+        self.horizontal_offset
+    }
+
+    pub fn max_scroll(&self, visible_rows: usize) -> usize {
+        self.line_count().saturating_sub(visible_rows.max(1))
+    }
+
+    pub fn max_horizontal_scroll(&self, visible_columns: usize) -> usize {
+        self.content_width().saturating_sub(visible_columns.max(1))
+    }
+
+    pub fn scroll_up_by(&mut self, delta: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(delta);
+    }
+
+    pub fn scroll_down_by(&mut self, delta: usize, visible_rows: usize) {
+        self.scroll_offset = (self.scroll_offset + delta).min(self.max_scroll(visible_rows));
+    }
+
+    pub fn scroll_to_start(&mut self) {
+        self.scroll_offset = 0;
+    }
+
+    pub fn scroll_to_end(&mut self, visible_rows: usize) {
+        self.scroll_offset = self.max_scroll(visible_rows);
+    }
+
+    pub fn scroll_left_by(&mut self, delta: usize) {
+        self.horizontal_offset = self.horizontal_offset.saturating_sub(delta);
+    }
+
+    pub fn scroll_right_by(&mut self, delta: usize, visible_columns: usize) {
+        self.horizontal_offset =
+            (self.horizontal_offset + delta).min(self.max_horizontal_scroll(visible_columns));
+    }
+
+    pub fn clamp_scroll(&mut self, visible_rows: usize, visible_columns: usize) {
+        self.scroll_offset = self.scroll_offset.min(self.max_scroll(visible_rows));
+        self.horizontal_offset = self
+            .horizontal_offset
+            .min(self.max_horizontal_scroll(visible_columns));
     }
 
     pub fn line_count(&self) -> usize {
         self.display_text.lines().count().max(1)
+    }
+
+    pub fn content_width(&self) -> usize {
+        self.display_text
+            .lines()
+            .map(UnicodeWidthStr::width)
+            .max()
+            .unwrap_or(1)
+            .max(1)
     }
 
     pub fn content_for_yank(&self) -> String {
@@ -90,7 +136,7 @@ mod tests {
 
     #[test]
     fn empty_cell_displays_column_name_only() {
-        let state = RowDetailState::open(0, &["name".to_string()], &[String::new()]);
+        let state = RowDetailState::open(&["name".to_string()], &[String::new()]);
 
         assert!(state.content().contains("name"));
         assert!(state.json_for_yank().contains("\"name\": null"));
@@ -99,7 +145,7 @@ mod tests {
 
     #[test]
     fn number_string_yanks_as_number_json() {
-        let state = RowDetailState::open(0, &["count".to_string()], &["42".to_string()]);
+        let state = RowDetailState::open(&["count".to_string()], &["42".to_string()]);
 
         assert!(state.content().contains("count\n  42"));
         assert!(state.json_for_yank().contains("\"count\": 42"));
@@ -107,7 +153,7 @@ mod tests {
 
     #[test]
     fn number_string_yanks_display_text() {
-        let state = RowDetailState::open(0, &["count".to_string()], &["42".to_string()]);
+        let state = RowDetailState::open(&["count".to_string()], &["42".to_string()]);
 
         let yank = state.content_for_yank();
         assert!(yank.contains("count\n  42"));
@@ -115,7 +161,7 @@ mod tests {
 
     #[test]
     fn boolean_string_yanks_as_boolean() {
-        let state = RowDetailState::open(0, &["active".to_string()], &["true".to_string()]);
+        let state = RowDetailState::open(&["active".to_string()], &["true".to_string()]);
 
         assert!(state.content().contains("active\n  true"));
         assert!(state.json_for_yank().contains("\"active\": true"));
@@ -123,7 +169,7 @@ mod tests {
 
     #[test]
     fn plain_text_displays_indented_and_yanks_as_string() {
-        let state = RowDetailState::open(0, &["title".to_string()], &["hello world".to_string()]);
+        let state = RowDetailState::open(&["title".to_string()], &["hello world".to_string()]);
 
         assert!(state.content().contains("title\n  hello world"));
         assert!(state.json_for_yank().contains("\"title\": \"hello world\""));
@@ -131,7 +177,7 @@ mod tests {
 
     #[test]
     fn display_text_yank_matches_vertical_render() {
-        let state = RowDetailState::open(0, &["title".to_string()], &["hello world".to_string()]);
+        let state = RowDetailState::open(&["title".to_string()], &["hello world".to_string()]);
 
         assert_eq!(state.content_for_yank(), state.content());
     }
@@ -139,7 +185,6 @@ mod tests {
     #[test]
     fn multiline_cell_value_is_indented() {
         let state = RowDetailState::open(
-            0,
             &["address".to_string()],
             &["line one\nline two".to_string()],
         );
@@ -151,9 +196,20 @@ mod tests {
     }
 
     #[test]
+    fn content_width_accounts_for_wide_characters_and_clamps_horizontal_scroll() {
+        let mut state = RowDetailState::open(&["name".to_string()], &["日本語".to_string()]);
+
+        assert_eq!(state.content_width(), 8);
+        assert_eq!(state.max_horizontal_scroll(5), 3);
+
+        state.scroll_right_by(usize::MAX, 5);
+
+        assert_eq!(state.horizontal_offset(), 3);
+    }
+
+    #[test]
     fn multiple_columns_build_vertical_display_and_json() {
         let state = RowDetailState::open(
-            0,
             &["id".to_string(), "name".to_string()],
             &["1".to_string(), "alice".to_string()],
         );
@@ -166,12 +222,5 @@ mod tests {
         assert!(json.contains("\"name\": \"alice\""));
 
         assert_eq!(state.content_for_yank(), content);
-    }
-
-    #[test]
-    fn row_index_is_preserved() {
-        let state = RowDetailState::open(7, &["id".to_string()], &["1".to_string()]);
-
-        assert_eq!(state.row(), 7);
     }
 }
