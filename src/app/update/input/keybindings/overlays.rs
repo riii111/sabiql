@@ -1080,6 +1080,125 @@ pub const JSONB_DETAIL_ROWS: &[ModeRow] = &[
 ];
 
 // =============================================================================
+// Row Detail
+// =============================================================================
+
+pub mod row_detail {
+    use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
+
+    pub const YANK: ModeRow = ModeRow {
+        key_short: "y",
+        key: "y",
+        desc_short: "Copy",
+        description: "Copy displayed text to clipboard",
+        bindings: &[ExecBinding {
+            action: Action::RowDetailYank,
+            combos: &[KeyCombo::plain(Key::Char('y'))],
+        }],
+    };
+
+    pub const YANK_JSON: ModeRow = ModeRow {
+        key_short: "Y",
+        key: "Y",
+        desc_short: "Copy JSON",
+        description: "Copy row as JSON to clipboard",
+        bindings: &[ExecBinding {
+            action: Action::RowDetailYankJson,
+            combos: &[KeyCombo::plain(Key::Char('Y'))],
+        }],
+    };
+
+    pub const SCROLL: ModeRow = ModeRow {
+        key_short: "j/k/⇟/⇞/\u{2303}F/\u{2303}B",
+        key: "j / k / PageDown / PageUp / Ctrl+F / Ctrl+B",
+        desc_short: "Scroll",
+        description: "Scroll by line or page",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::FullPage,
+                },
+                combos: &[
+                    KeyCombo::plain(Key::PageDown),
+                    KeyCombo::ctrl(Key::Char('f')),
+                ],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::FullPage,
+                },
+                combos: &[KeyCombo::plain(Key::PageUp), KeyCombo::ctrl(Key::Char('b'))],
+            },
+        ],
+    };
+
+    pub const JUMP: ModeRow = ModeRow {
+        key_short: "g/G",
+        key: "g / G / Home / End",
+        desc_short: "Top/Btm",
+        description: "Jump to top / bottom",
+        bindings: &[
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart,
+                },
+                combos: &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
+            },
+            ExecBinding {
+                action: Action::Scroll {
+                    target: ScrollTarget::RowDetail,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd,
+                },
+                combos: &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
+            },
+        ],
+    };
+
+    pub const CLOSE: ModeRow = ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close Row Detail modal",
+        bindings: &[ExecBinding {
+            action: Action::CloseModal(ModalKind::RowDetail),
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    };
+}
+
+pub const ROW_DETAIL_ROWS: &[ModeRow] = &[
+    row_detail::YANK,
+    row_detail::YANK_JSON,
+    row_detail::SCROLL,
+    row_detail::JUMP,
+    row_detail::CLOSE,
+];
+
+// =============================================================================
 // JSONB Search (active search input)
 // =============================================================================
 
