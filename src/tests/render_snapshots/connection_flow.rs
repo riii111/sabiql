@@ -92,15 +92,7 @@ fn connection_setup_with_validation_errors() {
     state
         .connection_setup
         .validation_errors
-        .insert(ConnectionField::Host, "Required".to_string());
-    state
-        .connection_setup
-        .validation_errors
         .insert(ConnectionField::Database, "Required".to_string());
-    state
-        .connection_setup
-        .validation_errors
-        .insert(ConnectionField::User, "Required".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 

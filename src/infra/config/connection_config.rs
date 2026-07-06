@@ -27,9 +27,11 @@ pub struct ConnectionConfigFile {
 pub struct ConnectionConfigEntry {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub host: String,
     pub port: u16,
     pub database: String,
+    #[serde(default)]
     pub username: String,
     pub password: String,
     pub ssl_mode: SslMode,

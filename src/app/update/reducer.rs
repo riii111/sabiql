@@ -1549,12 +1549,12 @@ mod tests {
         }
 
         #[rstest]
-        #[case(ConnectionField::Host, "", true)]
-        #[case(ConnectionField::Host, "  ", true)]
+        #[case(ConnectionField::Host, "", false)]
+        #[case(ConnectionField::Host, "  ", false)]
         #[case(ConnectionField::Host, "localhost", false)]
         #[case(ConnectionField::Database, "", true)]
         #[case(ConnectionField::Database, "mydb", false)]
-        #[case(ConnectionField::User, "", true)]
+        #[case(ConnectionField::User, "", false)]
         #[case(ConnectionField::User, "postgres", false)]
         fn required_field_validation(
             #[case] field: ConnectionField,
@@ -1613,6 +1613,8 @@ mod tests {
         }
 
         #[rstest]
+        #[case(ConnectionField::Host)]
+        #[case(ConnectionField::User)]
         #[case(ConnectionField::Password)]
         #[case(ConnectionField::SslMode)]
         fn optional_fields_never_error(#[case] field: ConnectionField) {
@@ -1634,14 +1636,14 @@ mod tests {
 
             validate_all(&mut state);
 
-            assert!(state.validation_errors.contains_key(&ConnectionField::Host));
+            assert!(!state.validation_errors.contains_key(&ConnectionField::Host));
             assert!(state.validation_errors.contains_key(&ConnectionField::Port));
             assert!(
                 state
                     .validation_errors
                     .contains_key(&ConnectionField::Database)
             );
-            assert!(state.validation_errors.contains_key(&ConnectionField::User));
+            assert!(!state.validation_errors.contains_key(&ConnectionField::User));
             assert!(
                 !state
                     .validation_errors

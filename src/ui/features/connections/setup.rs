@@ -197,6 +197,9 @@ impl ConnectionSetup {
 
         let border_style = theme.modal_input_border_style(is_focused, error.is_some());
 
+        let placeholder = field.placeholder();
+        let show_placeholder = !is_focused && value.is_empty() && !placeholder.is_empty();
+
         let input_line = if is_focused {
             let input = state.focused_input().unwrap();
             let viewport = input.viewport_offset();
@@ -232,13 +235,26 @@ impl ConnectionSetup {
             spans.push(Span::styled("]", border_style));
             Line::from(spans)
         } else {
-            let truncated: String = display_value.chars().take(content_width).collect();
+            let display = if show_placeholder {
+                placeholder.to_string()
+            } else {
+                display_value
+            };
+            let truncated: String = display.chars().take(content_width).collect();
             let padding = content_width.saturating_sub(truncated.chars().count());
-            bracketed_input(
-                &format!("{}{}", truncated, " ".repeat(padding)),
-                border_style,
-                theme,
-            )
+            let content = format!("{}{}", truncated, " ".repeat(padding));
+            if show_placeholder {
+                Line::from(vec![
+                    Span::styled("[", border_style),
+                    Span::styled(
+                        format!(" {content} "),
+                        Style::default().fg(theme.semantic.text.placeholder),
+                    ),
+                    Span::styled("]", border_style),
+                ])
+            } else {
+                bracketed_input(&content, border_style, theme)
+            }
         };
 
         let input_para = Paragraph::new(input_line);
