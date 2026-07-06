@@ -116,12 +116,16 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Action::UnstageLastStagedRow
         }
         Key::Char('K')
-            if result_navigation && state.result_interaction.selection().row().is_some() =>
+            if result_navigation
+                && kb::result_active::ROW_DETAIL.combos.contains(&combo)
+                && state.result_interaction.selection().row().is_some() =>
         {
             Action::OpenModal(ModalKind::RowDetail)
         }
         Key::Char('Y')
-            if result_navigation && state.result_interaction.selection().cell().is_some() =>
+            if result_navigation
+                && kb::result_active::YANK.combos.contains(&combo)
+                && state.result_interaction.selection().cell().is_some() =>
         {
             Action::ResultCellYank
         }
@@ -809,6 +813,26 @@ mod tests {
                 state.result_interaction.activate_cell(0, 0);
 
                 let result = handle_normal_mode(combo(Key::Char('K')), &state);
+
+                assert!(matches!(result, Action::None));
+            }
+
+            #[test]
+            fn modified_uppercase_k_does_not_open_row_detail() {
+                let mut state = result_focused_state();
+                state.result_interaction.activate_cell(0, 0);
+
+                let result = handle_normal_mode(KeyCombo::alt(Key::Char('K')), &state);
+
+                assert!(matches!(result, Action::None));
+            }
+
+            #[test]
+            fn modified_uppercase_y_does_not_yank_cell() {
+                let mut state = result_focused_state();
+                state.result_interaction.activate_cell(0, 0);
+
+                let result = handle_normal_mode(KeyCombo::alt(Key::Char('Y')), &state);
 
                 assert!(matches!(result, Action::None));
             }

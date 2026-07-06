@@ -1,49 +1,14 @@
-use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::update::input::keybindings::{Key, KeyCombo, Modifiers};
+use crate::update::action::Action;
+use crate::update::input::keybindings::{KeyCombo, ROW_DETAIL};
 
 pub fn handle_row_detail_keys(combo: KeyCombo) -> Action {
-    match (combo.key, combo.modifiers) {
-        (Key::Esc, _) => Action::CloseModal(ModalKind::RowDetail),
-        (Key::Char('y'), _) => Action::RowDetailYank,
-        (Key::Char('Y'), _) => Action::RowDetailYankJson,
-        (Key::Char('j') | Key::Down, _) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        },
-        (Key::Char('k') | Key::Up, _) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::Line,
-        },
-        (Key::PageDown, _) | (Key::Char('f'), Modifiers::CTRL) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::FullPage,
-        },
-        (Key::PageUp, _) | (Key::Char('b'), Modifiers::CTRL) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::FullPage,
-        },
-        (Key::Char('g') | Key::Home, _) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::ToStart,
-        },
-        (Key::Char('G') | Key::End, _) => Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::ToEnd,
-        },
-        _ => Action::None,
-    }
+    ROW_DETAIL.resolve(&combo).unwrap_or(Action::None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::action::Action;
+    use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::{Key, KeyCombo};
 
     fn combo(k: Key) -> KeyCombo {
@@ -52,6 +17,10 @@ mod tests {
 
     fn combo_ctrl(k: Key) -> KeyCombo {
         KeyCombo::ctrl(k)
+    }
+
+    fn combo_alt(k: Key) -> KeyCombo {
+        KeyCombo::alt(k)
     }
 
     #[test]
@@ -70,6 +39,22 @@ mod tests {
     fn shift_y_yanks_json() {
         let result = handle_row_detail_keys(combo(Key::Char('Y')));
         assert!(matches!(result, Action::RowDetailYankJson));
+    }
+
+    #[test]
+    fn modified_y_keys_do_not_copy() {
+        let inputs = [
+            combo_ctrl(Key::Char('y')),
+            combo_ctrl(Key::Char('Y')),
+            combo_alt(Key::Char('y')),
+            combo_alt(Key::Char('Y')),
+        ];
+
+        for input in inputs {
+            let result = handle_row_detail_keys(input);
+
+            assert!(matches!(result, Action::None));
+        }
     }
 
     #[test]

@@ -219,7 +219,6 @@ fn current_section(origin: HelpOrigin) -> HelpSection {
             ..
         } => rows_from_binding_refs(&[
             &result_active::ENTER_DEEPEN,
-            &result_active::ROW_DETAIL,
             &footer_nav::PAGE_NAV,
             csv_export(keymap_preset),
         ]),
@@ -559,6 +558,44 @@ mod tests {
                 .rows()
                 .iter()
                 .any(|row| row.description().contains("active row"))
+        );
+    }
+
+    #[test]
+    fn result_scroll_help_omits_row_detail() {
+        let document = HelpDocument::new(
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Result,
+                result_active: false,
+                keymap_preset: KeymapPreset::default(),
+            },
+            "",
+        );
+
+        assert!(
+            !document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Open Row Detail")
+        );
+    }
+
+    #[test]
+    fn result_active_help_includes_row_detail() {
+        let document = HelpDocument::new(
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Result,
+                result_active: true,
+                keymap_preset: KeymapPreset::default(),
+            },
+            "",
+        );
+
+        assert!(
+            document.sections()[0]
+                .rows()
+                .iter()
+                .any(|row| row.description() == "Open Row Detail")
         );
     }
 

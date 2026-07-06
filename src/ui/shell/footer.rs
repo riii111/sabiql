@@ -127,10 +127,7 @@ impl Footer {
                     }
                 } else if state.ui.is_focus_mode() {
                     // Actions → Navigation → Help → Close/Cancel → Quit
-                    let mut list = vec![
-                        result_active::ENTER_DEEPEN.as_hint(),
-                        result_active::ROW_DETAIL.as_hint(),
-                    ];
+                    let mut list = vec![result_active::ENTER_DEEPEN.as_hint()];
                     if !state.result_interaction.staged_delete_rows().is_empty() {
                         list.push(result_active::UNSTAGE_DELETE.as_hint());
                         list.push(cell_edit::WRITE.as_hint());
@@ -182,7 +179,6 @@ impl Footer {
                     // Navigation
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(result_active::ENTER_DEEPEN.as_hint());
-                        list.push(result_active::ROW_DETAIL.as_hint());
                         if !state.result_interaction.staged_delete_rows().is_empty() {
                             list.push(result_active::UNSTAGE_DELETE.as_hint());
                             list.push(cell_edit::WRITE.as_hint());
@@ -394,15 +390,23 @@ mod tests {
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::inspector_tab::InspectorTab;
     use crate::app::model::shared::settings::KeymapPreset;
+    use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
     use crate::app::services::AppServices;
-    use crate::app::update::input::keybindings::{connection_setup, global};
+    use crate::app::update::input::keybindings::{connection_setup, global, result_active};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
         state.ui.focused_pane = FocusedPane::Inspector;
+        state
+    }
+
+    fn result_focused_state() -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::Normal);
+        state.ui.focused_pane = FocusedPane::Result;
         state
     }
 
@@ -426,6 +430,38 @@ mod tests {
             hints.contains(&global::INSPECTOR_TABS.as_hint()),
             expected_visible
         );
+    }
+
+    #[test]
+    fn row_detail_hint_is_hidden_in_result_scroll_mode() {
+        let state = result_focused_state();
+        let services = AppServices::stub();
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
+    }
+
+    #[test]
+    fn row_detail_hint_is_hidden_in_result_focus_scroll_mode() {
+        let mut state = result_focused_state();
+        let services = AppServices::stub();
+        state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
+    }
+
+    #[test]
+    fn row_detail_hint_is_visible_in_cell_active_mode() {
+        let mut state = result_focused_state();
+        let services = AppServices::stub();
+        state.result_interaction.activate_cell(0, 0);
+
+        let hints = Footer::get_context_hints(&state, &services);
+
+        assert!(hints.contains(&result_active::ROW_DETAIL.as_hint()));
     }
 
     #[test]
