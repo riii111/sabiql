@@ -410,6 +410,24 @@ mod tests {
     }
 
     #[test]
+    fn scroll_half_page_down_moves_by_half_visible_rows() {
+        let mut state = state_with_row_detail();
+        state.ui.row_detail_content_visible_rows = 2;
+
+        reduce_row_detail(
+            &mut state,
+            &Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::HalfPage,
+            },
+            Instant::now(),
+        );
+
+        assert_eq!(state.row_detail.scroll_offset(), 1);
+    }
+
+    #[test]
     fn scroll_half_page_up_from_bottom_stops_at_top() {
         let mut state = state_with_row_detail();
         // Make the half-page delta (visible / 2 = 5) larger than the starting

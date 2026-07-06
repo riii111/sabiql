@@ -10,6 +10,7 @@ mod tests {
     use super::*;
     use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::input::keybindings::{Key, KeyCombo};
+    use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -41,20 +42,15 @@ mod tests {
         assert!(matches!(result, Action::RowDetailYankJson));
     }
 
-    #[test]
-    fn modified_y_keys_do_not_copy() {
-        let inputs = [
-            combo_ctrl(Key::Char('y')),
-            combo_ctrl(Key::Char('Y')),
-            combo_alt(Key::Char('y')),
-            combo_alt(Key::Char('Y')),
-        ];
+    #[rstest]
+    #[case(combo_ctrl(Key::Char('y')))]
+    #[case(combo_ctrl(Key::Char('Y')))]
+    #[case(combo_alt(Key::Char('y')))]
+    #[case(combo_alt(Key::Char('Y')))]
+    fn modified_y_keys_do_not_copy(#[case] input: KeyCombo) {
+        let result = handle_row_detail_keys(input);
 
-        for input in inputs {
-            let result = handle_row_detail_keys(input);
-
-            assert!(matches!(result, Action::None));
-        }
+        assert!(matches!(result, Action::None));
     }
 
     #[test]

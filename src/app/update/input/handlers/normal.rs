@@ -80,13 +80,17 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         return action;
     }
 
+    let staged_delete_in_progress = !state.result_interaction.staged_delete_rows().is_empty();
+
     if result_navigation
+        && !staged_delete_in_progress
         && kb::result_active::ROW_DETAIL.combos.contains(&combo)
         && state.result_interaction.selection().row().is_some()
     {
         return kb::result_active::ROW_DETAIL.action.clone();
     }
     if result_navigation
+        && !staged_delete_in_progress
         && kb::result_active::YANK.combos.contains(&combo)
         && state.result_interaction.selection().cell().is_some()
     {
@@ -816,22 +820,27 @@ mod tests {
                 assert!(matches!(result, Action::None));
             }
 
-            #[test]
-            fn modified_uppercase_k_does_not_open_row_detail() {
+            #[rstest]
+            #[case(KeyCombo::alt(Key::Char('K')))]
+            #[case(KeyCombo::alt(Key::Char('Y')))]
+            fn modified_uppercase_shortcut_does_not_trigger_action(#[case] input: KeyCombo) {
                 let mut state = result_focused_state();
                 state.result_interaction.activate_cell(0, 0);
 
-                let result = handle_normal_mode(KeyCombo::alt(Key::Char('K')), &state);
+                let result = handle_normal_mode(input, &state);
 
                 assert!(matches!(result, Action::None));
             }
 
-            #[test]
-            fn modified_uppercase_y_does_not_yank_cell() {
+            #[rstest]
+            #[case(Key::Char('K'))]
+            #[case(Key::Char('Y'))]
+            fn staged_delete_suppresses_result_active_shortcuts(#[case] key: Key) {
                 let mut state = result_focused_state();
                 state.result_interaction.activate_cell(0, 0);
+                state.result_interaction.stage_row(0);
 
-                let result = handle_normal_mode(KeyCombo::alt(Key::Char('Y')), &state);
+                let result = handle_normal_mode(combo(key), &state);
 
                 assert!(matches!(result, Action::None));
             }

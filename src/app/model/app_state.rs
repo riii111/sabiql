@@ -430,9 +430,9 @@ mod tests {
         fn row_detail_scroll_offset_clamps_on_resize() {
             let mut state = make_state();
             state.row_detail = RowDetailState::open(&["id".to_string()], &["1".to_string()]);
-            state.row_detail.scroll_down_by(10, 0);
+            state.row_detail.scroll_down_by(10, 1);
             let output = RenderOutput {
-                row_detail_content_visible_rows: Some(1),
+                row_detail_content_visible_rows: Some(3),
                 ..RenderOutput::default()
             };
 
@@ -440,7 +440,7 @@ mod tests {
 
             assert_eq!(
                 state.row_detail.scroll_offset(),
-                state.row_detail.line_count().saturating_sub(1)
+                state.row_detail.line_count().saturating_sub(3)
             );
         }
     }
