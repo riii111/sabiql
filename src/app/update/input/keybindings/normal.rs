@@ -497,7 +497,7 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
 ];
 
 pub mod result_active {
-    use crate::update::action::Action;
+    use crate::update::action::{Action, ModalKind};
     use crate::update::input::keybindings::{Key, KeyBinding, KeyCombo};
 
     pub const ENTER_DEEPEN: KeyBinding = KeyBinding {
@@ -598,11 +598,21 @@ pub mod result_active {
         action: Action::ResultRowYank,
         combos: &[],
     };
+
+    pub const ROW_DETAIL: KeyBinding = KeyBinding {
+        key_short: "K",
+        key: "K",
+        desc_short: "Row Detail",
+        description: "Open Row Detail",
+        action: Action::OpenModal(ModalKind::RowDetail),
+        combos: &[KeyCombo::plain(Key::Char('K'))],
+    };
 }
 
 pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
     result_active::ENTER_DEEPEN,
     result_active::YANK,
+    result_active::ROW_DETAIL,
     result_active::STAGE_DELETE,
     result_active::UNSTAGE_DELETE,
     result_active::CELL_NAV,

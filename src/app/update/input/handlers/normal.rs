@@ -115,6 +115,11 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         {
             Action::UnstageLastStagedRow
         }
+        Key::Char('K')
+            if result_navigation && state.result_interaction.selection().row().is_some() =>
+        {
+            Action::OpenModal(ModalKind::RowDetail)
+        }
         Key::Char('Y')
             if result_navigation && state.result_interaction.selection().cell().is_some() =>
         {
@@ -776,6 +781,36 @@ mod tests {
                 let result = handle_normal_mode(combo(Key::Char('[')), &state);
 
                 assert!(matches!(result, Action::ResultPrevPage));
+            }
+
+            #[test]
+            fn uppercase_k_opens_row_detail_with_active_row() {
+                let mut state = result_focused_state();
+                state.result_interaction.activate_cell(0, 0);
+
+                let result = handle_normal_mode(combo(Key::Char('K')), &state);
+
+                assert!(matches!(result, Action::OpenModal(ModalKind::RowDetail)));
+            }
+
+            #[test]
+            fn uppercase_k_noop_without_active_row() {
+                let state = result_focused_state();
+
+                let result = handle_normal_mode(combo(Key::Char('K')), &state);
+
+                assert!(matches!(result, Action::None));
+            }
+
+            #[test]
+            fn uppercase_k_noop_when_not_result_focused() {
+                let mut state = browse_state();
+                state.ui.focused_pane = FocusedPane::Explorer;
+                state.result_interaction.activate_cell(0, 0);
+
+                let result = handle_normal_mode(combo(Key::Char('K')), &state);
+
+                assert!(matches!(result, Action::None));
             }
 
             #[test]
