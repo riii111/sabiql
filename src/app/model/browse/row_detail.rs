@@ -61,6 +61,26 @@ impl RowDetailState {
         &mut self.scroll_offset
     }
 
+    pub fn max_scroll(&self, visible_rows: usize) -> usize {
+        self.line_count().saturating_sub(visible_rows.max(1))
+    }
+
+    pub fn scroll_up_by(&mut self, delta: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(delta);
+    }
+
+    pub fn scroll_down_by(&mut self, delta: usize, visible_rows: usize) {
+        self.scroll_offset = (self.scroll_offset + delta).min(self.max_scroll(visible_rows));
+    }
+
+    pub fn scroll_to_start(&mut self) {
+        self.scroll_offset = 0;
+    }
+
+    pub fn scroll_to_end(&mut self, visible_rows: usize) {
+        self.scroll_offset = self.max_scroll(visible_rows);
+    }
+
     pub fn line_count(&self) -> usize {
         self.display_text.lines().count().max(1)
     }

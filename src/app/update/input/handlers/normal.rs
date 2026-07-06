@@ -80,6 +80,19 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         return action;
     }
 
+    if result_navigation
+        && kb::result_active::ROW_DETAIL.combos.contains(&combo)
+        && state.result_interaction.selection().row().is_some()
+    {
+        return kb::result_active::ROW_DETAIL.action.clone();
+    }
+    if result_navigation
+        && kb::result_active::YANK.combos.contains(&combo)
+        && state.result_interaction.selection().cell().is_some()
+    {
+        return kb::result_active::YANK.action.clone();
+    }
+
     // Non-navigation context keys
     match combo.key {
         Key::Char(']') => {
@@ -114,20 +127,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if result_navigation && !state.result_interaction.staged_delete_rows().is_empty() =>
         {
             Action::UnstageLastStagedRow
-        }
-        Key::Char('K')
-            if result_navigation
-                && kb::result_active::ROW_DETAIL.combos.contains(&combo)
-                && state.result_interaction.selection().row().is_some() =>
-        {
-            Action::OpenModal(ModalKind::RowDetail)
-        }
-        Key::Char('Y')
-            if result_navigation
-                && kb::result_active::YANK.combos.contains(&combo)
-                && state.result_interaction.selection().cell().is_some() =>
-        {
-            Action::ResultCellYank
         }
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
         Key::Char('e') => Action::OpenModal(ModalKind::ErTablePicker),

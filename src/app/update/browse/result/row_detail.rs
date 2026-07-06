@@ -68,8 +68,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             direction: ScrollDirection::Up,
             amount: ScrollAmount::Line,
         } => {
-            *state.row_detail.scroll_offset_mut() =
-                state.row_detail.scroll_offset().saturating_sub(1);
+            state.row_detail.scroll_up_by(1);
             DispatchResult::handled()
         }
 
@@ -78,12 +77,9 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            let max_scroll = state
+            state
                 .row_detail
-                .line_count()
-                .saturating_sub(state.row_detail_content_visible_rows().max(1));
-            *state.row_detail.scroll_offset_mut() =
-                (*state.row_detail.scroll_offset_mut() + 1).min(max_scroll);
+                .scroll_down_by(1, state.row_detail_content_visible_rows());
             DispatchResult::handled()
         }
 
@@ -92,7 +88,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             direction: ScrollDirection::Up,
             amount: ScrollAmount::ToStart,
         } => {
-            *state.row_detail.scroll_offset_mut() = 0;
+            state.row_detail.scroll_to_start();
             DispatchResult::handled()
         }
 
@@ -101,56 +97,25 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
             direction: ScrollDirection::Down,
             amount: ScrollAmount::ToEnd,
         } => {
-            *state.row_detail.scroll_offset_mut() = state
+            state
                 .row_detail
-                .line_count()
-                .saturating_sub(state.row_detail_content_visible_rows().max(1));
+                .scroll_to_end(state.row_detail_content_visible_rows());
             DispatchResult::handled()
         }
 
         Action::Scroll {
             target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::FullPage,
+            direction,
+            amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
-            let visible = state.row_detail_content_visible_rows().max(1);
-            let max_scroll = state.row_detail.line_count().saturating_sub(visible);
-            *state.row_detail.scroll_offset_mut() =
-                (*state.row_detail.scroll_offset_mut() + visible).min(max_scroll);
-            DispatchResult::handled()
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::FullPage,
-        } => {
-            let visible = state.row_detail_content_visible_rows().max(1);
-            *state.row_detail.scroll_offset_mut() =
-                state.row_detail.scroll_offset().saturating_sub(visible);
-            DispatchResult::handled()
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::HalfPage,
-        } => {
-            let visible = state.row_detail_content_visible_rows().max(1);
-            let max_scroll = state.row_detail.line_count().saturating_sub(visible);
-            *state.row_detail.scroll_offset_mut() =
-                (*state.row_detail.scroll_offset_mut() + visible / 2).min(max_scroll);
-            DispatchResult::handled()
-        }
-
-        Action::Scroll {
-            target: ScrollTarget::RowDetail,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::HalfPage,
-        } => {
-            let visible = state.row_detail_content_visible_rows().max(1);
-            *state.row_detail.scroll_offset_mut() =
-                state.row_detail.scroll_offset().saturating_sub(visible / 2);
+            let visible = state.row_detail_content_visible_rows();
+            if let Some(delta) = (*amount).page_delta(visible) {
+                match *direction {
+                    ScrollDirection::Up => state.row_detail.scroll_up_by(delta),
+                    ScrollDirection::Down => state.row_detail.scroll_down_by(delta, visible),
+                    ScrollDirection::Left | ScrollDirection::Right => {}
+                }
+            }
             DispatchResult::handled()
         }
 

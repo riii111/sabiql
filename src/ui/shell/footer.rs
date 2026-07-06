@@ -13,11 +13,11 @@ use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{
-    cell_edit, command_palette, command_palette as command_palette_key, connection_error,
-    connection_selector, connection_setup, connection_setup_save, csv_export, er_picker,
-    er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail,
-    jsonb_edit, jsonb_search, overlay, query_history, query_history_picker, read_only,
-    result_active, row_detail, settings, sql_modal, sql_modal_confirming, sql_modal_plan,
+    ModeRow, ROW_DETAIL_ROWS, cell_edit, command_palette, command_palette as command_palette_key,
+    connection_error, connection_selector, connection_setup, connection_setup_save, csv_export,
+    er_picker, er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl,
+    jsonb_detail, jsonb_edit, jsonb_search, overlay, query_history, query_history_picker,
+    read_only, result_active, settings, sql_modal, sql_modal_confirming, sql_modal_plan,
     table_picker, table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
@@ -330,13 +330,7 @@ impl Footer {
                 jsonb_edit::MOVE.as_hint(),
                 jsonb_edit::HOME_END.as_hint(),
             ],
-            InputMode::RowDetail => vec![
-                row_detail::YANK.as_hint(),
-                row_detail::YANK_JSON.as_hint(),
-                row_detail::SCROLL.as_hint(),
-                row_detail::JUMP.as_hint(),
-                row_detail::CLOSE.as_hint(),
-            ],
+            InputMode::RowDetail => ROW_DETAIL_ROWS.iter().map(ModeRow::as_hint).collect(),
             InputMode::ConnectionSelector => {
                 use connection_selector as cs;
                 let is_service_selected = crate::app::model::connection::list::is_service_selected(

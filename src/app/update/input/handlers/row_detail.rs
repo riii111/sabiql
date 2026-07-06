@@ -155,6 +155,32 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_d_scrolls_half_page_down() {
+        let result = handle_row_detail_keys(combo_ctrl(Key::Char('d')));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::HalfPage,
+            }
+        ));
+    }
+
+    #[test]
+    fn ctrl_u_scrolls_half_page_up() {
+        let result = handle_row_detail_keys(combo_ctrl(Key::Char('u')));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::RowDetail,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::HalfPage,
+            }
+        ));
+    }
+
+    #[test]
     fn ctrl_b_scrolls_full_page_up() {
         let result = handle_row_detail_keys(combo_ctrl(Key::Char('b')));
         assert!(matches!(
