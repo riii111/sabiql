@@ -200,6 +200,16 @@ pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
     state.validation_errors.remove(&field);
 
+    if let Some(max_chars) = field.max_chars() {
+        let length = state.field_value(field).chars().count();
+        if length > max_chars {
+            state
+                .validation_errors
+                .insert(field, format!("Must be {max_chars} characters or less"));
+            return;
+        }
+    }
+
     match field {
         ConnectionField::Port => {
             if state.port.content().trim().is_empty() {
@@ -235,10 +245,6 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 state
                     .validation_errors
                     .insert(field, "Name is required".to_string());
-            } else if name.chars().count() > 50 {
-                state
-                    .validation_errors
-                    .insert(field, "Name must be 50 characters or less".to_string());
             }
         }
         ConnectionField::Host
@@ -305,7 +311,7 @@ mod tests {
             if expect_error {
                 assert_eq!(
                     state.validation_errors.get(&ConnectionField::Name),
-                    Some(&"Name must be 50 characters or less".to_string())
+                    Some(&"Must be 50 characters or less".to_string())
                 );
             } else {
                 assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
@@ -322,6 +328,49 @@ mod tests {
             validate_field(&mut state, ConnectionField::Name);
 
             assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
+        }
+    }
+
+    mod validate_field_max_length {
+        use super::*;
+        use crate::model::shared::text_input::TextInputState;
+
+        #[rstest]
+        #[case(ConnectionField::Host, "a".repeat(255), false)]
+        #[case(ConnectionField::Host, "a".repeat(256), true)]
+        #[case(ConnectionField::Database, "a".repeat(255), false)]
+        #[case(ConnectionField::Database, "a".repeat(256), true)]
+        #[case(ConnectionField::User, "a".repeat(255), false)]
+        #[case(ConnectionField::User, "a".repeat(256), true)]
+        #[case(ConnectionField::Password, "a".repeat(255), false)]
+        #[case(ConnectionField::Password, "a".repeat(256), true)]
+        fn max_length_validation(
+            #[case] field: ConnectionField,
+            #[case] value: String,
+            #[case] expect_error: bool,
+        ) {
+            let mut state = ConnectionSetupState::default();
+            let len = value.chars().count();
+            let input = TextInputState::new(value, len);
+
+            match field {
+                ConnectionField::Host => state.host = input,
+                ConnectionField::Database => state.database = input,
+                ConnectionField::User => state.user = input,
+                ConnectionField::Password => state.password = input,
+                _ => unreachable!(),
+            }
+
+            validate_field(&mut state, field);
+
+            if expect_error {
+                assert_eq!(
+                    state.validation_errors.get(&field),
+                    Some(&"Must be 255 characters or less".to_string())
+                );
+            } else {
+                assert!(!state.validation_errors.contains_key(&field));
+            }
         }
     }
 

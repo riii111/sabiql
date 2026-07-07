@@ -1,6 +1,10 @@
 use super::*;
 use sabiql_app::model::shared::settings::KeymapPreset;
 
+fn repeated(ch: char, len: usize) -> String {
+    std::iter::repeat_n(ch, len).collect()
+}
+
 #[test]
 fn connection_setup_form() {
     let mut state = create_test_state();
@@ -101,6 +105,30 @@ fn connection_setup_preview_wraps_across_multiple_rows_for_long_conninfo() {
     state.connection_setup.user.set_content(
         "customer_success_preview_validation_operator_with_extended_scope".to_string(),
     );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_preview_with_max_length_fields() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state.connection_setup.name.set_content(repeated('n', 50));
+    state.connection_setup.host.set_content(repeated('h', 255));
+    state.connection_setup.port.set_content("65535".to_string());
+    state
+        .connection_setup
+        .database
+        .set_content(repeated('d', 255));
+    state.connection_setup.user.set_content(repeated('u', 255));
+    state
+        .connection_setup
+        .password
+        .set_content(repeated('p', 255));
 
     let output = render_to_string(&mut terminal, &mut state);
 

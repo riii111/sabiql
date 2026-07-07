@@ -1,0 +1,54 @@
+---
+source: src/tests/render_snapshots/connection_flow.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││(select a table)                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  Name:       [ nnnnnnnnnnnnnnnnnnnnnnnnn  ]                │                                                  │
+│                                       ││          │  Host:       [ hhhhhhhhhhhhhhhhhhhhhhhhhh ]                │                                                  │
+│                                       ││          │  Port:       [ 65535                      ]                │                                                  │
+│                                       ││          │  Database:   [ dddddddddddddddddddddddddd ]                │                                                  │
+│                                       ││          │  User:       [ uuuuuuuuuuuuuuuuuuuuuuuuuu ]                │                                                  │
+│                                       ││          │  Password:   [ ************************** ]                │                                                  │
+│                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  → host='hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
+│                                       ││          │    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
+│                                       ││          │    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
+│                                       │└──────────│    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh' port='6  │──────────────────────────────────────────────────┐
+│                                       ││(select a │    5535' dbname='dddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    ddddddddddddddddddddddddddddddddddddddddddddddddddddd'  │                                                  │
+│                                       ││          │     user='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu' passwo  │                                                  │
+│                                       ││          │    rd='****' sslmode='prefer'                              │                                                  │
+│                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+^S:Connect  Tab/⇧Tab:Field  Esc:Cancel

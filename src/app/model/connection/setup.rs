@@ -58,6 +58,15 @@ impl ConnectionField {
         matches!(self, Self::Name | Self::Port | Self::Database)
     }
 
+    pub fn max_chars(self) -> Option<usize> {
+        match self {
+            Self::Name => Some(50),
+            Self::Host | Self::Database | Self::User | Self::Password => Some(255),
+            Self::Port => Some(5),
+            Self::SslMode => None,
+        }
+    }
+
     pub fn placeholder(self) -> &'static str {
         match self {
             Self::Host | Self::User => "empty = psql default",
@@ -261,6 +270,17 @@ mod tests {
             assert_eq!(all.len(), 7);
             assert_eq!(all[0], ConnectionField::Name);
             assert_eq!(all[6], ConnectionField::SslMode);
+        }
+
+        #[test]
+        fn max_chars_returns_expected_limits() {
+            assert_eq!(ConnectionField::Name.max_chars(), Some(50));
+            assert_eq!(ConnectionField::Host.max_chars(), Some(255));
+            assert_eq!(ConnectionField::Port.max_chars(), Some(5));
+            assert_eq!(ConnectionField::Database.max_chars(), Some(255));
+            assert_eq!(ConnectionField::User.max_chars(), Some(255));
+            assert_eq!(ConnectionField::Password.max_chars(), Some(255));
+            assert_eq!(ConnectionField::SslMode.max_chars(), None);
         }
     }
 
