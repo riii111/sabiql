@@ -425,7 +425,7 @@ fn preview_profile(state: &ConnectionSetupState) -> ConnectionProfile {
         "preview",
         state.host.content().trim(),
         port,
-        state.database.content(),
+        state.database.content().trim(),
         state.user.content().trim(),
         state.password.content(),
         state.ssl_mode,
@@ -526,15 +526,17 @@ mod tests {
     }
 
     #[test]
-    fn preview_profile_trims_host_and_user() {
+    fn preview_profile_trims_host_user_and_database() {
         let mut form_state = ConnectionSetupState::default();
         form_state.host.set_content("  localhost  ".to_string());
+        form_state.database.set_content("  app_db  ".to_string());
         form_state.user.set_content("  postgres  ".to_string());
         form_state.password.set_content("  pass  ".to_string());
 
         let profile = preview_profile(&form_state);
 
         assert_eq!(profile.host, "localhost");
+        assert_eq!(profile.database, "app_db");
         assert_eq!(profile.username, "postgres");
         assert_eq!(profile.password, "  pass  ");
     }

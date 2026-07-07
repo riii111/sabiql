@@ -49,7 +49,7 @@ pub(super) fn reduce_connection_setup(
             match setup.focused_field {
                 ConnectionField::Port => {
                     let current_len = setup.port.char_count();
-                    let remaining = 5usize.saturating_sub(current_len);
+                    let remaining = remaining_input_capacity(ConnectionField::Port, current_len);
                     let digits: String = clean
                         .chars()
                         .filter(char::is_ascii_digit)
@@ -84,7 +84,10 @@ pub(super) fn reduce_connection_setup(
             let setup = &mut state.connection_setup;
             match setup.focused_field {
                 ConnectionField::Port => {
-                    if c.is_ascii_digit() && setup.port.char_count() < 5 {
+                    if c.is_ascii_digit()
+                        && remaining_input_capacity(ConnectionField::Port, setup.port.char_count())
+                            > 0
+                    {
                         setup.port.insert_char(*c);
                         setup.port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
@@ -188,7 +191,7 @@ pub(super) fn reduce_connection_setup(
                 state.session.mark_connecting();
                 DispatchResult::handled_with(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
-                    name: setup.name.content().to_string(),
+                    name: setup.name.content().trim().to_string(),
                     host: setup.host.content().trim().to_string(),
                     port,
                     database: setup.database.content().trim().to_string(),
@@ -461,9 +464,13 @@ mod tests {
         }
 
         #[test]
-        fn save_trims_connection_identifiers_but_preserves_password() {
+        fn save_trims_connection_identifiers_and_name_but_preserves_password() {
             let mut state = AppState::new("test".to_string());
             fill_valid_form(&mut state);
+            state
+                .connection_setup
+                .name
+                .set_content("  test-db  ".to_string());
             state
                 .connection_setup
                 .host
@@ -488,12 +495,14 @@ mod tests {
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::SaveAndConnect {
+                    name,
                     host,
                     database,
                     user,
                     password,
                     ..
-                }] if host == "localhost"
+                }] if name == "test-db"
+                    && host == "localhost"
                     && database == "mydb"
                     && user == "postgres"
                     && password == "  pass  "

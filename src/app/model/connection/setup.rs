@@ -273,7 +273,7 @@ mod tests {
         }
 
         #[test]
-        fn max_chars_returns_expected_limits() {
+        fn max_chars_limits_match_field_policy() {
             assert_eq!(ConnectionField::Name.max_chars(), Some(50));
             assert_eq!(ConnectionField::Host.max_chars(), Some(255));
             assert_eq!(ConnectionField::Port.max_chars(), Some(5));
