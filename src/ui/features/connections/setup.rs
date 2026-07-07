@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::{
@@ -13,6 +13,7 @@ use crate::app::update::input::keybindings::{connection_setup, connection_setup_
 use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
+use crate::primitives::utils::text_utils::{take_within_width, truncate_to_width_with};
 use crate::theme::ThemePalette;
 
 const LABEL_WIDTH: u16 = 12;
@@ -397,11 +398,7 @@ fn focused_placeholder_spans(
         return vec![];
     }
 
-    let placeholder_width = effective_width.saturating_sub(1);
-    let placeholder_text = placeholder
-        .chars()
-        .take(placeholder_width)
-        .collect::<String>();
+    let placeholder_text = take_within_width(placeholder, effective_width.saturating_sub(1));
     vec![
         Span::styled(" ", theme.block_cursor_style()),
         Span::styled(
@@ -434,73 +431,27 @@ fn preview_lines(dsn: &str, width: usize) -> Vec<String> {
         return vec![String::new(), String::new()];
     }
 
-    let mut chars = dsn.chars().peekable();
-    let mut lines = [FIRST_PREFIX, CONTINUATION_PREFIX]
-        .into_iter()
-        .map(|prefix| {
-            let prefix = if UnicodeWidthStr::width(prefix) >= width {
-                ""
-            } else {
-                prefix
-            };
-            let available = width.saturating_sub(UnicodeWidthStr::width(prefix));
-            let content = take_preview_segment(&mut chars, available);
-            format!("{prefix}{content}")
-        })
-        .collect::<Vec<_>>();
+    let first_prefix = preview_prefix(FIRST_PREFIX, width);
+    let first_available = width.saturating_sub(UnicodeWidthStr::width(first_prefix));
+    let first_segment = take_within_width(dsn, first_available);
+    let rest = &dsn[first_segment.len()..];
 
-    if chars.peek().is_some()
-        && let Some(last) = lines.last_mut()
-    {
-        *last = with_preview_ellipsis(last, width);
-    }
+    let continuation_prefix = preview_prefix(CONTINUATION_PREFIX, width);
+    let continuation_available = width.saturating_sub(UnicodeWidthStr::width(continuation_prefix));
+    let continuation_segment = truncate_to_width_with(rest, continuation_available, "…");
 
-    lines
+    vec![
+        format!("{first_prefix}{first_segment}"),
+        format!("{continuation_prefix}{continuation_segment}"),
+    ]
 }
 
-fn take_preview_segment<I>(chars: &mut std::iter::Peekable<I>, width: usize) -> String
-where
-    I: Iterator<Item = char>,
-{
-    let mut segment = String::new();
-    let mut used = 0;
-    while let Some(ch) = chars.peek().copied() {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if used + ch_width > width {
-            break;
-        }
-        segment.push(ch);
-        used += ch_width;
-        chars.next();
+fn preview_prefix(prefix: &'static str, width: usize) -> &'static str {
+    if UnicodeWidthStr::width(prefix) >= width {
+        ""
+    } else {
+        prefix
     }
-    segment
-}
-
-fn with_preview_ellipsis(line: &str, width: usize) -> String {
-    const ELLIPSIS: &str = "…";
-
-    let ellipsis_width = UnicodeWidthStr::width(ELLIPSIS);
-    if width < ellipsis_width {
-        return take_within_width(ELLIPSIS, width);
-    }
-
-    let mut truncated = take_within_width(line, width - ellipsis_width);
-    truncated.push_str(ELLIPSIS);
-    truncated
-}
-
-fn take_within_width(text: &str, width: usize) -> String {
-    let mut segment = String::new();
-    let mut used = 0;
-    for ch in text.chars() {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
-        if used + ch_width > width {
-            break;
-        }
-        segment.push(ch);
-        used += ch_width;
-    }
-    segment
 }
 
 #[cfg(test)]
