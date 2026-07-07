@@ -236,7 +236,7 @@ impl ConnectionSetup {
                 content_width
             };
 
-            let cursor_spans = if show_placeholder && !mask {
+            let cursor_spans = if show_placeholder {
                 focused_placeholder_spans(placeholder, effective_width, theme)
             } else {
                 text_cursor_spans(&display_value, cursor, viewport, effective_width, theme)

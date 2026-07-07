@@ -69,7 +69,7 @@ impl ConnectionField {
 
     pub fn placeholder(self) -> &'static str {
         match self {
-            Self::Host | Self::User => "empty = psql default",
+            Self::Host | Self::User | Self::Password => "empty = psql default",
             _ => "",
         }
     }
@@ -281,6 +281,16 @@ mod tests {
             assert_eq!(ConnectionField::User.max_chars(), Some(255));
             assert_eq!(ConnectionField::Password.max_chars(), Some(255));
             assert_eq!(ConnectionField::SslMode.max_chars(), None);
+        }
+
+        #[rstest]
+        #[case(ConnectionField::Host)]
+        #[case(ConnectionField::User)]
+        #[case(ConnectionField::Password)]
+        fn placeholder_uses_psql_default_for_delegated_optional_fields(
+            #[case] field: ConnectionField,
+        ) {
+            assert_eq!(field.placeholder(), "empty = psql default");
         }
     }
 

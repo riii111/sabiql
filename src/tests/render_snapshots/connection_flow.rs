@@ -44,6 +44,24 @@ fn connection_setup_empty_host_focused() {
 }
 
 #[test]
+fn connection_setup_empty_password_focused() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state.connection_setup.focused_field = ConnectionField::Password;
+    state
+        .connection_setup
+        .database
+        .set_content("mydb".to_string());
+    state.connection_setup.password = TextInputState::default();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn connection_setup_preview_omits_empty_optional_fields() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

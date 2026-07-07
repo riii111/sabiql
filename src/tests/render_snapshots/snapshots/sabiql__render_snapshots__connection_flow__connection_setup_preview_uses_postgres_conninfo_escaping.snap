@@ -27,7 +27,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
 │                                       ││          │  Database:   [ my'db                      ]                │                                                  │
 │                                       │└──────────│  User:       [ user'org                   ]                │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  Password:   [                            ]                │──────────────────────────────────────────────────┐
+│                                       │┌ [3] Resul│  Password:   [ empty = psql default       ]                │──────────────────────────────────────────────────┐
 │                                       ││(select a │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  → host='/var/run/postgresql' port='5432' dbname='my\'db'  │                                                  │

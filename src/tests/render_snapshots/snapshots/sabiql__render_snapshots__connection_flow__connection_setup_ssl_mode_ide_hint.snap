@@ -28,7 +28,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
 │                                       │└──────────│  Database:   [                            ]                │──────────────────────────────────────────────────┘
 │                                       │┌ [3] Resul│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  Password:   [                            ]                │                                                  │
+│                                       ││(select a │  Password:   [ empty = psql default       ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  → host='localhost' port='5432' sslmode='prefer'           │                                                  │
