@@ -149,7 +149,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 mod tests {
     use super::*;
     pub use crate::domain::Column;
-    use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
+    use crate::domain::{QueryResult, QuerySource, QueryValue, Table, TableKind, TableKindInfo};
     use crate::update::action::CursorMove;
     use rstest::rstest;
     use std::sync::Arc;
@@ -281,6 +281,28 @@ mod tests {
             assert_eq!(
                 state.messages.last_error(),
                 Some("Table metadata does not match current preview target")
+            );
+        }
+
+        #[test]
+        fn view_detail_blocks_cell_edit_entry() {
+            let mut state = preview_state_with_selection();
+            let mut table = minimal_users_table();
+            table.kind_info = TableKindInfo {
+                kind: TableKind::View,
+                ..TableKindInfo::default()
+            };
+            state.session.set_table_detail_raw(Some(table));
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Preview target is read-only: view")
             );
         }
 

@@ -4,7 +4,7 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
-use sabiql_domain::{Column, ColumnAttributes, QueryResult};
+use sabiql_domain::{Column, ColumnAttributes, QueryResult, TableKind, TableKindInfo};
 
 fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
@@ -246,6 +246,28 @@ fn result_pane_cell_active_mode() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
+    state.ui.set_focused_pane(FocusedPane::Result);
+    state.result_interaction.activate_cell(1, 2);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_view_cell_active_hides_write_hints() {
+    let mut state = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    with_current_result(&mut state);
+    state.query.pagination.reset_for_table("public", "users");
+    let mut table = state.session.table_detail().unwrap().clone();
+    table.kind_info = TableKindInfo {
+        kind: TableKind::View,
+        ..TableKindInfo::default()
+    };
+    let generation = state.session.selection_generation();
+    let _ = state.session.set_table_detail(table, generation);
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
 

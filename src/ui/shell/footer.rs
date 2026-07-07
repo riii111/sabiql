@@ -89,6 +89,7 @@ impl Footer {
                 let nav_mode = state.result_interaction.selection().mode();
 
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
+                    let can_write_preview = state.can_write_visible_preview();
                     if state.result_interaction.cell_edit().has_pending_draft() {
                         vec![
                             result_active::EDIT.as_hint(),
@@ -98,17 +99,24 @@ impl Footer {
                             global::QUIT.as_hint(),
                         ]
                     } else if state.result_interaction.staged_delete_rows().is_empty() {
-                        vec![
-                            result_active::DETAIL.as_hint(),
-                            result_active::EDIT.as_hint(),
+                        let mut hints = vec![result_active::DETAIL.as_hint()];
+                        if can_write_preview {
+                            hints.push(result_active::EDIT.as_hint());
+                        }
+                        hints.extend([
                             result_active::YANK.as_hint(),
                             result_active::ROW_YANK.as_hint(),
                             result_active::ROW_DETAIL.as_hint(),
-                            result_active::STAGE_DELETE.as_hint(),
+                        ]);
+                        if can_write_preview {
+                            hints.push(result_active::STAGE_DELETE.as_hint());
+                        }
+                        hints.extend([
                             global::HELP.as_hint(),
                             result_active::ESC_BACK.as_hint(),
                             global::QUIT.as_hint(),
-                        ]
+                        ]);
+                        hints
                     } else {
                         vec![
                             result_active::STAGE_DELETE.as_hint(),

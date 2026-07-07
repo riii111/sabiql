@@ -2,7 +2,7 @@ use unicode_casefold::UnicodeCaseFold;
 
 use crate::domain::DatabaseType;
 use crate::domain::connection::SqliteConnectionConfig;
-use crate::domain::{QueryResult, QueryValue};
+use crate::domain::{QueryResult, QueryValue, TableKind};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::QueryStatus;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
@@ -24,6 +24,8 @@ pub enum EditGuardrailError {
     TableMetadataNotLoaded,
     #[error("Table metadata does not match current preview target")]
     StaleTableMetadata,
+    #[error("Preview target is read-only: {0}")]
+    ReadOnlyPreviewTarget(&'static str),
     #[error("Editing requires a PRIMARY KEY.")]
     EditingRequiresPrimaryKey,
     #[error("Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.")]
@@ -113,6 +115,9 @@ pub fn editable_preview_base(
         || table_detail.name != state.query.pagination.table()
     {
         return Err(EditGuardrailError::StaleTableMetadata);
+    }
+    if table_detail.kind_info.kind == TableKind::View {
+        return Err(EditGuardrailError::ReadOnlyPreviewTarget("view"));
     }
 
     let pk_cols = table_detail

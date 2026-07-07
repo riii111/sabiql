@@ -72,6 +72,12 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
                 );
                 return DispatchResult::handled();
             }
+            if state.is_visible_preview_target_read_only() {
+                state
+                    .messages
+                    .set_error_at("Preview target is read-only: view".to_string(), now);
+                return DispatchResult::handled();
+            }
             if let Some(row_idx) = state.result_interaction.selection().row() {
                 state.result_interaction.stage_row(row_idx);
             }
@@ -96,7 +102,7 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
 mod tests {
     use super::*;
     use crate::domain::Column;
-    use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::domain::{QueryResult, QuerySource, Table, TableKind, TableKindInfo};
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -230,6 +236,29 @@ mod tests {
             assert!(effects.is_empty());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert!(state.messages.last_error().is_some());
+        }
+
+        #[test]
+        fn view_blocks_stage_row_for_delete() {
+            let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
+            let mut table = state.session.table_detail().unwrap().clone();
+            table.kind_info = TableKindInfo {
+                kind: TableKind::View,
+                ..TableKindInfo::default()
+            };
+            state.session.set_table_detail_raw(Some(table));
+            state.result_interaction.activate_cell(0, 0);
+
+            let effects = reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Preview target is read-only: view")
+            );
         }
     }
 
