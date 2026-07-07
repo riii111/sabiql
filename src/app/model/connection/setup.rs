@@ -123,14 +123,6 @@ impl Default for ConnectionSetupState {
 }
 
 impl ConnectionSetupState {
-    pub fn default_name(&self) -> String {
-        match (self.database.content(), self.host.content()) {
-            ("", host) => host.to_string(),
-            (database, "") => database.to_string(),
-            (database, host) => format!("{database}@{host}"),
-        }
-    }
-
     pub fn field_value(&self, field: ConnectionField) -> &str {
         match field {
             ConnectionField::Name => self.name.content(),
@@ -288,27 +280,6 @@ mod tests {
             assert_eq!(state.focused_field, ConnectionField::Name);
             assert!(state.is_first_run);
             assert!(state.editing_id.is_none());
-        }
-
-        #[test]
-        fn default_name_without_database() {
-            let state = ConnectionSetupState::default();
-            assert_eq!(state.default_name(), "localhost");
-        }
-
-        #[test]
-        fn default_name_with_database() {
-            let mut state = ConnectionSetupState::default();
-            state.database.set_content("mydb".to_string());
-            assert_eq!(state.default_name(), "mydb@localhost");
-        }
-
-        #[test]
-        fn default_name_with_database_and_empty_host() {
-            let mut state = ConnectionSetupState::default();
-            state.host.clear();
-            state.database.set_content("mydb".to_string());
-            assert_eq!(state.default_name(), "mydb");
         }
 
         #[test]
