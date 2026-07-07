@@ -1,0 +1,55 @@
+---
+source: src/tests/render_snapshots/connection_flow.rs
+assertion_line: 67
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││(select a table)                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
+│                                       ││          │  Name:       [                            ]                │                                                  │
+│                                       ││          │  Host:       [ empty = psql default       ]                │                                                  │
+│                                       ││          │  Port:       [ 5432                       ]                │                                                  │
+│                                       │└──────────│  Database:   [ mydb                       ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  Password:   [ empty = psql default       ]                │                                                  │
+│                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          │  → stub-dsn                                                │                                                  │
+│                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
+│                                       ││          │                                                            │                                                  │
+│                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+^S:Connect  Tab/⇧Tab:Field  Esc:Cancel

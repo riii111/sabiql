@@ -57,7 +57,7 @@ pub fn reduce_connection_setup(
                 ConnectionField::Port => {
                     let port = setup.port_mut();
                     let current_len = port.char_count();
-                    let remaining = 5usize.saturating_sub(current_len);
+                    let remaining = remaining_input_capacity(ConnectionField::Port, current_len);
                     let digits: String = clean
                         .chars()
                         .filter(char::is_ascii_digit)
@@ -70,9 +70,14 @@ pub fn reduce_connection_setup(
                 }
                 ConnectionField::DatabaseType | ConnectionField::SslMode => {}
                 _ => {
+                    let field = setup.focused_field();
                     if let Some(input) = setup.focused_input_mut() {
-                        input.insert_str(&clean);
-                        input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                        let remaining = remaining_input_capacity(field, input.char_count());
+                        let allowed = take_chars(&clean, remaining);
+                        if !allowed.is_empty() {
+                            input.insert_str(&allowed);
+                            input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                        }
                     }
                 }
             }
@@ -88,14 +93,19 @@ pub fn reduce_connection_setup(
             match setup.focused_field() {
                 ConnectionField::Port => {
                     let port = setup.port_mut();
-                    if c.is_ascii_digit() && port.char_count() < 5 {
+                    if c.is_ascii_digit()
+                        && remaining_input_capacity(ConnectionField::Port, port.char_count()) > 0
+                    {
                         port.insert_char(*c);
                         port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
                 ConnectionField::DatabaseType | ConnectionField::SslMode => {}
                 _ => {
-                    if let Some(input) = setup.focused_input_mut() {
+                    let field = setup.focused_field();
+                    if let Some(input) = setup.focused_input_mut()
+                        && remaining_input_capacity(field, input.char_count()) > 0
+                    {
                         input.insert_char(*c);
                         input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
@@ -183,6 +193,7 @@ pub fn reduce_connection_setup(
                     .input(ConnectionField::Name)
                     .expect("name is a text input")
                     .content()
+                    .trim()
                     .to_string(),
                 config,
             }])
@@ -234,6 +245,15 @@ pub fn reduce_connection_setup(
     }
 }
 
+fn remaining_input_capacity(field: ConnectionField, current_len: usize) -> usize {
+    field
+        .max_chars()
+        .map_or(usize::MAX, |max| max.saturating_sub(current_len))
+}
+
+fn take_chars(text: &str, max_chars: usize) -> String {
+    text.chars().take(max_chars).collect()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,6 +445,15 @@ mod tests {
                 14
             );
         }
+
+        #[test]
+        fn host_paste_respects_limit() {
+            let mut state = setup_state_with_field(ConnectionField::Host);
+
+            reduce_connection_setup(&mut state, &Action::Paste("a".repeat(300)), Instant::now());
+
+            assert_eq!(state.connection_setup.host.char_count(), 255);
+        }
     }
 
     mod connection_save {
@@ -541,6 +570,49 @@ mod tests {
                     config: ConnectionConfig::PostgreSQL(config),
                     ..
                 }] if config.ssl_mode == SslMode::Require
+            ));
+        }
+
+        #[test]
+        fn save_trims_connection_identifiers_and_name_but_preserves_password() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            state
+                .connection_setup
+                .name
+                .set_content("  test-db  ".to_string());
+            state
+                .connection_setup
+                .host
+                .set_content("  localhost  ".to_string());
+            state
+                .connection_setup
+                .database
+                .set_content("  mydb  ".to_string());
+            state
+                .connection_setup
+                .user
+                .set_content("  postgres  ".to_string());
+            state
+                .connection_setup
+                .password
+                .set_content("  pass  ".to_string());
+
+            let effects =
+                reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now())
+                    .unwrap();
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SaveAndConnect {
+                    name,
+                    config: ConnectionConfig::PostgreSQL(config),
+                    ..
+                }] if name == "test-db"
+                    && config.host == "localhost"
+                    && config.database == "mydb"
+                    && config.username == "postgres"
+                    && config.password == "  pass  "
             ));
         }
 
@@ -712,6 +784,25 @@ mod tests {
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(state.er_preparation.pending_tables().is_empty());
+        }
+
+        #[test]
+        fn save_rejects_host_over_limit() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            state.connection_setup.host.set_content("a".repeat(256));
+
+            let result =
+                reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now());
+
+            assert!(result.is_handled());
+            assert_eq!(
+                state
+                    .connection_setup
+                    .validation_errors
+                    .get(&ConnectionField::Host),
+                Some(&"Must be 255 characters or less".to_string())
+            );
         }
     }
 

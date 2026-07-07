@@ -95,6 +95,9 @@ pub const CELL_DETAIL: ModeBindings = ModeBindings {
 pub const SQLITE_DIAGNOSTICS: ModeBindings = ModeBindings {
     rows: SQLITE_DIAGNOSTICS_ROWS,
 };
+pub const ROW_DETAIL: ModeBindings = ModeBindings {
+    rows: ROW_DETAIL_ROWS,
+};
 
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("HELP", &HELP),
@@ -109,6 +112,7 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("JSONB_EDIT", &JSONB_EDIT),
     ("CELL_DETAIL", &CELL_DETAIL),
     ("SQLITE_DIAGNOSTICS", &SQLITE_DIAGNOSTICS),
+    ("ROW_DETAIL", &ROW_DETAIL),
 ];
 
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
@@ -574,7 +578,7 @@ mod tests {
 
             #[test]
             fn all_mode_bindings_count() {
-                assert_eq!(ALL_MODE_BINDINGS.len(), 12);
+                assert_eq!(ALL_MODE_BINDINGS.len(), 13);
             }
         }
     }

@@ -30,6 +30,7 @@ use sabiql_app::cmd::runner::{
     ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
 };
 use sabiql_app::model::app_state::AppState;
+use sabiql_app::model::shared::db_capabilities::DbCapabilities;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::ports::outbound::{
     ConnectionStore, ConnectionStoreError, PgServiceEntryReader, ServiceFileError, SettingsStore,
@@ -150,6 +151,8 @@ async fn main() -> Result<()> {
     let services = AppServices {
         ddl_generator: Arc::clone(&adapter_registry) as _,
         sql_dialect: Arc::clone(&adapter_registry) as _,
+        dsn_builder: Arc::clone(&adapter_registry) as _,
+        db_capabilities: DbCapabilities::postgres_like(),
     };
 
     let mut state = AppState::new(project_name);

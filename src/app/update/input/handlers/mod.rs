@@ -5,6 +5,7 @@ mod jsonb;
 mod normal;
 mod overlays;
 mod pickers;
+mod row_detail;
 mod sql_modal;
 
 use crate::model::app_state::AppState;
@@ -85,6 +86,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
             let is_searching = state.cell_detail.search().is_active();
             cell_detail::handle_cell_detail_keys(combo, is_searching)
         }
+        InputMode::RowDetail => row_detail::handle_row_detail_keys(combo),
     }
 }
 

@@ -13,7 +13,7 @@ use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::update::input::keybindings::{
-    cell_detail, cell_detail_search, cell_edit, command_palette,
+    ModeRow, ROW_DETAIL_ROWS, cell_detail, cell_detail_search, cell_edit, command_palette,
     command_palette as command_palette_key, connection_error, connection_selector,
     connection_setup, connection_setup_save, csv_export, er_picker, er_picker_select_all,
     exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail, jsonb_edit,
@@ -103,6 +103,7 @@ impl Footer {
                             result_active::EDIT.as_hint(),
                             result_active::YANK.as_hint(),
                             result_active::ROW_YANK.as_hint(),
+                            result_active::ROW_DETAIL.as_hint(),
                             result_active::STAGE_DELETE.as_hint(),
                             global::HELP.as_hint(),
                             result_active::ESC_BACK.as_hint(),
@@ -349,6 +350,7 @@ impl Footer {
                     ]
                 }
             }
+            InputMode::RowDetail => ROW_DETAIL_ROWS.iter().map(ModeRow::as_hint).collect(),
             InputMode::ConnectionSelector => {
                 use connection_selector as cs;
                 let is_service_selected = connection_list::is_service_selected(
@@ -401,8 +403,9 @@ mod tests {
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
     use crate::app::model::shared::settings::KeymapPreset;
+    use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
-    use crate::app::update::input::keybindings::{connection_setup, global};
+    use crate::app::update::input::keybindings::{connection_setup, global, result_active};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -416,6 +419,13 @@ mod tests {
         while state.connection_setup.focused_field() != field {
             state.connection_setup.focus_next_field();
         }
+    }
+
+    fn result_focused_state() -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::Normal);
+        state.ui.set_focused_pane(FocusedPane::Result);
+        state
     }
 
     #[rstest]
@@ -464,6 +474,37 @@ mod tests {
             hints.contains(&global::ER_DIAGRAM.as_hint()),
             expected_visible
         );
+    }
+
+    #[test]
+    fn row_detail_hint_is_hidden_in_result_scroll_mode() {
+        let state = result_focused_state();
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
+    }
+
+    #[test]
+    fn row_detail_hint_is_hidden_in_result_focus_scroll_mode() {
+        let mut state = result_focused_state();
+        state
+            .ui
+            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
+    }
+
+    #[test]
+    fn row_detail_hint_is_visible_in_cell_active_mode() {
+        let mut state = result_focused_state();
+        state.result_interaction.activate_cell(0, 0);
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(hints.contains(&result_active::ROW_DETAIL.as_hint()));
     }
 
     #[test]

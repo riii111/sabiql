@@ -1,27 +1,28 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 462
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:54
 ┌ [1] Explor┐[Info] [Cols] [Idx] [FK] [RLS] [Trig]
 │> publi╭ Help ───────────────────────────╮──────┐
-│  publi│                     Return to N▲│      │
-│  publi│                     Move cursor││      │
-│       │                     Line start/││      │
-│       │                     Insert tab ││      │
-│       │                     Preview and││      │
-│       │                     Edit cell v││      │
-│       │                     Move cursor││      │
-│       │                     Jump to sta┃│      │
-│       │                     Open comman┃│──────┘
-│       │                     Exit to Cel││──────┐
-│       │                     Execute the││      │
-│       │                     Cancel and ││      │
-│       │                     Return to N││      │
-│       │                     Move cursor││      │
-│       │                     Line start/││      │
+│  publi│                             Ret▲│      │
+│  publi│                             Mov││      │
+│       │                             Lin││      │
+│       │                             Ins││      │
+│       │                             Pre││      │
+│       │                             Edi││      │
+│       │                             Mov┃│      │
+│       │                             Jum┃│      │
+│       │                             Ope││──────┘
+│       │                             Exi││──────┐
+│       │                             Exe││      │
+│       │                             Can││      │
+│       │                             Ret││      │
+│       │                             Mov││      │
+│       │                             Lin││      │
 │       │                                ││      │
 │       │                                ▼│      │
-│       │ col  25% ◀︎────═════───────────▶︎ │      │
+│       │ x  23% ◀︎────═════─────────────▶︎ │      │
 └───────╰ type: Filter │ Backspace: Edit │╯──────┘
 ←→:H-Scroll  ?:Close

@@ -387,6 +387,16 @@ mod text_search_tests {
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
     state.clear_validation_error(field);
 
+    if let Some(max_chars) = field.max_chars() {
+        let length = state.field_value(field).chars().count();
+        if length > max_chars {
+            state
+                .validation_errors
+                .insert(field, format!("Must be {max_chars} characters or less"));
+            return;
+        }
+    }
+
     match field {
         ConnectionField::SqlitePath => {
             let path = text_input_content(state, ConnectionField::SqlitePath).to_string();
@@ -394,9 +404,6 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 Ok(_) => {}
                 Err(error) => state.record_sqlite_config_error(error),
             }
-        }
-        ConnectionField::Host | ConnectionField::Database | ConnectionField::User => {
-            require_non_empty(state, field, "Required");
         }
         ConnectionField::Port => {
             let port = text_input_content(state, field).trim();
@@ -414,15 +421,18 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 }
             }
         }
+        ConnectionField::Database => require_non_empty(state, field, "Required"),
         ConnectionField::Name => {
             let name = text_input_content(state, field).trim().to_string();
             if name.is_empty() {
                 state.set_validation_error(field, "Name is required");
-            } else if name.chars().count() > 50 {
-                state.set_validation_error(field, "Name must be 50 characters or less");
             }
         }
-        ConnectionField::DatabaseType | ConnectionField::Password | ConnectionField::SslMode => {}
+        ConnectionField::DatabaseType
+        | ConnectionField::Host
+        | ConnectionField::User
+        | ConnectionField::Password
+        | ConnectionField::SslMode => {}
     }
 }
 
@@ -490,7 +500,7 @@ mod tests {
             if expect_error {
                 assert_eq!(
                     state.validation_error(ConnectionField::Name),
-                    Some("Name must be 50 characters or less")
+                    Some("Must be 50 characters or less")
                 );
             } else {
                 assert!(!state.has_validation_error(ConnectionField::Name));
@@ -598,6 +608,49 @@ mod tests {
             validate_all(&mut state);
 
             assert!(!state.has_validation_error(ConnectionField::Host));
+        }
+    }
+
+    mod validate_field_max_length {
+        use super::*;
+        use crate::model::shared::text_input::TextInputState;
+
+        #[rstest]
+        #[case(ConnectionField::Host, "a".repeat(255), false)]
+        #[case(ConnectionField::Host, "a".repeat(256), true)]
+        #[case(ConnectionField::Database, "a".repeat(255), false)]
+        #[case(ConnectionField::Database, "a".repeat(256), true)]
+        #[case(ConnectionField::User, "a".repeat(255), false)]
+        #[case(ConnectionField::User, "a".repeat(256), true)]
+        #[case(ConnectionField::Password, "a".repeat(255), false)]
+        #[case(ConnectionField::Password, "a".repeat(256), true)]
+        fn max_length_validation(
+            #[case] field: ConnectionField,
+            #[case] value: String,
+            #[case] expect_error: bool,
+        ) {
+            let mut state = ConnectionSetupState::default();
+            let len = value.chars().count();
+            let input = TextInputState::new(value, len);
+
+            match field {
+                ConnectionField::Host => state.host = input,
+                ConnectionField::Database => state.database = input,
+                ConnectionField::User => state.user = input,
+                ConnectionField::Password => state.password = input,
+                _ => unreachable!(),
+            }
+
+            validate_field(&mut state, field);
+
+            if expect_error {
+                assert_eq!(
+                    state.validation_errors.get(&field),
+                    Some(&"Must be 255 characters or less".to_string())
+                );
+            } else {
+                assert!(!state.validation_errors.contains_key(&field));
+            }
         }
     }
 

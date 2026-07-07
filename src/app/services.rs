@@ -2,13 +2,16 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use super::ports::outbound::{DdlGenerator, DsnBuilder, SqlDialect};
 #[cfg(any(test, feature = "test-support"))]
-use crate::domain::{DatabaseType, QueryValue, Table};
+use crate::domain::{ConnectionProfile, DatabaseType, QueryValue, Table};
+use crate::model::shared::db_capabilities::DbCapabilities;
 
-use super::ports::outbound::{DdlGenerator, SqlDialect};
 pub struct AppServices {
     pub ddl_generator: Arc<dyn DdlGenerator>,
     pub sql_dialect: Arc<dyn SqlDialect>,
+    pub dsn_builder: Arc<dyn DsnBuilder>,
+    pub db_capabilities: DbCapabilities,
 }
 
 impl AppServices {
@@ -138,9 +141,18 @@ impl AppServices {
             }
         }
 
+        struct StubDsnBuilder;
+        impl DsnBuilder for StubDsnBuilder {
+            fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+                "stub-dsn".to_string()
+            }
+        }
+
         Self {
             ddl_generator: Arc::new(StubDdlGenerator),
             sql_dialect: Arc::new(StubSqlDialect),
+            dsn_builder: Arc::new(StubDsnBuilder),
+            db_capabilities: DbCapabilities::postgres_like(),
         }
     }
 }

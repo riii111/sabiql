@@ -14,7 +14,8 @@ pub enum Command {
 }
 
 pub fn parse_command(input: &str) -> Command {
-    match input.trim() {
+    let trimmed = input.trim();
+    match trimmed {
         "q" | "quit" => Command::Quit,
         "?" | "help" => Command::Help,
         "sql" => Command::Sql,
@@ -122,6 +123,27 @@ mod tests {
             let result = parse_command("  sql  ");
 
             assert_eq!(result, Command::Sql);
+        }
+
+        #[test]
+        fn numeric_string_returns_unknown() {
+            let result = parse_command("5");
+
+            assert_eq!(result, Command::Unknown("5".to_string()));
+        }
+
+        #[test]
+        fn numeric_string_with_whitespace_returns_unknown() {
+            let result = parse_command("  42  ");
+
+            assert_eq!(result, Command::Unknown("42".to_string()));
+        }
+
+        #[test]
+        fn non_numeric_string_returns_unknown() {
+            let result = parse_command("42foo");
+
+            assert_eq!(result, Command::Unknown("42foo".to_string()));
         }
 
         #[test]

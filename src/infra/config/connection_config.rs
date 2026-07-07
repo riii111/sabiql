@@ -118,10 +118,10 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                 id,
                 name.as_str().to_string(),
                 ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
-                    required_postgres_field(entry.host.as_ref(), "host")?,
+                    optional_postgres_field(entry.host.as_ref()),
                     entry.port.unwrap_or(5432),
                     required_postgres_field(entry.database.as_ref(), "database")?,
-                    required_postgres_field(entry.username.as_ref(), "username")?,
+                    optional_postgres_field(entry.username.as_ref()),
                     match &entry.password {
                         Some(password) => password.clone(),
                         None => String::new(),
@@ -155,6 +155,10 @@ fn required_postgres_field(
         return Err(ConnectionProfileError::MissingPostgresField(field));
     }
     Ok(value.clone())
+}
+
+fn optional_postgres_field(value: Option<&String>) -> String {
+    value.cloned().unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -208,13 +212,13 @@ mod tests {
     #[test]
     fn postgres_entry_rejects_missing_required_field() {
         let mut entry = postgres_entry();
-        entry.host = None;
+        entry.database = None;
 
         let result = ConnectionProfile::try_from(&entry);
 
         assert!(matches!(
             result,
-            Err(ConnectionProfileError::MissingPostgresField("host"))
+            Err(ConnectionProfileError::MissingPostgresField("database"))
         ));
     }
 

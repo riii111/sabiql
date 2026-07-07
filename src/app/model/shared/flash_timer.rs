@@ -9,6 +9,7 @@ pub enum FlashId {
     Ddl,
     JsonbDetail,
     CellDetail,
+    RowDetail,
 }
 
 #[derive(Debug, Clone, Default)]

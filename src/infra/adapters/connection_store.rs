@@ -247,6 +247,34 @@ ssl_mode = "prefer"
                     .contains("version = 2")
             );
         }
+
+        #[test]
+        fn missing_username_and_blank_host_load_as_empty_strings() {
+            let temp_dir = TempDir::new().unwrap();
+            let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
+
+            let content = r#"
+version = 2
+
+[[connections]]
+id = "test-id"
+name = "Local"
+host = ""
+port = 5432
+database = "testdb"
+password = ""
+ssl_mode = "prefer"
+"#;
+            fs::write(&config_path, content).unwrap();
+
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let profiles = store.load_all().unwrap();
+
+            assert_eq!(profiles.len(), 1);
+            let config = profiles[0].postgres_config().unwrap();
+            assert_eq!(config.username, "");
+            assert_eq!(config.host, "");
+        }
     }
 
     mod save {

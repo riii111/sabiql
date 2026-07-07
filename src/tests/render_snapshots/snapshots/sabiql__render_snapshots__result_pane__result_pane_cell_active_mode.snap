@@ -1,6 +1,6 @@
 ---
 source: src/tests/render_snapshots/result_pane.rs
-assertion_line: 224
+assertion_line: 254
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -52,4 +52,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Detail  i:Edit  Y:Yank Cell  yy:Yank Row  dd:Stage Del  ?:Help  Esc:Back  q:Quit
+Enter:Detail  i:Edit  Y:Yank Cell  yy:Yank Row  K:Row Detail  dd:Stage Del  ?:Help  Esc:Back  q:Quit

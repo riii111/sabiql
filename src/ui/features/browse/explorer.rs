@@ -135,6 +135,7 @@ impl Explorer {
                         position: h_offset,
                         viewport_size: content_width,
                         total_items: max_name_width,
+                        label: "x",
                     },
                     theme,
                 );

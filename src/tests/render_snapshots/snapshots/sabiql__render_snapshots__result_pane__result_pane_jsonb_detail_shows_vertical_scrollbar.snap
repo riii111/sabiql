@@ -1,0 +1,28 @@
+---
+source: src/tests/render_snapshots/result_pane.rs
+expression: output
+---
+test_project | test_db | - | no dsn | localhost:5432/test                                           
+┌ [1] Explorer ─────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                
+│> public.users         │┌ [2] Inspector ──────────────────────────────────────────────────────────┐
+│  public.posts         ││Owner:   postgres                                                        │
+│  public.╭ JSONB Detail ── settings─────────────────────────────────────────────────────╮         │
+│         │{                                                                            ▲│         │
+│         │  "key_0": "value_0",                                                        ┃│         │
+│         │  "key_1": "value_1",                                                        ┃│         │
+│         │  "key_10": "value_10",                                                      ┃│         │
+│         │  "key_11": "value_11",                                                      ┃│         │
+│         │  "key_12": "value_12",                                                      ││         │
+│         │  "key_13": "value_13",                                                      ││─────────┘
+│         │  "key_14": "value_14",                                                      ││─────────┐
+│         │  "key_15": "value_15",                                                      ││         │
+│         │  "key_16": "value_16",                                                      ││ue_1",...│
+│         │  "key_17": "value_17",                                                      ││         │
+│         │  "key_18": "value_18",                                                      ││         │
+│         │  "key_19": "value_19",                                                      ││         │
+│         │  "key_2": "value_2",                                                        ▼│         │
+│         │✓ Valid JSON                                                                  │         │
+│         ╰ y: Copy │ /: Search │ i: Insert │ Esc: Close ────────────────────────────────╯         │
+│                       ││ col   0% ◀︎════════════════════════════════════════════════════════════▶︎ │
+└───────────────────────┘└─────────────────────────────────────────────────────────────────────────┘
+y:Copy  i:Insert  /:Search  n/N:Next/Prev  hjkl/↑↓←→:Move  Esc:Close

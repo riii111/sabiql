@@ -32,13 +32,23 @@ impl DbAdapterRegistry {
         if dsn.starts_with("sqlite://") {
             return Ok(DatabaseType::SQLite);
         }
-        if dsn.starts_with("postgres://") || dsn.starts_with("service=") {
+        if dsn.starts_with("postgres://") || is_postgres_conninfo_dsn(dsn) {
             return Ok(DatabaseType::PostgreSQL);
         }
         Err(DbOperationError::ConnectionFailed(format!(
             "Unsupported database DSN scheme: {dsn}"
         )))
     }
+}
+
+fn is_postgres_conninfo_dsn(dsn: &str) -> bool {
+    let Some((key, _)) = dsn.trim_start().split_once('=') else {
+        return false;
+    };
+    matches!(
+        key.trim(),
+        "host" | "hostaddr" | "port" | "dbname" | "user" | "password" | "sslmode" | "service"
+    )
 }
 
 impl DsnBuilder for DbAdapterRegistry {
@@ -305,7 +315,7 @@ mod tests {
 
         let dsn = registry.build_dsn(&profile);
 
-        assert!(dsn.starts_with("postgres://"));
+        assert!(dsn.starts_with("host='localhost'"));
     }
 
     #[test]

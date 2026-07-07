@@ -85,6 +85,23 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         return action;
     }
 
+    let staged_delete_in_progress = !state.result_interaction.staged_delete_rows().is_empty();
+
+    if result_navigation
+        && !staged_delete_in_progress
+        && kb::result_active::ROW_DETAIL.combos.contains(&combo)
+        && state.result_interaction.selection().row().is_some()
+    {
+        return kb::result_active::ROW_DETAIL.action.clone();
+    }
+    if result_navigation
+        && !staged_delete_in_progress
+        && kb::result_active::YANK.combos.contains(&combo)
+        && state.result_interaction.selection().cell().is_some()
+    {
+        return kb::result_active::YANK.action.clone();
+    }
+
     // Non-navigation context keys
     match combo.key {
         Key::Char(']') => {
@@ -115,15 +132,8 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Tab if inspector_navigation => Action::InspectorNextTab,
         Key::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
-        Key::Char('u')
-            if result_navigation && !state.result_interaction.staged_delete_rows().is_empty() =>
-        {
+        Key::Char('u') if result_navigation && staged_delete_in_progress => {
             Action::UnstageLastStagedRow
-        }
-        Key::Char('Y')
-            if result_navigation && state.result_interaction.selection().cell().is_some() =>
-        {
-            Action::ResultCellYank
         }
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
         Key::Char('e') if state.session.active_db_capabilities().supports_er_diagram() => {
@@ -841,6 +851,61 @@ mod tests {
                 let result = handle_normal_mode(combo(Key::Char('[')), &state);
 
                 assert!(matches!(result, Action::ResultPrevPage));
+            }
+
+            #[test]
+            fn uppercase_k_opens_row_detail_with_active_row() {
+                let mut state = result_focused_state();
+                state.result_interaction.activate_cell(0, 0);
+
+                let result = handle_normal_mode(combo(Key::Char('K')), &state);
+
+                assert!(matches!(result, Action::OpenModal(ModalKind::RowDetail)));
+            }
+
+            #[test]
+            fn uppercase_k_noop_without_active_row() {
+                let state = result_focused_state();
+
+                let result = handle_normal_mode(combo(Key::Char('K')), &state);
+
+                assert!(matches!(result, Action::None));
+            }
+
+            #[test]
+            fn uppercase_k_noop_when_not_result_focused() {
+                let mut state = browse_state();
+                state.ui.set_focused_pane(FocusedPane::Explorer);
+                state.result_interaction.activate_cell(0, 0);
+
+                let result = handle_normal_mode(combo(Key::Char('K')), &state);
+
+                assert!(matches!(result, Action::None));
+            }
+
+            #[rstest]
+            #[case(KeyCombo::alt(Key::Char('K')))]
+            #[case(KeyCombo::alt(Key::Char('Y')))]
+            fn modified_uppercase_shortcut_does_not_trigger_action(#[case] input: KeyCombo) {
+                let mut state = result_focused_state();
+                state.result_interaction.activate_cell(0, 0);
+
+                let result = handle_normal_mode(input, &state);
+
+                assert!(matches!(result, Action::None));
+            }
+
+            #[rstest]
+            #[case(Key::Char('K'))]
+            #[case(Key::Char('Y'))]
+            fn staged_delete_suppresses_result_active_shortcuts(#[case] key: Key) {
+                let mut state = result_focused_state();
+                state.result_interaction.activate_cell(0, 0);
+                state.result_interaction.stage_row(0);
+
+                let result = handle_normal_mode(combo(key), &state);
+
+                assert!(matches!(result, Action::None));
             }
 
             #[test]

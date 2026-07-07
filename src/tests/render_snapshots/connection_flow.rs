@@ -2,6 +2,10 @@ use super::*;
 use crate::tests::harness::{focus_connection_field, set_connection_input};
 use sabiql_app::model::shared::settings::KeymapPreset;
 
+fn repeated(ch: char, len: usize) -> String {
+    std::iter::repeat_n(ch, len).collect()
+}
+
 #[test]
 fn connection_setup_form() {
     let mut state = create_test_state();
@@ -38,6 +42,177 @@ fn connection_setup_sqlite_form() {
         .input_mut(ConnectionField::SqlitePath)
         .unwrap()
         .set_content("/tmp/app.db".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_empty_host_focused() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    focus_connection_field(&mut state, ConnectionField::Host);
+    set_connection_input(&mut state, ConnectionField::Host, TextInputState::default());
+    set_connection_input(
+        &mut state,
+        ConnectionField::Database,
+        TextInputState::new("mydb", 4),
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_empty_password_focused() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    focus_connection_field(&mut state, ConnectionField::Password);
+    set_connection_input(
+        &mut state,
+        ConnectionField::Database,
+        TextInputState::new("mydb", 4),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::Password,
+        TextInputState::default(),
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_preview_omits_empty_optional_fields() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    set_connection_input(&mut state, ConnectionField::Host, TextInputState::default());
+    set_connection_input(
+        &mut state,
+        ConnectionField::Database,
+        TextInputState::new("mydb", 4),
+    );
+    set_connection_input(&mut state, ConnectionField::User, TextInputState::default());
+    set_connection_input(
+        &mut state,
+        ConnectionField::Password,
+        TextInputState::new("secret", 6),
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_preview_uses_postgres_conninfo_escaping() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    set_connection_input(
+        &mut state,
+        ConnectionField::Host,
+        TextInputState::new("/var/run/postgresql", 19),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::Database,
+        TextInputState::new("my'db", 5),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::User,
+        TextInputState::new("user'org", 8),
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_preview_wraps_across_multiple_rows_for_long_conninfo() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    set_connection_input(
+        &mut state,
+        ConnectionField::Host,
+        TextInputState::new(
+            "analytics-primary-read-replica.cluster.internal.example.company.service",
+            70,
+        ),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::Database,
+        TextInputState::new(
+            "warehouse_reporting_environment_for_customer_success_dashboards",
+            61,
+        ),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::User,
+        TextInputState::new(
+            "customer_success_preview_validation_operator_with_extended_scope",
+            63,
+        ),
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_preview_with_max_length_fields() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    set_connection_input(
+        &mut state,
+        ConnectionField::Name,
+        TextInputState::new(repeated('n', 50), 50),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::Host,
+        TextInputState::new(repeated('h', 255), 255),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::Port,
+        TextInputState::new("65535", 5),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::Database,
+        TextInputState::new(repeated('d', 255), 255),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::User,
+        TextInputState::new(repeated('u', 255), 255),
+    );
+    set_connection_input(
+        &mut state,
+        ConnectionField::Password,
+        TextInputState::new(repeated('p', 255), 255),
+    );
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -127,13 +302,7 @@ fn connection_setup_with_validation_errors() {
     set_connection_input(&mut state, ConnectionField::User, TextInputState::default());
     state
         .connection_setup
-        .set_validation_error(ConnectionField::Host, "Required");
-    state
-        .connection_setup
         .set_validation_error(ConnectionField::Database, "Required");
-    state
-        .connection_setup
-        .set_validation_error(ConnectionField::User, "Required");
 
     let output = render_to_string(&mut terminal, &mut state);
 

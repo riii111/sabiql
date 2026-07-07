@@ -14,6 +14,7 @@ use crate::features::browse::explorer::Explorer;
 use crate::features::browse::inspector::Inspector;
 use crate::features::browse::jsonb_detail::{JsonbDetail, JsonbDetailRenderMetrics};
 use crate::features::browse::result::ResultPane;
+use crate::features::browse::row_detail::{RowDetail, RowDetailRenderMetrics};
 use crate::features::connections::error::ConnectionError;
 use crate::features::connections::selector::ConnectionSelector;
 use crate::features::connections::setup::ConnectionSetup;
@@ -166,6 +167,18 @@ impl MainLayout {
             _ => None,
         };
 
+        let (row_detail_content_visible_rows, row_detail_content_visible_columns) =
+            match state.input_mode() {
+                InputMode::RowDetail => RowDetail::render(frame, state, now, theme).map_or(
+                    (None, None),
+                    |RowDetailRenderMetrics {
+                         visible_rows,
+                         visible_columns,
+                     }| (Some(visible_rows), Some(visible_columns)),
+                ),
+                _ => (None, None),
+            };
+
         let (sqlite_diagnostics_content_line_count, sqlite_diagnostics_viewport_height) =
             match state.input_mode() {
                 InputMode::SqliteDiagnostics => {
@@ -182,7 +195,7 @@ impl MainLayout {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
             InputMode::Help => HelpOverlay::render(frame, state, theme),
-            InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, theme),
+            InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, services, theme),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now, theme),
             _ => {}
         }
@@ -198,6 +211,8 @@ impl MainLayout {
             query_history_picker_filter_visible_width,
             jsonb_detail_editor_visible_rows,
             cell_detail_viewport,
+            row_detail_content_visible_rows,
+            row_detail_content_visible_columns,
             confirm_preview_viewport_height,
             confirm_preview_content_height,
             confirm_preview_scroll,

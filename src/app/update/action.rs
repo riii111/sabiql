@@ -70,6 +70,7 @@ pub enum ScrollTarget {
     JsonbDetail,
     CellDetail,
     SqliteDiagnostics,
+    RowDetail,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,6 +194,7 @@ pub enum ModalKind {
     QueryHistoryPicker,
     JsonbDetail,
     CellDetail,
+    RowDetail,
     ConnectionSetup,
     ConnectionSelector,
     SqliteDiagnostics,
@@ -595,6 +597,11 @@ pub enum Action {
     CellDetailSearchNext,
     CellDetailSearchPrev,
     CellDetailSearchSubmit,
+
+    // Row Detail
+    RowDetailYank,
+    RowDetailYankJson,
+    RowDetailYankSuccess,
 
     // ER diagrams
     ErToggleSelection,

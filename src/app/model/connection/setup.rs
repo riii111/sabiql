@@ -42,8 +42,25 @@ impl ConnectionField {
     pub fn is_required(self) -> bool {
         matches!(
             self,
-            Self::Name | Self::SqlitePath | Self::Host | Self::Port | Self::Database | Self::User
+            Self::Name | Self::SqlitePath | Self::Port | Self::Database
         )
+    }
+
+    pub fn max_chars(self) -> Option<usize> {
+        match self {
+            Self::Name => Some(50),
+            Self::SqlitePath => Some(4096),
+            Self::Host | Self::Database | Self::User | Self::Password => Some(255),
+            Self::Port => Some(5),
+            Self::DatabaseType | Self::SslMode => None,
+        }
+    }
+
+    pub fn placeholder(self) -> &'static str {
+        match self {
+            Self::Host | Self::User | Self::Password => "empty = psql default",
+            _ => "",
+        }
     }
 
     pub fn label(self) -> &'static str {
@@ -203,6 +220,10 @@ impl ConnectionSetupState {
             ConnectionField::User => Some(&self.user),
             ConnectionField::Password => Some(&self.password),
         }
+    }
+
+    pub fn field_value(&self, field: ConnectionField) -> &str {
+        self.input(field).map_or("", TextInputState::content)
     }
 
     pub fn input_mut(&mut self, field: ConnectionField) -> Option<&mut TextInputState> {
@@ -382,13 +403,13 @@ impl ConnectionSetupState {
         Ok(match self.database_type {
             DatabaseType::PostgreSQL => {
                 ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
-                    self.host.content().to_string(),
+                    self.host.content().trim().to_string(),
                     self.port
                         .content()
                         .parse()
                         .expect("port validated before building connection config"),
-                    self.database.content().to_string(),
-                    self.user.content().to_string(),
+                    self.database.content().trim().to_string(),
+                    self.user.content().trim().to_string(),
                     self.password.content().to_string(),
                     self.ssl_mode,
                 ))
@@ -465,10 +486,10 @@ mod tests {
         #[case(ConnectionField::DatabaseType, false)]
         #[case(ConnectionField::Name, true)]
         #[case(ConnectionField::SqlitePath, true)]
-        #[case(ConnectionField::Host, true)]
+        #[case(ConnectionField::Host, false)]
         #[case(ConnectionField::Port, true)]
         #[case(ConnectionField::Database, true)]
-        #[case(ConnectionField::User, true)]
+        #[case(ConnectionField::User, false)]
         #[case(ConnectionField::Password, false)]
         #[case(ConnectionField::SslMode, false)]
         fn is_required_returns_correct_value(
@@ -476,6 +497,48 @@ mod tests {
             #[case] expected: bool,
         ) {
             assert_eq!(field.is_required(), expected);
+        }
+        #[test]
+        fn fields_for_returns_postgres_fields_in_order() {
+            let fields = ConnectionField::fields_for(DatabaseType::PostgreSQL);
+            assert_eq!(fields.len(), 8);
+            assert_eq!(fields[0], ConnectionField::DatabaseType);
+            assert_eq!(fields[7], ConnectionField::SslMode);
+        }
+
+        #[test]
+        fn fields_for_returns_sqlite_fields_in_order() {
+            assert_eq!(
+                ConnectionField::fields_for(DatabaseType::SQLite),
+                &[
+                    ConnectionField::DatabaseType,
+                    ConnectionField::Name,
+                    ConnectionField::SqlitePath
+                ]
+            );
+        }
+
+        #[test]
+        fn max_chars_limits_match_field_policy() {
+            assert_eq!(ConnectionField::Name.max_chars(), Some(50));
+            assert_eq!(ConnectionField::SqlitePath.max_chars(), Some(4096));
+            assert_eq!(ConnectionField::Host.max_chars(), Some(255));
+            assert_eq!(ConnectionField::Port.max_chars(), Some(5));
+            assert_eq!(ConnectionField::Database.max_chars(), Some(255));
+            assert_eq!(ConnectionField::User.max_chars(), Some(255));
+            assert_eq!(ConnectionField::Password.max_chars(), Some(255));
+            assert_eq!(ConnectionField::DatabaseType.max_chars(), None);
+            assert_eq!(ConnectionField::SslMode.max_chars(), None);
+        }
+
+        #[rstest]
+        #[case(ConnectionField::Host)]
+        #[case(ConnectionField::User)]
+        #[case(ConnectionField::Password)]
+        fn placeholder_uses_psql_default_for_delegated_optional_fields(
+            #[case] field: ConnectionField,
+        ) {
+            assert_eq!(field.placeholder(), "empty = psql default");
         }
     }
 

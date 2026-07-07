@@ -9,6 +9,9 @@ use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::features::browse::detail_view::render_detail_search;
+use crate::primitives::atoms::scroll_indicator::{
+    VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
+};
 use crate::primitives::atoms::{
     CursorKind, ModalTextSurface, apply_yank_flash, build_modal_text_surface_lines,
     render_modal_text_surface,
@@ -99,6 +102,16 @@ impl JsonbDetail {
     ) {
         let editor = state.jsonb_detail.editor();
         let content = editor.content();
+        let total_lines = content.lines().count().max(1);
+        let has_vertical_scrollbar = total_lines > area.height as usize;
+        let content_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width.saturating_sub(u16::from(has_vertical_scrollbar)),
+            height: area.height,
+        };
+        let scroll_row =
+            clamp_scroll_offset(editor.scroll_row(), area.height as usize, total_lines);
         let (cursor_row, cursor_col) = editor.cursor_to_position();
         let cursor_kind = if is_editing {
             CursorKind::Insert
@@ -109,7 +122,7 @@ impl JsonbDetail {
             content,
             cursor_row,
             cursor_col,
-            scroll_row: editor.scroll_row(),
+            scroll_row,
             cursor_kind,
             empty_placeholder: if is_editing {
                 " Enter JSON..."
@@ -129,7 +142,21 @@ impl JsonbDetail {
         let flash_active = state.flash_timers.is_active(FlashId::JsonbDetail, now);
         apply_yank_flash(&mut lines, flash_active, theme);
 
-        render_modal_text_surface(frame, area, surface, lines);
+        render_modal_text_surface(frame, content_area, surface, lines);
+
+        if has_vertical_scrollbar {
+            render_vertical_scroll_indicator_bar(
+                frame,
+                area,
+                VerticalScrollParams {
+                    position: scroll_row,
+                    viewport_size: area.height as usize,
+                    total_items: total_lines,
+                    has_horizontal_scrollbar: false,
+                },
+                theme,
+            );
+        }
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {

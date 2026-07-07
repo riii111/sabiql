@@ -21,6 +21,7 @@ impl Default for HelpState {
             origin: HelpOrigin::Normal {
                 focused_pane: FocusedPane::default(),
                 result_active: false,
+                staged_delete_in_progress: false,
                 keymap_preset: KeymapPreset::Default,
             },
             filter: TextInputState::default(),
@@ -92,6 +93,7 @@ pub enum HelpOrigin {
     Normal {
         focused_pane: FocusedPane,
         result_active: bool,
+        staged_delete_in_progress: bool,
         keymap_preset: KeymapPreset,
     },
     CommandLine,
@@ -123,6 +125,7 @@ pub enum HelpOrigin {
     CellDetail {
         searching: bool,
     },
+    RowDetail,
 }
 
 impl HelpOrigin {
@@ -145,7 +148,8 @@ impl HelpOrigin {
             | Self::QueryHistoryPicker
             | Self::JsonbDetail { .. }
             | Self::JsonbEdit
-            | Self::CellDetail { .. } => KeymapPreset::Default,
+            | Self::CellDetail { .. }
+            | Self::RowDetail => KeymapPreset::Default,
         }
     }
 
@@ -154,6 +158,10 @@ impl HelpOrigin {
             InputMode::Normal => Self::Normal {
                 focused_pane: state.ui.focused_pane(),
                 result_active: state.result_interaction.selection().cell().is_some(),
+                staged_delete_in_progress: !state
+                    .result_interaction
+                    .staged_delete_rows()
+                    .is_empty(),
                 keymap_preset: state.settings.saved_keymap_preset(),
             },
             InputMode::CommandLine => Self::CommandLine,
@@ -185,6 +193,7 @@ impl HelpOrigin {
             InputMode::CellDetail => Self::CellDetail {
                 searching: state.cell_detail.search().is_active(),
             },
+            InputMode::RowDetail => Self::RowDetail,
         }
     }
 
@@ -220,6 +229,7 @@ impl HelpOrigin {
             Self::JsonbEdit => "JSONB Edit",
             Self::CellDetail { searching: true } => "Cell Detail Search",
             Self::CellDetail { searching: false } => "Cell Detail",
+            Self::RowDetail => "Row Detail",
         }
     }
 }
@@ -312,6 +322,7 @@ mod tests {
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Inspector,
                 result_active: false,
+                staged_delete_in_progress: false,
                 keymap_preset: KeymapPreset::Default,
             }
         ));
@@ -328,6 +339,22 @@ mod tests {
             origin,
             HelpOrigin::Normal {
                 result_active: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn normal_origin_captures_staged_delete_state() {
+        let mut state = AppState::new("test".to_string());
+        state.result_interaction.stage_row(1);
+
+        let origin = HelpOrigin::from_state(&state);
+
+        assert!(matches!(
+            origin,
+            HelpOrigin::Normal {
+                staged_delete_in_progress: true,
                 ..
             }
         ));

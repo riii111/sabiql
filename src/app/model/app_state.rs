@@ -8,6 +8,7 @@ use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::browse::query_execution::QueryExecution;
 use crate::model::browse::result_interaction::ResultInteraction;
+use crate::model::browse::row_detail::RowDetailState;
 use crate::model::browse::session::BrowseSession;
 use crate::model::connection::cache::ConnectionCacheStore;
 use crate::model::connection::error_state::ConnectionErrorState;
@@ -48,6 +49,7 @@ pub struct AppState {
     pub result_interaction: ResultInteraction,
     pub cell_detail: CellDetailState,
     pub jsonb_detail: JsonbDetailState,
+    pub row_detail: RowDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub settings: SettingsState,
     pub sqlite_diagnostics: SqliteDiagnosticsState,
@@ -80,6 +82,7 @@ impl AppState {
             result_interaction: ResultInteraction::default(),
             cell_detail: CellDetailState::default(),
             jsonb_detail: JsonbDetailState::default(),
+            row_detail: RowDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             settings: SettingsState::default(),
             sqlite_diagnostics: SqliteDiagnosticsState::default(),
@@ -167,6 +170,20 @@ impl AppState {
             self.cell_detail
                 .set_viewport_metrics(viewport.visible_rows, viewport.viewport_width);
         }
+        if let Some(visible_rows) = output.row_detail_content_visible_rows {
+            self.ui.row_detail_content_visible_rows = visible_rows;
+        }
+        if let Some(visible_columns) = output.row_detail_content_visible_columns {
+            self.ui.row_detail_content_visible_columns = visible_columns;
+        }
+        if output.row_detail_content_visible_rows.is_some()
+            || output.row_detail_content_visible_columns.is_some()
+        {
+            self.row_detail.clamp_scroll(
+                self.ui.row_detail_content_visible_rows,
+                self.ui.row_detail_content_visible_columns,
+            );
+        }
         self.confirm_dialog.apply_preview_metrics(
             output.confirm_preview_viewport_height,
             output.confirm_preview_content_height,
@@ -198,6 +215,14 @@ impl AppState {
 
     pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
         self.ui.jsonb_detail_editor_visible_rows()
+    }
+
+    pub fn row_detail_content_visible_rows(&self) -> usize {
+        self.ui.row_detail_content_visible_rows
+    }
+
+    pub fn row_detail_content_visible_columns(&self) -> usize {
+        self.ui.row_detail_content_visible_columns
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
@@ -314,6 +339,7 @@ mod tests {
     use crate::domain::{
         ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource, Table,
     };
+    use crate::model::browse::row_detail::RowDetailState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
@@ -446,6 +472,24 @@ mod tests {
             let visible = state.inspector_ddl_visible_rows();
 
             assert_eq!(visible, 0);
+        }
+
+        #[test]
+        fn row_detail_scroll_offset_clamps_on_resize() {
+            let mut state = make_state();
+            state.row_detail = RowDetailState::open(&["id".to_string()], &["1".to_string()]);
+            state.row_detail.scroll_down_by(10, 1);
+            let output = RenderOutput {
+                row_detail_content_visible_rows: Some(3),
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(output);
+
+            assert_eq!(
+                state.row_detail.scroll_offset(),
+                state.row_detail.line_count().saturating_sub(3)
+            );
         }
     }
 

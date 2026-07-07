@@ -390,6 +390,7 @@ impl ResultPane {
                 position: clamped_offset,
                 viewport_size: plan.indicator_viewport_size(),
                 total_items: total_cols,
+                label: "col",
             },
             theme,
         );

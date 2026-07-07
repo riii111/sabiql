@@ -79,6 +79,7 @@ impl HelpOverlay {
                     position: horizontal_offset,
                     viewport_size: viewport_width,
                     total_items: content_width,
+                    label: "x",
                 },
                 theme,
             );

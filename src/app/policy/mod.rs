@@ -5,3 +5,5 @@ pub mod sql;
 pub mod sqlite_path;
 pub mod table_kind;
 pub mod write;
+
+pub use password_masking::mask_password;

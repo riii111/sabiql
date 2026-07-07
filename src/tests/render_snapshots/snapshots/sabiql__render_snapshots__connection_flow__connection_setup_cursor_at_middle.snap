@@ -1,6 +1,6 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
-assertion_line: 49
+assertion_line: 255
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
@@ -21,18 +21,18 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
 │                                       ││          │  Host:       [ db.example.com             ]                │                                                  │
-│                                       │└──────────│  Port:       [ 5432                       ]                │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  Database:   [                            ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  User:       [                            ]                │                                                  │
-│                                       ││          │  Password:   [                            ]                │                                                  │
+│                                       ││          │  Port:       [ 5432                       ]                │                                                  │
+│                                       │└──────────│  Database:   [                            ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  Password:   [ empty = psql default       ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
+│                                       ││          │  → stub-dsn                                                │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
