@@ -408,14 +408,24 @@ fn focused_placeholder_spans(
         return vec![];
     }
 
-    let placeholder_text = take_within_width(placeholder, effective_width.saturating_sub(1));
-    vec![
-        Span::styled(" ", theme.block_cursor_style()),
-        Span::styled(
-            placeholder_text,
-            Style::default().fg(theme.semantic.text.placeholder),
-        ),
-    ]
+    let placeholder_text = take_within_width(placeholder, effective_width);
+    let mut chars = placeholder_text.chars();
+    let Some(first_char) = chars.next() else {
+        return vec![];
+    };
+
+    let placeholder_style = Style::default().fg(theme.semantic.text.placeholder);
+    let mut spans = vec![Span::styled(
+        first_char.to_string(),
+        placeholder_style.patch(theme.block_cursor_style()),
+    )];
+
+    let remaining: String = chars.collect();
+    if !remaining.is_empty() {
+        spans.push(Span::styled(remaining, placeholder_style));
+    }
+
+    spans
 }
 
 fn preview_profile(state: &ConnectionSetupState) -> ConnectionProfile {

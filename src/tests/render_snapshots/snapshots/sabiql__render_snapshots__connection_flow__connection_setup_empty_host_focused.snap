@@ -24,7 +24,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
-│                                       ││          │  Host:       [  empty = psql default      ]                │                                                  │
+│                                       ││          │  Host:       [ empty = psql default       ]                │                                                  │
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
 │                                       │└──────────│  Database:   [ mydb                       ]                │──────────────────────────────────────────────────┘
 │                                       │┌ [3] Resul│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┐
