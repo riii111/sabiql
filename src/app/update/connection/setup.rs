@@ -181,10 +181,10 @@ pub(super) fn reduce_connection_setup(
                 DispatchResult::handled_with(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.content().to_string(),
-                    host: setup.host.content().to_string(),
+                    host: setup.host.content().trim().to_string(),
                     port,
                     database: setup.database.content().to_string(),
-                    user: setup.user.content().to_string(),
+                    user: setup.user.content().trim().to_string(),
                     password: setup.password.content().to_string(),
                     ssl_mode: setup.ssl_mode,
                 }])
@@ -430,6 +430,38 @@ mod tests {
                     ssl_mode: SslMode::Require,
                     ..
                 }]
+            ));
+        }
+
+        #[test]
+        fn save_trims_host_and_user_but_preserves_password() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            state
+                .connection_setup
+                .host
+                .set_content("  localhost  ".to_string());
+            state
+                .connection_setup
+                .user
+                .set_content("  postgres  ".to_string());
+            state
+                .connection_setup
+                .password
+                .set_content("  pass  ".to_string());
+
+            let effects =
+                reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now())
+                    .unwrap();
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SaveAndConnect {
+                    host,
+                    user,
+                    password,
+                    ..
+                }] if host == "localhost" && user == "postgres" && password == "  pass  "
             ));
         }
 
