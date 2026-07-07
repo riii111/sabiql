@@ -374,6 +374,8 @@ fn reference_sections(
             keymap_preset,
             db_capabilities,
         ));
+    }
+    if db_capabilities.supports_plan_comparison() {
         advanced_rows.extend(sql_current_rows(
             SqlHelpMode::Compare,
             keymap_preset,
@@ -911,6 +913,11 @@ mod tests {
             descriptions
                 .iter()
                 .any(|description| description.contains("EXPLAIN"))
+        );
+        assert!(
+            !descriptions
+                .iter()
+                .any(|description| description.contains("Compare"))
         );
         assert!(
             !descriptions
