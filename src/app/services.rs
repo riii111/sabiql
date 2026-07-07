@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use super::ports::outbound::{DdlGenerator, DsnBuilder, SqlDialect};
-use crate::domain::connection::ConnectionProfile;
 use crate::model::shared::db_capabilities::DbCapabilities;
 
 pub struct AppServices {
@@ -74,7 +73,7 @@ impl AppServices {
 
         struct StubDsnBuilder;
         impl DsnBuilder for StubDsnBuilder {
-            fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+            fn build_dsn(&self, _profile: &crate::domain::connection::ConnectionProfile) -> String {
                 "stub-dsn".to_string()
             }
         }
