@@ -130,6 +130,25 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_create_virtual_table_prefix(sql: 
     third.eq_ignore_ascii_case("TABLE")
 }
 
+pub(in crate::adapters::sqlite::sqlite3) fn is_create_view_prefix(sql: &str) -> bool {
+    let Some((first, pos)) = next_keyword_from(sql, 0) else {
+        return false;
+    };
+    if !first.eq_ignore_ascii_case("CREATE") {
+        return false;
+    }
+    let Some((second, pos)) = next_keyword_from(sql, pos) else {
+        return false;
+    };
+    if second.eq_ignore_ascii_case("TEMP") || second.eq_ignore_ascii_case("TEMPORARY") {
+        let Some((third, _)) = next_keyword_from(sql, pos) else {
+            return false;
+        };
+        return third.eq_ignore_ascii_case("VIEW");
+    }
+    second.eq_ignore_ascii_case("VIEW")
+}
+
 pub(in crate::adapters::sqlite::sqlite3) fn virtual_table_module_name(sql: &str) -> Option<String> {
     let mut offset = 0;
     while let Some((keyword, end)) = next_keyword_from(sql, offset) {

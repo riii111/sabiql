@@ -23,6 +23,7 @@ pub fn explorer_kind_suffix(kind_info: &TableKindInfo) -> Option<String> {
                 parts.push("virtual".to_string());
             }
         }
+        TableKind::View => parts.push("view".to_string()),
     }
     if kind_info.is_strict {
         parts.push("strict".to_string());
@@ -59,6 +60,7 @@ pub fn inspector_kind_label(kind_info: &TableKindInfo) -> String {
     match (&kind_info.kind, &kind_info.virtual_module) {
         (TableKind::Virtual, Some(module)) => format!("Virtual table ({module})"),
         (TableKind::Virtual, None) => "Virtual table".to_string(),
+        (TableKind::View, _) => "View".to_string(),
         (TableKind::Table, _) => "Table".to_string(),
     }
 }
@@ -130,5 +132,21 @@ mod tests {
             inspector_flags_label(&summary.kind_info),
             Some("STRICT, WITHOUT ROWID".to_string())
         );
+    }
+
+    #[test]
+    fn view_shows_read_only_kind_labels() {
+        let summary =
+            TableSummary::new("main".to_string(), "active_users".to_string(), None, false)
+                .with_kind_info(TableKindInfo {
+                    kind: TableKind::View,
+                    ..TableKindInfo::default()
+                });
+
+        assert_eq!(
+            explorer_kind_suffix(&summary.kind_info),
+            Some(" [view]".to_string())
+        );
+        assert_eq!(inspector_kind_label(&summary.kind_info), "View");
     }
 }

@@ -899,15 +899,21 @@ mod tests {
             let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT);
+            CREATE VIEW active_users AS SELECT id FROM users;
             ",
             );
             let adapter = SqliteAdapter::new();
 
             let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+            let table_names: Vec<_> = metadata
+                .table_summaries
+                .iter()
+                .map(|summary| summary.name.as_str())
+                .collect();
 
             assert_eq!(metadata.schemas, vec![Schema::new("main")]);
-            assert_eq!(metadata.table_summaries.len(), 1);
-            assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
+            assert_eq!(table_names, vec!["active_users", "users"]);
+            assert_eq!(metadata.table_summaries[1].qualified_name(), "main.users");
             assert!(metadata.table_summaries[0].row_count_estimate.is_none());
         }
 
@@ -975,6 +981,7 @@ mod tests {
             ) WITHOUT ROWID;
             CREATE TABLE typed_users(id INTEGER PRIMARY KEY, name TEXT) STRICT;
             CREATE VIRTUAL TABLE notes_fts USING fts5(body);
+            CREATE VIEW active_users AS SELECT id FROM users;
             ",
                 );
                 let adapter = SqliteAdapter::new();
@@ -1038,6 +1045,14 @@ mod tests {
                 fixture.kind_info("notes_fts").virtual_module.as_deref(),
                 Some("fts5")
             );
+        }
+
+        #[tokio::test]
+        async fn classifies_view_kind() {
+            let fixture = TableKindInfoMetadataFixture::new().await;
+
+            assert_eq!(fixture.kind_info("active_users").kind, TableKind::View);
+            assert!(fixture.kind_info("active_users").virtual_module.is_none());
         }
 
         #[tokio::test]
@@ -1341,6 +1356,7 @@ mod tests {
                 value TEXT
             ) WITHOUT ROWID;
             CREATE VIRTUAL TABLE notes_fts USING fts5(body);
+            CREATE VIEW settings_view AS SELECT key, value FROM settings;
             ",
             );
             let adapter = SqliteAdapter::new();
@@ -1373,6 +1389,20 @@ mod tests {
             assert_eq!(
                 virtual_table.kind_info.virtual_module.as_deref(),
                 Some("fts5")
+            );
+
+            let view = adapter
+                .fetch_table_detail(&dsn, "main", "settings_view")
+                .await
+                .unwrap();
+            assert!(
+                view.source_ddl()
+                    .is_some_and(|ddl| ddl.starts_with("CREATE VIEW"))
+            );
+            assert_eq!(view.kind_info.kind, TableKind::View);
+            assert_eq!(
+                adapter.generate_ddl(DatabaseType::SQLite, &view),
+                view.source_ddl().unwrap()
             );
         }
 
